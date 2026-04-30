@@ -10,6 +10,7 @@ from script.line_cutter import crop_lines
 
 logger = logging.getLogger(__name__)
 
+
 class SuraClassifier:
     def __init__(
         self,
@@ -18,71 +19,90 @@ class SuraClassifier:
         config: ClassifierConfig | None = None,
     ):
         self.config = config or ClassifierConfig()
-        # Keep 'detection' as requested for the template preparation
         self._template_edge = self._prepare_template(template, detection)
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _clean(gray: np.ndarray) -> np.ndarray:
+        """Remove background and crop tightly to all non-background content.
+
+        Preserves everything that isn't background — text, decoration, borders.
+        """
+        _, binary = cv2.threshold(
+            gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU
+        )
+        coords = cv2.findNonZero(binary)
+        if coords is None:
+            return gray
+        x, y, w, h = cv2.boundingRect(coords)
+        return gray[y : y + h, x : x + w]
+
+    @staticmethod
+    def _right_strip(cleaned: np.ndarray, width: int | None = None, fraction: float = 0.30) -> np.ndarray:
+        """Return the rightmost strip.
+        If width is given, take exactly that many pixels.
+        Otherwise compute from fraction (used for template preparation).
+        """
+        w = width if width is not None else max(1, int(cleaned.shape[1] * fraction))
+        w = min(w, cleaned.shape[1])  # can't exceed available width
+        return cleaned[:, -w:]
+
+    @staticmethod
+    def _vertical_clean(strip: np.ndarray) -> np.ndarray:
+        """Remove empty (background) rows from top and bottom of the strip."""
+        _, binary = cv2.threshold(
+            strip, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU
+        )
+        coords = cv2.findNonZero(binary)
+        if coords is None:
+            return strip
+        _, y, _, h = cv2.boundingRect(coords)
+        return strip[y : y + h, :]
 
     def _prepare_template(
         self, template: Image.Image, detection: DetectionConfig
     ) -> np.ndarray:
-        """Crop the template with line detection, then keep the right 30% strip."""
         lines = crop_lines(template, **detection.as_dict())
-        if not lines:
-            # Fallback if detection fails on the specific template image
-            prepped = template
-        else:
-            prepped = lines[0]
-            
+        prepped = lines[0] if lines else template
+
         gray = np.array(prepped.convert("L"), dtype=np.uint8)
-        
-        # Keep the right 30% (The 'Sura' keyword in Arabic)
-        edge_w = max(1, int(gray.shape[1] * 0.30))
-        return gray[:, -edge_w:]
+        cleaned = self._clean(gray)
+        strip = self._right_strip(cleaned)
+        self._strip_width = strip.shape[1]
+        return self._vertical_clean(strip)  # vertically tight-crop سورة
+
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
 
     def classify_single(
         self,
         img: Image.Image,
-        median_h: float,
-        total_lines: int,
         idx: int = 0,
     ) -> bool:
-        """
-        Public method called by CoordinateExporter.
-        Checks height first, then performs template matching.
-        """
-        # 1. Height-based check (Sura headers are usually significantly taller)
-        if img.size[1] > median_h * self.config.height_factor:
-            logger.info("  line %d: detected as SURA via height factor", idx)
-            return True
-            
-        # 2. Template matching check
+
         return self._match(img, idx)
 
+    # ------------------------------------------------------------------
+    # Template matching
+    # ------------------------------------------------------------------
+
     def _match(self, img: Image.Image, idx: int) -> bool:
-        """Perform template matching on the right side of the line image."""
-        line_gray = np.array(img.convert("L"), dtype=np.uint8)
-        edge = self._template_edge
+        gray = np.array(img.convert("L"), dtype=np.uint8)
+        cleaned = self._clean(gray)
+        candidate_strip = self._right_strip(cleaned, width=self._strip_width)
+        candidate_strip = self._vertical_clean(candidate_strip)  # same vertical tight-crop
 
-        # Rescale template to match the current line height
-        scale = line_gray.shape[0] / edge.shape[0]
-        new_h = line_gray.shape[0]
-        new_w = max(1, int(edge.shape[1] * scale))
-        tmpl_resized = cv2.resize(edge, (new_w, new_h))
+        tmpl = self._template_edge
 
-        # Search the RIGHT side of the line (Right-to-Left script)
-        search_w = min(line_gray.shape[1], new_w * 2)
-        search_region = line_gray[:, -search_w:]
-
-        if (
-            tmpl_resized.shape[0] > search_region.shape[0]
-            or tmpl_resized.shape[1] > search_region.shape[1]
-        ):
-            return False
-
-        result = cv2.matchTemplate(search_region, tmpl_resized, cv2.TM_CCOEFF_NORMED)
+        result = cv2.matchTemplate(candidate_strip, tmpl, cv2.TM_CCOEFF_NORMED)
         _, max_val, _, _ = cv2.minMaxLoc(result)
-        
+
         is_sura = max_val >= self.config.match_threshold
-        if is_sura:
-            logger.info("  line %d: score=%.4f → SURA", idx, max_val)
-        
+        logger.info("  line %d: score=%.4f%s", idx, max_val, " → SURA" if is_sura else "")
+
         return is_sura

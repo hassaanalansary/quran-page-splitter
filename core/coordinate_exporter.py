@@ -193,9 +193,7 @@ class CoordinateExporter:
         line_bbox = self._bbox_to_xywh(line.bbox)
 
         # Classify: is this a sura header?
-        is_sura = self.classifier.classify_single(
-            line.image, median_h, total_lines, idx=line_idx
-        )
+        is_sura = self.classifier.classify_single(line.image, idx=line_idx)
 
         if is_sura:
             return self._handle_sura_header(line, line_idx, line_bbox)
@@ -402,33 +400,32 @@ class CoordinateExporter:
 
 
 def setup_export_logging(log_path: Path) -> None:
-    """Configure the 'coordinate_export' logger to write to a file.
-
-    All messages at DEBUG level and above are written to the log file.
-    A summary stream is also printed to the console at INFO level.
-    """
-    export_logger = logging.getLogger("coordinate_export")
-    export_logger.setLevel(logging.DEBUG)
-
-    # Remove existing handlers (avoid duplicate output on re-runs)
-    export_logger.handlers.clear()
-
-    # File handler — detailed log
+    # File handler — shared across all relevant loggers
     file_handler = logging.FileHandler(log_path, mode="w", encoding="utf-8")
     file_handler.setLevel(logging.DEBUG)
-    file_fmt = logging.Formatter("%(asctime)s  %(levelname)-8s  %(message)s")
+    file_fmt = logging.Formatter("%(asctime)s  %(levelname)-8s  %(name)s  %(message)s")
     file_handler.setFormatter(file_fmt)
-    export_logger.addHandler(file_handler)
 
     # Console handler — summary only
     console_handler = logging.StreamHandler()
     console_handler.setLevel(logging.INFO)
     console_fmt = logging.Formatter("%(message)s")
     console_handler.setFormatter(console_fmt)
-    export_logger.addHandler(console_handler)
 
-    # Prevent propagation to root logger
+    # Configure the export logger
+    export_logger = logging.getLogger("coordinate_export")
+    export_logger.setLevel(logging.DEBUG)
+    export_logger.handlers.clear()
+    export_logger.addHandler(file_handler)
+    export_logger.addHandler(console_handler)
     export_logger.propagate = False
+
+    # Configure the core logger — covers core.classifier, core.line_detector, etc.
+    core_logger = logging.getLogger("core")
+    core_logger.setLevel(logging.DEBUG)
+    core_logger.handlers.clear()
+    core_logger.addHandler(file_handler)  # same file, different name prefix
+    core_logger.propagate = False
 
 
 def save_json(data: dict, output_path: Path) -> None:

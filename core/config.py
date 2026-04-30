@@ -36,4 +36,4 @@ class DetectionConfig:
 @dataclass
 class ClassifierConfig:
     height_factor: float = 1.5
-    match_threshold: float = 0.5
+    match_threshold: float = 0.8
