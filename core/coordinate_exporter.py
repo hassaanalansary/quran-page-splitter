@@ -309,52 +309,44 @@ class CoordinateExporter:
         line: DetectedLine,
         line_idx: int,
     ) -> dict:
-        # If this segment has a separator, it completes the current aya
         if seg.has_separator:
+            # This segment COMPLETES the current aya — label first, then advance
+            aya_number = self.current_aya
             self.current_aya += 1
 
-            # Sanity check: aya number vs. expected max
             expected_max = get_aya_count(self.current_sura)
-            if self.current_aya > expected_max:
+            if aya_number > expected_max:
                 logger.warning(
                     "    ⚠ Aya %d exceeds expected max (%d) for Sura #%d (%s)!",
-                    self.current_aya,
+                    aya_number,
                     expected_max,
                     self.current_sura,
                     get_sura(self.current_sura)["name"],
                 )
+        else:
+            # Continuation of whatever aya is currently in progress
+            aya_number = self.current_aya
 
         sura_info = get_sura(self.current_sura)
         seg_bbox = self._segment_to_page_bbox(seg, line)
 
-        # Log
         if seg.has_separator:
             logger.info(
                 "    ✦ Aya %d of %s (Sura #%d) — bbox: (%d, %d, %d, %d)",
-                self.current_aya,
-                sura_info["name"],
-                self.current_sura,
-                seg_bbox["x"],
-                seg_bbox["y"],
-                seg_bbox["w"],
-                seg_bbox["h"],
+                aya_number, sura_info["name"], self.current_sura,
+                seg_bbox["x"], seg_bbox["y"], seg_bbox["w"], seg_bbox["h"],
             )
         else:
             logger.info(
                 "    … Aya %d of %s (Sura #%d) [continued] — bbox: (%d, %d, %d, %d)",
-                self.current_aya,
-                sura_info["name"],
-                self.current_sura,
-                seg_bbox["x"],
-                seg_bbox["y"],
-                seg_bbox["w"],
-                seg_bbox["h"],
+                aya_number, sura_info["name"], self.current_sura,
+                seg_bbox["x"], seg_bbox["y"], seg_bbox["w"], seg_bbox["h"],
             )
 
         return {
             "sura_number": self.current_sura,
             "sura_name": sura_info["name"],
-            "aya_number": self.current_aya,
+            "aya_number": aya_number,
             "is_continuation": not seg.has_separator,
             "bbox": seg_bbox,
         }
@@ -400,32 +392,33 @@ class CoordinateExporter:
 
 
 def setup_export_logging(log_path: Path) -> None:
-    # File handler — shared across all relevant loggers
+    """Configure the 'coordinate_export' logger to write to a file.
+
+    All messages at DEBUG level and above are written to the log file.
+    A summary stream is also printed to the console at INFO level.
+    """
+    export_logger = logging.getLogger("coordinate_export")
+    export_logger.setLevel(logging.DEBUG)
+
+    # Remove existing handlers (avoid duplicate output on re-runs)
+    export_logger.handlers.clear()
+
+    # File handler — detailed log
     file_handler = logging.FileHandler(log_path, mode="w", encoding="utf-8")
     file_handler.setLevel(logging.DEBUG)
-    file_fmt = logging.Formatter("%(asctime)s  %(levelname)-8s  %(name)s  %(message)s")
+    file_fmt = logging.Formatter("%(asctime)s  %(levelname)-8s  %(message)s")
     file_handler.setFormatter(file_fmt)
+    export_logger.addHandler(file_handler)
 
     # Console handler — summary only
     console_handler = logging.StreamHandler()
     console_handler.setLevel(logging.INFO)
     console_fmt = logging.Formatter("%(message)s")
     console_handler.setFormatter(console_fmt)
-
-    # Configure the export logger
-    export_logger = logging.getLogger("coordinate_export")
-    export_logger.setLevel(logging.DEBUG)
-    export_logger.handlers.clear()
-    export_logger.addHandler(file_handler)
     export_logger.addHandler(console_handler)
-    export_logger.propagate = False
 
-    # Configure the core logger — covers core.classifier, core.line_detector, etc.
-    core_logger = logging.getLogger("core")
-    core_logger.setLevel(logging.DEBUG)
-    core_logger.handlers.clear()
-    core_logger.addHandler(file_handler)  # same file, different name prefix
-    core_logger.propagate = False
+    # Prevent propagation to root logger
+    export_logger.propagate = False
 
 
 def save_json(data: dict, output_path: Path) -> None:
