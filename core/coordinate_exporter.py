@@ -224,7 +224,7 @@ class CoordinateExporter:
         self, line: DetectedLine, line_idx: int, line_bbox: dict
     ) -> dict:
         self.current_sura += 1
-        self.current_aya = 0
+        self.current_aya = 1
         self._pending_basmala_check = True
 
         sura_info = get_sura(self.current_sura)
