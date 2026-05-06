@@ -55,6 +55,7 @@ async def upload_images(
     if crop_w <= 0 or crop_h <= 0:
         raise HTTPException(status_code=400, detail="Invalid crop dimensions")
 
+    # start clean for new request
     results_dir = Path("results")
     if os.path.exists(results_dir):
         shutil.rmtree(results_dir)
@@ -62,21 +63,21 @@ async def upload_images(
 
     # Build configs
     crop_cfg = CropConfig(x=crop_x, y=crop_y, w=crop_w, h=crop_h)
+    proc_cfg = ProcessingConfig(alternate_horizontal_margin=alternate_horizontal_margin)
     det_cfg = DetectionConfig(
         gap_threshold=gap_threshold, min_line_height=min_line_height, padding=padding
     )
-    proc_cfg = ProcessingConfig(alternate_horizontal_margin=alternate_horizontal_margin)
 
     # Load sura template and build classifier
-    sura_data = await sura_name.read()
-    sura_path = results_dir / (sura_name.filename or "sura_name.png")
-    sura_path.write_bytes(sura_data)
+    sura_name_data = await sura_name.read()
+    sura_name_path = results_dir / "sura_name.png"
+    sura_name_path.write_bytes(sura_name_data)
     try:
-        sura_template = Image.open(io.BytesIO(sura_data))
+        sura_template = Image.open(io.BytesIO(sura_name_data))
         sura_template.load()  # Force validation
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid sura template image: {e}")
-    classifier = SuraClassifier(template=sura_template, detection=det_cfg)
+    classifier = SuraClassifier(template=sura_template)
 
     # Save and validate aya separator
     aya_data = await aya_separator.read()

@@ -9,10 +9,13 @@ wheels/
 # Virtual environments
 .venv
 
+# inputs and outputs
 *.png
 *.jpg
 *.pdf
 output/
+.json
+.log
 
 .vscode/
 .cursorrules

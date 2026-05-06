@@ -1,6 +1,8 @@
 import numpy as np
 from PIL import Image
 
+from image_utils import binarize_image
+
 
 def get_line_boxes(
     image: Image.Image,
@@ -8,22 +10,21 @@ def get_line_boxes(
     min_line_height: int = 20,
     padding: int = 8,
 ) -> list[dict]:
-    # Flatten transparency onto white before converting to grayscale
-    base = Image.new("RGBA", image.size, (255, 255, 255, 255))
-    base.paste(image.convert("RGBA"), mask=image.convert("RGBA").split()[3])
-    img = np.array(base.convert("L"), dtype=np.float32)
+    _, binary_img = binarize_image(image)
+    img = binary_img
     h, w = img.shape
 
-    # Auto-detect: dark bg (mean < 128) → gaps are low-sum rows
-    #              light bg (mean > 128) → invert so gaps become low-sum rows
-    if img.mean() > 128:
-        img = 255.0 - img  # now dark text becomes bright, white gaps become dark
-
+    # Calculate the sum of pixel values for each row
     row_sums = img.sum(axis=1)
+    # Calculate the threshold for detecting gaps between lines
+    # by finding the row with highest sum of pixel values (the text line with most black pixels)
+    # and multiplying it by the gap threshold (3%) giving us what we consider as an empty row.
     gap_limit = row_sums.max() * gap_threshold
+    # Detect gaps between lines by building a list of booleans indicating whether a row is a gap or not.
     is_gap = row_sums < gap_limit
 
     # Find contiguous text bands
+    # where each band is a tuple of (start, end) indices of the rows that belong to the text.
     in_text = False
     bands = []
     start = 0

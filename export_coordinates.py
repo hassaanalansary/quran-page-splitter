@@ -135,7 +135,7 @@ def main():
 
     # Build components
     detector = LineDetector(crop=crop_cfg, detection=det_cfg, processing=proc_cfg)
-    classifier = SuraClassifier(template=sura_template, detection=det_cfg)
+    classifier = SuraClassifier(template=sura_template)
     aya_processor = AyaSeparatorProcessor(template=aya_template)
 
     # Run export
