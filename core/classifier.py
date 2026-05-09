@@ -34,11 +34,8 @@ class SuraClassifier:
         gray, binary = binarize_image(template)
         cleaned_gray, cleaned_binary = clean_image(gray, binary)
 
-        strip_gray = right_strip(cleaned_gray)
-        strip_binary = right_strip(cleaned_binary)
-
-        self._strip_width = strip_gray.shape[1]
-        final_gray, _ = clean_image(strip_gray, strip_binary)
+        self._strip_width = cleaned_gray.shape[1]
+        final_gray, _ = clean_image(cleaned_gray, cleaned_binary)
         return final_gray
 
     # ------------------------------------------------------------------
@@ -51,16 +48,15 @@ class SuraClassifier:
             line_grey = ctx.line_grey(line)
             line_binary = ctx.line_binary(line)
 
-            candidate_strip_gray = right_strip(line_grey, width=self._strip_width)
-            candidate_strip_binary = right_strip(line_binary, width=self._strip_width)
 
-            cleaned_gray, _ = clean_image(candidate_strip_gray, candidate_strip_binary)
+            cleaned_gray, _ = clean_image(line_grey, line_binary)
+
             result = cv2.matchTemplate(
                 cleaned_gray, self.prepared_template, cv2.TM_CCOEFF_NORMED
             )
             _, max_val, _, _ = cv2.minMaxLoc(result)
 
-            line.is_sura = bool(max_val >= self.config.match_threshold)
+            line.is_sura = max_val >= self.config.match_threshold
             logger.info(
                 "  line %d: score=%.4f%s",
                 line.line_index,
