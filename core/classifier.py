@@ -7,6 +7,7 @@ import numpy as np
 from PIL import Image
 
 from core.config import ClassifierConfig
+from core.page_processor import Page
 from image_utils import binarize_image, clean_image, right_strip
 
 logger = logging.getLogger(__name__)
@@ -40,20 +41,15 @@ class SuraClassifier:
     # Public API
     # ------------------------------------------------------------------
 
-    def classify_single(self, img: Image.Image, idx: int = 0) -> bool:
-        gray, binary = binarize_image(img)
-        cleaned_gray, cleaned_binary = clean_image(gray, binary)
+    def classify_single(self, page: Page, idx: int = 0) -> bool:
+        candidate_strip_gray = right_strip(page.grey, width=self._strip_width)
+        candidate_strip_binary = right_strip(page.binary, width=self._strip_width)
 
-        candidate_strip_gray = right_strip(cleaned_gray, width=self._strip_width)
-        candidate_strip_binary = right_strip(cleaned_binary, width=self._strip_width)
+        cleaned_gray, _ = clean_image(candidate_strip_gray, candidate_strip_binary)
 
-        candidate_strip_gray, _ = clean_image(
-            candidate_strip_gray, candidate_strip_binary
+        result = cv2.matchTemplate(
+            cleaned_gray, self.prepared_template, cv2.TM_CCOEFF_NORMED
         )
-
-        tmpl = self.prepared_template
-
-        result = cv2.matchTemplate(candidate_strip_gray, tmpl, cv2.TM_CCOEFF_NORMED)
         _, max_val, _, _ = cv2.minMaxLoc(result)
 
         is_sura = max_val >= self.config.match_threshold
@@ -63,6 +59,6 @@ class SuraClassifier:
 
         return is_sura
 
-    def classify(self, images: list[Image.Image]) -> list[bool]:
+    def classify(self, images: list[Page]) -> list[bool]:
         """Classify a batch of line images, returning True for sura headers."""
-        return [self.classify_single(img, idx=i) for i, img in enumerate(images)]
+        return [self.classify_single(page, idx=i) for i, page in enumerate(images)]

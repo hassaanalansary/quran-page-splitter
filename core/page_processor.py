@@ -4,12 +4,13 @@ import logging
 from dataclasses import dataclass
 from pathlib import Path
 
+import numpy as np
 from PIL import Image
 
 from core.aya_separator import AyaSeparatorProcessor
 from core.classifier import SuraClassifier
 from core.line_detector import LineDetector
-from image_utils import make_transparent
+from image_utils import binarize_image, make_transparent
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +23,13 @@ class PreparedLine:
     segment_index: int | None = None
 
 
+@dataclass
+class Page:
+    image: Image.Image
+    grey: np.ndarray
+    binary: np.ndarray
+
+
 class PageProcessor:
     def __init__(
         self,
@@ -31,15 +39,20 @@ class PageProcessor:
         aya_separator: AyaSeparatorProcessor | None = None,
     ):
         self.detector = detector
+        self.results_dir = results_dir
         self.classifier = classifier
         self.aya_separator = aya_separator
-        self.results_dir = results_dir
+
+    def _prepare_page(self, img: Image.Image) -> Page:
+        grey, binary = binarize_image(img)
+        return Page(image=img, grey=grey, binary=binary)
 
     def process(self, img: Image.Image, filename: str, page_index: int = 0) -> dict:
         """Detect → classify → export. Returns a result dict."""
+        page = self._prepare_page(img)
         # Detect
         try:
-            line_images = self.detector.detect(img, page_index=page_index)
+            line_images = self.detector.detect(page, page_index=page_index)
         except Exception as e:
             logger.error("Detection failed for %s: %s", filename, e)
             return {"filename": filename, "status": "error", "message": str(e)}
@@ -82,7 +95,7 @@ class PageProcessor:
 
     def _prepare_for_export(
         self,
-        line_images: list[Image.Image],
+        line_images: list[Page],
         labels: list[bool] | None,
     ) -> list[PreparedLine]:
         if labels is None:
@@ -94,10 +107,12 @@ class PageProcessor:
         ):
             if is_sura or self.aya_separator is None:
                 prepared.append(
-                    PreparedLine(image=line_img, is_sura=is_sura, line_index=line_index)
+                    PreparedLine(
+                        image=line_img.image, is_sura=is_sura, line_index=line_index
+                    )
                 )
                 continue
-            split_parts = self.aya_separator.split_line(line_img)
+            split_parts = self.aya_separator.split_line(line_img.image)
             if len(split_parts) == 1:
                 prepared.append(
                     PreparedLine(

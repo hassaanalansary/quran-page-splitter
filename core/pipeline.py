@@ -29,6 +29,6 @@ class Pipeline:
                 )
                 continue
             results.append(self.processor.process(img, filename, page_index=page_index))
-            with open("results.json", mode="w", encoding="utf-8") as f:
-                json.dump(results, f, indent=4, ensure_ascii=False)
+        with open("results.json", mode="w", encoding="utf-8") as f:
+            json.dump(results, f, indent=4, ensure_ascii=False)
         return results

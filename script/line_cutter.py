@@ -1,20 +1,19 @@
-from PIL import Image
+import numpy as np
 
-from image_utils import binarize_image
+from core.page_processor import Page
 
 
 def get_line_boxes(
-    image: Image.Image,
-    gap_threshold: float = 0.03,
-    min_line_height: int = 20,
-    padding: int = 8,
-) -> list[dict]:
-    _, binary_img = binarize_image(image)
-    img = binary_img
-    h, w = img.shape
+    binary: np.ndarray,
+    gap_threshold: float,
+    min_line_height: int,
+    padding: int,
+) -> list[dict[str, int]]:
+
+    h, w = binary.shape
 
     # Calculate the sum of pixel values for each row
-    row_sums = img.sum(axis=1)
+    row_sums = binary.sum(axis=1)
     # Calculate the threshold for detecting gaps between lines
     # by finding the row with highest sum of pixel values
     # (the text line with most black pixels) and multiplying it by
@@ -56,6 +55,18 @@ def get_line_boxes(
     return boxes
 
 
-def crop_lines(image: Image.Image, **kwargs) -> list[Image.Image]:  # type: ignore[no-untyped-def]
-    boxes = get_line_boxes(image, **kwargs)
-    return [image.crop((b["left"], b["top"], b["right"], b["bottom"])) for b in boxes]
+def crop_lines(
+    page: Page,
+    gap_threshold: float = 0.03,
+    min_line_height: int = 20,
+    padding: int = 8,
+) -> list[Page]:
+    boxes = get_line_boxes(page.binary, gap_threshold, min_line_height, padding)
+    return [
+        Page(
+            image=page.image.crop((b["left"], b["top"], b["right"], b["bottom"])),
+            grey=page.grey[b["top"] : b["bottom"], b["left"] : b["right"]],
+            binary=page.binary[b["top"] : b["bottom"], b["left"] : b["right"]],
+        )
+        for b in boxes
+    ]

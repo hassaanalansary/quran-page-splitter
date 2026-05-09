@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from PIL import Image
 
 from core.config import CropConfig, DetectionConfig, ProcessingConfig
+from core.page_processor import Page
 from script.line_cutter import crop_lines, get_line_boxes
 
 logger = logging.getLogger(__name__)
@@ -31,15 +32,15 @@ class LineDetector:
         self.processing = processing or ProcessingConfig()
 
     def _compute_crop_origin(
-        self, img: Image.Image, page_index: int
-    ) -> tuple[int, int, Image.Image]:
+        self, page: Page, page_index: int
+    ) -> tuple[int, int, Page]:
         """Compute the crop region and return (origin_x, origin_y, cropped_image).
 
         The origin is the top-left corner of the crop region in the
         original page coordinate space.
         """
         x, y, w, h = self.crop.as_tuple()
-        img_w, img_h = img.size
+        img_w, img_h = page.image.size
         should_swap = (
             self.processing.alternate_horizontal_margin and page_index % 2 == 0
         )
@@ -50,30 +51,32 @@ class LineDetector:
         bottom = min(img_h, top + h)
         if right <= left or bottom <= top:
             raise ValueError("Crop rectangle is outside image bounds")
-        cropped = img.crop((left, top, right, bottom))
+
+        cropped = Page(
+            image=page.image.crop((left, top, right, bottom)),
+            grey=page.grey[top:bottom, left:right],
+            binary=page.binary[top:bottom, left:right],
+        )
         return left, top, cropped
 
-    def _crop(self, img: Image.Image, page_index: int) -> Image.Image:
-        _, _, cropped = self._compute_crop_origin(img, page_index)
-        return cropped
+    def _crop(self, page: Page, page_index: int) -> Page:
+        return self._compute_crop_origin(page, page_index)[2]
 
-    def detect(self, img: Image.Image, page_index: int = 0) -> list[Image.Image]:
+    def detect(self, page: Page, page_index: int = 0) -> list[Page]:
         """Crop the image then return detected line images."""
-        cropped = self._crop(img, page_index)
+        cropped = self._crop(page, page_index)
         lines = crop_lines(cropped, **self.detection.as_dict())
         logger.info("Detected %d lines", len(lines))
         return lines
 
-    def detect_with_coords(
-        self, img: Image.Image, page_index: int = 0
-    ) -> list[DetectedLine]:
+    def detect_with_coords(self, page: Page, page_index: int = 0) -> list[DetectedLine]:
         """Crop the image and return lines with bboxes in original page coords."""
-        origin_x, origin_y, cropped = self._compute_crop_origin(img, page_index)
-        boxes = get_line_boxes(cropped, **self.detection.as_dict())
+        origin_x, origin_y, cropped = self._compute_crop_origin(page, page_index)
+        boxes = get_line_boxes(cropped.binary, **self.detection.as_dict())
 
         results: list[DetectedLine] = []
         for box in boxes:
-            line_img = cropped.crop(
+            line_img = cropped.image.crop(
                 (box["left"], box["top"], box["right"], box["bottom"])
             )
             page_bbox = {
