@@ -73,6 +73,28 @@ alternateHorizontalMarginInput.addEventListener("change", () => {
   state.alternateHorizontalMargin = alternateHorizontalMarginInput.checked;
 });
 
+const exportImagesInput = document.getElementById("export-images");
+const exportCoordinatesInput = document.getElementById("export-coordinates");
+const startSuraInput = document.getElementById("start-sura");
+const startAyaInput = document.getElementById("start-aya");
+const startSuraGroup = document.getElementById("start-sura-group");
+const startAyaGroup = document.getElementById("start-aya-group");
+
+exportImagesInput.addEventListener("change", () => {
+  state.exportImages = exportImagesInput.checked;
+});
+exportCoordinatesInput.addEventListener("change", () => {
+  state.exportCoordinates = exportCoordinatesInput.checked;
+  startSuraGroup.style.display = exportCoordinatesInput.checked ? "" : "none";
+  startAyaGroup.style.display = exportCoordinatesInput.checked ? "" : "none";
+});
+startSuraInput.addEventListener("input", () => {
+  state.startSura = parseInt(startSuraInput.value, 10) || 1;
+});
+startAyaInput.addEventListener("input", () => {
+  state.startAya = parseInt(startAyaInput.value, 10) || 1;
+});
+
 // ---- crop controls ----
 startCropBtn.addEventListener("click", startCropping);
 resetBtn.addEventListener("click", fullReset);

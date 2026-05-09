@@ -1,163 +1,160 @@
-"""Single-page processing: detect → classify → export."""
+"""Unified page processor: detect → classify → split → track → export.
+
+Orchestrates all pipeline stages for a single page and handles both
+image export and coordinate collection based on the configured mode.
+"""
 
 import logging
-from dataclasses import dataclass
 from pathlib import Path
 
-import numpy as np
 from PIL import Image
 
 from core.aya_separator import AyaSeparatorProcessor
 from core.classifier import SuraClassifier
+from core.context import PageContext, QuranTracker
+from core.coordinate_exporter import collect_page_coordinates, track_positions
 from core.line_detector import LineDetector
 from image_utils import binarize_image, make_transparent
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class PreparedLine:
-    image: Image.Image
-    is_sura: bool
-    line_index: int
-    segment_index: int | None = None
-
-
-@dataclass
-class Page:
-    image: Image.Image
-    grey: np.ndarray
-    binary: np.ndarray
+def create_context(image: Image.Image, filename: str, page_index: int) -> PageContext:
+    """Create a PageContext from a PIL image (binarizes once)."""
+    grey, binary = binarize_image(image)
+    return PageContext(
+        image=image,
+        grey=grey,
+        binary=binary,
+        filename=filename,
+        page_index=page_index,
+    )
 
 
 class PageProcessor:
     def __init__(
         self,
         detector: LineDetector,
+        classifier: SuraClassifier,
+        aya_separator: AyaSeparatorProcessor,
         results_dir: Path,
-        classifier: SuraClassifier | None = None,
-        aya_separator: AyaSeparatorProcessor | None = None,
     ):
         self.detector = detector
-        self.results_dir = results_dir
         self.classifier = classifier
         self.aya_separator = aya_separator
+        self.results_dir = results_dir
 
-    def _prepare_page(self, img: Image.Image) -> Page:
-        grey, binary = binarize_image(img)
-        return Page(image=img, grey=grey, binary=binary)
+    def process(
+        self,
+        ctx: PageContext,
+        tracker: QuranTracker,
+        export_images: bool = True,
+        export_coordinates: bool = False,
+    ) -> dict:
+        """Full pipeline for one page: detect → classify → split → track → export.
 
-    def process(self, img: Image.Image, filename: str, page_index: int = 0) -> dict:
-        """Detect → classify → export. Returns a result dict."""
-        page = self._prepare_page(img)
-        # Detect
+        Always runs position tracking (needed for file naming with sura/aya info).
+        Export flags control what output is produced.
+        """
+        logger.info("")
+        logger.info("━" * 50)
+        logger.info("📄 PAGE %d — %s", ctx.page_index, ctx.filename)
+        logger.info("━" * 50)
+
+        # Stage 1: Detect lines
         try:
-            line_images = self.detector.detect(page, page_index=page_index)
+            self.detector.detect(ctx)
         except Exception as e:
-            logger.error("Detection failed for %s: %s", filename, e)
-            return {"filename": filename, "status": "error", "message": str(e)}
+            logger.error("  ❌ Detection failed: %s", e)
+            return {"filename": ctx.filename, "status": "error", "message": str(e)}
 
-        if not line_images:
+        if not ctx.lines:
+            logger.warning("  ⚠ No lines detected")
             return {
-                "filename": filename,
+                "filename": ctx.filename,
                 "status": "no_lines",
                 "message": "No text lines detected",
                 "outputs": [],
             }
 
-        # Classify
-        labels: list[bool] | None = None
-        if self.classifier is not None:
-            try:
-                labels = self.classifier.classify(line_images)
-            except Exception as e:
-                logger.warning(
-                    "Classification failed for %s, skipping: %s", filename, e
-                )
+        # Stage 2: Classify sura headers
+        try:
+            self.classifier.classify(ctx)
+        except Exception as e:
+            logger.warning("  Classification failed, skipping: %s", e)
 
-        prepared_lines = self._prepare_for_export(line_images, labels)
+        # Stage 3: Split lines into aya segments
+        self.aya_separator.split_segments(ctx)
 
-        # Export
-        saved = self._export(prepared_lines, Path(filename).stem)
-        logger.info(
-            "Finished %s: detected=%d exported=%d",
-            filename,
-            len(line_images),
-            len(saved),
-        )
-        return {
-            "filename": filename,
+        # Stage 4: Track sura/aya positions (always runs — needed for naming)
+        track_positions(ctx, tracker)
+
+        # Stage 5: Export
+        result: dict = {
+            "filename": ctx.filename,
             "status": "success",
-            "lines": len(saved),
-            "detected_lines": len(line_images),
-            "outputs": saved,
+            "detected_lines": len(ctx.lines),
         }
 
-    def _prepare_for_export(
-        self,
-        line_images: list[Page],
-        labels: list[bool] | None,
-    ) -> list[PreparedLine]:
-        if labels is None:
-            labels = [False] * len(line_images)
+        if export_images:
+            saved = self._export_images(ctx)
+            result["outputs"] = saved
+            result["exported_images"] = len(saved)
+            logger.info("  Exported %d image(s) for %s", len(saved), ctx.filename)
 
-        prepared: list[PreparedLine] = []
-        for line_index, (line_img, is_sura) in enumerate(
-            zip(line_images, labels, strict=True), start=1
-        ):
-            if is_sura or self.aya_separator is None:
-                prepared.append(
-                    PreparedLine(
-                        image=line_img.image, is_sura=is_sura, line_index=line_index
-                    )
-                )
-                continue
-            split_parts = self.aya_separator.split_line(line_img.image)
-            if len(split_parts) == 1:
-                prepared.append(
-                    PreparedLine(
-                        image=split_parts[0], is_sura=False, line_index=line_index
-                    )
-                )
-                continue
-            for segment_index, segment in enumerate(split_parts, start=1):
-                prepared.append(
-                    PreparedLine(
-                        image=segment,
-                        is_sura=False,
-                        line_index=line_index,
-                        segment_index=segment_index,
-                    )
-                )
-        return prepared
+        if export_coordinates:
+            result["coordinates"] = collect_page_coordinates(ctx)
 
-    def _export(
-        self,
-        prepared_lines: list[PreparedLine],
-        stem: str,
-    ) -> list[str]:
-        """
-        Export prepared lines to files.
+        logger.info("  Finished %s: detected=%d lines", ctx.filename, len(ctx.lines))
+        return result
 
-        Args:
-            prepared_lines: List of PreparedLine objects
-            stem: Base filename without extension
-
-        Returns:
-            List of paths to saved files
-        """
+    def _export_images(self, ctx: PageContext) -> list[str]:
+        """Export all lines/segments as transparent PNGs with sura/aya naming."""
         saved: list[str] = []
-        sura_idx = 0
-        for prepared in prepared_lines:
-            if prepared.is_sura:
-                sura_idx += 1
-                name = f"{stem}-sura-{sura_idx:02d}.png"
-            elif prepared.segment_index is None:
-                name = f"{stem}-l{prepared.line_index:03d}.png"
-            else:
-                name = f"{stem}-l{prepared.line_index:03d}-s{prepared.segment_index:02d}.png"  # noqa: E501
-            out_path = self.results_dir / name
-            make_transparent(prepared.image).save(out_path)
-            saved.append(str(out_path))
-            logger.info("Saved %s", out_path)
+        stem = Path(ctx.filename).stem
+
+        for line in ctx.lines:
+            if line.is_sura:
+                name = (
+                    f"{stem}-l{line.line_index:02d}"
+                    f"-sura{line.sura_number:03d}-header.png"
+                )
+                out_path = self.results_dir / name
+                make_transparent(ctx.line_image(line)).save(out_path)
+                saved.append(str(out_path))
+                logger.info("    Saved %s", out_path)
+                continue
+
+            if line.is_basmala:
+                name = (
+                    f"{stem}-l{line.line_index:02d}"
+                    f"-sura{line.sura_number:03d}-basmala.png"
+                )
+                out_path = self.results_dir / name
+                make_transparent(ctx.line_image(line)).save(out_path)
+                saved.append(str(out_path))
+                logger.info("    Saved %s", out_path)
+                continue
+
+            for seg_idx, seg in enumerate(line.segments, start=1):
+                # Build filename with sura/aya info
+                sura_part = f"-sura{seg.sura_number:03d}" if seg.sura_number else ""
+                aya_part = f"-aya{seg.aya_number:03d}" if seg.aya_number else ""
+
+                if len(line.segments) == 1:
+                    name = f"{stem}-l{line.line_index:02d}{sura_part}{aya_part}.png"
+                else:
+                    name = (
+                        f"{stem}-l{line.line_index:02d}-s{seg_idx:02d}"
+                        f"{sura_part}{aya_part}.png"
+                    )
+
+                # Crop segment from original image
+                b = seg.bbox
+                seg_image = ctx.image.crop((b.left, b.top, b.right, b.bottom))
+                out_path = self.results_dir / name
+                make_transparent(seg_image).save(out_path)
+                saved.append(str(out_path))
+                logger.info("    Saved %s", out_path)
+
         return saved

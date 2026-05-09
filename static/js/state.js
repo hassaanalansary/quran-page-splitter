@@ -26,4 +26,8 @@ export const state = {
     suraNameBlob: null,
     ayaSeparatorBlob: null,
   },
+  exportImages: true,
+  exportCoordinates: false,
+  startSura: 1,
+  startAya: 1,
 };

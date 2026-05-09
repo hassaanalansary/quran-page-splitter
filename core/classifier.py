@@ -1,4 +1,8 @@
-"""Sura-name line classifier."""
+"""Sura-name line classifier.
+
+Uses template matching on the rightmost strip of each line to identify
+sura header decorations. Mutates PageContext by setting is_sura on lines.
+"""
 
 import logging
 
@@ -7,7 +11,7 @@ import numpy as np
 from PIL import Image
 
 from core.config import ClassifierConfig
-from core.page_processor import Page
+from core.context import PageContext
 from image_utils import binarize_image, clean_image, right_strip
 
 logger = logging.getLogger(__name__)
@@ -41,24 +45,25 @@ class SuraClassifier:
     # Public API
     # ------------------------------------------------------------------
 
-    def classify_single(self, page: Page, idx: int = 0) -> bool:
-        candidate_strip_gray = right_strip(page.grey, width=self._strip_width)
-        candidate_strip_binary = right_strip(page.binary, width=self._strip_width)
+    def classify(self, ctx: PageContext) -> None:
+        """Classify each line in ctx as sura header or text. Mutates ctx.lines."""
+        for line in ctx.lines:
+            line_grey = ctx.line_grey(line)
+            line_binary = ctx.line_binary(line)
 
-        cleaned_gray, _ = clean_image(candidate_strip_gray, candidate_strip_binary)
+            candidate_strip_gray = right_strip(line_grey, width=self._strip_width)
+            candidate_strip_binary = right_strip(line_binary, width=self._strip_width)
 
-        result = cv2.matchTemplate(
-            cleaned_gray, self.prepared_template, cv2.TM_CCOEFF_NORMED
-        )
-        _, max_val, _, _ = cv2.minMaxLoc(result)
+            cleaned_gray, _ = clean_image(candidate_strip_gray, candidate_strip_binary)
+            result = cv2.matchTemplate(
+                cleaned_gray, self.prepared_template, cv2.TM_CCOEFF_NORMED
+            )
+            _, max_val, _, _ = cv2.minMaxLoc(result)
 
-        is_sura = max_val >= self.config.match_threshold
-        logger.info(
-            "  line %d: score=%.4f%s", idx, max_val, " → SURA" if is_sura else ""
-        )
-
-        return is_sura
-
-    def classify(self, images: list[Page]) -> list[bool]:
-        """Classify a batch of line images, returning True for sura headers."""
-        return [self.classify_single(page, idx=i) for i, page in enumerate(images)]
+            line.is_sura = bool(max_val >= self.config.match_threshold)
+            logger.info(
+                "  line %d: score=%.4f%s",
+                line.line_index,
+                max_val,
+                " → SURA" if line.is_sura else "",
+            )

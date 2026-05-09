@@ -13,9 +13,11 @@ wheels/
 *.png
 *.jpg
 *.pdf
-output/
-.json
-.log
+output/*
+*.json
+*.log
+results/*
+data/*
 
 .vscode/
 .cursorrules

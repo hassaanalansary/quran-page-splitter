@@ -14,6 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from core.aya_separator import AyaSeparatorProcessor
 from core.builder import build_pipeline, init_configs, prepare_template
 from core.classifier import SuraClassifier
+from core.config import ExportConfig
 
 logging.basicConfig(
     level=logging.INFO,
@@ -46,6 +47,10 @@ async def upload_images(  # type: ignore[no-untyped-def]
     min_line_height: int = Form(20),
     padding: int = Form(4),
     alternate_horizontal_margin: bool = Form(False),
+    export_images: bool = Form(True),
+    export_coordinates: bool = Form(False),
+    start_sura: int = Form(1),
+    start_aya: int = Form(1),
 ):
     if crop_w <= 0 or crop_h <= 0:
         raise HTTPException(status_code=400, detail="Invalid crop dimensions")
@@ -68,6 +73,13 @@ async def upload_images(  # type: ignore[no-untyped-def]
         alternate_horizontal_margin,
     )
 
+    export_cfg = ExportConfig(
+        export_images=export_images,
+        export_coordinates=export_coordinates,
+        start_sura=start_sura,
+        start_aya=start_aya,
+    )
+
     # validate the templates
     try:
         # Load sura template and build classifier
@@ -88,13 +100,14 @@ async def upload_images(  # type: ignore[no-untyped-def]
         crop_cfg=crop_cfg,
         det_cfg=det_cfg,
         proc_cfg=proc_cfg,
+        export_cfg=export_cfg,
         classifier=SuraClassifier(template=sura_template),
         aya_processor=AyaSeparatorProcessor(template=aya_template),
         results_dir=results_dir,
     )
 
     images_data = [(await f.read(), f.filename or "unknown") for f in images]
-    return {"status": "completed", "results": pipeline.run(images_data)}
+    return pipeline.run(images_data)
 
 
 if __name__ == "__main__":

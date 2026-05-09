@@ -49,15 +49,29 @@ def binarize_image(image: Image.Image) -> tuple[np.ndarray, np.ndarray]:
     return gray, binary
 
 
+def find_content_bbox(
+    binary: np.ndarray,
+) -> tuple[int, int, int, int] | None:
+    """Find the tight bounding box of all non-zero pixels.
+
+    Returns (x, y, w, h) or None if the image is empty.
+    """
+    coords = cv2.findNonZero(binary)
+    if coords is None:
+        return None
+    x, y, w, h = cv2.boundingRect(coords)
+    return x, y, w, h
+
+
 def clean_image(gray: np.ndarray, binary: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """Remove background and crop tightly to all non-background content.
 
     Preserves everything that isn't background — text, decoration, borders.
     """
-    coords = cv2.findNonZero(binary)
-    if coords is None:
+    result = find_content_bbox(binary)
+    if result is None:
         return gray, binary
-    x, y, w, h = cv2.boundingRect(coords)
+    x, y, w, h = result
     return gray[y : y + h, x : x + w], binary[y : y + h, x : x + w]
 
 

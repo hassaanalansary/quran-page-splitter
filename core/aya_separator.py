@@ -1,4 +1,9 @@
-"""Aya separator preprocessing and line splitting helpers."""
+"""Aya separator detection and line splitting.
+
+Detects aya separator ornaments within text lines using multi-scale
+template matching, then splits each line into segments. Mutates
+PageContext by populating line.segments.
+"""
 
 from __future__ import annotations
 
@@ -8,6 +13,9 @@ from dataclasses import dataclass
 import cv2
 import numpy as np
 from PIL import Image
+
+from core.context import BBox, LineResult, PageContext, SegmentResult
+from image_utils import binarize_image, find_content_bbox
 
 logger = logging.getLogger(__name__)
 
@@ -19,58 +27,87 @@ class AyaSeparatorConfig:
     min_segment_width: int = 8
 
 
-@dataclass
-class SegmentResult:
-    """A segment produced by splitting a line at aya separators."""
-
-    image: Image.Image
-    x_start: int  # left edge in the *original* (untrimmed) line image
-    x_end: int  # right edge in the *original* (untrimmed) line image
-    has_separator: bool  # True if this segment contains an aya separator
-
-
 class AyaSeparatorProcessor:
     def __init__(self, template: Image.Image, config: AyaSeparatorConfig | None = None):
         self.config = config or AyaSeparatorConfig()
         self.template = self._prepare_template(template)
 
-    def split_line(self, line_image: Image.Image) -> list[Image.Image]:
-        maybe_trimmed = self._trim_if_short(line_image)
-        boxes = self._detect_separator_boxes(maybe_trimmed)
-        if not boxes:
-            return [maybe_trimmed]
-        return self._split_by_boxes(maybe_trimmed, boxes)
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
 
-    def split_line_with_coords(self, line_image: Image.Image) -> list[SegmentResult]:
-        """Split a line and return segments with coordinate info.
+    def split_segments(self, ctx: PageContext) -> None:
+        """Detect aya separators in each non-sura line and populate segments.
 
-        Each SegmentResult has x_start/x_end relative to the *original*
-        (untrimmed) line image, and a has_separator flag indicating whether
-        the segment contains an aya separator ornament.
+        Mutates ctx.lines by setting line.segments and line.content_bbox.
         """
-        maybe_trimmed, trim_x = self._trim_if_short_with_offset(line_image)
-        boxes = self._detect_separator_boxes(maybe_trimmed)
+        for line in ctx.lines:
+            if line.is_sura:
+                continue
 
-        if not boxes:
-            return [
-                SegmentResult(
-                    image=maybe_trimmed,
-                    x_start=trim_x,
-                    x_end=trim_x + maybe_trimmed.width,
-                    has_separator=False,
+            line_binary = ctx.line_binary(line)
+
+            # Compute and cache the tight content bounding box
+            content_result = find_content_bbox(line_binary)
+            if content_result is None:
+                # Empty line — single empty segment
+                line.segments.append(SegmentResult(bbox=line.bbox, has_separator=False))
+                continue
+
+            cx, cy, cw, ch = content_result
+            line.content_bbox = BBox(
+                left=line.bbox.left + cx,
+                top=line.bbox.top + cy,
+                right=line.bbox.left + cx + cw,
+                bottom=line.bbox.top + cy + ch,
+            )
+
+            # Determine if line is "short" (content narrower than full line)
+            content_ratio = cw / max(1, line.bbox.width)
+            if content_ratio < self.config.short_line_ratio:
+                # Use trimmed content region for separator detection
+                detect_binary = line_binary[cy : cy + ch, cx : cx + cw]
+                detect_offset_x = cx
+                detect_width = cw
+            else:
+                detect_binary = line_binary
+                detect_offset_x = 0
+                detect_width = line.bbox.width
+
+            # Detect separator positions
+            boxes = self._detect_separator_boxes(detect_binary)
+
+            if not boxes:
+                # No separators — single segment
+                seg_bbox = (
+                    line.content_bbox
+                    if content_ratio < self.config.short_line_ratio
+                    else line.bbox
                 )
-            ]
+                line.segments.append(SegmentResult(bbox=seg_bbox, has_separator=False))
+                continue
 
-        return self._split_by_boxes_with_coords(maybe_trimmed, boxes, trim_x)
+            # Split at separator positions (RTL order)
+            self._create_segments(line, boxes, detect_offset_x, detect_width)
+
+            sep_count = sum(1 for s in line.segments if s.has_separator)
+            logger.info(
+                "  Line %d: %d segment(s), %d separator(s)",
+                line.line_index,
+                len(line.segments),
+                sep_count,
+            )
+
+    # ------------------------------------------------------------------
+    # Template preparation
+    # ------------------------------------------------------------------
 
     def _prepare_template(self, template: Image.Image) -> np.ndarray:
-        trimmed = self._trim_to_content(template)
-        gray = np.array(trimmed.convert("L"), dtype=np.uint8)
-        _, binary_inv = cv2.threshold(
-            gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU
-        )
+        """Prepare separator template: binarize and mask the central number."""
+        trimmed = self._trim_template_to_content(template)
+        _, binary_inv = binarize_image(trimmed)
 
-        # Remove inner number by masking the central area.
+        # Remove inner number by masking the central area
         h, w = binary_inv.shape
         cx1, cx2 = int(w * 0.20), int(w * 0.80)
         cy1, cy2 = int(h * 0.20), int(h * 0.80)
@@ -78,70 +115,38 @@ class AyaSeparatorProcessor:
 
         return binary_inv
 
-    def _trim_if_short(self, line_image: Image.Image) -> Image.Image:
-        trimmed = self._trim_to_content(line_image)
-        ratio = trimmed.width / max(1, line_image.width)
-        if ratio < self.config.short_line_ratio:
-            return trimmed
-        return line_image
-
-    def _trim_if_short_with_offset(
-        self, line_image: Image.Image
-    ) -> tuple[Image.Image, int]:
-        """Trim short lines and return (trimmed_image, x_offset_in_original)."""
-        trimmed, x_offset = self._trim_to_content_with_offset(line_image)
-        ratio = trimmed.width / max(1, line_image.width)
-        if ratio < self.config.short_line_ratio:
-            return trimmed, x_offset
-        return line_image, 0
-
-    def _trim_to_content(self, image: Image.Image) -> Image.Image:
+    def _trim_template_to_content(self, image: Image.Image) -> Image.Image:
+        """Trim template image to its non-empty content."""
         gray = np.array(image.convert("L"), dtype=np.uint8)
         _, binary_inv = cv2.threshold(
             gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU
         )
-        non_zero = cv2.findNonZero(binary_inv)
-        if non_zero is None:
+        result = find_content_bbox(binary_inv)
+        if result is None:
             return image
-        x, y, w, h = cv2.boundingRect(non_zero)
+        x, y, w, h = result
         return image.crop((x, y, x + w, y + h))
 
-    def _trim_to_content_with_offset(
-        self, image: Image.Image
-    ) -> tuple[Image.Image, int]:
-        """Trim to content and return (trimmed_image, x_offset)."""
-        gray = np.array(image.convert("L"), dtype=np.uint8)
-        _, binary_inv = cv2.threshold(
-            gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU
-        )
-        non_zero = cv2.findNonZero(binary_inv)
-        if non_zero is None:
-            return image, 0
-        x, y, w, h = cv2.boundingRect(non_zero)
-        return image.crop((x, y, x + w, y + h)), x
+    # ------------------------------------------------------------------
+    # Separator detection
+    # ------------------------------------------------------------------
 
-    def _detect_separator_boxes(self, line_image: Image.Image) -> list[tuple[int, int]]:
-        line_gray = np.array(line_image.convert("L"), dtype=np.uint8)
-        _, line_binary = cv2.threshold(
-            line_gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU
-        )
+    def _detect_separator_boxes(self, line_binary: np.ndarray) -> list[tuple[int, int]]:
+        """Detect separator ornament positions via multi-scale template matching.
+
+        Returns list of (x_start, x_end) tuples in the coordinate space
+        of the input line_binary array.
+        """
         template = self.template
 
         best_scores = None
         best_template_w = template.shape[1]
 
-        # 1. DYNAMIC SCALING
-        # Base the scaling on the line's actual height rather than a fixed ratio.
-        # This prevents the template from being too massive or too tiny.
+        # Dynamic scaling based on line height
         base_scale = line_binary.shape[0] / template.shape[0]
-
-        # Test scales from 60% to 130% of the base line height
         scales = np.arange(base_scale * 0.60, base_scale * 1.31, base_scale * 0.05)
 
-        # 2. VERTICAL PADDING
-        # If the line is cropped tightly, the top and bottom of the Aya separator
-        # might be cut off. We pad the binary image vertically with black (0)
-        # so taller scaled templates don't cause dimension errors and get skipped.
+        # Vertical padding so taller scaled templates fit
         max_h = int(template.shape[0] * max(scales))
         pad_y = max(0, max_h - line_binary.shape[0]) // 2 + 5
 
@@ -153,15 +158,13 @@ class AyaSeparatorProcessor:
             new_h = int(template.shape[0] * scale)
             new_w = int(template.shape[1] * scale)
 
-            # Guard against invalid dimensions for cv2.matchTemplate
             if new_h <= 0 or new_w <= 0 or new_w >= padded_line.shape[1]:
                 continue
 
             scaled = cv2.resize(template, (new_w, new_h), interpolation=cv2.INTER_AREA)
             match_map = cv2.matchTemplate(padded_line, scaled, cv2.TM_CCOEFF_NORMED)
 
-            # Collapse the 2D match map to 1D
-            # (taking the max score across all Y positions)
+            # Collapse 2D match map to 1D (max score across Y positions)
             scores = match_map.max(axis=0)
 
             if best_scores is None or scores.max() > best_scores.max():
@@ -177,7 +180,9 @@ class AyaSeparatorProcessor:
 
         # Keep strongest non-overlapping matches
         by_score = sorted(
-            candidate_x.tolist(), key=lambda x: float(best_scores[x]), reverse=True
+            candidate_x.tolist(),
+            key=lambda x: float(best_scores[x]),
+            reverse=True,
         )
         min_gap = max(4, int(best_template_w * 0.6))
         selected: list[int] = []
@@ -187,56 +192,41 @@ class AyaSeparatorProcessor:
 
         selected.sort()
 
-        # Because we only padded vertically, the X coordinates remain perfectly intact
-        # and seamlessly map back to the original unpadded line_image.
         return [(x, x + best_template_w) for x in selected]
 
-    def _split_by_boxes(
-        self, line_image: Image.Image, boxes: list[tuple[int, int]]
-    ) -> list[Image.Image]:
-        """Split line at separator boxes, producing segments in RTL order.
+    # ------------------------------------------------------------------
+    # Segment creation
+    # ------------------------------------------------------------------
 
-        Cuts at the LEFT edge of each separator so the separator circle
-        is included with the aya text to its right (the aya it terminates).
-        """
-        width, height = line_image.size
-        min_w = self.config.min_segment_width
-        parts: list[Image.Image] = []
-        end = width
-        for left, _ in reversed(boxes):  # right-to-left
-            cut = max(0, left)
-            if end - cut >= min_w:
-                parts.append(line_image.crop((cut, 0, end, height)))
-            end = cut
-        # Leftmost remaining text
-        if end >= min_w:
-            parts.append(line_image.crop((0, 0, end, height)))
-        return parts if parts else [line_image]
-
-    def _split_by_boxes_with_coords(
+    def _create_segments(
         self,
-        line_image: Image.Image,
+        line: LineResult,
         boxes: list[tuple[int, int]],
-        trim_x: int,
-    ) -> list[SegmentResult]:
-        """Split at separator boxes and return SegmentResults in RTL order.
+        detect_offset_x: int,
+        detect_width: int,
+    ) -> None:
+        """Create SegmentResult objects from separator boxes in RTL order.
 
-        Coordinates are translated back to the original (untrimmed) line
-        image space by adding ``trim_x``.
+        Cuts at the LEFT edge of each separator so the separator ornament
+        is included with the aya text to its right (the aya it terminates).
+
+        Coordinates are translated to original page space.
         """
-        width, height = line_image.size
         min_w = self.config.min_segment_width
-        results: list[SegmentResult] = []
-        end = width
+        end = detect_width  # in detect region coords
 
-        for left, _ in reversed(boxes):  # right-to-left
-            cut = max(0, left)
-            if end - cut >= min_w:
-                results.append(
+        for sep_left, _ in reversed(boxes):  # right-to-left
+            cut = max(0, sep_left)
+            seg_width = end - cut
+            if seg_width >= min_w:
+                line.segments.append(
                     SegmentResult(
-                        image=line_image.crop((cut, 0, end, height)),
-                        x_start=trim_x + cut,
-                        x_end=trim_x + end,
+                        bbox=BBox(
+                            left=line.bbox.left + detect_offset_x + cut,
+                            top=line.bbox.top,
+                            right=line.bbox.left + detect_offset_x + end,
+                            bottom=line.bbox.bottom,
+                        ),
                         has_separator=True,
                     )
                 )
@@ -244,22 +234,18 @@ class AyaSeparatorProcessor:
 
         # Leftmost remaining text — no separator
         if end >= min_w:
-            results.append(
+            line.segments.append(
                 SegmentResult(
-                    image=line_image.crop((0, 0, end, height)),
-                    x_start=trim_x,
-                    x_end=trim_x + end,
+                    bbox=BBox(
+                        left=line.bbox.left + detect_offset_x,
+                        top=line.bbox.top,
+                        right=line.bbox.left + detect_offset_x + end,
+                        bottom=line.bbox.bottom,
+                    ),
                     has_separator=False,
                 )
             )
 
-        if not results:
-            return [
-                SegmentResult(
-                    image=line_image,
-                    x_start=trim_x,
-                    x_end=trim_x + width,
-                    has_separator=False,
-                )
-            ]
-        return results
+        # Fallback: if no segments were created, use the whole line
+        if not line.segments:
+            line.segments.append(SegmentResult(bbox=line.bbox, has_separator=False))

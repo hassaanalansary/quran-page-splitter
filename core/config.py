@@ -67,3 +67,20 @@ class ClassifierConfig:
 
     height_factor: float = 1.5
     match_threshold: float = 0.8
+
+
+@dataclass
+class ExportConfig:
+    """Configuration for what the pipeline exports.
+
+    Attributes:
+        export_images: Whether to save cropped line/segment PNGs.
+        export_coordinates: Whether to collect bounding-box coordinate data.
+        start_sura: Sura number at the start of processing (1-based).
+        start_aya: Aya number at the start of processing (1-based).
+    """
+
+    export_images: bool = True
+    export_coordinates: bool = False
+    start_sura: int = 1
+    start_aya: int = 1

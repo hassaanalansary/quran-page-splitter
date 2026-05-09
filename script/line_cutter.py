@@ -1,6 +1,10 @@
-import numpy as np
+"""Line detection via horizontal projection profiles.
 
-from core.page_processor import Page
+Uses row-sum analysis on a binarized image to find gaps between text lines
+and returns bounding boxes for each detected line.
+"""
+
+import numpy as np
 
 
 def get_line_boxes(
@@ -9,7 +13,14 @@ def get_line_boxes(
     min_line_height: int,
     padding: int,
 ) -> list[dict[str, int]]:
+    """Detect text line bounding boxes from a binary image.
 
+    Computes row sums, identifies gaps below the threshold, and returns
+    bounding boxes for contiguous text bands that meet the minimum height.
+
+    Returns a list of dicts with keys: left, top, right, bottom.
+    Coordinates are relative to the input binary array.
+    """
     h, w = binary.shape
 
     # Calculate the sum of pixel values for each row
@@ -53,20 +64,3 @@ def get_line_boxes(
         )
 
     return boxes
-
-
-def crop_lines(
-    page: Page,
-    gap_threshold: float = 0.03,
-    min_line_height: int = 20,
-    padding: int = 8,
-) -> list[Page]:
-    boxes = get_line_boxes(page.binary, gap_threshold, min_line_height, padding)
-    return [
-        Page(
-            image=page.image.crop((b["left"], b["top"], b["right"], b["bottom"])),
-            grey=page.grey[b["top"] : b["bottom"], b["left"] : b["right"]],
-            binary=page.binary[b["top"] : b["bottom"], b["left"] : b["right"]],
-        )
-        for b in boxes
-    ]

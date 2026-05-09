@@ -117,6 +117,26 @@
           </div>
         </div>
 
+        <!-- export mode -->
+        <div class="crop-inputs">
+          <div class="input-group">
+            <label for="export-images">Export images</label>
+            <input type="checkbox" id="export-images" checked />
+          </div>
+          <div class="input-group">
+            <label for="export-coordinates">Export coordinates</label>
+            <input type="checkbox" id="export-coordinates" />
+          </div>
+          <div class="input-group" id="start-sura-group" style="display: none">
+            <label>Start Sura</label>
+            <input type="number" id="start-sura" step="1" min="1" max="114" value="1" />
+          </div>
+          <div class="input-group" id="start-aya-group" style="display: none">
+            <label>Start Aya</label>
+            <input type="number" id="start-aya" step="1" min="1" value="1" />
+          </div>
+        </div>
+
         <div class="toolbar-row" style="justify-content: flex-end">
           <button id="crop-btn" class="primary">✂︎ Apply crop (live)</button>
         </div>

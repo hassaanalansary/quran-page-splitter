@@ -1,3 +1,5 @@
+"""Pipeline factory: builds configs, prepares templates, assembles the pipeline."""
+
 import io
 from pathlib import Path
 
@@ -5,7 +7,7 @@ from PIL import Image
 
 from core.aya_separator import AyaSeparatorProcessor
 from core.classifier import SuraClassifier
-from core.config import CropConfig, DetectionConfig, ProcessingConfig
+from core.config import CropConfig, DetectionConfig, ExportConfig, ProcessingConfig
 from core.line_detector import LineDetector
 from core.page_processor import PageProcessor
 from core.pipeline import Pipeline
@@ -62,6 +64,7 @@ def build_pipeline(
     crop_cfg: CropConfig,
     det_cfg: DetectionConfig,
     proc_cfg: ProcessingConfig,
+    export_cfg: ExportConfig,
     classifier: SuraClassifier,
     aya_processor: AyaSeparatorProcessor,
     results_dir: Path,
@@ -77,4 +80,4 @@ def build_pipeline(
         classifier=classifier,
         aya_separator=aya_processor,
     )
-    return Pipeline(processor=processor)
+    return Pipeline(processor=processor, export_config=export_cfg)

@@ -120,6 +120,16 @@ export function fullReset() {
   state.globalOutputs.bounds = null;
   state.globalOutputs.suraNameBlob = null;
   state.globalOutputs.ayaSeparatorBlob = null;
+  state.exportImages = true;
+  state.exportCoordinates = false;
+  state.startSura = 1;
+  state.startAya = 1;
+  document.getElementById("export-images").checked = true;
+  document.getElementById("export-coordinates").checked = false;
+  document.getElementById("start-sura").value = "1";
+  document.getElementById("start-aya").value = "1";
+  document.getElementById("start-sura-group").style.display = "none";
+  document.getElementById("start-aya-group").style.display = "none";
   document.getElementById("file-input").value = "";
   deactivateCrop();
   state.selectionActive = false;
@@ -159,6 +169,10 @@ export async function submitCrop() {
   fd.append("min_line_height", document.getElementById("min-line-height").value);
   fd.append("padding", document.getElementById("padding").value);
   fd.append("alternate_horizontal_margin", state.alternateHorizontalMargin);
+  fd.append("export_images", state.exportImages);
+  fd.append("export_coordinates", state.exportCoordinates);
+  fd.append("start_sura", state.startSura);
+  fd.append("start_aya", state.startAya);
 
   try {
     const res = await fetch(ENDPOINT, { method: "POST", body: fd });
