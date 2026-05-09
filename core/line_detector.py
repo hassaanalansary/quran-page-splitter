@@ -1,7 +1,8 @@
 """Line detection logic wrapped in a class."""
 
-from dataclasses import dataclass
 import logging
+from dataclasses import dataclass
+
 from PIL import Image
 
 from core.config import CropConfig, DetectionConfig, ProcessingConfig

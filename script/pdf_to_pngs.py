@@ -1,5 +1,6 @@
-import fitz  # PyMuPDF
 import os
+
+import fitz  # PyMuPDF
 
 # pdf_pathes = ["data/quran-shubah-mushaf.pdf", "data/quran-warsh-mushaf.pdf"]
 # output_dirs = ["data/quran-shubah-mushaf", "data/quran-warsh-mushaf"]
@@ -8,7 +9,6 @@ zoom = dpi / 72.0  # default PDF dpi is 72
 matrix = fitz.Matrix(zoom, zoom)
 
 for file in os.listdir("data"):
-
     if not file.endswith(".pdf"):
         continue
     pdf_path = os.path.join("data", file)
@@ -35,7 +35,7 @@ for file in os.listdir("data"):
 
         # Read only the specific page into memory
         page = doc.load_page(page_num)
-        
+
         # Render page to an image
         pix = page.get_pixmap(matrix=matrix)
 

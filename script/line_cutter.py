@@ -1,4 +1,3 @@
-import numpy as np
 from PIL import Image
 
 from image_utils import binarize_image
@@ -17,14 +16,17 @@ def get_line_boxes(
     # Calculate the sum of pixel values for each row
     row_sums = img.sum(axis=1)
     # Calculate the threshold for detecting gaps between lines
-    # by finding the row with highest sum of pixel values (the text line with most black pixels)
-    # and multiplying it by the gap threshold (3%) giving us what we consider as an empty row.
+    # by finding the row with highest sum of pixel values
+    # (the text line with most black pixels) and multiplying it by
+    # the gap threshold (3%) giving us what we consider as an empty row.
     gap_limit = row_sums.max() * gap_threshold
-    # Detect gaps between lines by building a list of booleans indicating whether a row is a gap or not.
+    # Detect gaps between lines by building a list of booleans indicating
+    # whether a row is a gap or not.
     is_gap = row_sums < gap_limit
 
     # Find contiguous text bands
-    # where each band is a tuple of (start, end) indices of the rows that belong to the text.
+    # where each band is a tuple of (start, end)
+    # indices of the rows that belong to the text.
     in_text = False
     bands = []
     start = 0
@@ -54,6 +56,6 @@ def get_line_boxes(
     return boxes
 
 
-def crop_lines(image: Image.Image, **kwargs) -> list[Image.Image]:
+def crop_lines(image: Image.Image, **kwargs) -> list[Image.Image]:  # type: ignore[no-untyped-def]
     boxes = get_line_boxes(image, **kwargs)
     return [image.crop((b["left"], b["top"], b["right"], b["bottom"])) for b in boxes]

@@ -1,8 +1,9 @@
 """Pipeline: iterates over raw image bytes and delegates to PageProcessor."""
 
 import io
-import logging
 import json
+import logging
+
 from PIL import Image
 
 from core.page_processor import PageProcessor

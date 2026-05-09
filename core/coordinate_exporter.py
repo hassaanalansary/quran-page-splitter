@@ -6,11 +6,10 @@ Logs everything in detail to a file for traceability.
 
 from __future__ import annotations
 
-import io
 import json
 import logging
 import statistics
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from PIL import Image
@@ -75,7 +74,7 @@ class CoordinateExporter:
         logger.info(
             "Starting from Sura #%d (%s), Aya %d",
             self.current_sura,
-            get_sura(self.current_sura)["name"],
+            get_sura(self.current_sura).name,
             self.current_aya,
         )
         logger.info("Processing pages >= %d from %s", start_page, pages_dir)
@@ -83,7 +82,7 @@ class CoordinateExporter:
         logger.info("=" * 60)
 
         result: dict = {
-            "exported_at": datetime.now(timezone.utc).isoformat(),
+            "exported_at": datetime.now(UTC).isoformat(),
             "start_sura": self.current_sura,
             "start_aya": self.current_aya,
             "start_page": start_page,
@@ -109,7 +108,7 @@ class CoordinateExporter:
         logger.info(
             "Ended at Sura #%d (%s), Aya %d",
             self.current_sura,
-            sura_info["name"],
+            sura_info.name,
             self.current_aya,
         )
         logger.info("=" * 60)
@@ -172,9 +171,7 @@ class CoordinateExporter:
         }
 
         for line_idx, line in enumerate(detected_lines, start=1):
-            line_data = self._process_line(
-                line, line_idx, median_h, total_lines
-            )
+            line_data = self._process_line(line, line_idx, median_h, total_lines)
             page_data["lines"].append(line_data)
 
         return page_data
@@ -213,9 +210,7 @@ class CoordinateExporter:
                 "→ treating as normal text (no basmala)",
                 line_idx,
             )
-            return self._handle_text_line(
-                line, line_idx, line_bbox, segments=segments
-            )
+            return self._handle_text_line(line, line_idx, line_bbox, segments=segments)
 
         # Normal text line
         return self._handle_text_line(line, line_idx, line_bbox)
@@ -232,12 +227,12 @@ class CoordinateExporter:
             "  Line %d: 📖 SURA HEADER — Starting Sura #%d: %s (%s)",
             line_idx,
             self.current_sura,
-            sura_info["name"],
-            sura_info["transliteration"],
+            sura_info.name,
+            sura_info.transliteration,
         )
         logger.info(
             "    Total ayas in this sura: %d",
-            sura_info["aya_count"],
+            sura_info.aya_count,
         )
 
         return {
@@ -245,8 +240,8 @@ class CoordinateExporter:
             "line_bbox": line_bbox,
             "type": "sura_header",
             "sura_number": self.current_sura,
-            "sura_name": sura_info["name"],
-            "sura_transliteration": sura_info["transliteration"],
+            "sura_name": sura_info.name,
+            "sura_transliteration": sura_info.transliteration,
         }
 
     def _handle_basmala(
@@ -257,7 +252,7 @@ class CoordinateExporter:
             "  Line %d: ﷽  BASMALA — Sura #%d (%s)",
             line_idx,
             self.current_sura,
-            sura_info["name"],
+            sura_info.name,
         )
 
         return {
@@ -265,7 +260,7 @@ class CoordinateExporter:
             "line_bbox": line_bbox,
             "type": "basmala",
             "sura_number": self.current_sura,
-            "sura_name": sura_info["name"],
+            "sura_name": sura_info.name,
         }
 
     def _handle_text_line(
@@ -321,7 +316,7 @@ class CoordinateExporter:
                     aya_number,
                     expected_max,
                     self.current_sura,
-                    get_sura(self.current_sura)["name"],
+                    get_sura(self.current_sura).name,
                 )
         else:
             # Continuation of whatever aya is currently in progress
@@ -333,19 +328,29 @@ class CoordinateExporter:
         if seg.has_separator:
             logger.info(
                 "    ✦ Aya %d of %s (Sura #%d) — bbox: (%d, %d, %d, %d)",
-                aya_number, sura_info["name"], self.current_sura,
-                seg_bbox["x"], seg_bbox["y"], seg_bbox["w"], seg_bbox["h"],
+                aya_number,
+                sura_info.name,
+                self.current_sura,
+                seg_bbox["x"],
+                seg_bbox["y"],
+                seg_bbox["w"],
+                seg_bbox["h"],
             )
         else:
             logger.info(
                 "    … Aya %d of %s (Sura #%d) [continued] — bbox: (%d, %d, %d, %d)",
-                aya_number, sura_info["name"], self.current_sura,
-                seg_bbox["x"], seg_bbox["y"], seg_bbox["w"], seg_bbox["h"],
+                aya_number,
+                sura_info.name,
+                self.current_sura,
+                seg_bbox["x"],
+                seg_bbox["y"],
+                seg_bbox["w"],
+                seg_bbox["h"],
             )
 
         return {
             "sura_number": self.current_sura,
-            "sura_name": sura_info["name"],
+            "sura_name": sura_info.name,
             "aya_number": aya_number,
             "is_continuation": not seg.has_separator,
             "bbox": seg_bbox,

@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import logging
+from dataclasses import dataclass
+
 import cv2
 import numpy as np
 from PIL import Image
 
 logger = logging.getLogger(__name__)
+
 
 @dataclass
 class AyaSeparatorConfig:
@@ -39,9 +41,7 @@ class AyaSeparatorProcessor:
             return [maybe_trimmed]
         return self._split_by_boxes(maybe_trimmed, boxes)
 
-    def split_line_with_coords(
-        self, line_image: Image.Image
-    ) -> list[SegmentResult]:
+    def split_line_with_coords(self, line_image: Image.Image) -> list[SegmentResult]:
         """Split a line and return segments with coordinate info.
 
         Each SegmentResult has x_start/x_end relative to the *original*
@@ -134,37 +134,36 @@ class AyaSeparatorProcessor:
         # Base the scaling on the line's actual height rather than a fixed ratio.
         # This prevents the template from being too massive or too tiny.
         base_scale = line_binary.shape[0] / template.shape[0]
-        
+
         # Test scales from 60% to 130% of the base line height
         scales = np.arange(base_scale * 0.60, base_scale * 1.31, base_scale * 0.05)
 
         # 2. VERTICAL PADDING
-        # If the line is cropped tightly, the top and bottom of the Aya separator 
-        # might be cut off. We pad the binary image vertically with black (0) 
+        # If the line is cropped tightly, the top and bottom of the Aya separator
+        # might be cut off. We pad the binary image vertically with black (0)
         # so taller scaled templates don't cause dimension errors and get skipped.
         max_h = int(template.shape[0] * max(scales))
         pad_y = max(0, max_h - line_binary.shape[0]) // 2 + 5
-        
+
         padded_line = cv2.copyMakeBorder(
-            line_binary, 
-            pad_y, pad_y, 0, 0, 
-            cv2.BORDER_CONSTANT, value=0
+            line_binary, pad_y, pad_y, 0, 0, cv2.BORDER_CONSTANT, value=0
         )
 
         for scale in scales:
             new_h = int(template.shape[0] * scale)
             new_w = int(template.shape[1] * scale)
-            
+
             # Guard against invalid dimensions for cv2.matchTemplate
             if new_h <= 0 or new_w <= 0 or new_w >= padded_line.shape[1]:
                 continue
-                
+
             scaled = cv2.resize(template, (new_w, new_h), interpolation=cv2.INTER_AREA)
             match_map = cv2.matchTemplate(padded_line, scaled, cv2.TM_CCOEFF_NORMED)
-            
-            # Collapse the 2D match map to 1D (taking the max score across all Y positions)
+
+            # Collapse the 2D match map to 1D
+            # (taking the max score across all Y positions)
             scores = match_map.max(axis=0)
-            
+
             if best_scores is None or scores.max() > best_scores.max():
                 best_scores = scores
                 best_template_w = new_w
@@ -185,9 +184,9 @@ class AyaSeparatorProcessor:
         for x in by_score:
             if all(abs(x - s) >= min_gap for s in selected):
                 selected.append(x)
-        
+
         selected.sort()
-        
+
         # Because we only padded vertically, the X coordinates remain perfectly intact
         # and seamlessly map back to the original unpadded line_image.
         return [(x, x + best_template_w) for x in selected]
@@ -264,4 +263,3 @@ class AyaSeparatorProcessor:
                 )
             ]
         return results
-

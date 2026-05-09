@@ -27,7 +27,7 @@ from core.coordinate_exporter import (
 from core.line_detector import LineDetector
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(
         description="Export aya bounding-box coordinates from Mushaf page images."
     )
@@ -121,17 +121,13 @@ def main():
     aya_template.load()
 
     # Build configs
-    crop_cfg = CropConfig(
-        x=args.crop_x, y=args.crop_y, w=args.crop_w, h=args.crop_h
-    )
+    crop_cfg = CropConfig(x=args.crop_x, y=args.crop_y, w=args.crop_w, h=args.crop_h)
     det_cfg = DetectionConfig(
         gap_threshold=args.gap_threshold,
         min_line_height=args.min_line_height,
         padding=args.padding,
     )
-    proc_cfg = ProcessingConfig(
-        alternate_horizontal_margin=args.alternate_margins
-    )
+    proc_cfg = ProcessingConfig(alternate_horizontal_margin=args.alternate_margins)
 
     # Build components
     detector = LineDetector(crop=crop_cfg, detection=det_cfg, processing=proc_cfg)

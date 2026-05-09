@@ -1,15 +1,15 @@
 """Single-page processing: detect → classify → export."""
 
-from dataclasses import dataclass
 import logging
+from dataclasses import dataclass
 from pathlib import Path
 
 from PIL import Image
 
 from core.aya_separator import AyaSeparatorProcessor
-from image_utils import make_transparent
-from core.line_detector import LineDetector
 from core.classifier import SuraClassifier
+from core.line_detector import LineDetector
+from image_utils import make_transparent
 
 logger = logging.getLogger(__name__)
 
@@ -140,7 +140,7 @@ class PageProcessor:
             elif prepared.segment_index is None:
                 name = f"{stem}-l{prepared.line_index:03d}.png"
             else:
-                name = f"{stem}-l{prepared.line_index:03d}-s{prepared.segment_index:02d}.png"
+                name = f"{stem}-l{prepared.line_index:03d}-s{prepared.segment_index:02d}.png"  # noqa: E501
             out_path = self.results_dir / name
             make_transparent(prepared.image).save(out_path)
             saved.append(str(out_path))
