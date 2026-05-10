@@ -15,6 +15,7 @@ from core.aya_separator import AyaSeparatorProcessor
 from core.builder import build_pipeline, init_configs, prepare_template
 from core.classifier import SuraClassifier
 from core.config import ExportConfig
+from core.quran_metadata import SURAS
 
 logging.basicConfig(
     level=logging.INFO,
@@ -32,6 +33,20 @@ async def serve_index():  # type: ignore[no-untyped-def]
     if not index_path.exists():
         raise HTTPException(status_code=404, detail="index.html not found")
     return index_path.read_text(encoding="utf-8")
+
+
+@app.get("/api/suras")
+async def list_suras():  # type: ignore[no-untyped-def]
+    """Expose sura list for the frontend (Arabic display name, numeric value)."""
+    return [
+        {
+            "number": s.number,
+            "name": s.name,
+            "transliteration": s.transliteration,
+            "aya_count": s.aya_count,
+        }
+        for s in SURAS
+    ]
 
 
 @app.post("/upload/")

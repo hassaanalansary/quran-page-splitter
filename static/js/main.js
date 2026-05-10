@@ -25,6 +25,7 @@ import {
   submitCrop,
   loadImageAtIndex,
 } from "./upload.js";
+import { initSuraSelects } from "./sura_selects.js";
 
 const dropZone = document.getElementById("drop-zone");
 const fileInput = document.getElementById("file-input");
@@ -75,8 +76,6 @@ alternateHorizontalMarginInput.addEventListener("change", () => {
 
 const exportImagesInput = document.getElementById("export-images");
 const exportCoordinatesInput = document.getElementById("export-coordinates");
-const startSuraInput = document.getElementById("start-sura");
-const startAyaInput = document.getElementById("start-aya");
 const startSuraGroup = document.getElementById("start-sura-group");
 const startAyaGroup = document.getElementById("start-aya-group");
 
@@ -88,11 +87,11 @@ exportCoordinatesInput.addEventListener("change", () => {
   startSuraGroup.style.display = exportCoordinatesInput.checked ? "" : "none";
   startAyaGroup.style.display = exportCoordinatesInput.checked ? "" : "none";
 });
-startSuraInput.addEventListener("input", () => {
-  state.startSura = parseInt(startSuraInput.value, 10) || 1;
-});
-startAyaInput.addEventListener("input", () => {
-  state.startAya = parseInt(startAyaInput.value, 10) || 1;
+initSuraSelects().catch((err) => {
+  console.error(err);
+  alert(
+    `Could not load sura list (${err.message}). Ensure the server is running and reload.`,
+  );
 });
 
 // ---- crop controls ----

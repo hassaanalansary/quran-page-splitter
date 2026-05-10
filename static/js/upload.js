@@ -1,4 +1,5 @@
 import { state } from "./state.js";
+import { resetSuraSelects } from "./sura_selects.js";
 import { drawToCanvas, ctx, mainCanvas } from "./canvas.js";
 import { deactivateCrop, clampCropBounds } from "./crop.js";
 import {
@@ -126,8 +127,7 @@ export function fullReset() {
   state.startAya = 1;
   document.getElementById("export-images").checked = true;
   document.getElementById("export-coordinates").checked = false;
-  document.getElementById("start-sura").value = "1";
-  document.getElementById("start-aya").value = "1";
+  resetSuraSelects();
   document.getElementById("start-sura-group").style.display = "none";
   document.getElementById("start-aya-group").style.display = "none";
   document.getElementById("file-input").value = "";

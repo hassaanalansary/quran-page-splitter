@@ -220,6 +220,17 @@
   border-color: var(--accent-dim);
 }
 
+.input-group--sura-select select {
+  width: auto;
+  min-width: 12rem;
+  max-width: min(26rem, 100%);
+}
+
+#start-aya {
+  width: 5rem;
+  min-width: 5rem;
+}
+
 .size-info {
   font-family: "IBM Plex Mono", monospace;
   font-size: 12px;

@@ -52,8 +52,16 @@ def track_positions(ctx: PageContext, tracker: QuranTracker) -> None:
 
 
 def _handle_sura_header(line: LineResult, tracker: QuranTracker) -> None:
-    """Process a sura header line: advance tracker, populate line fields."""
-    tracker.advance_sura()
+    """Advance on true sura transitions; populate line fields.
+
+    At batch start ``start_aya == 1``, the first ornamental line marks the **current**
+    sura, not the next — ``advance_sura()`` must be skipped then. Mid-run, completing a
+    sura pushes ``current_aya`` past 1 before the next header, so we still advance.
+    """
+    if tracker.current_aya != 1:
+        tracker.advance_sura()
+    else:
+        tracker.pending_basmala = True
     sura_info = get_sura(tracker.current_sura)
 
     line.sura_number = tracker.current_sura
