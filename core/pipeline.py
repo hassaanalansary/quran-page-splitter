@@ -13,6 +13,7 @@ from PIL import Image
 
 from core.config import ExportConfig
 from core.context import QuranTracker
+from core.opencv_accel import configure_opencv_acceleration
 from core.page_processor import PageProcessor, create_context
 from core.quran_metadata import get_sura
 
@@ -43,6 +44,8 @@ class Pipeline:
             current_sura=cfg.start_sura,
             current_aya=cfg.start_aya,
         )
+
+        configure_opencv_acceleration()
 
         logger.info("=" * 60)
         logger.info("PIPELINE STARTED")

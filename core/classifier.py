@@ -12,6 +12,7 @@ from PIL import Image
 
 from core.config import ClassifierConfig
 from core.context import PageContext
+from core.opencv_accel import match_template_ccoeff_normed
 from image_utils import binarize_image, clean_image, right_strip
 
 logger = logging.getLogger(__name__)
@@ -32,7 +33,7 @@ class SuraClassifier:
 
     def _prepare_template(self, template: Image.Image) -> np.ndarray:
         gray, binary = binarize_image(template)
-        cleaned_gray, cleaned_binary = clean_image(gray, binary)
+        cleaned_gray, _ = clean_image(gray, binary)
         self._strip_width = cleaned_gray.shape[1]  # exact template width after clean
         return cleaned_gray
 
@@ -47,8 +48,8 @@ class SuraClassifier:
             # name (e.g. النبأ) and leaves the "سورة" region for matching
             strip = right_strip(cleaned_gray, width=self._strip_width)
 
-            # Tight crop in the strip dimensions: grayscale has no ink/background split
-            # (near-white margins are non-zero), so bound the crop with a fresh binarization.
+            # Tight crop in strip dimensions: grayscale has no ink/background split
+            # (near-white margins are non-zero); re-binarize to bound the crop.
             _, strip_binary = binarize_image(Image.fromarray(strip, mode="L"))
             strip, _ = clean_image(strip, strip_binary)
 
@@ -57,7 +58,8 @@ class SuraClassifier:
             line.is_sura = max_val >= self.config.match_threshold
             logger.info(
                 "  line %d: score=%.4f%s",
-                line.line_index, max_val,
+                line.line_index,
+                max_val,
                 " → SURA" if line.is_sura else "",
             )
 
@@ -81,12 +83,16 @@ class SuraClassifier:
             pad_w = max(0, t_w - s_w)
             strip = cv2.copyMakeBorder(
                 strip,
-                pad_h // 2, pad_h - pad_h // 2,
-                pad_w // 2, pad_w - pad_w // 2,
-                cv2.BORDER_CONSTANT, value=0,
+                pad_h // 2,
+                pad_h - pad_h // 2,
+                pad_w // 2,
+                pad_w - pad_w // 2,
+                cv2.BORDER_CONSTANT,
+                value=0,
             )
             image, tmpl = strip, template
 
-        result = cv2.matchTemplate(image, tmpl, cv2.TM_CCOEFF_NORMED)
+        result = match_template_ccoeff_normed(image, tmpl)
         _, max_val, _, _ = cv2.minMaxLoc(result)
         return float(max_val)
+

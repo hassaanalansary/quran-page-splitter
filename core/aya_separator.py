@@ -15,6 +15,11 @@ import numpy as np
 from PIL import Image
 
 from core.context import BBox, LineResult, PageContext, SegmentResult
+from core.opencv_accel import (
+    match_template_ccoeff_normed,
+    resize_area,
+    upload_gray_for_matching,
+)
 from image_utils import binarize_image, find_content_bbox
 
 logger = logging.getLogger(__name__)
@@ -154,6 +159,8 @@ class AyaSeparatorProcessor:
             line_binary, pad_y, pad_y, 0, 0, cv2.BORDER_CONSTANT, value=0
         )
 
+        padded_for_match = upload_gray_for_matching(padded_line)
+
         for scale in scales:
             new_h = int(template.shape[0] * scale)
             new_w = int(template.shape[1] * scale)
@@ -161,8 +168,8 @@ class AyaSeparatorProcessor:
             if new_h <= 0 or new_w <= 0 or new_w >= padded_line.shape[1]:
                 continue
 
-            scaled = cv2.resize(template, (new_w, new_h), interpolation=cv2.INTER_AREA)
-            match_map = cv2.matchTemplate(padded_line, scaled, cv2.TM_CCOEFF_NORMED)
+            scaled = resize_area(template, (new_w, new_h))
+            match_map = match_template_ccoeff_normed(padded_for_match, scaled)
 
             # Collapse 2D match map to 1D (max score across Y positions)
             scores = match_map.max(axis=0)
