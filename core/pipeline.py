@@ -14,7 +14,11 @@ from PIL import Image
 from core.config import ExportConfig
 from core.context import QuranTracker
 from core.opencv_accel import configure_opencv_acceleration
-from core.page_processor import PageProcessor, create_context
+from core.page_processor import (
+    PageProcessor,
+    create_context,
+    is_line_geometry_failure,
+)
 from core.quran_metadata import get_sura
 
 logger = logging.getLogger(__name__)
@@ -57,11 +61,14 @@ class Pipeline:
         )
         logger.info("Export images: %s", cfg.export_images)
         logger.info("Export coordinates: %s", cfg.export_coordinates)
+        logger.info("Expected lines per page: %d", cfg.expected_lines)
         logger.info("Processing %d page(s)", len(images_data))
         logger.info("=" * 60)
 
         page_results: list[dict] = []
         coordinate_pages: list[dict] = []
+        aborted = False
+        abort_detail: dict | None = None
 
         for page_index, (raw_bytes, filename) in enumerate(images_data, start=1):
             logger.info("Processing %s", filename)
@@ -80,6 +87,7 @@ class Pipeline:
                 tracker,
                 export_images=cfg.export_images,
                 export_coordinates=cfg.export_coordinates,
+                expected_lines=cfg.expected_lines,
             )
 
             # Extract coordinate data if present
@@ -88,11 +96,49 @@ class Pipeline:
 
             page_results.append(result)
 
+            if is_line_geometry_failure(result.get("status", "")):
+                aborted = True
+                abort_detail = {
+                    "page_index": page_index,
+                    "filename": filename,
+                    "status": result.get("status"),
+                    "expected_lines": result.get("expected_lines"),
+                    "detected_lines": result.get("detected_lines"),
+                }
+                remaining = images_data[page_index:]
+                for _, fn in remaining:
+                    page_results.append(
+                        {
+                            "filename": fn,
+                            "status": "skipped_batch_abort",
+                            "message": "Not processed: batch aborted after line detection failure",
+                        }
+                    )
+                logger.error(
+                    "Batch aborted at page %d (%s): %s",
+                    page_index,
+                    filename,
+                    result.get("status"),
+                )
+                break
+
         # Summary
         sura_info = get_sura(tracker.current_sura)
         logger.info("=" * 60)
-        logger.info("PIPELINE COMPLETE")
-        logger.info("Pages processed: %d", len(page_results))
+        if aborted:
+            logger.info("PIPELINE ABORTED (line detection)")
+            logger.info("Pages in result list: %d", len(page_results))
+            if abort_detail:
+                logger.info(
+                    "Failure at page %d — %s (expected %s lines, status=%s)",
+                    abort_detail["page_index"],
+                    abort_detail["filename"],
+                    abort_detail.get("expected_lines"),
+                    abort_detail.get("status"),
+                )
+        else:
+            logger.info("PIPELINE COMPLETE")
+            logger.info("Pages processed: %d", len(page_results))
         logger.info(
             "Ended at Sura #%d (%s), Aya %d",
             tracker.current_sura,
@@ -103,7 +149,7 @@ class Pipeline:
 
         # Build final output
         output: dict = {
-            "status": "completed",
+            "status": "aborted_line_detection" if aborted else "completed",
             "pages_processed": len(page_results),
             "start_sura": cfg.start_sura,
             "start_aya": cfg.start_aya,
@@ -111,6 +157,9 @@ class Pipeline:
             "end_aya": tracker.current_aya,
             "results": page_results,
         }
+        if aborted and abort_detail:
+            output["abort_reason"] = "line_geometry_failure"
+            output["abort_at"] = abort_detail
 
         if cfg.export_coordinates and coordinate_pages:
             coordinate_data = {

@@ -26,6 +26,7 @@ import {
   loadImageAtIndex,
 } from "./upload.js";
 import { initSuraSelects } from "./sura_selects.js";
+import { initCalibration } from "./calibration.js";
 
 const dropZone = document.getElementById("drop-zone");
 const fileInput = document.getElementById("file-input");
@@ -93,6 +94,7 @@ initSuraSelects().catch((err) => {
     `Could not load sura list (${err.message}). Ensure the server is running and reload.`,
   );
 });
+initCalibration();
 
 // ---- crop controls ----
 startCropBtn.addEventListener("click", startCropping);

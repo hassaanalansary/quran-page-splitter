@@ -22,6 +22,7 @@ def init_configs(
     min_line_height: int,
     padding: int,
     alternate_horizontal_margin: bool,
+    min_line_height_floor: int = 80,
 ) -> tuple[CropConfig, DetectionConfig, ProcessingConfig]:
     """
     Initialize the configs for the pipeline.
@@ -33,6 +34,7 @@ def init_configs(
             gap_threshold=gap_threshold,
             min_line_height=min_line_height,
             padding=padding,
+            min_line_height_floor=min_line_height_floor,
         ),
         ProcessingConfig(alternate_horizontal_margin=alternate_horizontal_margin),
     )

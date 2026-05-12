@@ -38,18 +38,26 @@ class DetectionConfig:
 
     Attributes:
         gap_threshold: The threshold for detecting gaps between lines.
-        min_line_height: The minimum height of a line.
+        min_line_height: The minimum height of a line (pixels), from UI or calibration.
         padding: The padding around the detected lines.
+        min_line_height_floor: Values below this are never passed to line detection.
+            Set from calibration (typical line height minus margin); default 80 for
+            high-res mushafs. Phase C recovery does not lower min_line_height.
     """
 
     gap_threshold: float = 0.03
-    min_line_height: int = 20
+    min_line_height: int = 80
     padding: int = 4
+    min_line_height_floor: int = 80
+
+    def effective_min_line_height(self) -> int:
+        """Minimum band height actually used by ``get_line_boxes``."""
+        return max(self.min_line_height, self.min_line_height_floor)
 
     def as_dict(self) -> dict:
         return {
             "gap_threshold": self.gap_threshold,
-            "min_line_height": self.min_line_height,
+            "min_line_height": self.effective_min_line_height(),
             "padding": self.padding,
         }
 
@@ -78,9 +86,11 @@ class ExportConfig:
         export_coordinates: Whether to collect bounding-box coordinate data.
         start_sura: Sura number at the start of processing (1-based).
         start_aya: Aya number at the start of processing (1-based).
+        expected_lines: Expected number of detected lines per page (sura/basmala bands count).
     """
 
     export_images: bool = True
     export_coordinates: bool = False
     start_sura: int = 1
     start_aya: int = 1
+    expected_lines: int = 15
