@@ -14,8 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from core.aya_separator import AyaSeparatorProcessor
 from core.builder import build_pipeline, init_configs, prepare_template
 from core.classifier import SuraClassifier
-from core.calibration import run_nominal_calibration
-from core.config import CropConfig, ExportConfig, ProcessingConfig
+from core.config import ExportConfig
 from core.quran_metadata import SURAS
 
 logging.basicConfig(
@@ -59,10 +58,7 @@ async def upload_images(  # type: ignore[no-untyped-def]
     crop_y: int = Form(...),
     crop_w: int = Form(...),
     crop_h: int = Form(...),
-    gap_threshold: float = Form(0.03),
-    min_line_height: int = Form(80),
     padding: int = Form(4),
-    min_line_height_floor: int = Form(80),
     alternate_horizontal_margin: bool = Form(False),
     export_images: bool = Form(True),
     export_coordinates: bool = Form(False),
@@ -75,10 +71,6 @@ async def upload_images(  # type: ignore[no-untyped-def]
     if expected_lines < 1:
         raise HTTPException(
             status_code=400, detail="expected_lines must be at least 1"
-        )
-    if min_line_height_floor < 1:
-        raise HTTPException(
-            status_code=400, detail="min_line_height_floor must be at least 1"
         )
 
     # Clean the output directory for new request
@@ -93,11 +85,8 @@ async def upload_images(  # type: ignore[no-untyped-def]
         crop_y,
         crop_w,
         crop_h,
-        gap_threshold,
-        min_line_height,
         padding,
         alternate_horizontal_margin,
-        min_line_height_floor,
     )
 
     export_cfg = ExportConfig(
@@ -136,60 +125,6 @@ async def upload_images(  # type: ignore[no-untyped-def]
 
     images_data = [(await f.read(), f.filename or "unknown") for f in images]
     return pipeline.run(images_data)
-
-
-@app.post("/calibrate/")
-async def calibrate(  # type: ignore[no-untyped-def]
-    image: UploadFile = File(...),
-    crop_x: int = Form(...),
-    crop_y: int = Form(...),
-    crop_w: int = Form(...),
-    crop_h: int = Form(...),
-    expected_lines: int = Form(15),
-    padding: int = Form(4),
-    min_line_height_floor: int = Form(80),
-    alternate_horizontal_margin: bool = Form(False),
-    nominal_height_margin_pct: float = Form(0.08),
-    verify_on_cropped_unclean: int = Form(1),
-):
-    """One sura-free page: clean → height/N → projection gap; writes debug under results/calibration/."""
-    if crop_w <= 0 or crop_h <= 0:
-        raise HTTPException(status_code=400, detail="Invalid crop dimensions")
-    if expected_lines < 1:
-        raise HTTPException(
-            status_code=400, detail="expected_lines must be at least 1"
-        )
-    if min_line_height_floor < 1:
-        raise HTTPException(
-            status_code=400, detail="min_line_height_floor must be at least 1"
-        )
-    if not 0.0 <= nominal_height_margin_pct < 0.95:
-        raise HTTPException(
-            status_code=400,
-            detail="nominal_height_margin_pct must be in [0, 0.95)",
-        )
-
-    crop_cfg = CropConfig(x=crop_x, y=crop_y, w=crop_w, h=crop_h)
-    proc_cfg = ProcessingConfig(
-        alternate_horizontal_margin=alternate_horizontal_margin
-    )
-    raw = await image.read()
-    fn = image.filename or "calibration.png"
-    export_root = Path("results") / "calibration"
-    export_root.mkdir(parents=True, exist_ok=True)
-
-    return run_nominal_calibration(
-        raw,
-        fn,
-        crop_cfg,
-        proc_cfg,
-        expected_lines,
-        padding,
-        min_line_height_floor,
-        nominal_height_margin_pct,
-        export_root,
-        verify_on_cropped_unclean=bool(verify_on_cropped_unclean),
-    )
 
 
 if __name__ == "__main__":

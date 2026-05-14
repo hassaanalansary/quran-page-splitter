@@ -100,67 +100,19 @@
         <!-- line-detection parameters -->
         <div class="crop-inputs">
           <div class="input-group">
-            <label>Gap thr.</label>
-            <input type="number" id="gap-threshold" step="0.01" min="0" max="1" value="0.03" />
-          </div>
-          <div class="input-group">
-            <label>Min height</label>
-            <input type="number" id="min-line-height" step="1" min="1" value="80" />
-          </div>
-          <div class="input-group">
             <label>Padding</label>
             <input type="number" id="padding" step="1" min="0" value="4" />
           </div>
           <div class="input-group">
-            <label>Min height floor</label>
-            <input type="number" id="min-line-height-floor" step="1" min="1" value="80" title="Never use min line height below this (calibration); Phase C only adjusts gap" />
-          </div>
-          <div class="input-group">
             <label>Lines / page</label>
-            <input type="number" id="expected-lines" step="1" min="1" value="15" title="Expected detected lines (incl. sura/basmala bands)" />
+            <input type="number" id="expected-lines" step="1" min="1" value="15"
+              title="Expected detected lines (incl. sura/basmala bands)" />
           </div>
           <div class="input-group">
             <label for="alternate-horizontal-margin">Alternate margins</label>
             <input type="checkbox" id="alternate-horizontal-margin" />
           </div>
         </div>
-
-        <section class="calibration-section" id="calibration-panel" aria-labelledby="calibration-heading">
-          <h2 id="calibration-heading" class="preview-label">// Calibration (sura-free reference page)</h2>
-          <p class="calibration-help">
-            Use one page <strong>without a sura title</strong>. Apply the same <strong>bounds</strong> crop as for the mushaf.
-            The server runs <code>clean_image</code> on the crop (tight content), computes nominal line height as
-            <strong>content height ÷ lines per page</strong>, derives <code>min_line_height</code> from that minus a margin % plus padding,
-            and estimates <code>gap_threshold</code> from row ink minima at even-split gap positions. Debug PNGs and
-            <code>calibration.log</code> are written under <code>results/calibration/&lt;timestamp&gt;/</code>.
-          </p>
-          <div class="calibration-controls">
-            <div class="input-group calibration-file">
-              <label for="calibration-image">Reference image</label>
-              <input type="file" id="calibration-image" accept="image/*" />
-            </div>
-            <div class="input-group">
-              <label for="cal-nominal-margin-pct">Height margin (0–0.94)</label>
-              <input type="number" id="cal-nominal-margin-pct" step="0.01" min="0" max="0.94" value="0.08" title="Subtract from 1 before scaling nominal strip for min_line_height" />
-            </div>
-            <div class="input-group">
-              <label for="cal-verify-unclean">Verify on unclean crop</label>
-              <input type="checkbox" id="cal-verify-unclean" checked title="Also count lines on cropped binary before clean (logged)" />
-            </div>
-          </div>
-          <div class="calibration-actions">
-            <button type="button" class="primary" id="calibrate-run-btn">Run calibration</button>
-            <button type="button" id="calibrate-apply-btn" disabled>Apply recommended values</button>
-          </div>
-          <div class="calibration-log-wrap">
-            <div class="preview-label">// Log (same lines as server + calibration.log)</div>
-            <pre id="calibration-log" class="calibration-log" aria-live="polite"></pre>
-          </div>
-          <details class="calibration-json">
-            <summary>Raw JSON response</summary>
-            <pre id="calibration-json" class="calibration-json-body"></pre>
-          </details>
-        </section>
 
         <!-- export mode -->
         <div class="crop-inputs">

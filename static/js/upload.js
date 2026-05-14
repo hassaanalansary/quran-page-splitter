@@ -131,14 +131,7 @@ export function fullReset() {
   document.getElementById("start-sura-group").style.display = "none";
   document.getElementById("start-aya-group").style.display = "none";
   document.getElementById("file-input").value = "";
-  const calImg = document.getElementById("calibration-image");
-  if (calImg) calImg.value = "";
-  const logEl = document.getElementById("calibration-log");
-  if (logEl) logEl.textContent = "";
-  const jsonEl = document.getElementById("calibration-json");
-  if (jsonEl) jsonEl.textContent = "";
-  const calApply = document.getElementById("calibrate-apply-btn");
-  if (calApply) calApply.disabled = true;
+
   deactivateCrop();
   state.selectionActive = false;
   document.getElementById("start-crop-btn").disabled = true;
@@ -173,12 +166,6 @@ export async function submitCrop() {
   fd.append("crop_h", bounds.height);
   fd.append("sura_name", suraNameBlob, "sura_name.png");
   fd.append("aya_separator", ayaSeparatorBlob, "aya_separator.png");
-  fd.append("gap_threshold", document.getElementById("gap-threshold").value);
-  fd.append("min_line_height", document.getElementById("min-line-height").value);
-  fd.append(
-    "min_line_height_floor",
-    document.getElementById("min-line-height-floor").value,
-  );
   fd.append("padding", document.getElementById("padding").value);
   fd.append("expected_lines", document.getElementById("expected-lines").value);
   fd.append("alternate_horizontal_margin", state.alternateHorizontalMargin);
