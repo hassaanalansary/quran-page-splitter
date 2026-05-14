@@ -12,8 +12,6 @@ from dataclasses import dataclass, field
 import numpy as np
 from PIL import Image
 
-from core.config import DetectionConfig
-
 
 @dataclass
 class BBox:
@@ -87,8 +85,6 @@ class PageContext:
     page_index: int
     crop_box: BBox | None = None
     lines: list[LineResult] = field(default_factory=list)
-    # Set when Phase C recovery picks alternate gap_threshold (min_line_height unchanged)
-    line_detection_recovery: DetectionConfig | None = None
 
     # -- Zero-copy array accessors ------------------------------------
 

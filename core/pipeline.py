@@ -111,7 +111,10 @@ class Pipeline:
                         {
                             "filename": fn,
                             "status": "skipped_batch_abort",
-                            "message": "Not processed: batch aborted after line detection failure",
+                            "message": (
+                                "Not processed: batch aborted after "
+                                "line detection failure"
+                            ),
                         }
                     )
                 logger.error(

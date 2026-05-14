@@ -5,7 +5,6 @@ image export and coordinate collection based on the configured mode.
 """
 
 import logging
-from numbers import Integral, Real
 from pathlib import Path
 
 from PIL import Image
@@ -16,7 +15,6 @@ from core.context import PageContext, QuranTracker
 from core.coordinate_exporter import collect_page_coordinates, track_positions
 from core.line_detector import LineDetector
 from image_utils import binarize_image, make_transparent
-from script.line_cutter import line_split_diagnostics
 
 logger = logging.getLogger(__name__)
 
@@ -26,26 +24,6 @@ STATUS_LINE_COUNT_MISMATCH = "line_count_mismatch"
 
 def is_line_geometry_failure(status: str) -> bool:
     return status in (STATUS_NO_LINES, STATUS_LINE_COUNT_MISMATCH)
-
-
-def _serialize_diagnostics(diag: dict) -> dict:
-    """JSON-safe subset for API / results."""
-    out = {}
-    for k, v in diag.items():
-        if k == "interpretation":
-            out[k] = str(v)
-        elif isinstance(v, (int, float, str, bool)) or v is None:
-            out[k] = v
-        elif isinstance(v, list):
-            out[k] = [
-                int(x)
-                if isinstance(x, (int, bool)) or isinstance(x, Integral)
-                else float(x)
-                if isinstance(x, Real)
-                else x
-                for x in v
-            ]
-    return out
 
 
 def create_context(image: Image.Image, filename: str, page_index: int) -> PageContext:
@@ -106,27 +84,6 @@ class PageProcessor:
                 ctx.filename,
                 expected_lines,
             )
-            det = self.detector.detection.as_dict()
-            logger.error(
-                "  Detection params: gap_threshold=%s min_line_height=%s padding=%s",
-                det["gap_threshold"],
-                det["min_line_height"],
-                det["padding"],
-            )
-            diag = line_split_diagnostics(
-                ctx.cropped_binary(),
-                det["gap_threshold"],
-                det["min_line_height"],
-                det["padding"],
-            )
-            logger.error("  %s", diag.get("interpretation", ""))
-            logger.error(
-                "  Raw bands=%s kept_lines=%s gap_rows=%s/%s",
-                diag.get("raw_band_count"),
-                diag.get("lines_after_min_height"),
-                diag.get("gap_row_count"),
-                diag.get("crop_h"),
-            )
             return {
                 "filename": ctx.filename,
                 "status": STATUS_NO_LINES,
@@ -136,11 +93,9 @@ class PageProcessor:
                 "expected_lines": expected_lines,
                 "detected_lines": 0,
                 "line_heights": [],
-                "projection_diagnostics": _serialize_diagnostics(diag),
             }
 
         if len(ctx.lines) != expected_lines:
-            det = self.detector.detection.as_dict()
             line_heights = [line.bbox.height for line in ctx.lines]
             logger.error(
                 "  Line count mismatch: page %d %s — expected %d, detected %d",
@@ -149,34 +104,17 @@ class PageProcessor:
                 expected_lines,
                 len(ctx.lines),
             )
-            logger.error(
-                "  Detection params: gap_threshold=%s min_line_height=%s padding=%s",
-                det["gap_threshold"],
-                det["min_line_height"],
-                det["padding"],
-            )
             for line in ctx.lines:
                 logger.error(
                     "  Line %d height=%d px",
                     line.line_index,
                     line.bbox.height,
                 )
-            diag = line_split_diagnostics(
-                ctx.cropped_binary(),
-                det["gap_threshold"],
-                det["min_line_height"],
-                det["padding"],
-            )
-            logger.error("  %s", diag.get("interpretation", ""))
-            logger.error(
-                "  Raw bands=%s kept_lines=%s gap_rows=%s/%s",
-                diag.get("raw_band_count"),
-                diag.get("lines_after_min_height"),
-                diag.get("gap_row_count"),
-                diag.get("crop_h"),
-            )
             debug_paths = self._save_line_detection_debug(ctx)
-            logger.error("  Debug line PNGs: %d file(s) under line_detection_debug/", len(debug_paths))
+            logger.error(
+                "  Debug line PNGs: %d file(s) under line_detection_debug/",
+                len(debug_paths),
+            )
             return {
                 "filename": ctx.filename,
                 "status": STATUS_LINE_COUNT_MISMATCH,
@@ -189,7 +127,6 @@ class PageProcessor:
                 "line_heights": line_heights,
                 "line_debug_outputs": debug_paths,
                 "outputs": [],
-                "projection_diagnostics": _serialize_diagnostics(diag),
             }
 
         # Stage 2: Classify sura headers
@@ -213,16 +150,6 @@ class PageProcessor:
             "expected_lines": expected_lines,
             "line_heights": [line.bbox.height for line in ctx.lines],
         }
-        if ctx.line_detection_recovery is not None:
-            r = ctx.line_detection_recovery
-            result["line_detection_recovered"] = True
-            result["recovery_detection"] = {
-                "gap_threshold": r.gap_threshold,
-                "min_line_height": r.min_line_height,
-                "min_line_height_floor": r.min_line_height_floor,
-                "effective_min_line_height": r.effective_min_line_height(),
-                "padding": r.padding,
-            }
 
         if export_images:
             saved = self._export_images(ctx)

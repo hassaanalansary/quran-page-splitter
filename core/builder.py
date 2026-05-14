@@ -18,24 +18,16 @@ def init_configs(
     y: int,
     w: int,
     h: int,
-    gap_threshold: float,
-    min_line_height: int,
     padding: int,
     alternate_horizontal_margin: bool,
-    min_line_height_floor: int = 80,
 ) -> tuple[CropConfig, DetectionConfig, ProcessingConfig]:
-    """
-    Initialize the configs for the pipeline.
-    Returns a tuple of (crop_config, detection_config, processing_config)
+    """Initialize the configs for the pipeline.
+
+    Returns a tuple of (crop_config, detection_config, processing_config).
     """
     return (
         CropConfig(x=x, y=y, w=w, h=h),
-        DetectionConfig(
-            gap_threshold=gap_threshold,
-            min_line_height=min_line_height,
-            padding=padding,
-            min_line_height_floor=min_line_height_floor,
-        ),
+        DetectionConfig(padding=padding),
         ProcessingConfig(alternate_horizontal_margin=alternate_horizontal_margin),
     )
 
@@ -71,8 +63,8 @@ def build_pipeline(
     aya_processor: AyaSeparatorProcessor,
     results_dir: Path,
 ) -> Pipeline:
-    """
-    Builds the pipeline from the given configs and templates.
+    """Builds the pipeline from the given configs and templates.
+
     Returns the pipeline.
     """
     detector = LineDetector(crop=crop_cfg, detection=det_cfg, processing=proc_cfg)

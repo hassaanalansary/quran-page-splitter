@@ -4,8 +4,7 @@ import logging
 
 from core.config import CropConfig, DetectionConfig, ProcessingConfig
 from core.context import BBox, LineResult, PageContext
-from core.line_detection_recovery import try_recover_line_count
-from script.line_cutter import get_line_boxes
+from script.line_cutter import split_by_valleys
 
 logger = logging.getLogger(__name__)
 
@@ -41,12 +40,9 @@ class LineDetector:
     def detect(self, ctx: PageContext, expected_lines: int | None = None) -> None:
         """Compute crop region, detect lines, populate ctx.crop_box and ctx.lines.
 
-        Line bounding boxes are stored in original page coordinates.
-
-        When ``expected_lines`` is set and the initial count differs, Phase C tries a
-        bounded **gap_threshold** sweep only (``min_line_height`` comes from config /
-        ``min_line_height_floor``; no MH recovery). If no gap hits the expected count,
-        lines stay at the base result and the pipeline reports mismatch / abort.
+        Uses valley-based splitting: finds the N-1 most prominent valleys
+        in the row-sum profile to produce exactly N line boxes.  No global
+        threshold or minimum height parameter is needed.
         """
         x, y, w, h = self.crop.as_tuple()
         img_w, img_h = ctx.image.size
@@ -66,35 +62,16 @@ class LineDetector:
 
         ctx.crop_box = BBox(left=left, top=top, right=right, bottom=bottom)
 
-        ctx.line_detection_recovery = None
-
+        n_lines = expected_lines or 15
+        cropped_grey = ctx.cropped_grey()
         cropped_binary = ctx.cropped_binary()
-        boxes = get_line_boxes(cropped_binary, **self.detection.as_dict())
-        self._set_lines_from_boxes(ctx, left, top, boxes)
 
-        if expected_lines is not None and len(ctx.lines) != expected_lines:
-            initial_n = len(ctx.lines)
-            logger.info(
-                "  Phase C: base count %d (expected %d), searching alternate params",
-                initial_n,
-                expected_lines,
-            )
-            recovered = try_recover_line_count(
-                cropped_binary,
-                self.detection,
-                expected_lines,
-                initial_n,
-            )
-            if recovered is not None:
-                rec_boxes, used = recovered
-                self._set_lines_from_boxes(ctx, left, top, rec_boxes)
-                ctx.line_detection_recovery = used
-                logger.info(
-                    "  Phase C recovery: %d lines via gap_threshold=%s (effective min_line_height=%s, padding=%s)",
-                    expected_lines,
-                    used.gap_threshold,
-                    used.effective_min_line_height(),
-                    used.padding,
-                )
+        boxes = split_by_valleys(
+            cropped_grey,
+            cropped_binary,
+            n_lines,
+            self.detection.padding,
+        )
+        self._set_lines_from_boxes(ctx, left, top, boxes)
 
         logger.info("  Detected %d lines", len(ctx.lines))

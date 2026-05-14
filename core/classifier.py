@@ -95,4 +95,3 @@ class SuraClassifier:
         result = match_template_ccoeff_normed(image, tmpl)
         _, max_val, _, _ = cv2.minMaxLoc(result)
         return float(max_val)
-
