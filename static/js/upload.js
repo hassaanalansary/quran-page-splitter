@@ -36,8 +36,13 @@ export function handleFileSelection(files) {
   state.imageFiles = images.slice(0, MAX_FILES);
   state.selectedImageIndex = 0;
   state.globalOutputs.bounds = null;
-  state.globalOutputs.suraNameBlob = null;
+  state.globalOutputs.suraHeaderBlob = null;
+  state.globalOutputs.suraHeaderRect = null;
+  state.globalOutputs.suraHeaderIgnore = null;
+  state.globalOutputs.basmalaBlob = null;
   state.globalOutputs.ayaSeparatorBlob = null;
+  state.globalOutputs.ayaSeparatorRect = null;
+  state.globalOutputs.ayaSeparatorIgnore = null;
   state.activeCropMode = "bounds";
   loadImageAtIndex(0, { resetCrop: true });
   updateQueueInfo();
@@ -119,14 +124,25 @@ export function fullReset() {
   state.alternateHorizontalMargin = false;
   document.getElementById("alternate-horizontal-margin").checked = false;
   state.globalOutputs.bounds = null;
-  state.globalOutputs.suraNameBlob = null;
+  state.globalOutputs.suraHeaderBlob = null;
+  state.globalOutputs.suraHeaderRect = null;
+  state.globalOutputs.suraHeaderIgnore = null;
+  state.globalOutputs.basmalaBlob = null;
   state.globalOutputs.ayaSeparatorBlob = null;
+  state.globalOutputs.ayaSeparatorRect = null;
+  state.globalOutputs.ayaSeparatorIgnore = null;
   state.exportImages = true;
   state.exportCoordinates = false;
   state.startSura = 1;
   state.startAya = 1;
   document.getElementById("export-images").checked = true;
   document.getElementById("export-coordinates").checked = false;
+  document.getElementById("padding").value = "4";
+  document.getElementById("expected-lines").value = "15";
+  document.getElementById("sura-header-slots").value = "1";
+  document.getElementById("sura-header-threshold").value = "0.60";
+  document.getElementById("basmala-threshold").value = "0.70";
+  document.getElementById("max-sura-headers").value = "3";
   resetSuraSelects();
   document.getElementById("start-sura-group").style.display = "none";
   document.getElementById("start-aya-group").style.display = "none";
@@ -145,13 +161,20 @@ export function fullReset() {
 
 // ---- POST submission ----
 export async function submitCrop() {
-  const { bounds, suraNameBlob, ayaSeparatorBlob } = state.globalOutputs;
+  const {
+    bounds,
+    suraHeaderBlob,
+    suraHeaderIgnore,
+    basmalaBlob,
+    ayaSeparatorBlob,
+    ayaSeparatorIgnore,
+  } = state.globalOutputs;
   if (!state.imageFiles.length) {
     alert("Please upload images first.");
     return;
   }
-  if (!bounds || !suraNameBlob || !ayaSeparatorBlob) {
-    alert("Please complete bounds, sura_name, and aya_separator crops first.");
+  if (!bounds || !suraHeaderBlob || !ayaSeparatorBlob) {
+    alert("Please complete bounds, sura_header, and aya_separator crops first.");
     return;
   }
 
@@ -164,10 +187,20 @@ export async function submitCrop() {
   fd.append("crop_y", bounds.top);
   fd.append("crop_w", bounds.width);
   fd.append("crop_h", bounds.height);
-  fd.append("sura_name", suraNameBlob, "sura_name.png");
+  fd.append("sura_header", suraHeaderBlob, "sura_header.png");
+  if (basmalaBlob) fd.append("basmala", basmalaBlob, "basmala.png");
   fd.append("aya_separator", ayaSeparatorBlob, "aya_separator.png");
+  appendIgnore(fd, "sura_header_ignore", suraHeaderIgnore);
+  appendIgnore(fd, "aya_separator_ignore", ayaSeparatorIgnore);
   fd.append("padding", document.getElementById("padding").value);
   fd.append("expected_lines", document.getElementById("expected-lines").value);
+  fd.append("sura_header_slots", document.getElementById("sura-header-slots").value);
+  fd.append(
+    "sura_header_threshold",
+    document.getElementById("sura-header-threshold").value,
+  );
+  fd.append("basmala_threshold", document.getElementById("basmala-threshold").value);
+  fd.append("max_sura_headers", document.getElementById("max-sura-headers").value);
   fd.append("alternate_horizontal_margin", state.alternateHorizontalMargin);
   fd.append("export_images", state.exportImages);
   fd.append("export_coordinates", state.exportCoordinates);
@@ -187,4 +220,12 @@ export async function submitCrop() {
     submitBtn.disabled = false;
     submitBtn.textContent = "↑ Upload all";
   }
+}
+
+function appendIgnore(fd, prefix, rect) {
+  if (!rect) return;
+  fd.append(`${prefix}_x`, rect.x);
+  fd.append(`${prefix}_y`, rect.y);
+  fd.append(`${prefix}_w`, rect.w);
+  fd.append(`${prefix}_h`, rect.h);
 }

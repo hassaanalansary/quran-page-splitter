@@ -56,6 +56,7 @@ class LineResult:
 
     bbox: BBox
     line_index: int  # 1-based index within the page
+    slot_count: int = 1
     is_sura: bool = False
     is_basmala: bool = False
     segments: list[SegmentResult] = field(default_factory=list)

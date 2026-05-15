@@ -40,6 +40,9 @@ class SuraClassifier:
     def classify(self, ctx: PageContext) -> None:
         """Classify each line in ctx as sura header or text. Mutates ctx.lines."""
         for line in ctx.lines:
+            if line.is_sura or line.is_basmala:
+                continue
+
             line_grey = ctx.line_grey(line)
             line_binary = ctx.line_binary(line)
             cleaned_gray, _ = clean_image(line_grey, line_binary)

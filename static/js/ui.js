@@ -20,7 +20,10 @@ export const carouselNextBtn = document.getElementById("carousel-next");
 export const cropModeSelect = document.getElementById("crop-mode");
 export const statusBounds = document.getElementById("status-bounds");
 export const statusSura = document.getElementById("status-sura");
+export const statusSuraIgnore = document.getElementById("status-sura-ignore");
+export const statusBasmala = document.getElementById("status-basmala");
 export const statusAya = document.getElementById("status-aya");
+export const statusAyaIgnore = document.getElementById("status-aya-ignore");
 const thumbObjectUrls = [];
 const THUMB_WINDOW_SIZE = 36;
 
@@ -142,14 +145,31 @@ export function renderCarousel() {
 }
 
 export function updateCropOutputStatus() {
-  const { bounds, suraNameBlob, ayaSeparatorBlob } = state.globalOutputs;
+  const {
+    bounds,
+    suraHeaderBlob,
+    suraHeaderIgnore,
+    basmalaBlob,
+    ayaSeparatorBlob,
+    ayaSeparatorIgnore,
+  } = state.globalOutputs;
   statusBounds.textContent = `bounds: ${bounds ? "ready" : "pending"}`;
-  statusSura.textContent = `sura_name: ${suraNameBlob ? "ready" : "pending"}`;
+  statusSura.textContent = `sura_header: ${suraHeaderBlob ? "ready" : "pending"}`;
+  statusSuraIgnore.textContent = `header_ignore: ${
+    suraHeaderIgnore ? "ready" : "optional"
+  }`;
+  statusBasmala.textContent = `basmala: ${basmalaBlob ? "ready" : "optional"}`;
   statusAya.textContent = `aya_separator: ${ayaSeparatorBlob ? "ready" : "pending"}`;
+  statusAyaIgnore.textContent = `aya_ignore: ${
+    ayaSeparatorIgnore ? "ready" : "optional"
+  }`;
 
   statusBounds.classList.toggle("complete", Boolean(bounds));
-  statusSura.classList.toggle("complete", Boolean(suraNameBlob));
+  statusSura.classList.toggle("complete", Boolean(suraHeaderBlob));
+  statusSuraIgnore.classList.toggle("complete", Boolean(suraHeaderIgnore));
+  statusBasmala.classList.toggle("complete", Boolean(basmalaBlob));
   statusAya.classList.toggle("complete", Boolean(ayaSeparatorBlob));
+  statusAyaIgnore.classList.toggle("complete", Boolean(ayaSeparatorIgnore));
 }
 
 export function syncCropModeUI() {

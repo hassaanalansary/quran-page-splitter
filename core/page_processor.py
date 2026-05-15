@@ -92,23 +92,28 @@ class PageProcessor:
                 "line_detection_ok": False,
                 "expected_lines": expected_lines,
                 "detected_lines": 0,
+                "detected_slots": 0,
                 "line_heights": [],
+                "line_slots": [],
             }
 
-        if len(ctx.lines) != expected_lines:
+        detected_slots = sum(line.slot_count for line in ctx.lines)
+        if detected_slots != expected_lines:
             line_heights = [line.bbox.height for line in ctx.lines]
+            line_slots = [line.slot_count for line in ctx.lines]
             logger.error(
-                "  Line count mismatch: page %d %s — expected %d, detected %d",
+                "  Line slot mismatch: page %d %s — expected %d, detected %d",
                 ctx.page_index,
                 ctx.filename,
                 expected_lines,
-                len(ctx.lines),
+                detected_slots,
             )
             for line in ctx.lines:
                 logger.error(
-                    "  Line %d height=%d px",
+                    "  Line %d height=%d px slots=%d",
                     line.line_index,
                     line.bbox.height,
+                    line.slot_count,
                 )
             debug_paths = self._save_line_detection_debug(ctx)
             logger.error(
@@ -119,36 +124,34 @@ class PageProcessor:
                 "filename": ctx.filename,
                 "status": STATUS_LINE_COUNT_MISMATCH,
                 "message": (
-                    f"Expected {expected_lines} lines, detected {len(ctx.lines)}"
+                    f"Expected {expected_lines} line slots, detected {detected_slots}"
                 ),
                 "line_detection_ok": False,
                 "expected_lines": expected_lines,
                 "detected_lines": len(ctx.lines),
+                "detected_slots": detected_slots,
                 "line_heights": line_heights,
+                "line_slots": line_slots,
                 "line_debug_outputs": debug_paths,
                 "outputs": [],
             }
 
-        # Stage 2: Classify sura headers
-        try:
-            self.classifier.classify(ctx)
-        except Exception as e:
-            logger.warning("  Classification failed, skipping: %s", e)
-
-        # Stage 3: Split lines into aya segments
+        # Stage 2: Split lines into aya segments
         self.aya_separator.split_segments(ctx)
 
-        # Stage 4: Track sura/aya positions (always runs — needed for naming)
+        # Stage 3: Track sura/aya positions (always runs — needed for naming)
         track_positions(ctx, tracker)
 
-        # Stage 5: Export
+        # Stage 4: Export
         result: dict = {
             "filename": ctx.filename,
             "status": "success",
             "detected_lines": len(ctx.lines),
+            "detected_slots": detected_slots,
             "line_detection_ok": True,
             "expected_lines": expected_lines,
             "line_heights": [line.bbox.height for line in ctx.lines],
+            "line_slots": [line.slot_count for line in ctx.lines],
         }
 
         if export_images:

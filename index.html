@@ -57,8 +57,11 @@
             <div class="queue-info" id="queue-info"></div>
             <div class="crop-status" id="crop-status">
               <span class="status-pill" id="status-bounds">bounds: pending</span>
-              <span class="status-pill" id="status-sura">sura_name: pending</span>
+              <span class="status-pill" id="status-sura">sura_header: pending</span>
+              <span class="status-pill" id="status-sura-ignore">header_ignore: optional</span>
+              <span class="status-pill" id="status-basmala">basmala: optional</span>
               <span class="status-pill" id="status-aya">aya_separator: pending</span>
+              <span class="status-pill" id="status-aya-ignore">aya_ignore: optional</span>
             </div>
           </div>
           <div style="display: flex; gap: 8px">
@@ -75,8 +78,11 @@
             <label>Target</label>
             <select id="crop-mode">
               <option value="bounds">bounds</option>
-              <option value="sura_name">sura_name</option>
+              <option value="sura_header">sura_header</option>
+              <option value="sura_header_ignore">sura_header_ignore</option>
+              <option value="basmala">basmala</option>
               <option value="aya_separator">aya_separator</option>
+              <option value="aya_separator_ignore">aya_separator_ignore</option>
             </select>
           </div>
           <div class="input-group">
@@ -107,6 +113,22 @@
             <label>Lines / page</label>
             <input type="number" id="expected-lines" step="1" min="1" value="15"
               title="Expected detected lines (incl. sura/basmala bands)" />
+          </div>
+          <div class="input-group">
+            <label>Header slots</label>
+            <input type="number" id="sura-header-slots" step="1" min="1" value="1" />
+          </div>
+          <div class="input-group">
+            <label>Header thr.</label>
+            <input type="number" id="sura-header-threshold" step="0.01" min="0" max="1" value="0.60" />
+          </div>
+          <div class="input-group">
+            <label>Basmala thr.</label>
+            <input type="number" id="basmala-threshold" step="0.01" min="0" max="1" value="0.70" />
+          </div>
+          <div class="input-group">
+            <label>Max headers</label>
+            <input type="number" id="max-sura-headers" step="1" min="1" value="3" />
           </div>
           <div class="input-group">
             <label for="alternate-horizontal-margin">Alternate margins</label>

@@ -47,6 +47,31 @@ function previewToBlob() {
   });
 }
 
+function currentCropRect() {
+  return {
+    left: state.cropX,
+    top: state.cropY,
+    width: state.cropW,
+    height: state.cropH,
+  };
+}
+
+function relativeIgnoreRect(templateRect) {
+  const crop = currentCropRect();
+  const inside =
+    crop.left >= templateRect.left &&
+    crop.top >= templateRect.top &&
+    crop.left + crop.width <= templateRect.left + templateRect.width &&
+    crop.top + crop.height <= templateRect.top + templateRect.height;
+  if (!inside) return null;
+  return {
+    x: crop.left - templateRect.left,
+    y: crop.top - templateRect.top,
+    w: crop.width,
+    h: crop.height,
+  };
+}
+
 // ---- file selection ----
 document.addEventListener("dragover", (e) => e.preventDefault());
 document.addEventListener("drop", (e) => e.preventDefault());
@@ -112,22 +137,55 @@ cropBtn.addEventListener("click", async () => {
 
   const mode = state.activeCropMode;
   if (mode === "bounds") {
-    state.globalOutputs.bounds = {
-      left: state.cropX,
-      top: state.cropY,
-      width: state.cropW,
-      height: state.cropH,
-    };
+    state.globalOutputs.bounds = currentCropRect();
+    updateCropOutputStatus();
+    return;
+  }
+
+  if (mode === "sura_header_ignore") {
+    const templateRect = state.globalOutputs.suraHeaderRect;
+    if (!templateRect) {
+      alert("Crop sura_header before defining sura_header_ignore.");
+      return;
+    }
+    const ignore = relativeIgnoreRect(templateRect);
+    if (!ignore) {
+      alert("sura_header_ignore must be fully inside the sura_header crop.");
+      return;
+    }
+    state.globalOutputs.suraHeaderIgnore = ignore;
+    updateCropOutputStatus();
+    return;
+  }
+
+  if (mode === "aya_separator_ignore") {
+    const templateRect = state.globalOutputs.ayaSeparatorRect;
+    if (!templateRect) {
+      alert("Crop aya_separator before defining aya_separator_ignore.");
+      return;
+    }
+    const ignore = relativeIgnoreRect(templateRect);
+    if (!ignore) {
+      alert("aya_separator_ignore must be fully inside the aya_separator crop.");
+      return;
+    }
+    state.globalOutputs.ayaSeparatorIgnore = ignore;
     updateCropOutputStatus();
     return;
   }
 
   const blob = await previewToBlob();
   if (!blob) return;
-  if (mode === "sura_name") {
-    state.globalOutputs.suraNameBlob = blob;
+  if (mode === "sura_header") {
+    state.globalOutputs.suraHeaderBlob = blob;
+    state.globalOutputs.suraHeaderRect = currentCropRect();
+    state.globalOutputs.suraHeaderIgnore = null;
+  } else if (mode === "basmala") {
+    state.globalOutputs.basmalaBlob = blob;
   } else if (mode === "aya_separator") {
     state.globalOutputs.ayaSeparatorBlob = blob;
+    state.globalOutputs.ayaSeparatorRect = currentCropRect();
+    state.globalOutputs.ayaSeparatorIgnore = null;
   }
   updateCropOutputStatus();
 });

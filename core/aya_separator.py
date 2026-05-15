@@ -20,6 +20,7 @@ from core.opencv_accel import (
     resize_area,
     upload_gray_for_matching,
 )
+from core.protected_bands import IgnoreRect
 from image_utils import binarize_image, find_content_bbox
 
 logger = logging.getLogger(__name__)
@@ -27,15 +28,20 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class AyaSeparatorConfig:
-    match_threshold: float = 0.35
+    match_threshold: float = 0.5
     short_line_ratio: float = 0.98
-    min_segment_width: int = 8
+    min_segment_width: int = 20
 
 
 class AyaSeparatorProcessor:
-    def __init__(self, template: Image.Image, config: AyaSeparatorConfig | None = None):
+    def __init__(
+        self,
+        template: Image.Image,
+        config: AyaSeparatorConfig | None = None,
+        ignore_rect: IgnoreRect | None = None,
+    ):
         self.config = config or AyaSeparatorConfig()
-        self.template = self._prepare_template(template)
+        self.template = self._prepare_template(template, ignore_rect)
 
     # ------------------------------------------------------------------
     # Public API
@@ -47,7 +53,7 @@ class AyaSeparatorProcessor:
         Mutates ctx.lines by setting line.segments and line.content_bbox.
         """
         for line in ctx.lines:
-            if line.is_sura:
+            if line.is_sura or line.is_basmala:
                 continue
 
             line_binary = ctx.line_binary(line)
@@ -107,15 +113,28 @@ class AyaSeparatorProcessor:
     # Template preparation
     # ------------------------------------------------------------------
 
-    def _prepare_template(self, template: Image.Image) -> np.ndarray:
+    def _prepare_template(
+        self,
+        template: Image.Image,
+        ignore_rect: IgnoreRect | None,
+    ) -> np.ndarray:
         """Prepare separator template: binarize and mask the central number."""
-        trimmed = self._trim_template_to_content(template)
+        if ignore_rect is not None:
+            trimmed = template
+        else:
+            trimmed = self._trim_template_to_content(template)
         _, binary_inv = binarize_image(trimmed)
 
-        # Remove inner number by masking the central area
         h, w = binary_inv.shape
-        cx1, cx2 = int(w * 0.20), int(w * 0.80)
-        cy1, cy2 = int(h * 0.20), int(h * 0.80)
+        if ignore_rect is None:
+            # Remove inner number by masking the central area
+            cx1, cx2 = int(w * 0.20), int(w * 0.80)
+            cy1, cy2 = int(h * 0.20), int(h * 0.80)
+        else:
+            cx1 = max(0, min(w, ignore_rect.x))
+            cy1 = max(0, min(h, ignore_rect.y))
+            cx2 = max(0, min(w, ignore_rect.x + ignore_rect.w))
+            cy2 = max(0, min(h, ignore_rect.y + ignore_rect.h))
         binary_inv[cy1:cy2, cx1:cx2] = 0
 
         return binary_inv

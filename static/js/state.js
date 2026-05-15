@@ -23,8 +23,13 @@ export const state = {
   activeCropMode: "bounds",
   globalOutputs: {
     bounds: null, // { left, top, width, height }
-    suraNameBlob: null,
+    suraHeaderBlob: null,
+    suraHeaderRect: null,
+    suraHeaderIgnore: null,
+    basmalaBlob: null,
     ayaSeparatorBlob: null,
+    ayaSeparatorRect: null,
+    ayaSeparatorIgnore: null,
   },
   exportImages: true,
   exportCoordinates: false,

@@ -104,6 +104,7 @@ class Pipeline:
                     "status": result.get("status"),
                     "expected_lines": result.get("expected_lines"),
                     "detected_lines": result.get("detected_lines"),
+                    "detected_slots": result.get("detected_slots"),
                 }
                 remaining = images_data[page_index:]
                 for _, fn in remaining:

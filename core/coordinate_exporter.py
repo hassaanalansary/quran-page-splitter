@@ -168,6 +168,7 @@ def collect_page_coordinates(ctx: PageContext) -> dict:
     for line in ctx.lines:
         line_data: dict = {
             "line_number": line.line_index,
+            "slot_count": line.slot_count,
             "line_bbox": line.bbox.as_xywh(),
         }
 
