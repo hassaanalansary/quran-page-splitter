@@ -133,7 +133,7 @@ def split_by_valleys(
 
     # Minimum separation: half of nominal line height
     nominal_strip = ch / float(expected_lines)
-    min_dist = max(1, round(nominal_strip * 0.5))
+    min_dist = max(1, round(nominal_strip * 0.8))
 
     n_needed = expected_lines - 1
     valleys = _select_valleys(minima, prominences, n_needed, min_dist)
