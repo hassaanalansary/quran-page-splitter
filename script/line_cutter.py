@@ -12,7 +12,7 @@ import numpy as np
 
 from image_utils import clean_image, find_content_bbox
 
-_SMOOTHING_KERNEL_SIZE = 5
+_SMOOTHING_KERNEL_SIZE = 75
 
 
 def _smooth(profile: np.ndarray) -> np.ndarray:
@@ -34,9 +34,7 @@ def _find_local_minima(profile: np.ndarray) -> list[int]:
     return (np.where(mask)[0] + 1).tolist()  # type: ignore[no-any-return]
 
 
-def _compute_prominence(
-    profile: np.ndarray, pos: int
-) -> float:
+def _compute_prominence(profile: np.ndarray, pos: int) -> float:
     """Topographic prominence: min(left wall, right wall) - valley depth."""
     val = profile[pos]
 
@@ -140,11 +138,7 @@ def split_by_valleys(
 
     # --- map valleys back to original coordinates and build boxes ---
     # valleys are in clean_binary coordinates; add cy to get original coords
-    splits = (
-        [cy]
-        + [v + cy for v in valleys]
-        + [cy + ch]
-    )
+    splits = [cy] + [v + cy for v in valleys] + [cy + ch]
 
     boxes: list[dict[str, int]] = []
     for i in range(len(splits) - 1):

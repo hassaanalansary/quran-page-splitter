@@ -26,7 +26,6 @@ export const state = {
     suraHeaderBlob: null,
     suraHeaderRect: null,
     suraHeaderIgnore: null,
-    basmalaBlob: null,
     ayaSeparatorBlob: null,
     ayaSeparatorRect: null,
     ayaSeparatorIgnore: null,

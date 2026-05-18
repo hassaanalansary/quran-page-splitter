@@ -56,7 +56,6 @@ async def upload_images(  # type: ignore[no-untyped-def]
     sura_header: UploadFile | None = File(None),
     sura_name: UploadFile | None = File(None),
     aya_separator: UploadFile = File(...),
-    basmala: UploadFile | None = File(None),
     crop_x: int = Form(...),
     crop_y: int = Form(...),
     crop_w: int = Form(...),
@@ -64,7 +63,6 @@ async def upload_images(  # type: ignore[no-untyped-def]
     padding: int = Form(4),
     sura_header_slots: int = Form(1),
     sura_header_threshold: float = Form(0.60),
-    basmala_threshold: float = Form(0.70),
     max_sura_headers: int = Form(3),
     sura_header_ignore_x: int | None = Form(None),
     sura_header_ignore_y: int | None = Form(None),
@@ -84,19 +82,15 @@ async def upload_images(  # type: ignore[no-untyped-def]
     if crop_w <= 0 or crop_h <= 0:
         raise HTTPException(status_code=400, detail="Invalid crop dimensions")
     if expected_lines < 1:
-        raise HTTPException(
-            status_code=400, detail="expected_lines must be at least 1"
-        )
+        raise HTTPException(status_code=400, detail="expected_lines must be at least 1")
     if sura_header_slots < 1:
         raise HTTPException(status_code=400, detail="sura_header_slots must be >= 1")
     if max_sura_headers < 1:
         raise HTTPException(status_code=400, detail="max_sura_headers must be >= 1")
-    for name, value in (
-        ("sura_header_threshold", sura_header_threshold),
-        ("basmala_threshold", basmala_threshold),
-    ):
-        if not 0 <= value <= 1:
-            raise HTTPException(status_code=400, detail=f"{name} must be 0..1")
+    if not 0 <= sura_header_threshold <= 1:
+        raise HTTPException(
+            status_code=400, detail="sura_header_threshold must be 0..1"
+        )
 
     # Clean the output directory for new request
     results_dir = Path("results")
@@ -114,7 +108,6 @@ async def upload_images(  # type: ignore[no-untyped-def]
         alternate_horizontal_margin,
         sura_header_slots,
         sura_header_threshold,
-        basmala_threshold,
         max_sura_headers,
     )
 
@@ -143,11 +136,6 @@ async def upload_images(  # type: ignore[no-untyped-def]
         aya_template = await prepare_template(
             aya_separator, "aya_separator.png", results_dir
         )
-        basmala_template = (
-            await prepare_template(basmala, "basmala.png", results_dir)
-            if basmala is not None
-            else None
-        )
 
     except Exception as e:
         raise HTTPException(
@@ -169,10 +157,8 @@ async def upload_images(  # type: ignore[no-untyped-def]
     protected_locator = ProtectedBandLocator(
         sura_template,
         sura_header_ignore=sura_ignore,
-        basmala_template=basmala_template,
         sura_header_slots=det_cfg.sura_header_slots,
         sura_header_threshold=det_cfg.sura_header_threshold,
-        basmala_threshold=det_cfg.basmala_threshold,
         max_sura_headers=det_cfg.max_sura_headers,
     )
 

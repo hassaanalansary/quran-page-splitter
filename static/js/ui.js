@@ -21,7 +21,6 @@ export const cropModeSelect = document.getElementById("crop-mode");
 export const statusBounds = document.getElementById("status-bounds");
 export const statusSura = document.getElementById("status-sura");
 export const statusSuraIgnore = document.getElementById("status-sura-ignore");
-export const statusBasmala = document.getElementById("status-basmala");
 export const statusAya = document.getElementById("status-aya");
 export const statusAyaIgnore = document.getElementById("status-aya-ignore");
 const thumbObjectUrls = [];
@@ -149,25 +148,20 @@ export function updateCropOutputStatus() {
     bounds,
     suraHeaderBlob,
     suraHeaderIgnore,
-    basmalaBlob,
     ayaSeparatorBlob,
     ayaSeparatorIgnore,
   } = state.globalOutputs;
   statusBounds.textContent = `bounds: ${bounds ? "ready" : "pending"}`;
   statusSura.textContent = `sura_header: ${suraHeaderBlob ? "ready" : "pending"}`;
-  statusSuraIgnore.textContent = `header_ignore: ${
-    suraHeaderIgnore ? "ready" : "optional"
-  }`;
-  statusBasmala.textContent = `basmala: ${basmalaBlob ? "ready" : "optional"}`;
+  statusSuraIgnore.textContent = `header_ignore: ${suraHeaderIgnore ? "ready" : "optional"
+    }`;
   statusAya.textContent = `aya_separator: ${ayaSeparatorBlob ? "ready" : "pending"}`;
-  statusAyaIgnore.textContent = `aya_ignore: ${
-    ayaSeparatorIgnore ? "ready" : "optional"
-  }`;
+  statusAyaIgnore.textContent = `aya_ignore: ${ayaSeparatorIgnore ? "ready" : "optional"
+    }`;
 
   statusBounds.classList.toggle("complete", Boolean(bounds));
   statusSura.classList.toggle("complete", Boolean(suraHeaderBlob));
   statusSuraIgnore.classList.toggle("complete", Boolean(suraHeaderIgnore));
-  statusBasmala.classList.toggle("complete", Boolean(basmalaBlob));
   statusAya.classList.toggle("complete", Boolean(ayaSeparatorBlob));
   statusAyaIgnore.classList.toggle("complete", Boolean(ayaSeparatorIgnore));
 }

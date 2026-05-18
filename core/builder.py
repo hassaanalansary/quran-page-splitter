@@ -23,7 +23,6 @@ def init_configs(
     alternate_horizontal_margin: bool,
     sura_header_slots: int = 1,
     sura_header_threshold: float = 0.60,
-    basmala_threshold: float = 0.70,
     max_sura_headers: int = 3,
 ) -> tuple[CropConfig, DetectionConfig, ProcessingConfig]:
     """Initialize the configs for the pipeline.
@@ -36,7 +35,6 @@ def init_configs(
             padding=padding,
             sura_header_slots=sura_header_slots,
             sura_header_threshold=sura_header_threshold,
-            basmala_threshold=basmala_threshold,
             max_sura_headers=max_sura_headers,
         ),
         ProcessingConfig(alternate_horizontal_margin=alternate_horizontal_margin),

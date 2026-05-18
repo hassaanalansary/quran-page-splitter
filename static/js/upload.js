@@ -39,7 +39,6 @@ export function handleFileSelection(files) {
   state.globalOutputs.suraHeaderBlob = null;
   state.globalOutputs.suraHeaderRect = null;
   state.globalOutputs.suraHeaderIgnore = null;
-  state.globalOutputs.basmalaBlob = null;
   state.globalOutputs.ayaSeparatorBlob = null;
   state.globalOutputs.ayaSeparatorRect = null;
   state.globalOutputs.ayaSeparatorIgnore = null;
@@ -127,7 +126,6 @@ export function fullReset() {
   state.globalOutputs.suraHeaderBlob = null;
   state.globalOutputs.suraHeaderRect = null;
   state.globalOutputs.suraHeaderIgnore = null;
-  state.globalOutputs.basmalaBlob = null;
   state.globalOutputs.ayaSeparatorBlob = null;
   state.globalOutputs.ayaSeparatorRect = null;
   state.globalOutputs.ayaSeparatorIgnore = null;
@@ -141,7 +139,6 @@ export function fullReset() {
   document.getElementById("expected-lines").value = "15";
   document.getElementById("sura-header-slots").value = "1";
   document.getElementById("sura-header-threshold").value = "0.60";
-  document.getElementById("basmala-threshold").value = "0.70";
   document.getElementById("max-sura-headers").value = "3";
   resetSuraSelects();
   document.getElementById("start-sura-group").style.display = "none";
@@ -165,7 +162,6 @@ export async function submitCrop() {
     bounds,
     suraHeaderBlob,
     suraHeaderIgnore,
-    basmalaBlob,
     ayaSeparatorBlob,
     ayaSeparatorIgnore,
   } = state.globalOutputs;
@@ -188,7 +184,6 @@ export async function submitCrop() {
   fd.append("crop_w", bounds.width);
   fd.append("crop_h", bounds.height);
   fd.append("sura_header", suraHeaderBlob, "sura_header.png");
-  if (basmalaBlob) fd.append("basmala", basmalaBlob, "basmala.png");
   fd.append("aya_separator", ayaSeparatorBlob, "aya_separator.png");
   appendIgnore(fd, "sura_header_ignore", suraHeaderIgnore);
   appendIgnore(fd, "aya_separator_ignore", ayaSeparatorIgnore);
@@ -199,7 +194,6 @@ export async function submitCrop() {
     "sura_header_threshold",
     document.getElementById("sura-header-threshold").value,
   );
-  fd.append("basmala_threshold", document.getElementById("basmala-threshold").value);
   fd.append("max_sura_headers", document.getElementById("max-sura-headers").value);
   fd.append("alternate_horizontal_margin", state.alternateHorizontalMargin);
   fd.append("export_images", state.exportImages);

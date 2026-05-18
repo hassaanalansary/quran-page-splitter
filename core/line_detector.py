@@ -203,7 +203,7 @@ class LineDetector:
         text_slots: int,
         expected_lines: int,
     ) -> list[_TextRegion]:
-        min_region_height = max(1, round(binary.shape[0] / expected_lines * 0.25))
+        min_region_height = max(1, round(binary.shape[0] / expected_lines * 0.75))
         regions = self._content_regions(binary, protected, min_region_height)
         if text_slots == 0:
             return regions
@@ -211,8 +211,7 @@ class LineDetector:
             raise ValueError("Protected bands left no text regions to split")
         if len(regions) > text_slots:
             raise ValueError(
-                "More text regions than remaining slots: "
-                f"{len(regions)} > {text_slots}"
+                f"More text regions than remaining slots: {len(regions)} > {text_slots}"
             )
 
         total_height = sum(region.content_height for region in regions)
@@ -220,24 +219,24 @@ class LineDetector:
             region.content_height / max(1, total_height) * text_slots
             for region in regions
         ]
-        slots = [max(1, int(np.floor(raw))) for raw in raw_slots]
+        slots = [max(1, int(np.round(raw))) for raw in raw_slots]
 
-        while sum(slots) < text_slots:
-            idx = max(
-                range(len(regions)),
-                key=lambda i: (raw_slots[i] - np.floor(raw_slots[i]), raw_slots[i]),
-            )
-            slots[idx] += 1
+        # while sum(slots) < text_slots:
+        #     idx = max(
+        #         range(len(regions)),
+        #         key=lambda i: (raw_slots[i] - np.floor(raw_slots[i]), raw_slots[i]),
+        #     )
+        #     slots[idx] += 1
 
-        while sum(slots) > text_slots:
-            candidates = [i for i, value in enumerate(slots) if value > 1]
-            if not candidates:
-                break
-            idx = min(
-                candidates,
-                key=lambda i: (raw_slots[i] - np.floor(raw_slots[i]), raw_slots[i]),
-            )
-            slots[idx] -= 1
+        # while sum(slots) > text_slots:
+        #     candidates = [i for i, value in enumerate(slots) if value > 1]
+        #     if not candidates:
+        #         break
+        #     idx = min(
+        #         candidates,
+        #         key=lambda i: (raw_slots[i] - np.floor(raw_slots[i]), raw_slots[i]),
+        #     )
+        #     slots[idx] -= 1
 
         for region, slot_count in zip(regions, slots, strict=True):
             region.slots = slot_count

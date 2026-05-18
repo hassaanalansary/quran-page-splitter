@@ -180,8 +180,6 @@ cropBtn.addEventListener("click", async () => {
     state.globalOutputs.suraHeaderBlob = blob;
     state.globalOutputs.suraHeaderRect = currentCropRect();
     state.globalOutputs.suraHeaderIgnore = null;
-  } else if (mode === "basmala") {
-    state.globalOutputs.basmalaBlob = blob;
   } else if (mode === "aya_separator") {
     state.globalOutputs.ayaSeparatorBlob = blob;
     state.globalOutputs.ayaSeparatorRect = currentCropRect();

@@ -46,10 +46,8 @@ class ProtectedBandLocator:
         sura_header_template: Image.Image,
         *,
         sura_header_ignore: IgnoreRect | None = None,
-        basmala_template: Image.Image | None = None,
         sura_header_slots: int = 1,
         sura_header_threshold: float = 0.60,
-        basmala_threshold: float = 0.70,
         max_sura_headers: int = 3,
     ) -> None:
         self.max_sura_headers = max(1, max_sura_headers)
@@ -60,66 +58,10 @@ class ProtectedBandLocator:
             "sura_header",
             max(1, sura_header_slots),
         )
-        self.basmala = (
-            self._prepare_spec(
-                basmala_template,
-                None,
-                basmala_threshold,
-                "basmala",
-                1,
-            )
-            if basmala_template is not None
-            else None
-        )
 
     def locate(self, gray: np.ndarray) -> list[ProtectedBand]:
         """Return protected bands in the coordinate space of *gray*."""
-        headers = self._find_all(gray, self.header, self.max_sura_headers)
-        if self.basmala is None or not headers:
-            return headers
-
-        basmalas: list[ProtectedBand] = []
-        for i, header in enumerate(headers):
-            region_top = header.bottom
-            if i + 1 < len(headers):
-                region_bottom = headers[i + 1].top
-            else:
-                region_bottom = gray.shape[0]
-            band = self._find_best_in_region(
-                gray,
-                self.basmala,
-                region_top,
-                region_bottom,
-            )
-            if band is not None:
-                basmalas.append(band)
-
-        return sorted(headers + basmalas, key=lambda band: band.top)
-
-    @staticmethod
-    def _prepare_spec(
-        template: Image.Image,
-        ignore: IgnoreRect | None,
-        threshold: float,
-        kind: str,
-        slot_count: int,
-    ) -> _TemplateSpec:
-        image = np.array(template.convert("L"), dtype=np.uint8)
-        mask = _make_mask(image.shape, ignore)
-        return _TemplateSpec(
-            image=image,
-            mask=mask,
-            threshold=threshold,
-            kind=kind,
-            slot_count=slot_count,
-        )
-
-    def _find_all(
-        self,
-        gray: np.ndarray,
-        spec: _TemplateSpec,
-        limit: int,
-    ) -> list[ProtectedBand]:
+        spec = self.header
         match = _match(gray, spec)
         if match is None:
             return []
@@ -149,7 +91,7 @@ class ProtectedBandLocator:
             if any(abs(band.top - existing.top) < min_gap for existing in selected):
                 continue
             selected.append(band)
-            if len(selected) == limit:
+            if len(selected) == self.max_sura_headers:
                 break
 
         selected.sort(key=lambda band: band.top)
@@ -164,42 +106,23 @@ class ProtectedBandLocator:
             )
         return selected
 
-    def _find_best_in_region(
-        self,
-        gray: np.ndarray,
-        spec: _TemplateSpec,
-        region_top: int,
-        region_bottom: int,
-    ) -> ProtectedBand | None:
-        template_h = spec.image.shape[0]
-        if region_bottom - region_top < template_h:
-            return None
-
-        match = _match(gray[region_top:region_bottom, :], spec)
-        if match is None:
-            return None
-
-        _, max_val, _, max_loc = cv2.minMaxLoc(match)
-        if float(max_val) < spec.threshold:
-            return None
-
-        y = region_top + max_loc[1]
-        band = ProtectedBand(
-            top=int(y),
-            bottom=int(y + template_h),
-            kind=spec.kind,
-            score=float(max_val),
-            slot_count=spec.slot_count,
+    @staticmethod
+    def _prepare_spec(
+        template: Image.Image,
+        ignore: IgnoreRect | None,
+        threshold: float,
+        kind: str,
+        slot_count: int,
+    ) -> _TemplateSpec:
+        image = np.array(template.convert("L"), dtype=np.uint8)
+        mask = _make_mask(image.shape, ignore)
+        return _TemplateSpec(
+            image=image,
+            mask=mask,
+            threshold=threshold,
+            kind=kind,
+            slot_count=slot_count,
         )
-        logger.info(
-            "  Protected %s band: y=%d..%d score=%.4f slots=%d",
-            band.kind,
-            band.top,
-            band.bottom,
-            band.score,
-            band.slot_count,
-        )
-        return band
 
 
 def _make_mask(shape: tuple[int, int], ignore: IgnoreRect | None) -> np.ndarray | None:

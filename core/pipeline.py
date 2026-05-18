@@ -150,6 +150,7 @@ class Pipeline:
             tracker.current_aya,
         )
         logger.info("=" * 60)
+        logger.info(f"{sum([len(page_result["lines"]) for page_result in coordinate_pages])}")
 
         # Build final output
         output: dict = {
