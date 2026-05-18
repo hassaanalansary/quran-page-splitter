@@ -59,6 +59,7 @@ class LineDetector:
                 right=left + box["right"],
                 bottom=top + box["bottom"],
             )
+
             ctx.lines.append(
                 LineResult(
                     bbox=line_bbox,

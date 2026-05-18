@@ -11,8 +11,9 @@ import json
 import logging
 from pathlib import Path
 
-from core.context import LineResult, PageContext, QuranTracker
+from core.context import BBox, LineResult, PageContext, QuranTracker
 from core.quran_metadata import get_aya_count, get_sura
+from image_utils import find_content_bbox
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +32,17 @@ def track_positions(ctx: PageContext, tracker: QuranTracker) -> None:
     for line in ctx.lines:
         if line.is_sura:
             _handle_sura_header(line, tracker)
+            x, y, w, h = find_content_bbox(
+                ctx.binary[
+                    line.bbox.top : line.bbox.bottom, line.bbox.left : line.bbox.right
+                ]
+            )
+            line.bbox = BBox(
+                left=line.bbox.left + x,
+                top=line.bbox.top + y,
+                right=line.bbox.left + x + w,
+                bottom=line.bbox.top + y + h,
+            )
             continue
 
         if tracker.pending_basmala:
@@ -39,6 +51,18 @@ def track_positions(ctx: PageContext, tracker: QuranTracker) -> None:
 
             if not has_any_separator:
                 _handle_basmala(line, tracker)
+                x, y, w, h = find_content_bbox(
+                    ctx.binary[
+                        line.bbox.top : line.bbox.bottom,
+                        line.bbox.left : line.bbox.right,
+                    ]
+                )
+                line.bbox = BBox(
+                    left=line.bbox.left + x,
+                    top=line.bbox.top + y,
+                    right=line.bbox.left + x + w,
+                    bottom=line.bbox.top + y + h,
+                )
                 continue
 
             # Has separator → not a basmala, treat as normal text
