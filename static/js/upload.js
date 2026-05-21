@@ -140,6 +140,7 @@ export function fullReset() {
   document.getElementById("sura-header-slots").value = "1";
   document.getElementById("sura-header-threshold").value = "0.60";
   document.getElementById("max-sura-headers").value = "3";
+  document.getElementById("aya-match-threshold").value = "0.50";
   resetSuraSelects();
   document.getElementById("start-sura-group").style.display = "none";
   document.getElementById("start-aya-group").style.display = "none";
@@ -195,6 +196,7 @@ export async function submitCrop() {
     document.getElementById("sura-header-threshold").value,
   );
   fd.append("max_sura_headers", document.getElementById("max-sura-headers").value);
+  fd.append("match_threshold", document.getElementById("aya-match-threshold").value);
   fd.append("alternate_horizontal_margin", state.alternateHorizontalMargin);
   fd.append("export_images", state.exportImages);
   fd.append("export_coordinates", state.exportCoordinates);

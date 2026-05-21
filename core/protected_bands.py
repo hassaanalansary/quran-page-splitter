@@ -29,7 +29,7 @@ class ProtectedBand:
     slot_count: int
 
 
-@dataclass(frozen=True)
+@dataclass
 class _TemplateSpec:
     image: np.ndarray
     mask: np.ndarray | None
@@ -67,6 +67,7 @@ class ProtectedBandLocator:
             return []
 
         ys, xs = np.where(match >= spec.threshold)
+
         if ys.size == 0:
             return []
 
@@ -148,7 +149,8 @@ def _match(gray: np.ndarray, spec: _TemplateSpec) -> np.ndarray | None:
     template_h, template_w = spec.image.shape
     image_h, image_w = gray.shape
     if image_h < template_h or image_w < template_w:
-        return None
+        spec.image = spec.image[:, 0:image_w]
+        spec.mask = spec.mask[:, 0:image_w] if spec.mask is not None else None
 
     if spec.mask is None:
         result = cv2.matchTemplate(gray, spec.image, cv2.TM_CCOEFF_NORMED)

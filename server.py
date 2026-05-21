@@ -11,7 +11,7 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
-from core.aya_separator import AyaSeparatorProcessor
+from core.aya_separator import AyaSeparatorConfig, AyaSeparatorProcessor
 from core.builder import build_pipeline, init_configs, prepare_template
 from core.classifier import SuraClassifier
 from core.config import ExportConfig
@@ -78,6 +78,7 @@ async def upload_images(  # type: ignore[no-untyped-def]
     start_sura: int = Form(1),
     start_aya: int = Form(1),
     expected_lines: int = Form(15),
+    match_threshold: float = Form(0.50),
 ):
     if crop_w <= 0 or crop_h <= 0:
         raise HTTPException(status_code=400, detail="Invalid crop dimensions")
@@ -90,6 +91,10 @@ async def upload_images(  # type: ignore[no-untyped-def]
     if not 0 <= sura_header_threshold <= 1:
         raise HTTPException(
             status_code=400, detail="sura_header_threshold must be 0..1"
+        )
+    if not 0 <= match_threshold <= 1:
+        raise HTTPException(
+            status_code=400, detail="match_threshold must be 0..1"
         )
 
     # Clean the output directory for new request
@@ -171,6 +176,7 @@ async def upload_images(  # type: ignore[no-untyped-def]
         classifier=SuraClassifier(template=sura_template),
         aya_processor=AyaSeparatorProcessor(
             template=aya_template,
+            config=AyaSeparatorConfig(match_threshold=match_threshold),
             ignore_rect=aya_ignore,
         ),
         results_dir=results_dir,
