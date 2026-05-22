@@ -7,8 +7,8 @@ import shutil
 from pathlib import Path
 
 import uvicorn
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import HTMLResponse
+from fastapi import Body, FastAPI, File, Form, HTTPException, Query, UploadFile
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from core.aya_separator import AyaSeparatorConfig, AyaSeparatorProcessor
@@ -17,6 +17,16 @@ from core.classifier import SuraClassifier
 from core.config import ExportConfig
 from core.protected_bands import IgnoreRect, ProtectedBandLocator
 from core.quran_metadata import SURAS
+from core.review import (
+    CORRECTED_RESULTS_JSON,
+    PAGES_DIR,
+    RESULTS_JSON,
+    load_review_results,
+    re_export_corrected_images,
+    resolve_page_copy,
+    review_status,
+    save_corrected_results,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -36,6 +46,14 @@ async def serve_index():  # type: ignore[no-untyped-def]
     return index_path.read_text(encoding="utf-8")
 
 
+@app.get("/review", response_class=HTMLResponse)
+async def serve_review():  # type: ignore[no-untyped-def]
+    review_path = Path("review.html")
+    if not review_path.exists():
+        raise HTTPException(status_code=404, detail="review.html not found")
+    return review_path.read_text(encoding="utf-8")
+
+
 @app.get("/api/suras")
 async def list_suras():  # type: ignore[no-untyped-def]
     """Expose sura list for the frontend (Arabic display name, numeric value)."""
@@ -48,6 +66,64 @@ async def list_suras():  # type: ignore[no-untyped-def]
         }
         for s in SURAS
     ]
+
+
+@app.get("/api/review/status")
+async def get_review_status():  # type: ignore[no-untyped-def]
+    return review_status()
+
+
+@app.get("/api/review/results")
+async def get_review_results(  # type: ignore[no-untyped-def]
+    source: str = Query("latest", pattern="^(latest|original)$"),
+):
+    try:
+        data, path = load_review_results(source)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="results.json not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"source_path": str(path), "data": data}
+
+
+@app.get("/api/review/pages/{page_image_filename}")
+async def get_review_page(page_image_filename: str):  # type: ignore[no-untyped-def]
+    try:
+        path = resolve_page_copy(page_image_filename)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Page image not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return FileResponse(path)
+
+
+@app.post("/api/review/save")
+async def save_review_results(  # type: ignore[no-untyped-def]
+    payload: dict = Body(...),
+):
+    try:
+        corrected = save_corrected_results(payload)
+    except (KeyError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {
+        "status": "saved",
+        "path": str(CORRECTED_RESULTS_JSON),
+        "data": corrected,
+    }
+
+
+@app.post("/api/review/re-export")
+async def re_export_review_images():  # type: ignore[no-untyped-def]
+    if not CORRECTED_RESULTS_JSON.exists():
+        raise HTTPException(
+            status_code=404,
+            detail="corrected_results.json not found. Save corrections first.",
+        )
+    try:
+        summary = re_export_corrected_images()
+    except (FileNotFoundError, KeyError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"status": "exported", **summary}
 
 
 @app.post("/upload/")
@@ -102,6 +178,10 @@ async def upload_images(  # type: ignore[no-untyped-def]
     if os.path.exists(results_dir):
         shutil.rmtree(results_dir)
     os.makedirs(results_dir)
+    PAGES_DIR.mkdir(parents=True, exist_ok=True)
+    for artifact_path in (RESULTS_JSON, CORRECTED_RESULTS_JSON):
+        if artifact_path.exists():
+            artifact_path.unlink()
 
     # Build configs
     crop_cfg, det_cfg, proc_cfg = init_configs(

@@ -32,11 +32,14 @@ def track_positions(ctx: PageContext, tracker: QuranTracker) -> None:
     for line in ctx.lines:
         if line.is_sura:
             _handle_sura_header(line, tracker)
-            x, y, w, h = find_content_bbox(
+            content_bbox = find_content_bbox(
                 ctx.binary[
                     line.bbox.top : line.bbox.bottom, line.bbox.left : line.bbox.right
                 ]
             )
+            if content_bbox is None:
+                continue
+            x, y, w, h = content_bbox
             line.bbox = BBox(
                 left=line.bbox.left + x,
                 top=line.bbox.top + y,
@@ -51,12 +54,15 @@ def track_positions(ctx: PageContext, tracker: QuranTracker) -> None:
 
             if not has_any_separator:
                 _handle_basmala(line, tracker)
-                x, y, w, h = find_content_bbox(
+                content_bbox = find_content_bbox(
                     ctx.binary[
                         line.bbox.top : line.bbox.bottom,
                         line.bbox.left : line.bbox.right,
                     ]
                 )
+                if content_bbox is None:
+                    continue
+                x, y, w, h = content_bbox
                 line.bbox = BBox(
                     left=line.bbox.left + x,
                     top=line.bbox.top + y,
@@ -186,6 +192,8 @@ def collect_page_coordinates(ctx: PageContext) -> dict:
     page_data: dict = {
         "page_number": ctx.page_index,
         "image_filename": ctx.filename,
+        "page_image_filename": ctx.page_image_filename,
+        "crop_box": ctx.crop_box.as_xywh() if ctx.crop_box else None,
         "lines": [],
     }
 
@@ -207,6 +215,9 @@ def collect_page_coordinates(ctx: PageContext) -> dict:
             line_data["sura_name"] = line.sura_name
         else:
             line_data["type"] = "text"
+            line_data["separator_cuts"] = sorted(
+                seg.bbox.left for seg in line.segments if seg.has_separator
+            )
             line_data["segments"] = []
             for seg in line.segments:
                 line_data["segments"].append(
@@ -217,6 +228,7 @@ def collect_page_coordinates(ctx: PageContext) -> dict:
                         else None,
                         "aya_number": seg.aya_number,
                         "is_continuation": seg.is_continuation,
+                        "has_separator": seg.has_separator,
                         "bbox": seg.bbox.as_xywh(),
                     }
                 )

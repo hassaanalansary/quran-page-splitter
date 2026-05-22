@@ -84,6 +84,7 @@ class PageContext:
     binary: np.ndarray
     filename: str
     page_index: int
+    page_image_filename: str | None = None
     crop_box: BBox | None = None
     lines: list[LineResult] = field(default_factory=list)
 
