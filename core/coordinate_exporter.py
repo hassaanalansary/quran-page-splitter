@@ -198,10 +198,11 @@ def collect_page_coordinates(ctx: PageContext) -> dict:
     }
 
     for line in ctx.lines:
+        line_bbox = _export_line_bbox(line)
         line_data: dict = {
             "line_number": line.line_index,
             "slot_count": line.slot_count,
-            "line_bbox": line.bbox.as_xywh(),
+            "line_bbox": line_bbox.as_xywh(),
         }
 
         if line.is_sura:
@@ -236,6 +237,19 @@ def collect_page_coordinates(ctx: PageContext) -> dict:
         page_data["lines"].append(line_data)
 
     return page_data
+
+
+def _export_line_bbox(line: LineResult) -> BBox:
+    """Use segment extents for text lines so review bounds avoid empty margins."""
+    if line.is_sura or line.is_basmala or not line.segments:
+        return line.bbox
+
+    return BBox(
+        left=min(seg.bbox.left for seg in line.segments),
+        top=min(seg.bbox.top for seg in line.segments),
+        right=max(seg.bbox.right for seg in line.segments),
+        bottom=max(seg.bbox.bottom for seg in line.segments),
+    )
 
 
 # ------------------------------------------------------------------

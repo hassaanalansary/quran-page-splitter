@@ -127,7 +127,14 @@ def save_corrected_results(
     output_path: Path = CORRECTED_RESULTS_JSON,
 ) -> dict[str, Any]:
     """Normalize and write corrected review data."""
-    corrected = normalize_review_data(data)
+    should_normalize = bool(data.get("_review_has_edits", True))
+    if should_normalize:
+        corrected = normalize_review_data(data)
+    else:
+        corrected = copy.deepcopy(data)
+        corrected["pages_processed"] = len(_list_value(corrected.get("pages")))
+        corrected["corrected_at"] = datetime.now(UTC).isoformat()
+    corrected.pop("_review_has_edits", None)
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(corrected, f, ensure_ascii=False, indent=2)
     return corrected

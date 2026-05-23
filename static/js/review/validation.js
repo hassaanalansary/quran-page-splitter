@@ -1,6 +1,6 @@
 export function buildWarnings(results, ayaCounts) {
   if (!results?.pages || !ayaCounts) return [];
-  const counts = new Map();
+  const ayasBySura = new Map();
   const firstPageBySura = new Map();
   const completedSuras = new Set();
   let previousHeader = null;
@@ -16,9 +16,10 @@ export function buildWarnings(results, ayaCounts) {
       }
       if (line.type !== "text") continue;
       for (const segment of line.segments || []) {
-        if (!segment.has_separator || !segment.sura_number) continue;
+        if (!segment.sura_number || !segment.aya_number) continue;
         const sura = Number(segment.sura_number);
-        counts.set(sura, (counts.get(sura) || 0) + 1);
+        if (!ayasBySura.has(sura)) ayasBySura.set(sura, new Set());
+        ayasBySura.get(sura).add(Number(segment.aya_number));
         if (!firstPageBySura.has(sura)) firstPageBySura.set(sura, page.page_number);
       }
     }
@@ -28,7 +29,7 @@ export function buildWarnings(results, ayaCounts) {
   for (const sura of completedSuras) {
     const expected = ayaCounts.get(sura);
     if (!expected) continue;
-    const found = counts.get(sura) || 0;
+    const found = ayasBySura.get(sura)?.size || 0;
     if (found !== expected) {
       warnings.push({
         sura,

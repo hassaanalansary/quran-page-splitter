@@ -339,6 +339,7 @@ function onPointerUp() {
   if (drag?.before && drag.changed) {
     state.history.push(drag.before);
     state.future = [];
+    state.hasEdits = true;
   }
   drag = null;
   notify();

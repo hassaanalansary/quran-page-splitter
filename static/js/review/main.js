@@ -9,6 +9,7 @@ import {
   currentLine,
   currentPage,
   currentSegment,
+  cloneData,
   notify,
   pushHistory,
   redo,
@@ -104,7 +105,9 @@ function wireEvents() {
 
 function render() {
   if (!state.results) return;
-  recalculateNumbering(state.results, state.suras);
+  if (state.hasEdits) {
+    recalculateNumbering(state.results, state.suras);
+  }
   const page = currentPage();
   const pageImage = page?.page_image_filename || null;
   if (pageImage !== loadedPageImage) {
@@ -341,7 +344,12 @@ async function saveReview() {
   els.saveReviewBtn.disabled = true;
   els.saveReviewBtn.textContent = "Saving...";
   try {
-    const response = await saveResults(state.results);
+    if (state.hasEdits) {
+      recalculateNumbering(state.results, state.suras);
+    }
+    const payload = cloneData(state.results);
+    payload._review_has_edits = state.hasEdits;
+    const response = await saveResults(payload);
     replaceResults(response.data);
     if (els.reexportImages.checked) {
       els.saveReviewBtn.textContent = "Exporting...";

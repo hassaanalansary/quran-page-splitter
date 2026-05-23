@@ -14,6 +14,7 @@ export const state = {
   panY: 0,
   addSeparatorMode: false,
   validationEnabled: false,
+  hasEdits: false,
   history: [],
   future: [],
 };
@@ -37,12 +38,14 @@ export function pushHistory() {
   state.history.push(cloneData(state.results));
   if (state.history.length > 80) state.history.shift();
   state.future = [];
+  state.hasEdits = true;
 }
 
 export function undo() {
   if (!state.history.length || !state.results) return;
   state.future.push(cloneData(state.results));
   state.results = state.history.pop();
+  state.hasEdits = true;
   clearSelectionIfInvalid();
   notify();
 }
@@ -51,6 +54,7 @@ export function redo() {
   if (!state.future.length || !state.results) return;
   state.history.push(cloneData(state.results));
   state.results = state.future.pop();
+  state.hasEdits = true;
   clearSelectionIfInvalid();
   notify();
 }
@@ -116,6 +120,7 @@ export function replaceResults(results) {
   state.selectedSeparatorIndex = null;
   state.history = [];
   state.future = [];
+  state.hasEdits = false;
   notify();
 }
 
