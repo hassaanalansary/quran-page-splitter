@@ -300,7 +300,7 @@ def _separator_cuts(line: dict[str, Any], bbox: dict[str, int]) -> list[int]:
     cuts: set[int] = set()
     for value in raw_cuts:
         cut = _positive_int(value, "separator_cuts")
-        if left < cut < right:
+        if left <= cut <= right:
             cuts.add(cut)
     return sorted(cuts)
 

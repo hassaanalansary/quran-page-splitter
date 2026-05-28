@@ -63,7 +63,7 @@ export function regenerateSegments(line) {
     new Set(
       (line.separator_cuts || [])
         .map((value) => Math.round(Number(value)))
-        .filter((value) => Number.isFinite(value) && value > left && value < right),
+        .filter((value) => Number.isFinite(value) && value >= left && value <= right),
     ),
   ).sort((a, b) => a - b);
   line.separator_cuts = cuts;

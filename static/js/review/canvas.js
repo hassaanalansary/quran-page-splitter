@@ -66,7 +66,7 @@ export function fitToCanvas() {
   const scale = Math.min(width / state.image.width, height / state.image.height);
   state.zoom = Math.max(0.05, scale * 0.96);
   state.panX = (width - state.image.width * state.zoom) / 2;
-  state.panY = (height - state.image.height * state.zoom) / 2;
+  state.panY = 10;
   renderCanvas();
 }
 
@@ -218,12 +218,8 @@ function labelForLine(line) {
 function onWheel(event) {
   event.preventDefault();
   if (!state.image) return;
-  const rect = canvas.getBoundingClientRect();
-  const before = pagePointFromEvent(event);
   const factor = event.deltaY < 0 ? 1.1 : 0.9;
   state.zoom = Math.max(0.04, Math.min(8, state.zoom * factor));
-  state.panX = event.clientX - rect.left - before.x * state.zoom;
-  state.panY = event.clientY - rect.top - before.y * state.zoom;
   renderCanvas();
 }
 
