@@ -32,6 +32,8 @@ class AyaSeparatorProcessor:
         template: Image.Image,
         config: AyaSeparatorConfig | None = None,
         ignore_rect: IgnoreRect | None = None,
+        *,
+        prefer_acceleration: bool = True,
     ):
         self.config = config or AyaSeparatorConfig()
         self.template = make_template_spec(
@@ -39,6 +41,7 @@ class AyaSeparatorProcessor:
             ignore_rect,
             self.config.match_threshold,
             "aya_separator",
+            prefer_acceleration=prefer_acceleration,
         )
 
     # ------------------------------------------------------------------

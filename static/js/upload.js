@@ -122,6 +122,8 @@ export function fullReset() {
   state.activeCropMode = "bounds";
   state.alternateHorizontalMargin = false;
   document.getElementById("alternate-horizontal-margin").checked = false;
+  state.preferAcceleration = true;
+  document.getElementById("prefer-acceleration").checked = true;
   state.globalOutputs.bounds = null;
   state.globalOutputs.suraHeaderBlob = null;
   state.globalOutputs.suraHeaderRect = null;
@@ -198,6 +200,7 @@ export async function submitCrop() {
   fd.append("max_sura_headers", document.getElementById("max-sura-headers").value);
   fd.append("match_threshold", document.getElementById("aya-match-threshold").value);
   fd.append("alternate_horizontal_margin", state.alternateHorizontalMargin);
+  fd.append("prefer_acceleration", state.preferAcceleration);
   fd.append("export_images", state.exportImages);
   fd.append("export_coordinates", state.exportCoordinates);
   fd.append("start_sura", state.startSura);

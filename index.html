@@ -133,6 +133,11 @@
             <label for="alternate-horizontal-margin">Alternate margins</label>
             <input type="checkbox" id="alternate-horizontal-margin" />
           </div>
+          <div class="input-group">
+            <label for="prefer-acceleration">Prefer acceleration ⚡</label>
+            <input type="checkbox" id="prefer-acceleration" checked
+              title="When enabled, template matching uses a GPU-accelerated path (OpenCL) by approximating ignored regions, which is faster but may slightly reduce matching accuracy. Disable for more precise CPU-based matching with full mask support." />
+          </div>
         </div>
 
         <!-- export mode -->

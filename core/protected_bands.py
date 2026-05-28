@@ -37,6 +37,7 @@ class ProtectedBandLocator:
         sura_header_slots: int = 1,
         sura_header_threshold: float = 0.60,
         max_sura_headers: int = 3,
+        prefer_acceleration: bool = True,
     ) -> None:
         self.max_sura_headers = max(1, max_sura_headers)
         self.header = make_template_spec(
@@ -45,6 +46,7 @@ class ProtectedBandLocator:
             sura_header_threshold,
             "sura_header",
             max(1, sura_header_slots),
+            prefer_acceleration=prefer_acceleration,
         )
 
     def locate(self, gray: np.ndarray) -> list[ProtectedBand]:

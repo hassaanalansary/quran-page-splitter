@@ -52,11 +52,39 @@ def make_template_spec(
     threshold: float,
     kind: str = "",
     slot_count: int = 1,
+    *,
+    prefer_acceleration: bool = True,
 ) -> TemplateSpec:
     image = np.array(template.convert("L"), dtype=np.uint8)
+    mask = make_mask(image.shape, ignore)
+
+    if mask is not None:
+        if prefer_acceleration:
+            # Due to the fact that openCL templateMatch doesn't support searching with mask
+            # Fill ignored region with non-ignored mean, in order to use OpenCL kernel.
+            mean_val = int(image[mask > 0].mean())
+            filled = image.copy()
+            filled[mask == 0] = mean_val
+            return TemplateSpec(
+                image=filled,
+                mask=None,        # no mask → OpenCL path
+                threshold=threshold,
+                kind=kind,
+                slot_count=slot_count,
+            )
+        else:
+            # Keep the mask for CPU-based accurate matching
+            return TemplateSpec(
+                image=image,
+                mask=mask,
+                threshold=threshold,
+                kind=kind,
+                slot_count=slot_count,
+            )
+
     return TemplateSpec(
         image=image,
-        mask=make_mask(image.shape, ignore),
+        mask=None,
         threshold=threshold,
         kind=kind,
         slot_count=slot_count,

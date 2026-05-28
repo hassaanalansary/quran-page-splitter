@@ -155,6 +155,7 @@ async def upload_images(  # type: ignore[no-untyped-def]
     start_aya: int = Form(1),
     expected_lines: int = Form(15),
     match_threshold: float = Form(0.50),
+    prefer_acceleration: bool = Form(True),
 ):
     if crop_w <= 0 or crop_h <= 0:
         raise HTTPException(status_code=400, detail="Invalid crop dimensions")
@@ -245,6 +246,7 @@ async def upload_images(  # type: ignore[no-untyped-def]
         sura_header_slots=det_cfg.sura_header_slots,
         sura_header_threshold=det_cfg.sura_header_threshold,
         max_sura_headers=det_cfg.max_sura_headers,
+        prefer_acceleration=prefer_acceleration,
     )
 
     # Build pipeline
@@ -258,6 +260,7 @@ async def upload_images(  # type: ignore[no-untyped-def]
             template=aya_template,
             config=AyaSeparatorConfig(match_threshold=match_threshold),
             ignore_rect=aya_ignore,
+            prefer_acceleration=prefer_acceleration,
         ),
         results_dir=results_dir,
         protected_locator=protected_locator,
