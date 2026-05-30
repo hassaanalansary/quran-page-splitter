@@ -148,9 +148,7 @@ def load_review_results(source: str = "latest") -> tuple[dict[str, Any], Path]:
         path = RESULTS_JSON
     elif source == "latest":
         path = (
-            CORRECTED_RESULTS_JSON
-            if CORRECTED_RESULTS_JSON.exists()
-            else RESULTS_JSON
+            CORRECTED_RESULTS_JSON if CORRECTED_RESULTS_JSON.exists() else RESULTS_JSON
         )
     else:
         raise ValueError("source must be 'latest' or 'original'")
@@ -186,19 +184,13 @@ def re_export_corrected_images(
             line_number = _positive_int(line.get("line_number"), "line_number")
             if line_type == "sura_header":
                 sura_number = _positive_int(line.get("sura_number"), "sura_number")
-                name = (
-                    f"{stem}-l{line_number:02d}"
-                    f"-sura{sura_number:03d}-header.png"
-                )
+                name = f"{stem}-l{line_number:02d}-sura{sura_number:03d}-header.png"
                 saved.append(_save_crop(image, line["line_bbox"], output_dir / name))
                 continue
 
             if line_type == "basmala":
                 sura_number = _positive_int(line.get("sura_number"), "sura_number")
-                name = (
-                    f"{stem}-l{line_number:02d}"
-                    f"-sura{sura_number:03d}-basmala.png"
-                )
+                name = f"{stem}-l{line_number:02d}-sura{sura_number:03d}-basmala.png"
                 saved.append(_save_crop(image, line["line_bbox"], output_dir / name))
                 continue
 
@@ -341,9 +333,7 @@ def _is_deleted_segment(
     bbox = _bbox_value(segment.get("bbox"), "bbox")
     start = bbox["x"]
     end = bbox["x"] + bbox["w"]
-    return any(
-        start == item["x"] and end == item["x"] + item["w"] for item in ranges
-    )
+    return any(start == item["x"] and end == item["x"] + item["w"] for item in ranges)
 
 
 def _bbox_key(bbox: dict[str, int]) -> tuple[int, int]:

@@ -170,9 +170,7 @@ async def upload_images(  # type: ignore[no-untyped-def]
             status_code=400, detail="sura_header_threshold must be 0..1"
         )
     if not 0 <= match_threshold <= 1:
-        raise HTTPException(
-            status_code=400, detail="match_threshold must be 0..1"
-        )
+        raise HTTPException(status_code=400, detail="match_threshold must be 0..1")
 
     # Clean the output directory for new request
     results_dir = Path("results")

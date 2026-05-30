@@ -16,10 +16,10 @@ for image in list(images_path.glob("*.png"))[600:605]:
     row_sums = binary.sum(axis=1).astype(np.float64)
     smoothed = _smooth(row_sums)
     N = len(smoothed)
-    img = np.zeros((H, N), np.uint8)
+    img_arr: np.ndarray = np.zeros((H, N), np.uint8)
     M = max(float(smoothed.max()), 1.0)
     pts = np.column_stack(
         (np.arange(N), H - 1 - (smoothed / M * (H - 1)).astype(int))
     ).astype(np.int32)
-    cv2.polylines(img, [pts], False, 255, 1)
-    cv2.imwrite(image.name, img)
+    cv2.polylines(img_arr, [pts], False, 255, 1)
+    cv2.imwrite(image.name, img_arr)

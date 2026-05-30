@@ -60,14 +60,15 @@ def make_template_spec(
 
     if mask is not None:
         if prefer_acceleration:
-            # Due to the fact that openCL templateMatch doesn't support searching with mask
-            # Fill ignored region with non-ignored mean, in order to use OpenCL kernel.
+            # Due to the fact that openCL templateMatch doesn't support
+            # searching with mask, fill ignored region with non-ignored mean,
+            # in order to use OpenCL kernel.
             mean_val = int(image[mask > 0].mean())
             filled = image.copy()
             filled[mask == 0] = mean_val
             return TemplateSpec(
                 image=filled,
-                mask=None,        # no mask → OpenCL path
+                mask=None,  # no mask → OpenCL path
                 threshold=threshold,
                 kind=kind,
                 slot_count=slot_count,
@@ -113,7 +114,7 @@ def match_template(
 
     prepared_gray = upload_gray_for_matching(gray)
     result = match_template_ccoeff_normed(prepared_gray, image, mask)
-    return np.nan_to_num(result, nan=-1.0, posinf=-1.0, neginf=-1.0)
+    return np.nan_to_num(result, nan=-1.0, posinf=-1.0, neginf=-1.0) # type: ignore[no-any-return]
 
 
 def locate_x_matches(
