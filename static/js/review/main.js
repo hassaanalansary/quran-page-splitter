@@ -101,6 +101,7 @@ function wireEvents() {
   });
   els.saveReviewBtn.addEventListener("click", saveReview);
   els.reloadOriginalBtn.addEventListener("click", reloadOriginal);
+  document.addEventListener("keydown", onKeyDown);
 }
 
 function render() {
@@ -181,7 +182,16 @@ function renderSelection() {
     </div>
     <div class="field">
       <label>Type</label>
-      <input value="${line.type}" disabled />
+      <select id="line-type">
+        <option value="text" ${line.type === "text" ? "selected" : ""}>text</option>
+        <option value="sura_header" ${line.type === "sura_header" ? "selected" : ""}>sura_header</option>
+        <option value="basmala" ${line.type === "basmala" ? "selected" : ""}>basmala</option>
+      </select>
+    </div>
+    <div class="line-ops">
+      <button id="add-line-above-btn">Add above</button>
+      <button id="add-line-below-btn">Add below</button>
+      <button class="danger" id="delete-line-btn">Delete line</button>
     </div>
     <div id="line-specific"></div>
   `;
@@ -190,6 +200,16 @@ function renderSelection() {
       .getElementById(`line-${key}`)
       .addEventListener("change", (event) => updateLineBox(key, event.target.value));
   });
+  document.getElementById("line-type").addEventListener("change", (event) => {
+    updateLineType(event.target.value);
+  });
+  document.getElementById("add-line-above-btn").addEventListener("click", () => {
+    insertLine("above");
+  });
+  document.getElementById("add-line-below-btn").addEventListener("click", () => {
+    insertLine("below");
+  });
+  document.getElementById("delete-line-btn").addEventListener("click", deleteLine);
   renderLineSpecific(line);
 }
 
@@ -222,6 +242,7 @@ function renderLineSpecific(line) {
     <div class="review-actions">
       <button id="add-separator-btn">Add separator</button>
       <button id="remove-separator-btn" ${state.selectedSeparatorIndex == null ? "disabled" : ""}>Remove selected separator</button>
+      <button id="delete-segment-btn" ${state.selectedSegmentIndex == null ? "disabled" : ""}>Delete selected segment</button>
     </div>
     <div class="field">
       <label>Selected aya anchor</label>
@@ -234,12 +255,10 @@ function renderLineSpecific(line) {
     notify();
   });
   document.getElementById("remove-separator-btn").addEventListener("click", () => {
-    if (state.selectedSeparatorIndex == null) return;
-    editWithHistory(() => {
-      line.separator_cuts.splice(state.selectedSeparatorIndex, 1);
-      state.selectedSeparatorIndex = null;
-      regenerateSegments(line);
-    });
+    deleteSelectedSeparator();
+  });
+  document.getElementById("delete-segment-btn").addEventListener("click", () => {
+    deleteSelectedSegment();
   });
   document.getElementById("aya-anchor").addEventListener("change", (event) => {
     if (!segment) return;
@@ -266,10 +285,18 @@ function renderSegments(line) {
         <div class="segment-title">Segment ${index + 1} · S${segment.sura_number || "?"}:A${segment.aya_number || "?"}</div>
         <div class="segment-subtitle">${segment.has_separator ? "ends aya" : "continuation"} · x ${segment.bbox.x}, w ${segment.bbox.w}</div>
       </div>
-      <button>Select</button>
+      <div class="segment-actions">
+        <button>Select</button>
+        <button class="danger">Delete</button>
+      </div>
     `;
-    row.querySelector("button").addEventListener("click", () => {
+    const buttons = row.querySelectorAll("button");
+    buttons[0].addEventListener("click", () => {
       selectSegment(state.selectedLineIndex, index);
+    });
+    buttons[1].addEventListener("click", () => {
+      selectSegment(state.selectedLineIndex, index);
+      deleteSegmentAt(line, index);
     });
     container.appendChild(row);
   });
@@ -282,10 +309,18 @@ function renderSegments(line) {
         <div class="segment-title">Separator ${index + 1}</div>
         <div class="segment-subtitle">x ${cut}</div>
       </div>
-      <button>Select</button>
+      <div class="segment-actions">
+        <button>Select</button>
+        <button class="danger">Delete</button>
+      </div>
     `;
-    row.querySelector("button").addEventListener("click", () => {
+    const buttons = row.querySelectorAll("button");
+    buttons[0].addEventListener("click", () => {
       selectSeparator(state.selectedLineIndex, index);
+    });
+    buttons[1].addEventListener("click", () => {
+      selectSeparator(state.selectedLineIndex, index);
+      deleteSelectedSeparator();
     });
     container.appendChild(row);
   });
@@ -330,6 +365,241 @@ function updateLineBox(key, rawValue) {
     line.line_bbox[key] = key === "w" || key === "h" ? Math.max(1, value) : Math.max(0, value);
     if (line.type === "text") regenerateSegments(line);
   });
+}
+
+function onKeyDown(event) {
+  if (event.key !== "Delete" || isEditableTarget(event.target)) return;
+  if (state.selectedSeparatorIndex != null) {
+    event.preventDefault();
+    deleteSelectedSeparator();
+    return;
+  }
+  if (state.selectedSegmentIndex != null) {
+    event.preventDefault();
+    deleteSelectedSegment();
+    return;
+  }
+  if (state.selectedLineIndex != null) {
+    event.preventDefault();
+    deleteLine();
+  }
+}
+
+function updateLineType(type) {
+  const line = currentLine();
+  if (!line || !["text", "sura_header", "basmala"].includes(type)) return;
+  editWithHistory(() => {
+    applyLineType(line, type);
+  });
+}
+
+function insertLine(position) {
+  const page = currentPage();
+  const line = currentLine();
+  if (!page || !line || state.selectedLineIndex == null) return;
+  const insertIndex =
+    position === "above" ? state.selectedLineIndex : state.selectedLineIndex + 1;
+  editWithHistory(() => {
+    const newLine = createLineNear(page, state.selectedLineIndex, position);
+    page.lines.splice(insertIndex, 0, newLine);
+    state.selectedLineIndex = insertIndex;
+    state.selectedSegmentIndex = null;
+    state.selectedSeparatorIndex = null;
+    state.addSeparatorMode = false;
+  });
+}
+
+function deleteLine() {
+  const page = currentPage();
+  if (!page || state.selectedLineIndex == null) return;
+  editWithHistory(() => {
+    page.lines.splice(state.selectedLineIndex, 1);
+    if (!page.lines.length) {
+      state.selectedLineIndex = null;
+    } else {
+      state.selectedLineIndex = Math.min(state.selectedLineIndex, page.lines.length - 1);
+    }
+    state.selectedSegmentIndex = null;
+    state.selectedSeparatorIndex = null;
+    state.addSeparatorMode = false;
+  });
+}
+
+function deleteSelectedSeparator() {
+  const line = currentLine();
+  if (!line || state.selectedSeparatorIndex == null) return;
+  editWithHistory(() => {
+    line.separator_cuts.splice(state.selectedSeparatorIndex, 1);
+    state.selectedSeparatorIndex = null;
+    state.selectedSegmentIndex = null;
+    regenerateSegments(line);
+  });
+}
+
+function deleteSelectedSegment() {
+  const line = currentLine();
+  if (!line || state.selectedSegmentIndex == null) return;
+  deleteSegmentAt(line, state.selectedSegmentIndex);
+}
+
+function deleteSegmentAt(line, segmentIndex) {
+  editWithHistory(() => {
+    const segments = line.segments || [];
+    const segment = segments[segmentIndex];
+    if (!segment?.bbox) return;
+
+    if (segments.length === 1) {
+      addDeletedRange(line, segment.bbox);
+      state.selectedSegmentIndex = null;
+      regenerateSegments(line);
+      return;
+    }
+
+    if (segmentIndex === 0) {
+      deleteRightEdgeSegment(line, segment);
+    } else if (segmentIndex === segments.length - 1) {
+      deleteLeftEdgeSegment(line, segment);
+    } else {
+      addDeletedRange(line, segment.bbox);
+    }
+
+    state.selectedSegmentIndex = null;
+    state.selectedSeparatorIndex = null;
+    regenerateSegments(line);
+  });
+}
+
+function deleteLeftEdgeSegment(line, segment) {
+  const right = line.line_bbox.x + line.line_bbox.w;
+  const newLeft = segment.bbox.x + segment.bbox.w;
+  if (newLeft >= right) {
+    addDeletedRange(line, segment.bbox);
+    return;
+  }
+  line.line_bbox.x = newLeft;
+  line.line_bbox.w = right - newLeft;
+  line.separator_cuts = Array.from(
+    new Set([...(line.separator_cuts || []), newLeft]),
+  );
+  removeDeletedRangesOutsideLine(line);
+}
+
+function deleteRightEdgeSegment(line, segment) {
+  const left = line.line_bbox.x;
+  const newRight = segment.bbox.x;
+  if (newRight <= left) {
+    addDeletedRange(line, segment.bbox);
+    return;
+  }
+  line.line_bbox.w = newRight - left;
+  line.separator_cuts = (line.separator_cuts || []).filter(
+    (cut) => Math.round(Number(cut)) !== Math.round(newRight),
+  );
+  removeDeletedRangesOutsideLine(line);
+}
+
+function addDeletedRange(line, bbox) {
+  const range = {
+    x: Math.round(Number(bbox.x)),
+    w: Math.round(Number(bbox.w)),
+  };
+  if (!range.w || range.w < 1) return;
+  const exists = (line.deleted_segment_ranges || []).some(
+    (item) =>
+      Math.round(Number(item.x)) === range.x &&
+      Math.round(Number(item.w)) === range.w,
+  );
+  if (!exists) {
+    line.deleted_segment_ranges = [...(line.deleted_segment_ranges || []), range];
+  }
+}
+
+function removeDeletedRangesOutsideLine(line) {
+  const left = line.line_bbox.x;
+  const right = line.line_bbox.x + line.line_bbox.w;
+  line.deleted_segment_ranges = (line.deleted_segment_ranges || []).filter((range) => {
+    const start = Number(range.x);
+    const end = start + Number(range.w);
+    return start >= left && end <= right;
+  });
+}
+
+function applyLineType(line, type) {
+  line.type = type;
+  line.slot_count = Number(line.slot_count || 1);
+  state.selectedSegmentIndex = null;
+  state.selectedSeparatorIndex = null;
+  state.addSeparatorMode = false;
+
+  if (type === "text") {
+    delete line.manual_sura_anchor;
+    delete line.sura_transliteration;
+    if (!Array.isArray(line.separator_cuts)) {
+      line.separator_cuts = Array.isArray(line.segments)
+        ? line.segments
+            .filter((segment) => segment.has_separator && segment.bbox)
+            .map((segment) => segment.bbox.x)
+        : [];
+    }
+    regenerateSegments(line);
+    return;
+  }
+
+  delete line.segments;
+  delete line.separator_cuts;
+  delete line.deleted_segment_ranges;
+  if (type === "sura_header") {
+    line.manual_sura_anchor = Number(line.sura_number || state.results?.start_sura || 1);
+  } else {
+    delete line.manual_sura_anchor;
+    delete line.sura_transliteration;
+  }
+}
+
+function createLineNear(page, selectedIndex, position) {
+  const selected = page.lines[selectedIndex];
+  const box = suggestedLineBox(page, selectedIndex, position);
+  const line = {
+    line_number: selectedIndex + (position === "above" ? 1 : 2),
+    slot_count: Number(selected?.slot_count || 1),
+    line_bbox: box,
+    type: "text",
+    separator_cuts: [],
+    segments: [],
+  };
+  regenerateSegments(line);
+  return line;
+}
+
+function suggestedLineBox(page, selectedIndex, position) {
+  const selected = page.lines[selectedIndex];
+  const current = selected?.line_bbox || page.crop_box || { x: 0, y: 0, w: 100, h: 40 };
+  const box = { ...current };
+  const minHeight = Math.max(8, Math.round(current.h * 0.35));
+
+  if (position === "above") {
+    const previous = page.lines[selectedIndex - 1]?.line_bbox;
+    if (previous) {
+      const previousBottom = previous.y + previous.h;
+      const gap = current.y - previousBottom;
+      if (gap >= minHeight) {
+        return { x: current.x, y: previousBottom, w: current.w, h: gap };
+      }
+    }
+    box.y = Math.max(0, current.y - current.h);
+    return box;
+  }
+
+  const next = page.lines[selectedIndex + 1]?.line_bbox;
+  const currentBottom = current.y + current.h;
+  if (next) {
+    const gap = next.y - currentBottom;
+    if (gap >= minHeight) {
+      return { x: current.x, y: currentBottom, w: current.w, h: gap };
+    }
+  }
+  box.y = currentBottom;
+  return box;
 }
 
 function editWithHistory(callback) {
@@ -411,4 +681,11 @@ function suraOptions(selected) {
 
 function toCamel(id) {
   return id.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
+}
+
+function isEditableTarget(target) {
+  if (!(target instanceof HTMLElement)) return false;
+  return Boolean(
+    target.closest("input, textarea, select, [contenteditable='true']"),
+  );
 }

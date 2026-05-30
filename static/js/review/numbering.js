@@ -19,6 +19,7 @@ export function recalculateNumbering(results, suras) {
         applyLineSura(line, currentSura, suraMap);
         delete line.segments;
         delete line.separator_cuts;
+        delete line.deleted_segment_ranges;
         return;
       }
 
@@ -26,6 +27,7 @@ export function recalculateNumbering(results, suras) {
         applyLineSura(line, currentSura, suraMap);
         delete line.segments;
         delete line.separator_cuts;
+        delete line.deleted_segment_ranges;
         return;
       }
 
@@ -57,13 +59,18 @@ export function regenerateSegments(line) {
   const bbox = line.line_bbox;
   if (!bbox) return;
   const oldSegments = line.segments || [];
+  const oldAnchors = new Map(
+    oldSegments
+      .filter((segment) => segment.manual_aya_anchor && segment.bbox)
+      .map((segment) => [bboxKey(segment.bbox), segment.manual_aya_anchor]),
+  );
   const left = Number(bbox.x);
   const right = Number(bbox.x) + Number(bbox.w);
   const cuts = Array.from(
     new Set(
       (line.separator_cuts || [])
         .map((value) => Math.round(Number(value)))
-        .filter((value) => Number.isFinite(value) && value >= left && value <= right),
+        .filter((value) => Number.isFinite(value) && value >= left && value < right),
     ),
   ).sort((a, b) => a - b);
   line.separator_cuts = cuts;
@@ -86,12 +93,18 @@ export function regenerateSegments(line) {
     });
   }
 
-  oldSegments.forEach((oldSegment, index) => {
-    if (segments[index] && oldSegment.manual_aya_anchor) {
-      segments[index].manual_aya_anchor = oldSegment.manual_aya_anchor;
+  const deletedRanges = normalizeDeletedRanges(line);
+  line.deleted_segment_ranges = deletedRanges;
+  const keptSegments = segments.filter(
+    (segment) => !isDeletedSegment(segment, deletedRanges),
+  );
+  keptSegments.forEach((segment) => {
+    const anchor = oldAnchors.get(bboxKey(segment.bbox));
+    if (anchor) {
+      segment.manual_aya_anchor = anchor;
     }
   });
-  line.segments = segments;
+  line.segments = keptSegments;
 }
 
 function applyLineSura(line, currentSura, suraMap) {
@@ -104,4 +117,27 @@ function applyLineSura(line, currentSura, suraMap) {
 function positiveNumber(value) {
   const result = Number(value);
   return Number.isInteger(result) && result > 0 ? result : null;
+}
+
+function normalizeDeletedRanges(line) {
+  return (line.deleted_segment_ranges || [])
+    .map((range) => ({
+      x: Math.round(Number(range.x)),
+      w: Math.round(Number(range.w)),
+    }))
+    .filter((range) => Number.isFinite(range.x) && Number.isFinite(range.w) && range.w > 0);
+}
+
+function isDeletedSegment(segment, ranges) {
+  const start = Math.round(Number(segment.bbox.x));
+  const end = start + Math.round(Number(segment.bbox.w));
+  return ranges.some((range) => {
+    const rangeStart = range.x;
+    const rangeEnd = range.x + range.w;
+    return start === rangeStart && end === rangeEnd;
+  });
+}
+
+function bboxKey(bbox) {
+  return `${Math.round(Number(bbox.x))}:${Math.round(Number(bbox.w))}`;
 }

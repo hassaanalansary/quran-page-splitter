@@ -87,6 +87,7 @@ def normalize_review_data(data: dict[str, Any]) -> dict[str, Any]:
                 line["sura_transliteration"] = sura_info.transliteration
                 line.pop("segments", None)
                 line.pop("separator_cuts", None)
+                line.pop("deleted_segment_ranges", None)
                 continue
 
             if line_type == "basmala":
@@ -95,6 +96,7 @@ def normalize_review_data(data: dict[str, Any]) -> dict[str, Any]:
                 line["sura_name"] = sura_info.name
                 line.pop("segments", None)
                 line.pop("separator_cuts", None)
+                line.pop("deleted_segment_ranges", None)
                 continue
 
             line["type"] = "text"
@@ -249,6 +251,13 @@ def _regenerate_text_segments(line: dict[str, Any]) -> None:
     line["separator_cuts"] = cuts
 
     segments: list[dict[str, Any]] = []
+    old_anchors = {
+        _bbox_key(_bbox_value(segment.get("bbox"), "segment.bbox")): segment[
+            "manual_aya_anchor"
+        ]
+        for segment in old_segments
+        if "manual_aya_anchor" in segment and isinstance(segment.get("bbox"), dict)
+    }
     end = bbox["x"] + bbox["w"]
     for cut in reversed(cuts):
         segment = {
@@ -277,11 +286,17 @@ def _regenerate_text_segments(line: dict[str, Any]) -> None:
             }
         )
 
-    for index, old_segment in enumerate(old_segments):
-        if index >= len(segments):
-            break
-        if "manual_aya_anchor" in old_segment:
-            segments[index]["manual_aya_anchor"] = old_segment["manual_aya_anchor"]
+    deleted_ranges = _deleted_segment_ranges(line)
+    line["deleted_segment_ranges"] = deleted_ranges
+    segments = [
+        segment
+        for segment in segments
+        if not _is_deleted_segment(segment, deleted_ranges)
+    ]
+    for segment in segments:
+        anchor = old_anchors.get(_bbox_key(_bbox_value(segment.get("bbox"), "bbox")))
+        if anchor is not None:
+            segment["manual_aya_anchor"] = anchor
 
     line["segments"] = segments
 
@@ -300,9 +315,39 @@ def _separator_cuts(line: dict[str, Any], bbox: dict[str, int]) -> list[int]:
     cuts: set[int] = set()
     for value in raw_cuts:
         cut = _positive_int(value, "separator_cuts")
-        if left <= cut <= right:
+        if left <= cut < right:
             cuts.add(cut)
     return sorted(cuts)
+
+
+def _deleted_segment_ranges(line: dict[str, Any]) -> list[dict[str, int]]:
+    ranges: list[dict[str, int]] = []
+    raw_ranges = line.get("deleted_segment_ranges")
+    if not isinstance(raw_ranges, list):
+        return ranges
+    for raw_range in raw_ranges:
+        if not isinstance(raw_range, dict):
+            continue
+        x = _non_negative_int(raw_range.get("x"), "deleted_segment_ranges.x")
+        w = _positive_int(raw_range.get("w"), "deleted_segment_ranges.w")
+        ranges.append({"x": x, "w": w})
+    return ranges
+
+
+def _is_deleted_segment(
+    segment: dict[str, Any],
+    ranges: list[dict[str, int]],
+) -> bool:
+    bbox = _bbox_value(segment.get("bbox"), "bbox")
+    start = bbox["x"]
+    end = bbox["x"] + bbox["w"]
+    return any(
+        start == item["x"] and end == item["x"] + item["w"] for item in ranges
+    )
+
+
+def _bbox_key(bbox: dict[str, int]) -> tuple[int, int]:
+    return (bbox["x"], bbox["w"])
 
 
 def _save_crop(image: Image.Image, bbox: Any, output_path: Path) -> str:

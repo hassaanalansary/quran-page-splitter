@@ -191,6 +191,16 @@
   font-size: 12px;
 }
 
+.line-ops {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.line-ops button {
+  padding-inline: 0.45rem;
+}
+
 .segment-row {
   display: grid;
   grid-template-columns: 1fr auto;
@@ -204,6 +214,15 @@
 
 .segment-row.active {
   border-color: var(--accent);
+}
+
+.segment-actions {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.segment-actions button {
+  padding-inline: 0.55rem;
 }
 
 .segment-title {
