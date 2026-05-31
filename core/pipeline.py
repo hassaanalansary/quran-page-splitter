@@ -20,6 +20,7 @@ from core.page_processor import (
     is_line_geometry_failure,
 )
 from core.quran_metadata import get_sura
+from core.review import PAGES_DIR, save_page_copy
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +73,12 @@ class Pipeline:
 
         for page_index, (raw_bytes, filename) in enumerate(images_data, start=1):
             logger.info("Processing %s", filename)
+            page_image_filename = save_page_copy(
+                raw_bytes,
+                filename,
+                page_index,
+                PAGES_DIR,
+            )
             try:
                 img = Image.open(io.BytesIO(raw_bytes))
             except Exception as e:
@@ -81,7 +88,12 @@ class Pipeline:
                 )
                 continue
 
-            ctx = create_context(img, filename, page_index)
+            ctx = create_context(
+                img,
+                filename,
+                page_index,
+                page_image_filename=page_image_filename,
+            )
             result = self.processor.process(
                 ctx,
                 tracker,

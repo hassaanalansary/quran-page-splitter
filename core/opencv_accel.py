@@ -110,11 +110,11 @@ def _as_umat(mat: np.ndarray | cv2.UMat) -> cv2.UMat:
     return cv2.UMat(mat)  # type: ignore[call-overload, no-any-return]
 
 
-def upload_gray_for_matching(padded_line: np.ndarray) -> np.ndarray | cv2.UMat:
-    """Upload padded scan line once for repeated ``matchTemplate`` (OpenCL)."""
+def upload_gray_for_matching(gray: np.ndarray) -> np.ndarray | cv2.UMat:
+    """Upload a grayscale image once for repeated ``matchTemplate`` (OpenCL)."""
     if not acceleration_is_opencl():
-        return padded_line
-    return _as_umat(padded_line)
+        return gray
+    return _as_umat(gray)
 
 
 def resize_area(src: np.ndarray | cv2.UMat, dsize: tuple[int, int]) -> np.ndarray:
@@ -131,14 +131,26 @@ def resize_area(src: np.ndarray | cv2.UMat, dsize: tuple[int, int]) -> np.ndarra
 def match_template_ccoeff_normed(
     image: np.ndarray | cv2.UMat,
     templ: np.ndarray | cv2.UMat,
+    mask: np.ndarray | cv2.UMat | None = None,
 ) -> np.ndarray:
     """``TM_CCOEFF_NORMED`` match; result is CPU ``numpy.ndarray``."""
     if not acceleration_is_opencl():
         img = image.get() if isinstance(image, cv2.UMat) else image
         tpl = templ.get() if isinstance(templ, cv2.UMat) else templ
-        return cv2.matchTemplate(img, tpl, cv2.TM_CCOEFF_NORMED)
+        if mask is None:
+            return cv2.matchTemplate(img, tpl, cv2.TM_CCOEFF_NORMED)
+        msk = mask.get() if isinstance(mask, cv2.UMat) else mask
+        return cv2.matchTemplate(img, tpl, cv2.TM_CCOEFF_NORMED, mask=msk)
 
     img_u = _as_umat(image)
     tpl_u = _as_umat(templ)
-    match_u = cv2.matchTemplate(img_u, tpl_u, cv2.TM_CCOEFF_NORMED)
+    if mask is None:
+        match_u = cv2.matchTemplate(img_u, tpl_u, cv2.TM_CCOEFF_NORMED)
+    else:
+        match_u = cv2.matchTemplate(
+            img_u,
+            tpl_u,
+            cv2.TM_CCOEFF_NORMED,
+            mask=_as_umat(mask),
+        )
     return match_u.get()

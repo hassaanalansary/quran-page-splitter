@@ -26,7 +26,12 @@ def is_line_geometry_failure(status: str) -> bool:
     return status in (STATUS_NO_LINES, STATUS_LINE_COUNT_MISMATCH)
 
 
-def create_context(image: Image.Image, filename: str, page_index: int) -> PageContext:
+def create_context(
+    image: Image.Image,
+    filename: str,
+    page_index: int,
+    page_image_filename: str | None = None,
+) -> PageContext:
     """Create a PageContext from a PIL image (binarizes once)."""
     grey, binary = binarize_image(image)
     return PageContext(
@@ -35,6 +40,7 @@ def create_context(image: Image.Image, filename: str, page_index: int) -> PageCo
         binary=binary,
         filename=filename,
         page_index=page_index,
+        page_image_filename=page_image_filename,
     )
 
 

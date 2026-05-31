@@ -20,6 +20,7 @@ export const state = {
 
   imageFiles: [], // File[] queue — up to 610 images
   alternateHorizontalMargin: false,
+  preferAcceleration: true,
   activeCropMode: "bounds",
   globalOutputs: {
     bounds: null, // { left, top, width, height }

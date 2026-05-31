@@ -99,6 +99,13 @@ alternateHorizontalMarginInput.addEventListener("change", () => {
   state.alternateHorizontalMargin = alternateHorizontalMarginInput.checked;
 });
 
+const preferAccelerationInput = document.getElementById(
+  "prefer-acceleration",
+);
+preferAccelerationInput.addEventListener("change", () => {
+  state.preferAcceleration = preferAccelerationInput.checked;
+});
+
 const exportImagesInput = document.getElementById("export-images");
 const exportCoordinatesInput = document.getElementById("export-coordinates");
 const startSuraGroup = document.getElementById("start-sura-group");

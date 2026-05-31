@@ -32,11 +32,14 @@ def track_positions(ctx: PageContext, tracker: QuranTracker) -> None:
     for line in ctx.lines:
         if line.is_sura:
             _handle_sura_header(line, tracker)
-            x, y, w, h = find_content_bbox(
+            content_bbox = find_content_bbox(
                 ctx.binary[
                     line.bbox.top : line.bbox.bottom, line.bbox.left : line.bbox.right
                 ]
             )
+            if content_bbox is None:
+                continue
+            x, y, w, h = content_bbox
             line.bbox = BBox(
                 left=line.bbox.left + x,
                 top=line.bbox.top + y,
@@ -51,12 +54,15 @@ def track_positions(ctx: PageContext, tracker: QuranTracker) -> None:
 
             if not has_any_separator:
                 _handle_basmala(line, tracker)
-                x, y, w, h = find_content_bbox(
+                content_bbox = find_content_bbox(
                     ctx.binary[
                         line.bbox.top : line.bbox.bottom,
                         line.bbox.left : line.bbox.right,
                     ]
                 )
+                if content_bbox is None:
+                    continue
+                x, y, w, h = content_bbox
                 line.bbox = BBox(
                     left=line.bbox.left + x,
                     top=line.bbox.top + y,
@@ -186,14 +192,17 @@ def collect_page_coordinates(ctx: PageContext) -> dict:
     page_data: dict = {
         "page_number": ctx.page_index,
         "image_filename": ctx.filename,
+        "page_image_filename": ctx.page_image_filename,
+        "crop_box": ctx.crop_box.as_xywh() if ctx.crop_box else None,
         "lines": [],
     }
 
     for line in ctx.lines:
+        line_bbox = _export_line_bbox(line)
         line_data: dict = {
             "line_number": line.line_index,
             "slot_count": line.slot_count,
-            "line_bbox": line.bbox.as_xywh(),
+            "line_bbox": line_bbox.as_xywh(),
         }
 
         if line.is_sura:
@@ -207,6 +216,9 @@ def collect_page_coordinates(ctx: PageContext) -> dict:
             line_data["sura_name"] = line.sura_name
         else:
             line_data["type"] = "text"
+            line_data["separator_cuts"] = sorted(
+                seg.bbox.left for seg in line.segments if seg.has_separator
+            )
             line_data["segments"] = []
             for seg in line.segments:
                 line_data["segments"].append(
@@ -217,6 +229,7 @@ def collect_page_coordinates(ctx: PageContext) -> dict:
                         else None,
                         "aya_number": seg.aya_number,
                         "is_continuation": seg.is_continuation,
+                        "has_separator": seg.has_separator,
                         "bbox": seg.bbox.as_xywh(),
                     }
                 )
@@ -224,6 +237,19 @@ def collect_page_coordinates(ctx: PageContext) -> dict:
         page_data["lines"].append(line_data)
 
     return page_data
+
+
+def _export_line_bbox(line: LineResult) -> BBox:
+    """Use segment extents for text lines so review bounds avoid empty margins."""
+    if line.is_sura or line.is_basmala or not line.segments:
+        return line.bbox
+
+    return BBox(
+        left=min(seg.bbox.left for seg in line.segments),
+        top=min(seg.bbox.top for seg in line.segments),
+        right=max(seg.bbox.right for seg in line.segments),
+        bottom=max(seg.bbox.bottom for seg in line.segments),
+    )
 
 
 # ------------------------------------------------------------------

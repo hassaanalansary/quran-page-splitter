@@ -99,6 +99,7 @@ class LineDetector:
         cropped_grey = ctx.cropped_grey()
         cropped_binary = ctx.cropped_binary()
 
+        logger.info("Start detecting bands")
         bands = self._detect_bands(cropped_grey, cropped_binary, n_lines)
         self._set_lines_from_bands(ctx, left, top, bands)
 
