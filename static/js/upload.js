@@ -12,6 +12,12 @@ import {
   syncCropModeUI,
   updateUIFromCrop,
 } from "./ui.js";
+import {
+  applyCropRect,
+  boundsRectForPage,
+  boundsRectFromPage,
+  currentVisibleCropRect,
+} from "./margins.js";
 
 const MAX_FILES = 610;
 const ENDPOINT = "http://localhost:8000/upload/";
@@ -54,13 +60,22 @@ export function loadImageAtIndex(index, options = {}) {
   const { resetCrop = false } = options;
   if (!state.imageFiles.length) return;
   const clamped = Math.max(0, Math.min(index, state.imageFiles.length - 1));
+  const canCarryBounds =
+    !resetCrop &&
+    state.activeCropMode === "bounds" &&
+    state.selectionActive &&
+    state.cropW > 0 &&
+    state.cropH > 0;
+  const carriedBounds = canCarryBounds
+    ? boundsRectFromPage(currentVisibleCropRect())
+    : null;
   state.selectedImageIndex = clamped;
-  loadImageFile(state.imageFiles[clamped], { resetCrop });
+  loadImageFile(state.imageFiles[clamped], { resetCrop, carriedBounds });
   renderCarousel();
 }
 
 function loadImageFile(file, options = {}) {
-  const { resetCrop = true } = options;
+  const { resetCrop = true, carriedBounds = null } = options;
   const url = URL.createObjectURL(file);
   const imgEl = new Image();
   imgEl.onload = () => {
@@ -85,10 +100,13 @@ function loadImageFile(file, options = {}) {
       state.cropW > 0 &&
       state.cropH > 0
     ) {
+      if (carriedBounds) {
+        applyCropRect(boundsRectForPage(carriedBounds));
+      }
       clampCropBounds();
       updateUIFromCrop();
     } else if (state.globalOutputs.bounds) {
-      const b = state.globalOutputs.bounds;
+      const b = boundsRectForPage(state.globalOutputs.bounds);
       state.cropX = b.left;
       state.cropY = b.top;
       state.cropW = b.width;

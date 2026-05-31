@@ -1,6 +1,6 @@
 import { state } from "./state.js";
 import { mainCanvas } from "./canvas.js";
-import { startCropping, onManualInputChange } from "./crop.js";
+import { startCropping, onManualInputChange, setCrop } from "./crop.js";
 import { onSelBoxMousemove, onSelBoxMouseDown } from "./drag.js";
 import {
   selBox,
@@ -26,6 +26,11 @@ import {
   loadImageAtIndex,
 } from "./upload.js";
 import { initSuraSelects } from "./sura_selects.js";
+import {
+  boundsRectForPage,
+  boundsRectFromPage,
+  currentVisibleCropRect,
+} from "./margins.js";
 
 const dropZone = document.getElementById("drop-zone");
 const fileInput = document.getElementById("file-input");
@@ -48,12 +53,11 @@ function previewToBlob() {
 }
 
 function currentCropRect() {
-  return {
-    left: state.cropX,
-    top: state.cropY,
-    width: state.cropW,
-    height: state.cropH,
-  };
+  return currentVisibleCropRect();
+}
+
+function currentBoundsRect() {
+  return boundsRectFromPage(currentVisibleCropRect());
 }
 
 function relativeIgnoreRect(templateRect) {
@@ -96,7 +100,30 @@ fileInput.addEventListener("change", () => {
   if (fileInput.files.length > 0) handleFileSelection(fileInput.files);
 });
 alternateHorizontalMarginInput.addEventListener("change", () => {
+  const previousAlternate = state.alternateHorizontalMargin;
+  const activeBoundsCrop =
+    state.activeCropMode === "bounds" &&
+    state.selectionActive &&
+    state.cropW > 0 &&
+    state.cropH > 0;
+  const canonicalBounds = activeBoundsCrop
+    ? boundsRectFromPage(currentVisibleCropRect(), {
+        alternate: previousAlternate,
+      })
+    : null;
+
   state.alternateHorizontalMargin = alternateHorizontalMarginInput.checked;
+
+  if (canonicalBounds) {
+    const visibleBounds = boundsRectForPage(canonicalBounds);
+    setCrop(
+      visibleBounds.left,
+      visibleBounds.top,
+      visibleBounds.width,
+      visibleBounds.height,
+      true,
+    );
+  }
 });
 
 const preferAccelerationInput = document.getElementById(
@@ -144,7 +171,7 @@ cropBtn.addEventListener("click", async () => {
 
   const mode = state.activeCropMode;
   if (mode === "bounds") {
-    state.globalOutputs.bounds = currentCropRect();
+    state.globalOutputs.bounds = currentBoundsRect();
     updateCropOutputStatus();
     return;
   }
