@@ -61,8 +61,8 @@ class PageProcessor:
         self,
         ctx: PageContext,
         tracker: QuranTracker,
-        export_images: bool = True,
-        export_coordinates: bool = False,
+        export_images: bool = False,
+        export_coordinates: bool = True,
         expected_lines: int = 15,
     ) -> dict:
         """Full pipeline for one page: detect → classify → split → track → export.

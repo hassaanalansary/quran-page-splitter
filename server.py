@@ -22,7 +22,6 @@ from core.review import (
     PAGES_DIR,
     RESULTS_JSON,
     load_review_results,
-    re_export_corrected_images,
     resolve_page_copy,
     review_status,
     save_corrected_results,
@@ -52,6 +51,14 @@ async def serve_review():  # type: ignore[no-untyped-def]
     if not review_path.exists():
         raise HTTPException(status_code=404, detail="review.html not found")
     return review_path.read_text(encoding="utf-8")
+
+
+@app.get("/cut-review", response_class=HTMLResponse)
+async def serve_cut_review():  # type: ignore[no-untyped-def]
+    cut_review_path = Path("cut_review.html")
+    if not cut_review_path.exists():
+        raise HTTPException(status_code=404, detail="cut_review.html not found")
+    return cut_review_path.read_text(encoding="utf-8")
 
 
 @app.get("/api/suras")
@@ -112,20 +119,6 @@ async def save_review_results(  # type: ignore[no-untyped-def]
     }
 
 
-@app.post("/api/review/re-export")
-async def re_export_review_images():  # type: ignore[no-untyped-def]
-    if not CORRECTED_RESULTS_JSON.exists():
-        raise HTTPException(
-            status_code=404,
-            detail="corrected_results.json not found. Save corrections first.",
-        )
-    try:
-        summary = re_export_corrected_images()
-    except (FileNotFoundError, KeyError, ValueError) as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return {"status": "exported", **summary}
-
-
 @app.post("/upload/")
 async def upload_images(  # type: ignore[no-untyped-def]
     images: list[UploadFile] = File(...),
@@ -149,8 +142,6 @@ async def upload_images(  # type: ignore[no-untyped-def]
     aya_separator_ignore_w: int | None = Form(None),
     aya_separator_ignore_h: int | None = Form(None),
     alternate_horizontal_margin: bool = Form(False),
-    export_images: bool = Form(True),
-    export_coordinates: bool = Form(False),
     start_sura: int = Form(1),
     start_aya: int = Form(1),
     expected_lines: int = Form(15),
@@ -196,8 +187,8 @@ async def upload_images(  # type: ignore[no-untyped-def]
     )
 
     export_cfg = ExportConfig(
-        export_images=export_images,
-        export_coordinates=export_coordinates,
+        export_images=False,
+        export_coordinates=True,
         start_sura=start_sura,
         start_aya=start_aya,
         expected_lines=expected_lines,

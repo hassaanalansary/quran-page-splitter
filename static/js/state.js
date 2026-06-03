@@ -31,8 +31,6 @@ export const state = {
     ayaSeparatorRect: null,
     ayaSeparatorIgnore: null,
   },
-  exportImages: true,
-  exportCoordinates: false,
   startSura: 1,
   startAya: 1,
 };

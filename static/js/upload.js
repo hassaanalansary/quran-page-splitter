@@ -149,12 +149,8 @@ export function fullReset() {
   state.globalOutputs.ayaSeparatorBlob = null;
   state.globalOutputs.ayaSeparatorRect = null;
   state.globalOutputs.ayaSeparatorIgnore = null;
-  state.exportImages = true;
-  state.exportCoordinates = false;
   state.startSura = 1;
   state.startAya = 1;
-  document.getElementById("export-images").checked = true;
-  document.getElementById("export-coordinates").checked = false;
   document.getElementById("padding").value = "4";
   document.getElementById("expected-lines").value = "15";
   document.getElementById("sura-header-slots").value = "1";
@@ -162,8 +158,6 @@ export function fullReset() {
   document.getElementById("max-sura-headers").value = "3";
   document.getElementById("aya-match-threshold").value = "0.50";
   resetSuraSelects();
-  document.getElementById("start-sura-group").style.display = "none";
-  document.getElementById("start-aya-group").style.display = "none";
   document.getElementById("file-input").value = "";
 
   deactivateCrop();
@@ -219,8 +213,6 @@ export async function submitCrop() {
   fd.append("match_threshold", document.getElementById("aya-match-threshold").value);
   fd.append("alternate_horizontal_margin", state.alternateHorizontalMargin);
   fd.append("prefer_acceleration", state.preferAcceleration);
-  fd.append("export_images", state.exportImages);
-  fd.append("export_coordinates", state.exportCoordinates);
   fd.append("start_sura", state.startSura);
   fd.append("start_aya", state.startAya);
 

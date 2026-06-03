@@ -74,6 +74,7 @@ class ExportConfig:
 
     Attributes:
         export_images: Whether to save cropped line/segment PNGs.
+            The web workflow keeps this disabled and exports coordinates first.
         export_coordinates: Whether to collect bounding-box coordinate data.
         start_sura: Sura number at the start of processing (1-based).
         start_aya: Aya number at the start of processing (1-based).
@@ -81,8 +82,8 @@ class ExportConfig:
             bands count).
     """
 
-    export_images: bool = True
-    export_coordinates: bool = False
+    export_images: bool = False
+    export_coordinates: bool = True
     start_sura: int = 1
     start_aya: int = 1
     expected_lines: int = 15

@@ -2,7 +2,6 @@ import {
   loadResults,
   loadStatus,
   loadSuras,
-  reExportImages,
   saveResults,
 } from "./api.js";
 import {
@@ -75,7 +74,6 @@ function bindElements() {
     "validation-toggle",
     "metadata-file",
     "validation-panel",
-    "reexport-images",
     "save-review-btn",
     "reload-original-btn",
   ].forEach((id) => {
@@ -621,10 +619,6 @@ async function saveReview() {
     payload._review_has_edits = state.hasEdits;
     const response = await saveResults(payload);
     replaceResults(response.data);
-    if (els.reexportImages.checked) {
-      els.saveReviewBtn.textContent = "Exporting...";
-      await reExportImages();
-    }
     alert("Corrected data saved.");
   } catch (error) {
     alert(`Save failed: ${error.message}`);

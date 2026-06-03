@@ -15,10 +15,6 @@ export async function saveResults(data) {
   });
 }
 
-export async function reExportImages() {
-  return readJson("/api/review/re-export", { method: "POST" });
-}
-
 export async function loadSuras() {
   return readJson("/api/suras");
 }
