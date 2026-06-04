@@ -1,9 +1,9 @@
 # Quran Page Splitter
 
 Quran Page Splitter is a local FastAPI web app for turning scanned Mushaf pages
-into transparent PNG crops for sura headers, basmalas, text lines, and aya
-segments. It also exports coordinate metadata and provides a visual review page
-for correcting the remaining detection errors manually.
+into reviewed coordinate metadata, then final transparent PNG line cuts. It
+provides one review page for correcting detected coordinates and another for
+final line-crop cleanup.
 
 The project is designed for processing full Mushaf image datasets where the
 automatic pipeline gets most pages right, then the review editor is used to fix
@@ -19,9 +19,10 @@ wrong aya separators, line types, sura anchors, and crop geometry.
 not accidentally split as ordinary text.
 - Detects aya separator ornaments inside text lines using template matching.
 - Tracks sura and aya numbering across pages.
-- Exports transparent PNG crops and/or coordinate JSON.
+- Exports coordinate JSON from the main processing run.
 - Saves source page copies for review.
 - Lets the user correct output visually in `/review`.
+- Lets the user adjust final line cuts and eraser masks in `/cut-review`.
 
 ## Requirements
 
@@ -53,13 +54,19 @@ Open:
 http://localhost:8000/
 ```
 
-The review editor is available at:
+The coordinate review editor is available at:
 
 ```text
 http://localhost:8000/review
 ```
 
-The review page only works after a run that exported coordinates.
+The line cut review editor is available at:
+
+```text
+http://localhost:8000/cut-review
+```
+
+The review pages only work after a main processing run.
 
 ## Recommended Workflow
 
@@ -76,10 +83,11 @@ The review page only works after a run that exported coordinates.
 5. Optionally define ignore regions:
   - `sura_header_ignore`
   - `aya_separator_ignore`
-6. Tune detection/export settings.
+6. Tune detection and numbering settings.
 7. Click `Upload all`.
-8. Inspect output files.
-9. Open `/review` to correct remaining metadata or geometry issues.
+8. Open `/review` to correct remaining coordinate, numbering, or geometry issues.
+9. Open `/cut-review` to adjust final line boxes and paint transparent masks.
+10. Export final line PNGs.
 
 ## Main Page Controls
 
@@ -148,10 +156,8 @@ preview shows the current rectangle.
 | `Aya thr.`            | `0.50`  | Template matching threshold for aya separators. Higher values reduce false separators; lower values find faint separators.                                                      |
 | `Alternate margins`   | Off     | Mirrors the `bounds` crop horizontally on every even processed page. Use when facing pages have mirrored inner/outer margins.                                                   |
 | `Prefer acceleration` | On      | Uses OpenCL-accelerated matching when possible. If ignore masks are used, the ignored area is approximated for speed. Disable for stricter CPU matching with full mask support. |
-| `Export images`       | On      | Writes transparent PNG crops to `results/`.                                                                                                                                     |
-| `Export coordinates`  | Off     | Writes coordinate metadata to `results.json` and enables the review workflow.                                                                                                   |
-| `Start Sura`          | `1`     | Sura number at the first uploaded page. Visible only when `Export coordinates` is enabled.                                                                                      |
-| `Start Aya`           | `1`     | Aya number at the first uploaded page. Visible only when `Export coordinates` is enabled.                                                                                       |
+| `Start Sura`          | `1`     | Sura number at the first uploaded page.                                                                                                                                         |
+| `Start Aya`           | `1`     | Aya number at the first uploaded page.                                                                                                                                          |
 
 
 ## How Detection Works
@@ -167,7 +173,7 @@ The backend processes each page in this order:
   `aya_separator` template.
 6. Split text lines right-to-left at separator cuts.
 7. Track sura and aya numbers.
-8. Export images and/or coordinates.
+8. Export coordinate JSON.
 
 Aya separator semantics:
 
@@ -184,25 +190,25 @@ Each new upload run clears the previous `results/` directory and removes old
 
 | Path                            | Created When         | Meaning                                                                        |
 | ------------------------------- | -------------------- | ------------------------------------------------------------------------------ |
-| `results/`                      | Always               | Main output folder for templates, page copies, debug crops, and image exports. |
+| `results/`                      | Always               | Main output folder for templates, page copies, debug crops, and final line exports. |
 | `results/sura_header.png`       | Always               | Saved template crop sent by the frontend.                                      |
 | `results/aya_separator.png`     | Always               | Saved template crop sent by the frontend.                                      |
 | `results/pages/`                | Always               | Safe copies of original uploaded pages, used by the review page.               |
-| `results/*.png`                 | `Export images`      | Transparent crops for sura headers, basmalas, and aya/text segments.           |
 | `results/line_detection_debug/` | Line count failure   | Per-line debug crops for the page where line detection failed.                 |
-| `results/corrected_images/`     | Review re-export     | Transparent crops regenerated from corrected review coordinates.               |
-| `results.json`                  | `Export coordinates` | Original automatic coordinate output. Kept unchanged by the review editor.     |
+| `results/final_lines/`          | Cut review export    | Final transparent line PNGs after bbox overrides and eraser masks.             |
+| `results.json`                  | Main processing run  | Original automatic coordinate output. Kept unchanged by the review editor.     |
 | `corrected_results.json`        | Review save          | Corrected coordinate output from `/review`.                                    |
+| `line_cut_edits.json`           | Cut review save      | Bbox overrides and eraser strokes from `/cut-review`.                          |
+| `line_cut_results.json`         | Cut review save/export | Final coordinate output after cut-review bbox overrides.                     |
 | `results.log`                   | Processing run       | Detailed backend processing log.                                               |
 
 
-Typical image names:
+Typical final line image names:
 
 ```text
 001-l03-sura104-header.png
 001-l04-sura104-basmala.png
-001-l07-s01-sura104-aya003.png
-001-l07-s02-sura104-aya004.png
+001-l07-sura104-aya003-004.png
 001-l08-sura104-aya005.png
 ```
 
@@ -259,7 +265,7 @@ The review page requires:
 - `results.json`
 - `results/pages/`
 
-If those are missing, run the main page again with `Export coordinates` enabled.
+If those are missing, run the main page again.
 
 The review editor loads `corrected_results.json` if it exists; otherwise it loads
 the original `results.json`. The original `results.json` is not overwritten.
@@ -274,7 +280,7 @@ the original `results.json`. The original `results.json` is not overwritten.
 | Lines      | List of detected/corrected lines on the current page.                                                               |
 | Selection  | Controls for the selected line, separator, or segment.                                                              |
 | Validation | Optional advisory aya-count validation.                                                                             |
-| Sync       | Saves corrected JSON and optionally re-exports corrected images.                                                    |
+| Sync       | Saves corrected JSON.                                                                                              |
 
 
 ### Review Canvas
@@ -382,16 +388,37 @@ configured aya count.
 corrected_results.json
 ```
 
-If `Re-export corrected images` is enabled, the backend also regenerates PNG
-crops from `corrected_results.json` into:
-
-```text
-results/corrected_images/
-```
-
 The original automatic `results.json` remains available as the fallback source.
 
 `Reload original` discards the loaded review state and reloads `results.json`.
+
+## Cut Review Page
+
+Open:
+
+```text
+http://localhost:8000/cut-review
+```
+
+The cut review page loads `corrected_results.json` if it exists; otherwise it
+uses `results.json`. It also loads source page copies from `results/pages/`.
+
+`Save cut JSON` writes:
+
+```text
+line_cut_edits.json
+line_cut_results.json
+```
+
+`line_cut_edits.json` stores only the manual cut layer: line `bbox_override`
+values and eraser strokes. Bbox overrides are merged into final line and segment
+coordinates. Eraser strokes only affect PNG transparency.
+
+`Export line PNGs` writes final transparent line images into:
+
+```text
+results/final_lines/
+```
 
 ### Review Guide
 
@@ -502,13 +529,18 @@ Main endpoints:
 | ---------------------------------- | --------- | -------------------------------------------- |
 | `/`                                | GET       | Main processing UI.                          |
 | `/review`                          | GET       | Visual review/correction UI.                 |
+| `/cut-review`                      | GET       | Final line cut review UI.                    |
+| `/line-review`                     | GET       | Alias for `/cut-review`.                     |
 | `/api/suras`                       | GET       | Built-in sura metadata.                      |
 | `/upload/`                         | POST      | Process uploaded images and templates.       |
 | `/api/review/status`               | GET       | Whether review data exists.                  |
 | `/api/review/results?source=latest | original` | GET                                          |
 | `/api/review/pages/{filename}`     | GET       | Serve saved original page images for review. |
 | `/api/review/save`                 | POST      | Save corrected review JSON.                  |
-| `/api/review/re-export`            | POST      | Re-export corrected PNG crops.               |
+| `/api/cut-review/status`           | GET       | Whether cut review data exists.              |
+| `/api/cut-review/results`          | GET       | Load source coordinates, cut edits, and merged results. |
+| `/api/cut-review/save`             | POST      | Save cut edit JSON and final coordinate JSON. |
+| `/api/cut-review/export`           | POST      | Export final transparent line PNGs.          |
 
 
 ## Development
@@ -533,4 +565,3 @@ kept type-clean.
 pages drift.
 - Review correction depends on a coordinate export and saved original page
 copies from the same run.
-

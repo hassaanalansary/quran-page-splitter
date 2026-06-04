@@ -41,10 +41,10 @@ def track_positions(ctx: PageContext, tracker: QuranTracker) -> None:
                 continue
             x, y, w, h = content_bbox
             line.bbox = BBox(
-                left=line.bbox.left + x,
-                top=line.bbox.top + y,
-                right=line.bbox.left + x + w,
-                bottom=line.bbox.top + y + h,
+                left=max(0, line.bbox.left + x - 10),
+                top=max(0, line.bbox.top + y - 10),
+                right=min(ctx.grey.shape[1], line.bbox.left + x + w + 10),
+                bottom=min(ctx.grey.shape[0], line.bbox.top + y + h + 10),
             )
             continue
 
@@ -64,10 +64,10 @@ def track_positions(ctx: PageContext, tracker: QuranTracker) -> None:
                     continue
                 x, y, w, h = content_bbox
                 line.bbox = BBox(
-                    left=line.bbox.left + x,
-                    top=line.bbox.top + y,
-                    right=line.bbox.left + x + w,
-                    bottom=line.bbox.top + y + h,
+                    left=max(0, line.bbox.left + x - 10),
+                    top=max(0, line.bbox.top + y - 10),
+                    right=min(ctx.grey.shape[1], line.bbox.left + x + w + 10),
+                    bottom=min(ctx.grey.shape[0], line.bbox.top + y + h + 10),
                 )
                 continue
 
@@ -187,7 +187,7 @@ def _handle_text_line(line: LineResult, tracker: QuranTracker) -> None:
 # ------------------------------------------------------------------
 
 
-def collect_page_coordinates(ctx: PageContext) -> dict:
+def collect_page_coordinates(ctx: PageContext, padding: int = 0) -> dict:
     """Build a JSON-serializable dict of coordinates for a single page."""
     page_data: dict = {
         "page_number": ctx.page_index,
@@ -198,7 +198,16 @@ def collect_page_coordinates(ctx: PageContext) -> dict:
     }
 
     for line in ctx.lines:
+
         line_bbox = _export_line_bbox(line)
+
+        # Add breathing room: apply the detection padding that was
+        # removed from the detection stage so boxes aren't cut too tight.
+        line_bbox.left = max(0, line_bbox.left - padding)
+        line_bbox.top = max(0, line_bbox.top - padding)
+        line_bbox.right = min(ctx.grey.shape[1], line_bbox.right + padding)
+        line_bbox.bottom = min(ctx.grey.shape[0], line_bbox.bottom + padding)
+
         line_data: dict = {
             "line_number": line.line_index,
             "slot_count": line.slot_count,

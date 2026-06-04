@@ -54,21 +54,6 @@ class DetectionConfig:
 
 
 @dataclass
-class ClassifierConfig:
-    """A data class that holds the main parameters
-    for classifying a line as a sura name.
-
-    Attributes:
-        height_factor: The factor to multiply the line height by to get the
-            threshold for classifying a line as a sura name.
-        match_threshold: The threshold for matching the sura name.
-    """
-
-    height_factor: float = 1.5
-    match_threshold: float = 0.8
-
-
-@dataclass
 class ExportConfig:
     """Configuration for what the pipeline exports.
 

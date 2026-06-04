@@ -6,7 +6,6 @@ from pathlib import Path
 from PIL import Image
 
 from core.aya_separator import AyaSeparatorProcessor
-from core.classifier import SuraClassifier
 from core.config import CropConfig, DetectionConfig, ExportConfig, ProcessingConfig
 from core.line_detector import LineDetector
 from core.page_processor import PageProcessor
@@ -68,7 +67,6 @@ def build_pipeline(
     det_cfg: DetectionConfig,
     proc_cfg: ProcessingConfig,
     export_cfg: ExportConfig,
-    classifier: SuraClassifier,
     aya_processor: AyaSeparatorProcessor,
     results_dir: Path,
     protected_locator: ProtectedBandLocator | None = None,
@@ -86,7 +84,6 @@ def build_pipeline(
     processor = PageProcessor(
         detector=detector,
         results_dir=results_dir,
-        classifier=classifier,
         aya_separator=aya_processor,
     )
     return Pipeline(processor=processor, export_config=export_cfg)

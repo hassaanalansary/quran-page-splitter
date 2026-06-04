@@ -133,19 +133,6 @@ preferAccelerationInput.addEventListener("change", () => {
   state.preferAcceleration = preferAccelerationInput.checked;
 });
 
-const exportImagesInput = document.getElementById("export-images");
-const exportCoordinatesInput = document.getElementById("export-coordinates");
-const startSuraGroup = document.getElementById("start-sura-group");
-const startAyaGroup = document.getElementById("start-aya-group");
-
-exportImagesInput.addEventListener("change", () => {
-  state.exportImages = exportImagesInput.checked;
-});
-exportCoordinatesInput.addEventListener("change", () => {
-  state.exportCoordinates = exportCoordinatesInput.checked;
-  startSuraGroup.style.display = exportCoordinatesInput.checked ? "" : "none";
-  startAyaGroup.style.display = exportCoordinatesInput.checked ? "" : "none";
-});
 initSuraSelects().catch((err) => {
   console.error(err);
   alert(

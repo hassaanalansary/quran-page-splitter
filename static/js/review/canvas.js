@@ -328,6 +328,28 @@ function onPointerMove(event) {
     if (line.type === "text") regenerateSegments(line);
     drag.changed = true;
     notify();
+    return;
+  }
+
+  if (drag.kind === "left") {
+    const right = line.line_bbox.x + line.line_bbox.w;
+    const x = Math.round(Math.max(0, Math.min(right - 2, point.x)));
+    line.line_bbox.x = x;
+    line.line_bbox.w = right - x;
+    if (line.type === "text") regenerateSegments(line);
+    recalculateNumbering(state.results, state.suras);
+    drag.changed = true;
+    notify();
+    return;
+  }
+
+  if (drag.kind === "right") {
+    const x = Math.round(Math.max(line.line_bbox.x + 2, point.x));
+    line.line_bbox.w = x - line.line_bbox.x;
+    if (line.type === "text") regenerateSegments(line);
+    recalculateNumbering(state.results, state.suras);
+    drag.changed = true;
+    notify();
   }
 }
 
@@ -358,7 +380,7 @@ function hitTest(point) {
   const tolerance = 8 / state.zoom;
   for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
     const line = lines[lineIndex];
-    if (!containsPoint(line.line_bbox, point)) continue;
+    if (!containsPoint(line.line_bbox, point, tolerance)) continue;
 
     if (state.selectedLineIndex === lineIndex) {
       if (Math.abs(point.y - line.line_bbox.y) <= tolerance) {
@@ -366,6 +388,12 @@ function hitTest(point) {
       }
       if (Math.abs(point.y - (line.line_bbox.y + line.line_bbox.h)) <= tolerance) {
         return { kind: "edge", edge: "bottom", lineIndex };
+      }
+      if (Math.abs(point.x - (line.line_bbox.x + line.line_bbox.w)) <= tolerance) {
+        return { kind: "edge", edge: "right", lineIndex };
+      }
+      if (Math.abs(point.x - line.line_bbox.x) <= tolerance) {
+        return { kind: "edge", edge: "left", lineIndex };
       }
       const separatorIndex = nearestSeparator(line, point.x, tolerance);
       if (separatorIndex != null) {
@@ -400,12 +428,12 @@ function selectedTextLineAt(point) {
   return line;
 }
 
-function containsPoint(box, point) {
+function containsPoint(box, point, margin = 0) {
   if (!box) return false;
   return (
-    point.x >= box.x &&
-    point.x <= box.x + box.w &&
-    point.y >= box.y &&
-    point.y <= box.y + box.h
+    point.x >= box.x - margin &&
+    point.x <= box.x + box.w + margin &&
+    point.y >= box.y - margin &&
+    point.y <= box.y + box.h + margin
   );
 }
