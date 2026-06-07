@@ -18,6 +18,7 @@ output/*
 *.log
 results/*
 data/*
+PROJECT_DESCRIPTION.md
 
 .vscode/
 .cursorrules
