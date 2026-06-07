@@ -178,7 +178,7 @@ class LineDetector:
                 for box in region_boxes
             )
 
-        h, w = binary.shape
+        _h, w = binary.shape
         for band in protected:
             detected.append(
                 _DetectedBand(

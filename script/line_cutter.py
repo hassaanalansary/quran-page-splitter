@@ -96,7 +96,7 @@ def split_by_valleys(
     if expected_lines < 1:
         return []
 
-    h_orig, w_orig = binary.shape
+    _h_orig, w_orig = binary.shape
 
     # --- clean margins ---
     content = find_content_bbox(binary)

@@ -347,10 +347,7 @@ def _text_line_suffix(line: dict[str, Any]) -> str:
         if min(ayas) == max(ayas):
             return f"-sura{suras[0]:03d}-aya{ayas[0]:03d}"
         return f"-sura{suras[0]:03d}-aya{min(ayas):03d}-{max(ayas):03d}"
-    return (
-        f"-sura{min(suras):03d}-{max(suras):03d}"
-        f"-aya{min(ayas):03d}-{max(ayas):03d}"
-    )
+    return f"-sura{min(suras):03d}-{max(suras):03d}-aya{min(ayas):03d}-{max(ayas):03d}"
 
 
 def _latest_source_path() -> Path | None:

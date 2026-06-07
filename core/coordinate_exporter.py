@@ -198,7 +198,6 @@ def collect_page_coordinates(ctx: PageContext, padding: int = 0) -> dict:
     }
 
     for line in ctx.lines:
-
         line_bbox = _export_line_bbox(line)
 
         # Add breathing room: apply the detection padding that was
