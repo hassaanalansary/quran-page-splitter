@@ -96,7 +96,7 @@ def split_by_valleys(
     if expected_lines < 1:
         return []
 
-    h_orig, w_orig = binary.shape
+    _h_orig, w_orig = binary.shape
 
     # --- clean margins ---
     content = find_content_bbox(binary)
@@ -109,9 +109,9 @@ def split_by_valleys(
         return [
             {
                 "left": 0,
-                "top": max(0, cy - padding),
+                "top": cy,
                 "right": w_orig,
-                "bottom": min(h_orig, cy + ch + padding),
+                "bottom": cy + ch,
             }
         ]
 
@@ -142,14 +142,12 @@ def split_by_valleys(
 
     boxes: list[dict[str, int]] = []
     for i in range(len(splits) - 1):
-        top = max(0, splits[i] - padding)
-        bottom = min(h_orig, splits[i + 1] + padding)
         boxes.append(
             {
                 "left": 0,
-                "top": top,
+                "top": splits[i],
                 "right": w_orig,
-                "bottom": bottom,
+                "bottom": splits[i + 1],
             }
         )
 

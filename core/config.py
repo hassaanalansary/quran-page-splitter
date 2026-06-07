@@ -54,26 +54,12 @@ class DetectionConfig:
 
 
 @dataclass
-class ClassifierConfig:
-    """A data class that holds the main parameters
-    for classifying a line as a sura name.
-
-    Attributes:
-        height_factor: The factor to multiply the line height by to get the
-            threshold for classifying a line as a sura name.
-        match_threshold: The threshold for matching the sura name.
-    """
-
-    height_factor: float = 1.5
-    match_threshold: float = 0.8
-
-
-@dataclass
 class ExportConfig:
     """Configuration for what the pipeline exports.
 
     Attributes:
         export_images: Whether to save cropped line/segment PNGs.
+            The web workflow keeps this disabled and exports coordinates first.
         export_coordinates: Whether to collect bounding-box coordinate data.
         start_sura: Sura number at the start of processing (1-based).
         start_aya: Aya number at the start of processing (1-based).
@@ -81,8 +67,8 @@ class ExportConfig:
             bands count).
     """
 
-    export_images: bool = True
-    export_coordinates: bool = False
+    export_images: bool = False
+    export_coordinates: bool = True
     start_sura: int = 1
     start_aya: int = 1
     expected_lines: int = 15

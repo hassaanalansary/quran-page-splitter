@@ -12,6 +12,12 @@ import {
   syncCropModeUI,
   updateUIFromCrop,
 } from "./ui.js";
+import {
+  applyCropRect,
+  boundsRectForPage,
+  boundsRectFromPage,
+  currentVisibleCropRect,
+} from "./margins.js";
 
 const MAX_FILES = 610;
 const ENDPOINT = "http://localhost:8000/upload/";
@@ -54,13 +60,22 @@ export function loadImageAtIndex(index, options = {}) {
   const { resetCrop = false } = options;
   if (!state.imageFiles.length) return;
   const clamped = Math.max(0, Math.min(index, state.imageFiles.length - 1));
+  const canCarryBounds =
+    !resetCrop &&
+    state.activeCropMode === "bounds" &&
+    state.selectionActive &&
+    state.cropW > 0 &&
+    state.cropH > 0;
+  const carriedBounds = canCarryBounds
+    ? boundsRectFromPage(currentVisibleCropRect())
+    : null;
   state.selectedImageIndex = clamped;
-  loadImageFile(state.imageFiles[clamped], { resetCrop });
+  loadImageFile(state.imageFiles[clamped], { resetCrop, carriedBounds });
   renderCarousel();
 }
 
 function loadImageFile(file, options = {}) {
-  const { resetCrop = true } = options;
+  const { resetCrop = true, carriedBounds = null } = options;
   const url = URL.createObjectURL(file);
   const imgEl = new Image();
   imgEl.onload = () => {
@@ -85,10 +100,13 @@ function loadImageFile(file, options = {}) {
       state.cropW > 0 &&
       state.cropH > 0
     ) {
+      if (carriedBounds) {
+        applyCropRect(boundsRectForPage(carriedBounds));
+      }
       clampCropBounds();
       updateUIFromCrop();
     } else if (state.globalOutputs.bounds) {
-      const b = state.globalOutputs.bounds;
+      const b = boundsRectForPage(state.globalOutputs.bounds);
       state.cropX = b.left;
       state.cropY = b.top;
       state.cropW = b.width;
@@ -131,12 +149,8 @@ export function fullReset() {
   state.globalOutputs.ayaSeparatorBlob = null;
   state.globalOutputs.ayaSeparatorRect = null;
   state.globalOutputs.ayaSeparatorIgnore = null;
-  state.exportImages = true;
-  state.exportCoordinates = false;
   state.startSura = 1;
   state.startAya = 1;
-  document.getElementById("export-images").checked = true;
-  document.getElementById("export-coordinates").checked = false;
   document.getElementById("padding").value = "4";
   document.getElementById("expected-lines").value = "15";
   document.getElementById("sura-header-slots").value = "1";
@@ -144,8 +158,6 @@ export function fullReset() {
   document.getElementById("max-sura-headers").value = "3";
   document.getElementById("aya-match-threshold").value = "0.50";
   resetSuraSelects();
-  document.getElementById("start-sura-group").style.display = "none";
-  document.getElementById("start-aya-group").style.display = "none";
   document.getElementById("file-input").value = "";
 
   deactivateCrop();
@@ -201,8 +213,6 @@ export async function submitCrop() {
   fd.append("match_threshold", document.getElementById("aya-match-threshold").value);
   fd.append("alternate_horizontal_margin", state.alternateHorizontalMargin);
   fd.append("prefer_acceleration", state.preferAcceleration);
-  fd.append("export_images", state.exportImages);
-  fd.append("export_coordinates", state.exportCoordinates);
   fd.append("start_sura", state.startSura);
   fd.append("start_aya", state.startAya);
 

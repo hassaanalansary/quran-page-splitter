@@ -13,8 +13,15 @@ from fastapi.staticfiles import StaticFiles
 
 from core.aya_separator import AyaSeparatorConfig, AyaSeparatorProcessor
 from core.builder import build_pipeline, init_configs, prepare_template
-from core.classifier import SuraClassifier
 from core.config import ExportConfig
+from core.cut_review import (
+    CUT_EDITS_JSON,
+    LINE_CUT_RESULTS_JSON,
+    cut_review_status,
+    export_final_line_images,
+    load_cut_review_results,
+    save_cut_edits,
+)
 from core.protected_bands import IgnoreRect, ProtectedBandLocator
 from core.quran_metadata import SURAS
 from core.review import (
@@ -22,7 +29,6 @@ from core.review import (
     PAGES_DIR,
     RESULTS_JSON,
     load_review_results,
-    re_export_corrected_images,
     resolve_page_copy,
     review_status,
     save_corrected_results,
@@ -52,6 +58,15 @@ async def serve_review():  # type: ignore[no-untyped-def]
     if not review_path.exists():
         raise HTTPException(status_code=404, detail="review.html not found")
     return review_path.read_text(encoding="utf-8")
+
+
+@app.get("/cut-review", response_class=HTMLResponse)
+@app.get("/line-review", response_class=HTMLResponse)
+async def serve_cut_review():  # type: ignore[no-untyped-def]
+    cut_review_path = Path("cut_review.html")
+    if not cut_review_path.exists():
+        raise HTTPException(status_code=404, detail="cut_review.html not found")
+    return cut_review_path.read_text(encoding="utf-8")
 
 
 @app.get("/api/suras")
@@ -97,6 +112,37 @@ async def get_review_page(page_image_filename: str):  # type: ignore[no-untyped-
     return FileResponse(path)
 
 
+@app.get("/api/cut-review/status")
+async def get_cut_review_status():  # type: ignore[no-untyped-def]
+    return cut_review_status()
+
+
+@app.get("/api/cut-review/results")
+async def get_cut_review_results():  # type: ignore[no-untyped-def]
+    try:
+        return load_cut_review_results()
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="results.json not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/cut-review/save")
+async def save_cut_review_edits(payload: dict = Body(...)):  # type: ignore[no-untyped-def]
+    try:
+        return save_cut_edits(payload)
+    except (FileNotFoundError, KeyError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/cut-review/export")
+async def export_cut_review_images():  # type: ignore[no-untyped-def]
+    try:
+        return export_final_line_images()
+    except (FileNotFoundError, KeyError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @app.post("/api/review/save")
 async def save_review_results(  # type: ignore[no-untyped-def]
     payload: dict = Body(...),
@@ -110,20 +156,6 @@ async def save_review_results(  # type: ignore[no-untyped-def]
         "path": str(CORRECTED_RESULTS_JSON),
         "data": corrected,
     }
-
-
-@app.post("/api/review/re-export")
-async def re_export_review_images():  # type: ignore[no-untyped-def]
-    if not CORRECTED_RESULTS_JSON.exists():
-        raise HTTPException(
-            status_code=404,
-            detail="corrected_results.json not found. Save corrections first.",
-        )
-    try:
-        summary = re_export_corrected_images()
-    except (FileNotFoundError, KeyError, ValueError) as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return {"status": "exported", **summary}
 
 
 @app.post("/upload/")
@@ -149,8 +181,6 @@ async def upload_images(  # type: ignore[no-untyped-def]
     aya_separator_ignore_w: int | None = Form(None),
     aya_separator_ignore_h: int | None = Form(None),
     alternate_horizontal_margin: bool = Form(False),
-    export_images: bool = Form(True),
-    export_coordinates: bool = Form(False),
     start_sura: int = Form(1),
     start_aya: int = Form(1),
     expected_lines: int = Form(15),
@@ -178,7 +208,12 @@ async def upload_images(  # type: ignore[no-untyped-def]
         shutil.rmtree(results_dir)
     os.makedirs(results_dir)
     PAGES_DIR.mkdir(parents=True, exist_ok=True)
-    for artifact_path in (RESULTS_JSON, CORRECTED_RESULTS_JSON):
+    for artifact_path in (
+        RESULTS_JSON,
+        CORRECTED_RESULTS_JSON,
+        CUT_EDITS_JSON,
+        LINE_CUT_RESULTS_JSON,
+    ):
         if artifact_path.exists():
             artifact_path.unlink()
 
@@ -196,8 +231,8 @@ async def upload_images(  # type: ignore[no-untyped-def]
     )
 
     export_cfg = ExportConfig(
-        export_images=export_images,
-        export_coordinates=export_coordinates,
+        export_images=False,
+        export_coordinates=True,
         start_sura=start_sura,
         start_aya=start_aya,
         expected_lines=expected_lines,
@@ -209,7 +244,7 @@ async def upload_images(  # type: ignore[no-untyped-def]
         if sura_upload is None:
             raise ValueError("Missing sura header template")
 
-        # Load sura template and build classifier / pre-split locator
+        # Load sura template and build / pre-split locator
         sura_template = await prepare_template(
             sura_upload,
             "sura_header.png",
@@ -253,7 +288,6 @@ async def upload_images(  # type: ignore[no-untyped-def]
         det_cfg=det_cfg,
         proc_cfg=proc_cfg,
         export_cfg=export_cfg,
-        classifier=SuraClassifier(template=sura_template),
         aya_processor=AyaSeparatorProcessor(
             template=aya_template,
             config=AyaSeparatorConfig(match_threshold=match_threshold),

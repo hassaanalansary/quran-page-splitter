@@ -67,7 +67,7 @@ class ProtectedBandLocator:
             reverse=True,
         )
         template_h = spec.image.shape[0]
-        min_gap = max(1, round(template_h * 0.75))
+        min_gap = max(1, round(template_h * 1.75))
 
         selected: list[ProtectedBand] = []
         for _x, y in ordered:

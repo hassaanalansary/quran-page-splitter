@@ -114,7 +114,7 @@ def match_template(
 
     prepared_gray = upload_gray_for_matching(gray)
     result = match_template_ccoeff_normed(prepared_gray, image, mask)
-    return np.nan_to_num(result, nan=-1.0, posinf=-1.0, neginf=-1.0) # type: ignore[no-any-return]
+    return np.nan_to_num(result, nan=-1.0, posinf=-1.0, neginf=-1.0)  # type: ignore[no-any-return]
 
 
 def locate_x_matches(

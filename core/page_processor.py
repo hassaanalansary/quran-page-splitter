@@ -10,7 +10,6 @@ from pathlib import Path
 from PIL import Image
 
 from core.aya_separator import AyaSeparatorProcessor
-from core.classifier import SuraClassifier
 from core.context import PageContext, QuranTracker
 from core.coordinate_exporter import collect_page_coordinates, track_positions
 from core.line_detector import LineDetector
@@ -48,12 +47,10 @@ class PageProcessor:
     def __init__(
         self,
         detector: LineDetector,
-        classifier: SuraClassifier,
         aya_separator: AyaSeparatorProcessor,
         results_dir: Path,
     ):
         self.detector = detector
-        self.classifier = classifier
         self.aya_separator = aya_separator
         self.results_dir = results_dir
 
@@ -61,8 +58,8 @@ class PageProcessor:
         self,
         ctx: PageContext,
         tracker: QuranTracker,
-        export_images: bool = True,
-        export_coordinates: bool = False,
+        export_images: bool = False,
+        export_coordinates: bool = True,
         expected_lines: int = 15,
     ) -> dict:
         """Full pipeline for one page: detect → classify → split → track → export.
@@ -167,7 +164,9 @@ class PageProcessor:
             logger.info("  Exported %d image(s) for %s", len(saved), ctx.filename)
 
         if export_coordinates:
-            result["coordinates"] = collect_page_coordinates(ctx)
+            result["coordinates"] = collect_page_coordinates(
+                ctx, self.detector.detection.padding
+            )
 
         logger.info("  Finished %s: detected=%d lines", ctx.filename, len(ctx.lines))
         return result

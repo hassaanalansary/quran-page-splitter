@@ -178,16 +178,15 @@ class LineDetector:
                 for box in region_boxes
             )
 
-        h, w = binary.shape
-        padding = self.detection.padding
+        _h, w = binary.shape
         for band in protected:
             detected.append(
                 _DetectedBand(
                     box={
                         "left": 0,
-                        "top": max(0, band.top - padding),
+                        "top": band.top,
                         "right": w,
-                        "bottom": min(h, band.bottom + padding),
+                        "bottom": band.bottom,
                     },
                     is_sura=band.kind == "sura_header",
                     is_basmala=band.kind == "basmala",

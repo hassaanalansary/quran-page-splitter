@@ -1,18 +1,21 @@
 export async function loadStatus() {
-  return readJson("/api/review/status");
+  return readJson("/api/cut-review/status");
 }
 
-export async function loadResults(source = "latest") {
-  const response = await readJson(`/api/review/results?source=${source}`);
-  return response.data;
+export async function loadResults() {
+  return readJson("/api/cut-review/results");
 }
 
-export async function saveResults(data) {
-  return readJson("/api/review/save", {
+export async function saveCutEdits(edits) {
+  return readJson("/api/cut-review/save", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(data),
+    body: JSON.stringify(edits),
   });
+}
+
+export async function exportLinePngs() {
+  return readJson("/api/cut-review/export", { method: "POST" });
 }
 
 export async function loadSuras() {
