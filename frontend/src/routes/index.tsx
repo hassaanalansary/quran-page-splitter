@@ -67,7 +67,8 @@ const DEFAULT_SETTINGS: Settings = {
   start_aya: 1,
 };
 
-type Zoom = 0.5 | 1 | 2 | -1;
+/** Zoom is a multiplier (1 = 100%). The sentinel value -1 means "fit to canvas". */
+type Zoom = number;
 
 function parentTemplateOf(t: TargetName): TargetName | null {
   if (t === "sura_header_ignore") return "sura_header";
@@ -88,13 +89,6 @@ function UploadPage() {
   const [processing, setProcessing] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
-  // When the target changes, seed the canvas rect.
-  useEffect(() => {
-    if (!activeTarget) return;
-    setCurrentRect(targets[activeTarget].rect);
-    // We intentionally don't depend on targets here — only on target switch.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTarget]);
 
   // create object URL for selected file
   const urlsRef = useRef<Map<File, string>>(new Map());
@@ -263,18 +257,21 @@ function UploadPage() {
   const selectedFile = files[selectedIndex];
   const drawingTargetName = drawing && activeTarget ? activeTarget : null;
 
-  // Preview behavior: for templates, show the CAPTURED blob (page-independent).
-  // For ignores, show the captured snippet OF the parent template (sliced
-  // from the parent's blob using the stored relative rect). For bounds and
-  // un-applied targets, show the live page crop.
+  // Preview behavior:
+  //  - bounds: live page crop (no captured snapshot).
+  //  - sura_header / aya_separator: show the CAPTURED blob (page-independent).
+  //    If not captured yet, fall back to live page crop.
+  //  - *_ignore: stacked preview — live crop of the current selection on top,
+  //    parent template image (with the ignore region marked) on the bottom.
+  const parentName = activeTarget ? parentTemplateOf(activeTarget) : null;
+  const isIgnoreTarget = !!parentName;
+  const parentEntry = parentName ? targets[parentName] : null;
+
   const capturedPreviewUrl = useMemo(() => {
     if (!activeTarget) return null;
-    const entry = targets[activeTarget];
-    if (entry.blobUrl) return entry.blobUrl;
-    const parentName = parentTemplateOf(activeTarget);
-    if (parentName) return targets[parentName].blobUrl ?? null;
-    return null;
-  }, [activeTarget, targets]);
+    if (isIgnoreTarget) return null; // handled via ignore mode
+    return targets[activeTarget].blobUrl ?? null;
+  }, [activeTarget, isIgnoreTarget, targets]);
 
   return (
     <div className="flex h-screen flex-col overflow-hidden">
@@ -330,6 +327,7 @@ function UploadPage() {
             <PageCanvas
               imageUrl={imageUrl}
               zoom={zoom}
+              onZoomChange={setZoom}
               drawing={drawing}
               activeTarget={activeTarget}
               rect={currentRect}
@@ -343,6 +341,19 @@ function UploadPage() {
               capturedUrl={capturedPreviewUrl}
               capturedSourceName={
                 activeTarget ? targets[activeTarget].sourcePageName ?? null : null
+              }
+              ignore={
+                isIgnoreTarget && parentEntry
+                  ? {
+                      parentTemplateUrl: parentEntry.blobUrl ?? null,
+                      parentRect: parentEntry.rect,
+                      parentName: parentName!,
+                      parentSourceName: parentEntry.sourcePageName ?? null,
+                      savedIgnoreRect: activeTarget
+                        ? targets[activeTarget].rect
+                        : null,
+                    }
+                  : null
               }
             />
           </div>

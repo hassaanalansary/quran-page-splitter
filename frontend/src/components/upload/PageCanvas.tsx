@@ -3,7 +3,8 @@ import type { Rect, TargetName } from "@/lib/api/raqam";
 
 type Props = {
   imageUrl: string | null;
-  zoom: number; // 0.5 | 1 | 2 | -1 for "fit"
+  zoom: number; // multiplier; -1 = "fit"
+  onZoomChange?: (z: number) => void;
   drawing: boolean;
   activeTarget: TargetName | null;
   rect: Rect | null;
@@ -26,6 +27,7 @@ type DragMode =
 export function PageCanvas({
   imageUrl,
   zoom,
+  onZoomChange,
   drawing,
   activeTarget,
   rect,
@@ -71,7 +73,27 @@ export function PageCanvas({
     });
   }, [natural, activeTarget, rect, onRectChange]);
 
-  const scale = zoom === -1 ? fitScale : zoom;
+  const scaleNow = zoom === -1 ? fitScale : zoom;
+
+  // Ctrl + wheel zoom inside the canvas. preventDefault requires a
+  // non-passive listener, so we attach it via addEventListener directly.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || !onZoomChange) return;
+    const MIN = 0.1;
+    const MAX = 8;
+    function onWheel(e: WheelEvent) {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      const factor = Math.exp(-e.deltaY * 0.0015);
+      const next = Math.max(MIN, Math.min(MAX, scaleNow * factor));
+      onZoomChange!(Number(next.toFixed(3)));
+    }
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [scaleNow, onZoomChange]);
+
+  const scale = scaleNow;
   const displayW = natural ? natural.w * scale : 0;
   const displayH = natural ? natural.h * scale : 0;
 
