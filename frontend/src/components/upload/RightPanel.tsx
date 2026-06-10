@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { Rect, Settings, TargetName } from "@/lib/api/raqam";
+import { SURAS, getSura } from "@/lib/data/suras";
 
 type TargetState = {
   rect: Rect | null;
@@ -461,6 +462,13 @@ function NumberingTab({
   setSettings: (s: Settings) => void;
 }) {
   const u = (patch: Partial<Settings>) => setSettings({ ...settings, ...patch });
+  const currentSura = getSura(settings.start_sura);
+  const ayaMax = currentSura.aya_count;
+  const ayaValue = Math.min(Math.max(1, settings.start_aya), ayaMax);
+
+  const selectClass =
+    "h-9 w-full cursor-pointer rounded-sm border-[1.5px] border-border-strong bg-white px-[10px] text-[13px] text-text-primary outline-none focus:border-orange focus:shadow-[0_0_0_3px_var(--orange-glow)]";
+
   return (
     <div className="flex flex-col gap-3">
       <Card title="Starting Position">
@@ -471,14 +479,24 @@ function NumberingTab({
           >
             Start Sura
           </label>
-          <input
-            type="number"
-            min={1}
-            max={114}
+          <select
             value={settings.start_sura}
-            onChange={(e) => u({ start_sura: Number(e.target.value) || 1 })}
-            className="h-9 w-full rounded-sm border-[1.5px] border-border-strong bg-white px-[10px] text-[13px] text-text-primary outline-none focus:border-orange focus:shadow-[0_0_0_3px_var(--orange-glow)]"
-          />
+            onChange={(e) => {
+              const n = Number(e.target.value) || 1;
+              const next = getSura(n);
+              u({
+                start_sura: n,
+                start_aya: Math.min(Math.max(1, settings.start_aya), next.aya_count),
+              });
+            }}
+            className={selectClass}
+          >
+            {SURAS.map((s) => (
+              <option key={s.number} value={s.number}>
+                {s.number}. {s.name} — {s.transliteration}
+              </option>
+            ))}
+          </select>
         </div>
         <div className="flex flex-col gap-1">
           <label
@@ -487,13 +505,17 @@ function NumberingTab({
           >
             Start Aya
           </label>
-          <input
-            type="number"
-            min={1}
-            value={settings.start_aya}
+          <select
+            value={ayaValue}
             onChange={(e) => u({ start_aya: Number(e.target.value) || 1 })}
-            className="h-9 w-full rounded-sm border-[1.5px] border-border-strong bg-white px-[10px] text-[13px] text-text-primary outline-none focus:border-orange focus:shadow-[0_0_0_3px_var(--orange-glow)]"
-          />
+            className={selectClass}
+          >
+            {Array.from({ length: ayaMax }, (_, i) => i + 1).map((a) => (
+              <option key={a} value={a}>
+                {a}
+              </option>
+            ))}
+          </select>
         </div>
       </Card>
 

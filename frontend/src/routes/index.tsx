@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AppHeader } from "@/components/upload/AppHeader";
 import { CropPreviewPane } from "@/components/upload/CropPreviewPane";
 import { FileStrip } from "@/components/upload/FileStrip";
-import { PageCanvas } from "@/components/upload/PageCanvas";
+import { PageCanvas, type CanvasTool } from "@/components/upload/PageCanvas";
 import { RightPanel } from "@/components/upload/RightPanel";
 import {
   cropImageToBlob,
@@ -84,11 +84,44 @@ function UploadPage() {
   const [currentRect, setCurrentRect] = useState<Rect | null>(null);
   const [drawing, setDrawing] = useState(true);
   const [zoom, setZoom] = useState<Zoom>(-1);
+  const [tool, setTool] = useState<CanvasTool>("select");
+
+  // Desktop-style shortcuts: V = select, H = hand.
+  useEffect(() => {
+    function isTyping(t: EventTarget | null) {
+      const el = t as HTMLElement | null;
+      if (!el) return false;
+      const tag = el.tagName;
+      return (
+        tag === "INPUT" ||
+        tag === "TEXTAREA" ||
+        tag === "SELECT" ||
+        el.isContentEditable
+      );
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (isTyping(e.target)) return;
+      if (e.key === "v" || e.key === "V") setTool("select");
+      else if (e.key === "h" || e.key === "H") setTool("hand");
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
   const [processing, setProcessing] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
+  // When `activeTarget` changes, load the previously saved rect for that
+  // target (if any). Otherwise keep whatever rect is already on the canvas
+  // so it can be reused as a starting point for the new target.
+  useEffect(() => {
+    if (!activeTarget) return;
+    const saved = targets[activeTarget].rect;
+    if (saved) setCurrentRect(saved);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTarget]);
 
   // create object URL for selected file
   const urlsRef = useRef<Map<File, string>>(new Map());
@@ -131,7 +164,9 @@ function UploadPage() {
       return;
     }
 
-    // IGNORE — store relative to parent template rect (page-independent).
+    // IGNORE — store as absolute page coords (same as other targets).
+    // We validate it lies inside the parent template, but convert to
+    // parent-relative coordinates only at upload time.
     const parentName = parentTemplateOf(activeTarget);
     if (parentName) {
       const parentRect = targets[parentName].rect;
@@ -148,13 +183,7 @@ function UploadPage() {
         showToast(`Ignore must be drawn inside the ${parentName} rectangle`);
         return;
       }
-      const relative: Rect = {
-        x: Math.round(rect.x - parentRect.x),
-        y: Math.round(rect.y - parentRect.y),
-        w: Math.round(rect.w),
-        h: Math.round(rect.h),
-      };
-      setTargets((t) => ({ ...t, [activeTarget]: { rect: relative } }));
+      setTargets((t) => ({ ...t, [activeTarget]: { rect } }));
       showToast(`${activeTarget} saved ✓`);
       return;
     }
@@ -213,13 +242,28 @@ function UploadPage() {
 
     setProcessing(true);
     try {
+      const toRelative = (abs: Rect | null, parent: Rect | null): Rect | null => {
+        if (!abs || !parent) return null;
+        return {
+          x: Math.round(abs.x - parent.x),
+          y: Math.round(abs.y - parent.y),
+          w: Math.round(abs.w),
+          h: Math.round(abs.h),
+        };
+      };
       const res = await uploadBatch({
         images: files,
         templates: { sura_header: suraBlob, aya_separator: ayaBlob },
         bounds,
         ignores: {
-          sura_header_ignore: targets.sura_header_ignore.rect ?? null,
-          aya_separator_ignore: targets.aya_separator_ignore.rect ?? null,
+          sura_header_ignore: toRelative(
+            targets.sura_header_ignore.rect,
+            targets.sura_header.rect,
+          ),
+          aya_separator_ignore: toRelative(
+            targets.aya_separator_ignore.rect,
+            targets.aya_separator.rect,
+          ),
         },
         settings,
       });
@@ -282,6 +326,23 @@ function UploadPage() {
         <div className="flex flex-1 flex-col overflow-hidden">
           {/* Crop toolbar */}
           <div className="flex h-9 flex-shrink-0 items-center gap-2 border-b border-border bg-white px-3">
+            <ToolButton
+              active={tool === "select"}
+              onClick={() => setTool("select")}
+              title="Select / crop tool (V)"
+              aria-label="Select tool"
+            >
+              <CursorIcon />
+            </ToolButton>
+            <ToolButton
+              active={tool === "hand"}
+              onClick={() => setTool("hand")}
+              title="Hand tool — pan the canvas (H, or hold Space)"
+              aria-label="Hand tool"
+            >
+              <HandIcon />
+            </ToolButton>
+            <div className="mx-1 h-5 w-px bg-border" />
             <ToolbarPrimary
               active={drawing}
               onClick={() => setDrawing(true)}
@@ -333,6 +394,7 @@ function UploadPage() {
               rect={currentRect}
               onRectChange={setCurrentRect}
               onCursorChange={setCursor}
+              tool={tool}
             />
             <CropPreviewPane
               imageUrl={imageUrl}
@@ -349,9 +411,19 @@ function UploadPage() {
                       parentRect: parentEntry.rect,
                       parentName: parentName!,
                       parentSourceName: parentEntry.sourcePageName ?? null,
-                      savedIgnoreRect: activeTarget
-                        ? targets[activeTarget].rect
-                        : null,
+                      savedIgnoreRect:
+                        activeTarget && targets[activeTarget].rect && parentEntry.rect
+                          ? {
+                              x: Math.round(
+                                targets[activeTarget].rect!.x - parentEntry.rect.x,
+                              ),
+                              y: Math.round(
+                                targets[activeTarget].rect!.y - parentEntry.rect.y,
+                              ),
+                              w: Math.round(targets[activeTarget].rect!.w),
+                              h: Math.round(targets[activeTarget].rect!.h),
+                            }
+                          : null,
                     }
                   : null
               }
@@ -550,5 +622,63 @@ function ZoomControl({
         </button>
       ))}
     </div>
+  );
+}
+
+function ToolButton({
+  active,
+  onClick,
+  title,
+  children,
+  ...rest
+}: {
+  active: boolean;
+  onClick: () => void;
+  title: string;
+  children: React.ReactNode;
+} & React.ButtonHTMLAttributes<HTMLButtonElement>) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      {...rest}
+      className={[
+        "flex h-8 w-8 cursor-pointer items-center justify-center rounded-sm transition-colors",
+        active
+          ? "bg-navy text-white"
+          : "bg-transparent text-text-secondary hover:bg-bg-surface hover:text-text-primary",
+      ].join(" ")}
+    >
+      {children}
+    </button>
+  );
+}
+
+function CursorIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M5 3l6 16 2-7 7-2L5 3z"
+        fill="currentColor"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function HandIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M7 11V5.5a1.5 1.5 0 1 1 3 0V11M10 11V4.5a1.5 1.5 0 1 1 3 0V11M13 11V5.5a1.5 1.5 0 1 1 3 0V13M16 8.5a1.5 1.5 0 1 1 3 0V15a6 6 0 0 1-6 6h-1.5a5 5 0 0 1-4.33-2.5L4 13.5a1.6 1.6 0 0 1 2.65-1.75L8 13"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }

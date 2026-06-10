@@ -90,6 +90,13 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
           "Desktop tool for splitting scanned Mushaf pages into per-aya line crops.",
       },
       { property: "og:type", content: "website" },
+      { name: "twitter:title", content: "Raqam — Mushaf Page Splitter" },
+      { name: "description", content: "Design & Discover Hub allows users to crop and manipulate images with interactive previews and custom zoom controls." },
+      { property: "og:description", content: "Design & Discover Hub allows users to crop and manipulate images with interactive previews and custom zoom controls." },
+      { name: "twitter:description", content: "Design & Discover Hub allows users to crop and manipulate images with interactive previews and custom zoom controls." },
+      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/55fdbe13-d4d9-454f-bc42-4363ec52e162/id-preview-1a8b089f--c388300a-3588-41f2-9b8a-eb2dda71696e.lovable.app-1781078602858.png" },
+      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/55fdbe13-d4d9-454f-bc42-4363ec52e162/id-preview-1a8b089f--c388300a-3588-41f2-9b8a-eb2dda71696e.lovable.app-1781078602858.png" },
+      { name: "twitter:card", content: "summary_large_image" },
     ],
     links: [
       { rel: "preconnect", href: "https://fonts.googleapis.com" },

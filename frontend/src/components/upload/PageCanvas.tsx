@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Rect, TargetName } from "@/lib/api/raqam";
 
+export type CanvasTool = "select" | "hand";
+
 type Props = {
   imageUrl: string | null;
   zoom: number; // multiplier; -1 = "fit"
@@ -10,6 +12,8 @@ type Props = {
   rect: Rect | null;
   onRectChange: (rect: Rect | null) => void;
   onCursorChange?: (pos: { x: number; y: number } | null) => void;
+  /** Active tool. Defaults to "select". Holding Space temporarily activates "hand". */
+  tool?: CanvasTool;
 };
 
 type NaturalSize = { w: number; h: number };
@@ -33,12 +37,54 @@ export function PageCanvas({
   rect,
   onRectChange,
   onCursorChange,
+  tool = "select",
 }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
   const [natural, setNatural] = useState<NaturalSize | null>(null);
   const [fitScale, setFitScale] = useState(1);
   const [drag, setDrag] = useState<DragMode | null>(null);
+  const [spaceHeld, setSpaceHeld] = useState(false);
+  const panRef = useRef<{
+    x: number;
+    y: number;
+    sl: number;
+    st: number;
+    id: number;
+  } | null>(null);
+  const [panning, setPanning] = useState(false);
+
+  const effectiveTool: CanvasTool = tool === "hand" || spaceHeld ? "hand" : "select";
+
+  // Space-to-pan (standard desktop image-editor shortcut). Ignore while typing.
+  useEffect(() => {
+    function isTyping(t: EventTarget | null) {
+      const el = t as HTMLElement | null;
+      if (!el) return false;
+      const tag = el.tagName;
+      return (
+        tag === "INPUT" ||
+        tag === "TEXTAREA" ||
+        tag === "SELECT" ||
+        (el as HTMLElement).isContentEditable
+      );
+    }
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.code === "Space" && !e.repeat && !isTyping(e.target)) {
+        e.preventDefault();
+        setSpaceHeld(true);
+      }
+    }
+    function onKeyUp(e: KeyboardEvent) {
+      if (e.code === "Space") setSpaceHeld(false);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+    };
+  }, []);
 
   useEffect(() => {
     setNatural(null);
@@ -199,10 +245,44 @@ export function PageCanvas({
     [rect, natural],
   );
 
+  function onScrollPointerDown(e: React.PointerEvent<HTMLDivElement>) {
+    if (effectiveTool !== "hand" || !scrollRef.current) return;
+    e.preventDefault();
+    const el = scrollRef.current;
+    panRef.current = {
+      x: e.clientX,
+      y: e.clientY,
+      sl: el.scrollLeft,
+      st: el.scrollTop,
+      id: e.pointerId,
+    };
+    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    setPanning(true);
+  }
+  function onScrollPointerMove(e: React.PointerEvent<HTMLDivElement>) {
+    const p = panRef.current;
+    if (!p || !scrollRef.current) return;
+    scrollRef.current.scrollLeft = p.sl - (e.clientX - p.x);
+    scrollRef.current.scrollTop = p.st - (e.clientY - p.y);
+  }
+  function onScrollPointerUp(e: React.PointerEvent<HTMLDivElement>) {
+    if (!panRef.current) return;
+    (e.currentTarget as HTMLElement).releasePointerCapture?.(panRef.current.id);
+    panRef.current = null;
+    setPanning(false);
+  }
+
+  const handCursor = panning ? "grabbing" : "grab";
+
   return (
     <div
       ref={scrollRef}
       className="raqam-canvas-grid relative flex-1 overflow-auto"
+      onPointerDown={onScrollPointerDown}
+      onPointerMove={onScrollPointerMove}
+      onPointerUp={onScrollPointerUp}
+      onPointerCancel={onScrollPointerUp}
+      style={effectiveTool === "hand" ? { cursor: handCursor } : undefined}
     >
       {imageUrl ? (
         <div
@@ -210,6 +290,7 @@ export function PageCanvas({
           style={{
             width: displayW || "auto",
             height: displayH || "auto",
+            pointerEvents: effectiveTool === "hand" ? "none" : undefined,
           }}
         >
           <div
