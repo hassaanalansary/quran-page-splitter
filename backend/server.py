@@ -5,6 +5,7 @@ import logging
 import os
 import shutil
 from pathlib import Path
+from typing import Any
 
 import uvicorn
 from fastapi import Body, FastAPI, File, Form, HTTPException, Query, UploadFile
@@ -48,7 +49,8 @@ app.add_middleware(
         "http://localhost:8000",
         "http://localhost:5173",
         "http://localhost:8080",
-        "https://quran-page-splitter.lovable.app"
+        "https://quran-page-splitter.lovable.app",
+        "https://quran-page-splitter-2.lovable.app",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -83,7 +85,7 @@ async def serve_cut_review():  # type: ignore[no-untyped-def]
 
 
 @app.get("/api/suras")
-async def list_suras():  # type: ignore[no-untyped-def]
+async def list_suras() -> list[dict[str, int | str]]:  # type: ignore[no-untyped-def]
     """Expose sura list for the frontend (Arabic display name, numeric value)."""
     return [
         {
@@ -97,21 +99,21 @@ async def list_suras():  # type: ignore[no-untyped-def]
 
 
 @app.get("/api/review/status")
-async def get_review_status():  # type: ignore[no-untyped-def]
+async def get_review_status():
     return review_status()
 
 
 @app.get("/api/review/results")
 async def get_review_results(  # type: ignore[no-untyped-def]
     source: str = Query("latest", pattern="^(latest|original)$"),
-):
+) -> dict[str, str | dict[str, Any]]:  # type: ignore[no-untyped-def]
     try:
         data, path = load_review_results(source)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="results.json not found") from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return {"source_path": str(path), "data": data}
+    return {"source_path": str(path), "data": data}  # type: ignore
 
 
 @app.get("/api/review/pages/{page_image_filename}")

@@ -3,6 +3,7 @@
 import io
 from pathlib import Path
 
+from fastapi import UploadFile
 from PIL import Image
 
 from core.aya_separator import AyaSeparatorProcessor
@@ -41,7 +42,7 @@ def init_configs(
 
 
 async def prepare_template(  # type: ignore[no-untyped-def]
-    template,
+    template: UploadFile,
     file_name: str,
     results_dir: Path = Path("results"),
 ) -> Image.Image:

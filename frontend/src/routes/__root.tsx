@@ -77,20 +77,20 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Raqam — Mushaf Page Splitter" },
+      { title: "Mushaf Page Splitter" },
       {
         name: "description",
         content:
           "Desktop tool for splitting scanned Mushaf pages into per-aya line crops.",
       },
-      { property: "og:title", content: "Raqam — Mushaf Page Splitter" },
+      { property: "og:title", content: "Mushaf Page Splitter" },
       {
         property: "og:description",
         content:
           "Desktop tool for splitting scanned Mushaf pages into per-aya line crops.",
       },
       { property: "og:type", content: "website" },
-      { name: "twitter:title", content: "Raqam — Mushaf Page Splitter" },
+      { name: "twitter:title", content: "Mushaf Page Splitter" },
       { name: "description", content: "Design & Discover Hub allows users to crop and manipulate images with interactive previews and custom zoom controls." },
       { property: "og:description", content: "Design & Discover Hub allows users to crop and manipulate images with interactive previews and custom zoom controls." },
       { name: "twitter:description", content: "Design & Discover Hub allows users to crop and manipulate images with interactive previews and custom zoom controls." },
