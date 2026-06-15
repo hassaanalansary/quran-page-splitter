@@ -72,7 +72,7 @@
 
   /* Navy */
   --navy: oklch(0.34 0.07 252);
-  --navy-hover: oklch(0.44 0.10 252);
+  --navy-hover: oklch(0.44 0.1 252);
   --navy-light: oklch(0.58 0.13 248);
 
   /* Orange */
@@ -82,15 +82,15 @@
   --orange-tint: oklch(0.65 0.17 41 / 0.06);
 
   /* Semantic */
-  --success: oklch(0.60 0.13 156);
+  --success: oklch(0.6 0.13 156);
   --success-bg: oklch(0.94 0.06 156);
-  --success-border: oklch(0.60 0.13 156 / 0.30);
+  --success-border: oklch(0.6 0.13 156 / 0.3);
   --warning: oklch(0.66 0.16 56);
   --warning-bg: oklch(0.96 0.05 95);
   --warning-border: oklch(0.66 0.16 56 / 0.25);
   --error: oklch(0.59 0.21 27);
   --error-bg: oklch(0.94 0.03 22);
-  --error-border: oklch(0.59 0.21 27 / 0.20);
+  --error-border: oklch(0.59 0.21 27 / 0.2);
 
   /* Text */
   --text-primary: oklch(0.27 0.04 257);
@@ -103,7 +103,7 @@
 
   /* Shadows */
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.10), 0 2px 6px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.1), 0 2px 6px rgba(0, 0, 0, 0.06);
   --shadow-page: 0 8px 32px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.06);
 }
 

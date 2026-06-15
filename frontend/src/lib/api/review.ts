@@ -15,28 +15,32 @@ async function readJson<T = unknown>(url: string, init?: RequestInit): Promise<T
   return payload as T;
 }
 
+// Backend `review_status()` returns dict[str, bool]; field names mirror it 1:1.
 export type ReviewStatus = {
-  has_results: boolean;
-  has_corrected?: boolean;
-  pages_count?: number;
-  [k: string]: unknown;
+  review_available: boolean;
+  original_results: boolean;
+  corrected_results: boolean;
+};
+
+export type SaveReviewResponse = {
+  status: string;
+  path: string;
+  data: unknown;
 };
 
 export function loadReviewStatus(): Promise<ReviewStatus> {
   return readJson(`${RAQAM_API_BASE}/api/review/status`);
 }
 
-export async function loadReviewResults(
-  source: "latest" | "original" = "latest",
-): Promise<any> {
+export async function loadReviewResults(source: "latest" | "original" = "latest"): Promise<any> {
   const resp = await readJson<{ data: any; source_path: string }>(
     `${RAQAM_API_BASE}/api/review/results?source=${source}`,
   );
   return resp.data;
 }
 
-export function saveReviewResults(data: unknown): Promise<unknown> {
-  return readJson(`${RAQAM_API_BASE}/api/review/save`, {
+export function saveReviewResults(data: unknown): Promise<SaveReviewResponse> {
+  return readJson<SaveReviewResponse>(`${RAQAM_API_BASE}/api/review/save`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),

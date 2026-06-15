@@ -65,11 +65,7 @@ export function CropPreviewPane({
         <div className="flex items-center gap-2">
           <span className="inline-block h-1.5 w-1.5 rounded-full bg-orange" />
           <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-text-secondary">
-            {isIgnore
-              ? "Ignore Preview"
-              : capturedUrl
-                ? "Captured Template"
-                : "Live Crop Preview"}
+            {isIgnore ? "Ignore Preview" : capturedUrl ? "Captured Template" : "Live Crop Preview"}
           </span>
         </div>
         {activeTarget && (
@@ -80,11 +76,7 @@ export function CropPreviewPane({
       </div>
 
       {isIgnore ? (
-        <IgnoreStacked
-          imageUrl={imageUrl}
-          rect={rect}
-          ignore={ignore!}
-        />
+        <IgnoreStacked imageUrl={imageUrl} rect={rect} ignore={ignore!} />
       ) : (
         <SinglePreview
           imageUrl={imageUrl}
@@ -120,8 +112,7 @@ function SinglePreview({
   const innerH = Math.max(0, box.h - padding * 2);
 
   const showCaptured = !!capturedUrl && !!capturedNatural;
-  const showLive =
-    !showCaptured && !!imageUrl && !!rect && !!natural && rect.w > 1 && rect.h > 1;
+  const showLive = !showCaptured && !!imageUrl && !!rect && !!natural && rect.w > 1 && rect.h > 1;
 
   let dispW = 0;
   let dispH = 0;
@@ -213,8 +204,7 @@ function IgnoreStacked({
   rect: Rect | null;
   ignore: IgnoreContext;
 }) {
-  const { parentTemplateUrl, parentRect, parentName, parentSourceName, savedIgnoreRect } =
-    ignore;
+  const { parentTemplateUrl, parentRect, parentName, parentSourceName, savedIgnoreRect } = ignore;
   const pageNatural = useNaturalSize(imageUrl);
   const tmplNatural = useNaturalSize(parentTemplateUrl);
 
@@ -388,10 +378,8 @@ function TemplateWithOverlay({
                 top: relRect.y * scale,
                 width: relRect.w * scale,
                 height: relRect.h * scale,
-                backgroundColor:
-                  "color-mix(in oklab, var(--error) 22%, transparent)",
-                boxShadow:
-                  "0 0 0 1px color-mix(in oklab, var(--error) 35%, transparent)",
+                backgroundColor: "color-mix(in oklab, var(--error) 22%, transparent)",
+                boxShadow: "0 0 0 1px color-mix(in oklab, var(--error) 35%, transparent)",
               }}
             />
           )}

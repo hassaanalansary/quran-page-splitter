@@ -92,16 +92,11 @@ export function RightPanel(props: Props) {
         </button>
         <div className="mt-2 flex flex-wrap items-center gap-3">
           {REQUIRED.map((t) => (
-            <span
-              key={t}
-              className="flex items-center gap-1 text-[11.5px] text-text-secondary"
-            >
+            <span key={t} className="flex items-center gap-1 text-[11.5px] text-text-secondary">
               <span
                 className="h-[6px] w-[6px] rounded-full"
                 style={{
-                  background: props.targets[t].rect
-                    ? "var(--success)"
-                    : "var(--error)",
+                  background: props.targets[t].rect ? "var(--success)" : "var(--error)",
                 }}
               />
               {t}
@@ -128,8 +123,7 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
 }
 
 function TargetsTab(props: Props) {
-  const { targets, activeTarget, setActiveTarget, currentRect, setCurrentRect } =
-    props;
+  const { targets, activeTarget, setActiveTarget, currentRect, setCurrentRect } = props;
 
   function setField(key: keyof Rect, value: number) {
     const r = currentRect ?? { x: 0, y: 0, w: 0, h: 0 };
@@ -172,7 +166,10 @@ function TargetsTab(props: Props) {
 
       <Card title="Crop Coordinates">
         <div className="flex flex-col gap-1">
-          <label className="text-[11.5px] font-semibold text-text-secondary" style={{ letterSpacing: "0.03em" }}>
+          <label
+            className="text-[11.5px] font-semibold text-text-secondary"
+            style={{ letterSpacing: "0.03em" }}
+          >
             Target
           </label>
           <select
@@ -326,9 +323,7 @@ function SettingsRow({
     >
       <div className="flex flex-col">
         <span className="text-[13px] text-text-primary">{label}</span>
-        {hint && (
-          <span className="block text-[10.5px] text-text-muted">{hint}</span>
-        )}
+        {hint && <span className="block text-[10.5px] text-text-muted">{hint}</span>}
       </div>
       <div>{children}</div>
     </div>
@@ -440,11 +435,7 @@ function SettingsTab({
           onChange={(v) => u({ alternate_horizontal_margin: v })}
         />
       </SettingsRow>
-      <SettingsRow
-        label="Prefer acceleration"
-        hint="Uses OpenCL when available"
-        last
-      >
+      <SettingsRow label="Prefer acceleration" hint="Uses OpenCL when available" last>
         <Toggle
           value={settings.prefer_acceleration}
           onChange={(v) => u({ prefer_acceleration: v })}
@@ -519,10 +510,13 @@ function NumberingTab({
         </div>
       </Card>
 
-      <div className="rounded-md border border-[color:var(--warning-border)] bg-warning-bg px-[11px] py-[9px] text-[12px] leading-[1.5]" style={{ color: "#92400E" }}>
+      <div
+        className="rounded-md border border-[color:var(--warning-border)] bg-warning-bg px-[11px] py-[9px] text-[12px] leading-[1.5]"
+        style={{ color: "#92400E" }}
+      >
         <span className="mb-[3px] block text-[12px] font-semibold">Tip</span>
-        These apply to the whole batch. Use the Review page to correct per-page
-        numbering issues after processing.
+        These apply to the whole batch. Use the Review page to correct per-page numbering issues
+        after processing.
       </div>
     </div>
   );

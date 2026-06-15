@@ -29,6 +29,8 @@ export type Line = {
   separator_cuts?: number[];
   /** Only for text lines: derived from separator_cuts + line_bbox. */
   segments?: Segment[];
+  /** Only for text lines: ranges (x, w) of deleted segments to exclude. */
+  deleted_segment_ranges?: { x: number; w: number }[];
 };
 
 export type Page = {

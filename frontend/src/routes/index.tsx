@@ -21,8 +21,7 @@ export const Route = createFileRoute("/")({
       { title: "Upload — Raqam" },
       {
         name: "description",
-        content:
-          "Upload scanned Mushaf pages, define crop targets, and configure detection.",
+        content: "Upload scanned Mushaf pages, define crop targets, and configure detection.",
       },
     ],
   }),
@@ -92,12 +91,7 @@ function UploadPage() {
       const el = t as HTMLElement | null;
       if (!el) return false;
       const tag = el.tagName;
-      return (
-        tag === "INPUT" ||
-        tag === "TEXTAREA" ||
-        tag === "SELECT" ||
-        el.isContentEditable
-      );
+      return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el.isContentEditable;
     }
     function onKey(e: KeyboardEvent) {
       if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -256,10 +250,7 @@ function UploadPage() {
         templates: { sura_header: suraBlob, aya_separator: ayaBlob },
         bounds,
         ignores: {
-          sura_header_ignore: toRelative(
-            targets.sura_header_ignore.rect,
-            targets.sura_header.rect,
-          ),
+          sura_header_ignore: toRelative(targets.sura_header_ignore.rect, targets.sura_header.rect),
           aya_separator_ignore: toRelative(
             targets.aya_separator_ignore.rect,
             targets.aya_separator.rect,
@@ -343,11 +334,7 @@ function UploadPage() {
               <HandIcon />
             </ToolButton>
             <div className="mx-1 h-5 w-px bg-border" />
-            <ToolbarPrimary
-              active={drawing}
-              onClick={() => setDrawing(true)}
-              label="Draw Crop"
-            />
+            <ToolbarPrimary active={drawing} onClick={() => setDrawing(true)} label="Draw Crop" />
             <ToolbarSecondary
               onClick={applyCrop}
               disabled={!currentRect || currentRect.w < 2}
@@ -361,20 +348,14 @@ function UploadPage() {
                 disabled={selectedIndex <= 0}
               />
               <ToolbarGhost
-                onClick={() =>
-                  setSelectedIndex(Math.min(files.length - 1, selectedIndex + 1))
-                }
+                onClick={() => setSelectedIndex(Math.min(files.length - 1, selectedIndex + 1))}
                 label="Next"
                 disabled={selectedIndex >= files.length - 1}
               />
               <ZoomControl value={zoom} onChange={setZoom} />
               <ToolbarDestructive
                 onClick={() => {
-                  if (
-                    window.confirm(
-                      "Clear queue, targets, and settings back to defaults?",
-                    )
-                  ) {
+                  if (window.confirm("Clear queue, targets, and settings back to defaults?")) {
                     resetAll();
                   }
                 }}
@@ -402,7 +383,7 @@ function UploadPage() {
               activeTarget={activeTarget}
               capturedUrl={capturedPreviewUrl}
               capturedSourceName={
-                activeTarget ? targets[activeTarget].sourcePageName ?? null : null
+                activeTarget ? (targets[activeTarget].sourcePageName ?? null) : null
               }
               ignore={
                 isIgnoreTarget && parentEntry
@@ -414,12 +395,8 @@ function UploadPage() {
                       savedIgnoreRect:
                         activeTarget && targets[activeTarget].rect && parentEntry.rect
                           ? {
-                              x: Math.round(
-                                targets[activeTarget].rect!.x - parentEntry.rect.x,
-                              ),
-                              y: Math.round(
-                                targets[activeTarget].rect!.y - parentEntry.rect.y,
-                              ),
+                              x: Math.round(targets[activeTarget].rect!.x - parentEntry.rect.x),
+                              y: Math.round(targets[activeTarget].rect!.y - parentEntry.rect.y),
                               w: Math.round(targets[activeTarget].rect!.w),
                               h: Math.round(targets[activeTarget].rect!.h),
                             }
@@ -437,7 +414,6 @@ function UploadPage() {
             onSelect={setSelectedIndex}
             onAdd={addFiles}
           />
-
 
           {/* Status bar */}
           <div className="flex h-7 flex-shrink-0 items-center gap-4 border-t border-border bg-white px-3 text-[12px] text-text-muted">
@@ -457,10 +433,7 @@ function UploadPage() {
               {cursor ? `x: ${cursor.x}  y: ${cursor.y}` : "x: —  y: —"}
             </span>
             <span className="ml-auto font-medium text-orange">
-              ●{" "}
-              {drawingTargetName
-                ? `Drawing: ${drawingTargetName}`
-                : "Select a target to draw"}
+              ● {drawingTargetName ? `Drawing: ${drawingTargetName}` : "Select a target to draw"}
             </span>
           </div>
         </div>
@@ -519,8 +492,7 @@ function ToolbarPrimary({
       style={
         active
           ? {
-              boxShadow:
-                "0 2px 6px color-mix(in oklab, var(--orange) 30%, transparent)",
+              boxShadow: "0 2px 6px color-mix(in oklab, var(--orange) 30%, transparent)",
             }
           : undefined
       }
@@ -572,13 +544,7 @@ function ToolbarGhost({
   );
 }
 
-function ToolbarDestructive({
-  onClick,
-  label,
-}: {
-  onClick: () => void;
-  label: string;
-}) {
+function ToolbarDestructive({ onClick, label }: { onClick: () => void; label: string }) {
   return (
     <button
       type="button"
@@ -590,13 +556,7 @@ function ToolbarDestructive({
   );
 }
 
-function ZoomControl({
-  value,
-  onChange,
-}: {
-  value: Zoom;
-  onChange: (z: Zoom) => void;
-}) {
+function ZoomControl({ value, onChange }: { value: Zoom; onChange: (z: Zoom) => void }) {
   const options: { v: Zoom; label: string }[] = [
     { v: 0.5, label: "50%" },
     { v: 1, label: "100%" },

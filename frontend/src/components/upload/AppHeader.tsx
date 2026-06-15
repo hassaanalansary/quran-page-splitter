@@ -1,10 +1,11 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 
-type Step = { label: string; to: "/" | "/verify" };
+type Step = { label: string; to: "/" | "/verify" | "/finalize" };
 
 const STEPS: Step[] = [
   { label: "Upload", to: "/" },
   { label: "Verify", to: "/verify" },
+  { label: "Finalize", to: "/finalize" },
 ];
 
 export function AppHeader() {
@@ -20,9 +21,7 @@ export function AppHeader() {
         >
           Raqam
         </span>
-        <span className="ml-1.5 text-[13px] font-light text-text-secondary">
-          Mushaf Splitter
-        </span>
+        <span className="ml-1.5 text-[13px] font-light text-text-secondary">Mushaf Splitter</span>
       </div>
 
       <nav className="ml-auto flex items-center gap-0">
@@ -47,17 +46,13 @@ export function AppHeader() {
                 <span
                   className={[
                     "text-[12px]",
-                    active
-                      ? "font-semibold text-orange"
-                      : "font-medium text-text-secondary",
+                    active ? "font-semibold text-orange" : "font-medium text-text-secondary",
                   ].join(" ")}
                 >
                   {s.label}
                 </span>
               </Link>
-              {i < STEPS.length - 1 && (
-                <span className="mx-1 h-[2px] w-10 bg-border-strong" />
-              )}
+              {i < STEPS.length - 1 && <span className="mx-1 h-[2px] w-10 bg-border-strong" />}
             </div>
           );
         })}

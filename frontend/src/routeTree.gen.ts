@@ -10,11 +10,17 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as VerifyRouteImport } from './routes/verify'
+import { Route as FinalizeRouteImport } from './routes/finalize'
 import { Route as IndexRouteImport } from './routes/index'
 
 const VerifyRoute = VerifyRouteImport.update({
   id: '/verify',
   path: '/verify',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FinalizeRoute = FinalizeRouteImport.update({
+  id: '/finalize',
+  path: '/finalize',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -25,27 +31,31 @@ const IndexRoute = IndexRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/finalize': typeof FinalizeRoute
   '/verify': typeof VerifyRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/finalize': typeof FinalizeRoute
   '/verify': typeof VerifyRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/finalize': typeof FinalizeRoute
   '/verify': typeof VerifyRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/verify'
+  fullPaths: '/' | '/finalize' | '/verify'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/verify'
-  id: '__root__' | '/' | '/verify'
+  to: '/' | '/finalize' | '/verify'
+  id: '__root__' | '/' | '/finalize' | '/verify'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  FinalizeRoute: typeof FinalizeRoute
   VerifyRoute: typeof VerifyRoute
 }
 
@@ -56,6 +66,13 @@ declare module '@tanstack/react-router' {
       path: '/verify'
       fullPath: '/verify'
       preLoaderRoute: typeof VerifyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/finalize': {
+      id: '/finalize'
+      path: '/finalize'
+      fullPath: '/finalize'
+      preLoaderRoute: typeof FinalizeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -70,6 +87,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  FinalizeRoute: FinalizeRoute,
   VerifyRoute: VerifyRoute,
 }
 export const routeTree = rootRouteImport

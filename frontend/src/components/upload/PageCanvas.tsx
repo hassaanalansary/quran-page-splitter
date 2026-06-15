@@ -409,8 +409,7 @@ function RectOverlay({
         <div
           className="pointer-events-none absolute inset-0"
           style={{
-            background:
-              "color-mix(in oklab, var(--navy) 10%, transparent)",
+            background: "color-mix(in oklab, var(--navy) 10%, transparent)",
             clipPath: `polygon(0% 0%, 0% 100%, ${left}% 100%, ${left}% ${top}%, ${left + width}% ${top}%, ${left + width}% ${top + height}%, ${left}% ${top + height}%, ${left}% 100%, 100% 100%, 100% 0%)`,
           }}
         />

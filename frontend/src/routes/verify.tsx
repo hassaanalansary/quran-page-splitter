@@ -10,7 +10,7 @@ import {
 } from "@/lib/api/review";
 import { SURAS, getSura } from "@/lib/data/suras";
 import { recomputeAll } from "@/lib/verify/recompute";
-import { genId, type Line, type Page, type Results } from "@/lib/verify/types";
+import { genId, type Line, type Page, type Results, type Segment } from "@/lib/verify/types";
 
 export const Route = createFileRoute("/verify")({
   head: () => ({
@@ -18,8 +18,7 @@ export const Route = createFileRoute("/verify")({
       { title: "Verify — Raqam" },
       {
         name: "description",
-        content:
-          "Verify and correct line/sura/aya detection on processed Mushaf pages.",
+        content: "Verify and correct line/sura/aya detection on processed Mushaf pages.",
       },
     ],
   }),
@@ -28,16 +27,167 @@ export const Route = createFileRoute("/verify")({
 
 const HISTORY_LIMIT = 100;
 
-function withIds(raw: Results): Results {
+type RawRecord = Record<string, unknown>;
+
+function isRecord(value: unknown): value is RawRecord {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function numberValue(value: unknown, fallback = 0): number {
+  const n = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
+  return Number.isFinite(n) ? Math.round(n) : fallback;
+}
+
+function stringValue(value: unknown, fallback = ""): string {
+  return typeof value === "string" && value.length > 0 ? value : fallback;
+}
+
+function optionalStringValue(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function rectValue(value: unknown, fallback = { x: 0, y: 0, w: 1, h: 1 }) {
+  if (Array.isArray(value) && value.length >= 4) {
+    return {
+      x: numberValue(value[0], fallback.x),
+      y: numberValue(value[1], fallback.y),
+      w: Math.max(1, numberValue(value[2], fallback.w)),
+      h: Math.max(1, numberValue(value[3], fallback.h)),
+    };
+  }
+  if (!isRecord(value)) return fallback;
   return {
-    ...raw,
-    pages: raw.pages.map((p) => ({
+    x: numberValue(value.x, fallback.x),
+    y: numberValue(value.y, fallback.y),
+    w: Math.max(1, numberValue(value.w ?? value.width, fallback.w)),
+    h: Math.max(1, numberValue(value.h ?? value.height, fallback.h)),
+  };
+}
+
+function cutValue(value: unknown): number | null {
+  if (typeof value === "number" || typeof value === "string") {
+    const n = Number(value);
+    return Number.isFinite(n) ? Math.round(n) : null;
+  }
+  if (!isRecord(value)) return null;
+  const n = Number(value.x ?? value.cx ?? value.cut_x ?? value.position ?? value.separator_x);
+  return Number.isFinite(n) ? Math.round(n) : null;
+}
+
+function normalizeCuts(line: RawRecord): number[] {
+  const raw =
+    line.separator_cuts ??
+    line.separatorCuts ??
+    line.aya_separator_cuts ??
+    line.separator_positions ??
+    line.separators;
+  if (!Array.isArray(raw)) return [];
+  return raw.map(cutValue).filter((n): n is number => n !== null);
+}
+
+function normalizeDeletedRanges(line: RawRecord): { x: number; w: number }[] {
+  const raw = line.deleted_segment_ranges;
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter(isRecord)
+    .map((r) => ({ x: numberValue(r.x), w: numberValue(r.w ?? r.width) }))
+    .filter((r) => r.w > 0);
+}
+
+function inferCutsFromSegments(raw: unknown[], lineBBox: Line["line_bbox"]): number[] {
+  return raw
+    .filter(isRecord)
+    .map((s) => {
+      if (!s.has_separator) return null;
+      const bbox = rectValue(s.bbox ?? s.segment_bbox, lineBBox);
+      return Math.round(bbox.x);
+    })
+    .filter((n): n is number => n !== null);
+}
+
+function normalizeSegments(raw: unknown[], lineBBox: Line["line_bbox"]): Segment[] {
+  return raw.filter(isRecord).map((s, i) => ({
+    id: stringValue(s.id, genId("seg")),
+    sura_number: numberValue(s.sura_number),
+    sura_name: stringValue(s.sura_name),
+    aya_number: numberValue(s.aya_number, i + 1),
+    is_continuation: Boolean(s.is_continuation),
+    has_separator: Boolean(s.has_separator),
+    bbox: rectValue(s.bbox ?? s.segment_bbox, lineBBox),
+  }));
+}
+
+function normalizeLine(rawLine: unknown, idx: number): Line {
+  const raw = isRecord(rawLine) ? rawLine : {};
+  const typeRaw = raw.type;
+  const type: Line["type"] = typeRaw === "sura_header" || typeRaw === "basmala" ? typeRaw : "text";
+  const lineBBox = rectValue(raw.line_bbox ?? raw.bbox ?? raw.box, {
+    x: 0,
+    y: idx * 120,
+    w: 100,
+    h: 80,
+  });
+  const line: Line = {
+    id: stringValue(raw.id, genId("line")),
+    line_number: numberValue(raw.line_number, idx + 1),
+    slot_count: numberValue(raw.slot_count, 1),
+    line_bbox: lineBBox,
+    type,
+    sura_number: raw.sura_number == null ? undefined : numberValue(raw.sura_number),
+    sura_name: optionalStringValue(raw.sura_name),
+    sura_transliteration: optionalStringValue(raw.sura_transliteration),
+  };
+  if (type === "text") {
+    const rawSegments = Array.isArray(raw.segments) ? raw.segments : [];
+    const explicitCuts = normalizeCuts(raw);
+    line.separator_cuts = explicitCuts.length
+      ? explicitCuts
+      : inferCutsFromSegments(rawSegments, lineBBox);
+    line.segments = normalizeSegments(rawSegments, lineBBox);
+    line.deleted_segment_ranges = normalizeDeletedRanges(raw);
+  }
+  return line;
+}
+
+function normalizeResults(rawInput: unknown): Results {
+  const raw = isRecord(rawInput) ? rawInput : {};
+  const rawPages = Array.isArray(raw.pages) ? raw.pages : [];
+  const pages: Page[] = rawPages.filter(isRecord).map((p, pageIdx) => {
+    const imageFilename = stringValue(p.image_filename ?? p.filename, `page-${pageIdx + 1}.png`);
+    const pageImageFilename = stringValue(p.page_image_filename, imageFilename);
+    const rawLines = Array.isArray(p.lines) ? p.lines : [];
+    return {
+      id: stringValue(p.id, genId("page")),
+      page_number: numberValue(p.page_number, pageIdx + 1),
+      image_filename: imageFilename,
+      page_image_filename: pageImageFilename,
+      crop_box: rectValue(p.crop_box ?? p.cropBox ?? p.bounds, { x: 0, y: 0, w: 1, h: 1 }),
+      lines: rawLines.map(normalizeLine),
+    };
+  });
+
+  return {
+    exported_at: stringValue(raw.exported_at, new Date().toISOString()),
+    start_sura: numberValue(raw.start_sura, 1),
+    start_aya: numberValue(raw.start_aya, 1),
+    end_sura: numberValue(raw.end_sura, numberValue(raw.start_sura, 1)),
+    end_aya: numberValue(raw.end_aya, numberValue(raw.start_aya, 1)),
+    pages_processed: numberValue(raw.pages_processed, pages.length),
+    pages,
+  };
+}
+
+function withIds(raw: unknown): Results {
+  const normalized = normalizeResults(raw);
+  return {
+    ...normalized,
+    pages: normalized.pages.map((p) => ({
       ...p,
-      id: genId("page"),
+      id: p.id || genId("page"),
       lines: p.lines.map((l) => ({
         ...l,
-        id: genId("line"),
-        segments: l.segments?.map((s) => ({ ...s, id: genId("seg") })),
+        id: l.id || genId("line"),
+        segments: l.segments?.map((s) => ({ ...s, id: s.id || genId("seg") })),
       })),
     })),
   };
@@ -53,14 +203,9 @@ function VerifyPage() {
   const [pageIndex, setPageIndex] = useState(0);
   const [selectedLineId, setSelectedLineId] = useState<string | null>(null);
   const [loadState, setLoadState] = useState<
-    | { kind: "idle" }
-    | { kind: "loading" }
-    | { kind: "error"; message: string }
-    | { kind: "ready" }
+    { kind: "idle" } | { kind: "loading" } | { kind: "error"; message: string } | { kind: "ready" }
   >({ kind: "idle" });
-  const [saveState, setSaveState] = useState<
-    "idle" | "saving" | "saved" | "error"
-  >("idle");
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const urlsRef = useRef<string[]>([]);
 
   useEffect(
@@ -81,10 +226,7 @@ function VerifyPage() {
       const now = Date.now();
       const prev = coalesceRef.current;
       const shouldReplace =
-        !!coalesceKey &&
-        !!prev &&
-        prev.key === coalesceKey &&
-        now - prev.at < COALESCE_MS;
+        !!coalesceKey && !!prev && prev.key === coalesceKey && now - prev.at < COALESCE_MS;
       coalesceRef.current = coalesceKey ? { key: coalesceKey, at: now } : null;
 
       if (shouldReplace) {
@@ -144,7 +286,7 @@ function VerifyPage() {
           throw new Error("Backend has no results.json yet — upload first.");
         }
         const raw = (await loadReviewResults(
-          status.has_corrected ? "latest" : "original",
+          status.corrected_results ? "latest" : "original",
         )) as Results;
         if (cancelled) return;
         const withIded = withIds(raw);
@@ -153,10 +295,11 @@ function VerifyPage() {
         setHIndex(0);
         setPageIndex(0);
         setSelectedLineId(null);
-        // Preload page images via the backend (no need to upload manually).
+        // Preload page images via the backend (key by page_image_filename).
         const map: Record<string, string> = {};
         for (const p of computed.pages) {
-          if (p.image_filename) map[p.image_filename] = pageImageUrl(p.page_image_filename);
+          const key = p.page_image_filename || p.image_filename;
+          if (key) map[key] = pageImageUrl(key);
         }
         setPageImages(map);
         setLoadState({ kind: "ready" });
@@ -208,7 +351,15 @@ function VerifyPage() {
     if (!results) return;
     setSaveState("saving");
     try {
-      await saveReviewResults(results);
+      const payload = { ...results, _review_has_edits: true };
+      const resp = await saveReviewResults(payload);
+      // Backend may normalize fields (e.g. recompute end_sura/end_aya).
+      if (resp && typeof resp === "object" && resp.data) {
+        const refreshed = recomputeAll(withIds(resp.data as Results));
+        setHistory([refreshed]);
+        setHIndex(0);
+        setSelectedLineId(null);
+      }
       setSaveState("saved");
       setTimeout(() => setSaveState("idle"), 1500);
     } catch (err) {
@@ -226,9 +377,7 @@ function VerifyPage() {
 
   function mutatePage(mutator: (p: Page) => Page, coalesceKey?: string) {
     if (!results) return;
-    const nextPages = results.pages.map((p, i) =>
-      i === pageIndex ? mutator(p) : p,
-    );
+    const nextPages = results.pages.map((p, i) => (i === pageIndex ? mutator(p) : p));
     applyResults({ ...results, pages: nextPages }, coalesceKey);
   }
 
@@ -255,7 +404,12 @@ function VerifyPage() {
       const idx = lineId ? p.lines.findIndex((l) => l.id === lineId) : p.lines.length - 1;
       const ref = idx >= 0 ? p.lines[idx] : null;
       const base = ref
-        ? { x: ref.line_bbox.x, y: ref.line_bbox.y + ref.line_bbox.h + 10, w: ref.line_bbox.w, h: ref.line_bbox.h }
+        ? {
+            x: ref.line_bbox.x,
+            y: ref.line_bbox.y + ref.line_bbox.h + 10,
+            w: ref.line_bbox.w,
+            h: ref.line_bbox.h,
+          }
         : { x: p.crop_box.x, y: p.crop_box.y, w: p.crop_box.w, h: 120 };
       const newLine: Line = {
         id: genId("line"),
@@ -279,21 +433,55 @@ function VerifyPage() {
     if (type === "text") {
       patch.separator_cuts = line.separator_cuts ?? [];
       patch.segments = line.segments ?? [];
+      patch.deleted_segment_ranges = line.deleted_segment_ranges ?? [];
     } else {
       patch.separator_cuts = undefined;
       patch.segments = undefined;
+      patch.deleted_segment_ranges = undefined;
     }
     updateLine(lineId, patch);
   }
 
   function setSuraNumber(lineId: string, n: number) {
-    if (!page) return;
-    const info = getSura(n);
-    updateLine(lineId, {
-      sura_number: info.number,
-      sura_name: info.name,
-      sura_transliteration: info.transliteration,
-    });
+    if (!results || !page) return;
+    // The edited header is the anchor; every subsequent sura_header is bumped
+    // by the same delta so the running sura sequence stays consistent.
+    const target = page.lines.find((l) => l.id === lineId);
+    if (!target || target.type !== "sura_header") return;
+    const oldN = target.sura_number ?? n;
+    const newN = Math.max(1, Math.min(114, Math.round(n)));
+    const delta = newN - oldN;
+
+    // Walk pages/lines in reading order, find the target, then bump every
+    // sura_header that comes AFTER it.
+    let passed = false;
+    const nextPages = results.pages.map((p) => ({
+      ...p,
+      lines: p.lines.map((l) => {
+        if (l.id === lineId) {
+          passed = true;
+          const info = getSura(newN);
+          return {
+            ...l,
+            sura_number: info.number,
+            sura_name: info.name,
+            sura_transliteration: info.transliteration,
+          };
+        }
+        if (passed && l.type === "sura_header" && l.sura_number != null) {
+          const bumped = Math.max(1, Math.min(114, l.sura_number + delta));
+          const info = getSura(bumped);
+          return {
+            ...l,
+            sura_number: info.number,
+            sura_name: info.name,
+            sura_transliteration: info.transliteration,
+          };
+        }
+        return l;
+      }),
+    }));
+    applyResults({ ...results, pages: nextPages });
   }
 
   function addSeparatorAt(lineId: string, x: number) {
@@ -373,13 +561,9 @@ function VerifyPage() {
     return (
       <div className="flex h-screen items-center justify-center bg-bg-page">
         <div className="flex w-[460px] flex-col gap-4 rounded-md border border-border bg-white p-6 shadow-[var(--shadow-md)]">
-          <h1 className="font-display text-[20px] font-bold text-navy">
-            Verify Detection Results
-          </h1>
+          <h1 className="font-display text-[20px] font-bold text-navy">Verify Detection Results</h1>
           {loadState.kind === "loading" && (
-            <p className="text-[12.5px] text-text-secondary">
-              Loading from backend…
-            </p>
+            <p className="text-[12.5px] text-text-secondary">Loading from backend…</p>
           )}
           {loadState.kind === "error" && (
             <p className="rounded-sm border border-error-border bg-error-bg px-3 py-2 text-[12px] text-error">
@@ -409,9 +593,7 @@ function VerifyPage() {
     <div className="flex h-screen flex-col overflow-hidden">
       {/* Top bar */}
       <header className="flex h-[52px] flex-shrink-0 items-center gap-4 border-b border-border bg-white px-4">
-        <span className="font-display text-[15px] font-bold text-navy">
-          Raqam · Verify
-        </span>
+        <span className="font-display text-[15px] font-bold text-navy">Raqam · Verify</span>
         <div className="ml-2 flex items-center gap-1">
           <button
             type="button"
@@ -426,9 +608,7 @@ function VerifyPage() {
           </span>
           <button
             type="button"
-            onClick={() =>
-              setPageIndex(Math.min(results.pages.length - 1, pageIndex + 1))
-            }
+            onClick={() => setPageIndex(Math.min(results.pages.length - 1, pageIndex + 1))}
             disabled={pageIndex >= results.pages.length - 1}
             className="h-8 cursor-pointer rounded-sm bg-transparent px-3 text-[12.5px] font-medium text-text-secondary hover:bg-bg-surface disabled:cursor-not-allowed disabled:opacity-50"
           >
@@ -491,12 +671,12 @@ function VerifyPage() {
       {/* Status */}
       <div className="flex h-7 flex-shrink-0 items-center gap-4 border-b border-border bg-white px-4 text-[11.5px] text-text-muted">
         <span>
-          Range: sura {results.start_sura}:{results.start_aya} → sura{" "}
-          {results.end_sura}:{results.end_aya}
+          Range: sura {results.start_sura}:{results.start_aya} → sura {results.end_sura}:
+          {results.end_aya}
         </span>
         <span className="ml-auto text-text-muted">
-          Double-click a text line to add a separator · drag the red bars to
-          reposition · drag the box body to move
+          Double-click a text line to add a separator · drag the red bars to reposition · drag the
+          box body to move
         </span>
       </div>
 
@@ -505,7 +685,9 @@ function VerifyPage() {
           {page && (
             <PageReview
               page={page}
-              imageUrl={pageImages[page.image_filename] ?? null}
+              imageUrl={
+                pageImages[page.page_image_filename] ?? pageImages[page.image_filename] ?? null
+              }
               selectedLineId={selectedLineId}
               onSelectLine={setSelectedLineId}
               onUpdateLineBbox={updateLineBbox}
@@ -618,7 +800,10 @@ function LineEditor({
       </div>
 
       {/* Selected line editor */}
-      <div className="flex-shrink-0 border-t-2 border-border bg-bg-page p-3" style={{ maxHeight: "55%", overflowY: "auto" }}>
+      <div
+        className="flex-shrink-0 border-t-2 border-border bg-bg-page p-3"
+        style={{ maxHeight: "55%", overflowY: "auto" }}
+      >
         {selectedLine ? (
           <LineDetailEditor
             line={selectedLine}

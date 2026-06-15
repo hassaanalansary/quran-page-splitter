@@ -64,6 +64,14 @@ export function PageReview({
   }, [imageUrl]);
 
   useEffect(() => {
+    const img = imgRef.current;
+    if (!img || !imageUrl) return;
+    if (img.complete && img.naturalWidth > 0 && img.naturalHeight > 0) {
+      setNatural({ w: img.naturalWidth, h: img.naturalHeight });
+    }
+  }, [imageUrl]);
+
+  useEffect(() => {
     if (!wrapRef.current) return;
     const el = wrapRef.current;
     const measure = () => setBox({ w: el.clientWidth, h: el.clientHeight });
@@ -299,7 +307,7 @@ export function PageReview({
                             }}
                           >
                             <span
-                              className="rounded-pill bg-white/85 px-[4px] py-0 text-[9.5px] font-semibold text-navy"
+                              className="rounded-pill bg-white px-[4px] text-lg py-0 font-bold text-navy"
                               style={{ border: "1px solid var(--border)" }}
                             >
                               {seg.aya_number}
@@ -310,8 +318,7 @@ export function PageReview({
                       })}
                     {line.type === "text" &&
                       line.separator_cuts?.map((cx, ci) => {
-                        const relLeft =
-                          ((cx - line.line_bbox.x) / line.line_bbox.w) * 100;
+                        const relLeft = ((cx - line.line_bbox.x) / line.line_bbox.w) * 100;
                         return (
                           <div
                             key={ci}
@@ -323,12 +330,11 @@ export function PageReview({
                             className="absolute -top-1 -bottom-1"
                             style={{
                               left: `${relLeft}%`,
-                              width: "6px",
+                              width: "4px",
                               transform: "translateX(-3px)",
                               cursor: "ew-resize",
                               touchAction: "none",
-                              background:
-                                "color-mix(in oklab, var(--error) 80%, transparent)",
+                              background: "color-mix(in oklab, var(--error) 80%, transparent)",
                               borderRadius: "2px",
                               boxShadow:
                                 "0 0 0 1px color-mix(in oklab, var(--error) 40%, transparent)",
@@ -340,9 +346,7 @@ export function PageReview({
 
                     {/* resize handles (only when selected) */}
                     {selected &&
-                      (
-                        ["nw", "n", "ne", "e", "se", "s", "sw", "w"] as const
-                      ).map((h) => (
+                      (["nw", "n", "ne", "e", "se", "s", "sw", "w"] as const).map((h) => (
                         <div
                           key={h}
                           onPointerDown={(e) => startLineDrag(e, line, h)}

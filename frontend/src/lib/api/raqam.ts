@@ -119,21 +119,8 @@ export async function cropImageToBlob(file: File, rect: Rect): Promise<Blob> {
   canvas.height = Math.max(1, Math.round(rect.h));
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Canvas 2D context unavailable");
-  ctx.drawImage(
-    bitmap,
-    rect.x,
-    rect.y,
-    rect.w,
-    rect.h,
-    0,
-    0,
-    canvas.width,
-    canvas.height,
-  );
+  ctx.drawImage(bitmap, rect.x, rect.y, rect.w, rect.h, 0, 0, canvas.width, canvas.height);
   return await new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob(
-      (b) => (b ? resolve(b) : reject(new Error("toBlob failed"))),
-      "image/png",
-    );
+    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("toBlob failed"))), "image/png");
   });
 }
