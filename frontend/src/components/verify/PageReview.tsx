@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Line, Page } from "@/lib/verify/types";
+import { useSpacePan } from "@/hooks/use-space-pan";
+import { useCtrlWheelZoom } from "@/hooks/use-ctrl-wheel-zoom";
 
 type Props = {
   page: Page;
@@ -41,7 +43,8 @@ export function PageReview({
   onAddSeparatorAt,
   onMoveSeparator,
 }: Props) {
-  const wrapRef = useRef<HTMLDivElement>(null);
+  const { scrollRef: wrapRef, effectiveTool, handCursor, containerProps } = useSpacePan();
+
   const imgRef = useRef<HTMLImageElement>(null);
   const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);
   const [box, setBox] = useState({ w: 0, h: 0 });
@@ -79,7 +82,7 @@ export function PageReview({
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
-  }, []);
+  }, [wrapRef]);
 
   const scale = useMemo(() => {
     if (!natural) return 1;
@@ -89,6 +92,9 @@ export function PageReview({
     }
     return zoom;
   }, [natural, box, zoom]);
+
+  // Ctrl + wheel zoom
+  useCtrlWheelZoom({ ref: wrapRef, zoom: scale, onZoomChange: setZoom });
 
   const dispW = natural ? natural.w * scale : 0;
   const dispH = natural ? natural.h * scale : 0;
@@ -218,13 +224,22 @@ export function PageReview({
 
       <div
         ref={wrapRef}
-        className="raqam-canvas-grid relative flex-1 overflow-auto"
-        onPointerDown={() => onSelectLine(null)}
+        className="raqam-canvas-grid relative flex-1 overflow-auto outline-none"
+        {...containerProps}
+        onPointerDown={(e) => {
+          containerProps.onPointerDown(e);
+          if (effectiveTool !== "hand") onSelectLine(null);
+        }}
+        style={effectiveTool === "hand" ? { cursor: handCursor } : undefined}
       >
         {imageUrl ? (
           <div
             className="relative mx-auto my-4"
-            style={{ width: dispW || "auto", height: dispH || "auto" }}
+            style={{
+              width: dispW || "auto",
+              height: dispH || "auto",
+              pointerEvents: effectiveTool === "hand" ? "none" : undefined,
+            }}
           >
             <img
               ref={imgRef}
