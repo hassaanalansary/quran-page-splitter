@@ -57,6 +57,9 @@ export function PageCanvas({
   const effectiveTool: CanvasTool = tool === "hand" || spaceHeld ? "hand" : "select";
 
   // Space-to-pan (standard desktop image-editor shortcut). Ignore while typing.
+  // The keydown listener is attached directly on the scroll container *and* on
+  // window so that preventDefault() fires before the browser's native
+  // scroll-on-space for the focused scrollable element.
   useEffect(() => {
     function isTyping(t: EventTarget | null) {
       const el = t as HTMLElement | null;
@@ -70,17 +73,23 @@ export function PageCanvas({
       );
     }
     function onKeyDown(e: KeyboardEvent) {
-      if (e.code === "Space" && !e.repeat && !isTyping(e.target)) {
+      if (e.code === "Space" && !isTyping(e.target)) {
         e.preventDefault();
-        setSpaceHeld(true);
+        if (!e.repeat) setSpaceHeld(true);
       }
     }
     function onKeyUp(e: KeyboardEvent) {
       if (e.code === "Space") setSpaceHeld(false);
     }
+
+    // Attach to the scroll container so preventDefault beats the native scroll
+    const el = scrollRef.current;
+    el?.addEventListener("keydown", onKeyDown);
+    // Also attach to window to catch Space when focus is elsewhere
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
     return () => {
+      el?.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
     };
@@ -277,7 +286,8 @@ export function PageCanvas({
   return (
     <div
       ref={scrollRef}
-      className="raqam-canvas-grid relative flex-1 overflow-auto"
+      tabIndex={-1}
+      className="raqam-canvas-grid relative flex-1 overflow-auto outline-none"
       onPointerDown={onScrollPointerDown}
       onPointerMove={onScrollPointerMove}
       onPointerUp={onScrollPointerUp}
@@ -371,22 +381,22 @@ function RectOverlay({
   }> = [
     {
       key: "n",
-      style: { top: -3, left: "10%", right: "10%", height: 6 },
+      style: { top: -3, left: "2%", right: "2%", height: 6 },
       cursor: "ns-resize",
     },
     {
       key: "s",
-      style: { bottom: -3, left: "10%", right: "10%", height: 6 },
+      style: { bottom: -3, left: "2%", right: "2%", height: 6 },
       cursor: "ns-resize",
     },
     {
       key: "e",
-      style: { right: -3, top: "10%", bottom: "10%", width: 6 },
+      style: { right: -3, top: "2%", bottom: "2%", width: 6 },
       cursor: "ew-resize",
     },
     {
       key: "w",
-      style: { left: -3, top: "10%", bottom: "10%", width: 6 },
+      style: { left: -3, top: "2%", bottom: "2%", width: 6 },
       cursor: "ew-resize",
     },
   ];
