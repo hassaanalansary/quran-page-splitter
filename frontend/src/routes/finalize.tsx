@@ -81,23 +81,27 @@ function normalizeData(raw: unknown): Data {
               ? p.image_filename
               : undefined,
         crop_box: cb,
-        lines: lines.filter(isObj).map(
-          (l, li): Line => ({
+        lines: lines.filter(isObj).map((l, li): Line => {
+          const rawBox = asBbox(l.line_bbox ?? l.bbox, {
+            x: cb.x,
+            y: li * 120,
+            w: cb.w,
+            h: 80,
+          });
+          // Width and X are locked to the page crop box — every line shares
+          // the same horizontal extent. Only Y/H come from the source bbox.
+          const lockedBox: Bbox = { x: cb.x, y: rawBox.y, w: cb.w, h: rawBox.h };
+          return {
             line_number: num(l.line_number, li + 1),
             type: typeof l.type === "string" ? l.type : "text",
-            line_bbox: asBbox(l.line_bbox ?? l.bbox, {
-              x: cb.x,
-              y: li * 120,
-              w: cb.w,
-              h: 80,
-            }),
+            line_bbox: lockedBox,
             segments: Array.isArray(l.segments) ? l.segments : undefined,
             separator_cuts: Array.isArray(l.separator_cuts)
               ? (l.separator_cuts.map((n) => num(n)) as number[])
               : undefined,
             sura_number: l.sura_number == null ? undefined : num(l.sura_number),
-          }),
-        ),
+          };
+        }),
       };
     }),
   };
@@ -113,6 +117,12 @@ function FinalizePage() {
   const [lineIndex, setLineIndex] = useState(0);
   const [brushSize, setBrushSize] = useState(16);
   const [shiftHeld, setShiftHeld] = useState(false);
+  const [spaceHeld, setSpaceHeld] = useState(false);
+  const [tool, setTool] = useState<"select" | "hand">("select");
+  type BgMode = "white" | "black" | "checker" | "dots";
+  const [bgMode, setBgMode] = useState<BgMode>("white");
+  const [zoomMult, setZoomMult] = useState(1); // 1 = fit-to-view
+  const [pan, setPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [loadState, setLoadState] = useState<
     { kind: "idle" } | { kind: "loading" } | { kind: "error"; message: string } | { kind: "ready" }
   >({ kind: "idle" });
@@ -131,11 +141,17 @@ function FinalizePage() {
   } | null>(null);
   const mouseRef = useRef<{ x: number; y: number } | null>(null);
   const activeStrokeRef = useRef<EraseStroke | null>(null);
+  const panDragRef = useRef<{
+    startX: number;
+    startY: number;
+    startPan: { x: number; y: number };
+  } | null>(null);
   const edgeDragRef = useRef<{
     edge: "top" | "bottom";
     startBox: Bbox;
   } | null>(null);
   const [hoverEdge, setHoverEdge] = useState<"top" | "bottom" | null>(null);
+  const effectiveTool: "select" | "hand" = tool === "hand" || spaceHeld ? "hand" : "select";
 
   /* ───────── load on mount ───────── */
   const applyPayload = useCallback((p: CutReviewPayload) => {
@@ -323,20 +339,41 @@ function FinalizePage() {
 
   /* ───────── keyboard ───────── */
   useEffect(() => {
+    const isTyping = (t: EventTarget | null) => {
+      const el = t as HTMLElement | null;
+      if (!el) return false;
+      return /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) || el.isContentEditable;
+    };
     const down = (e: KeyboardEvent) => {
       if (e.key === "Shift") setShiftHeld(true);
+      if (e.code === "Space" && !isTyping(e.target)) {
+        e.preventDefault();
+        if (!e.repeat) setSpaceHeld(true);
+      }
     };
     const up = (e: KeyboardEvent) => {
       if (e.key === "Shift") setShiftHeld(false);
+      if (e.code === "Space") setSpaceHeld(false);
+    };
+    const blur = () => {
+      setShiftHeld(false);
+      setSpaceHeld(false);
     };
     window.addEventListener("keydown", down);
     window.addEventListener("keyup", up);
-    window.addEventListener("blur", () => setShiftHeld(false));
+    window.addEventListener("blur", blur);
     return () => {
       window.removeEventListener("keydown", down);
       window.removeEventListener("keyup", up);
+      window.removeEventListener("blur", blur);
     };
   }, []);
+
+  // Reset zoom/pan when switching line or page.
+  useEffect(() => {
+    setZoomMult(1);
+    setPan({ x: 0, y: 0 });
+  }, [pageIndex, lineIndex]);
 
   /* ───────── canvas render ───────── */
 
@@ -355,13 +392,42 @@ function FinalizePage() {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.scale(dpr, dpr);
-    ctx.fillStyle = "#0b0b0b";
-    ctx.fillRect(0, 0, cssW, cssH);
+
+    // ── Background ──
+    if (bgMode === "white") {
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, cssW, cssH);
+    } else if (bgMode === "black") {
+      ctx.fillStyle = "#0b0b0b";
+      ctx.fillRect(0, 0, cssW, cssH);
+    } else if (bgMode === "checker") {
+      ctx.fillStyle = "#f4f4f4";
+      ctx.fillRect(0, 0, cssW, cssH);
+      const sq = 14;
+      ctx.fillStyle = "#dcdcdc";
+      for (let yy = 0; yy < cssH; yy += sq) {
+        for (let xx = 0; xx < cssW; xx += sq) {
+          if (((xx / sq + yy / sq) | 0) % 2 === 0) ctx.fillRect(xx, yy, sq, sq);
+        }
+      }
+    } else if (bgMode === "dots") {
+      ctx.fillStyle = "#f7f7f7";
+      ctx.fillRect(0, 0, cssW, cssH);
+      ctx.fillStyle = "#c8c8c8";
+      const step = 18;
+      for (let yy = step / 2; yy < cssH; yy += step) {
+        for (let xx = step / 2; xx < cssW; xx += step) {
+          ctx.beginPath();
+          ctx.arc(xx, yy, 1.2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    }
     viewRef.current = null;
 
     const img = imageRef.current;
     if (!img || !line || !imageReady) {
-      ctx.fillStyle = "#6b6860";
+      ctx.fillStyle = bgMode === "black" ? "#a0a0a0" : "#6b6860";
       ctx.font = "13px ui-monospace, monospace";
       ctx.fillText(line ? "Loading page image..." : "No line selected.", 16, 28);
       return;
@@ -421,27 +487,13 @@ function FinalizePage() {
     const pad = 24;
     const maxW = Math.max(1, cssW - pad * 2);
     const maxH = Math.max(1, cssH - pad * 2);
-    const scale = Math.max(0.02, Math.min(maxW / width, maxH / height));
+    const fitScale = Math.max(0.02, Math.min(maxW / width, maxH / height));
+    const scale = Math.max(0.02, fitScale * zoomMult);
     const drawW = width * scale;
     const drawH = height * scale;
-    const offsetX = (cssW - drawW) / 2;
-    const offsetY = (cssH - drawH) / 2;
+    const offsetX = (cssW - drawW) / 2 + pan.x;
+    const offsetY = (cssH - drawH) / 2 + pan.y;
     viewRef.current = { scale, offsetX, offsetY, bbox: { ...box }, width, height };
-
-    // Checkerboard so transparency reads.
-    const sq = 12;
-    for (let yy = 0; yy < drawH; yy += sq) {
-      for (let xx = 0; xx < drawW; xx += sq) {
-        const dark = ((xx / sq + yy / sq) | 0) % 2 === 0;
-        ctx.fillStyle = dark ? "#1a1a1a" : "#262626";
-        ctx.fillRect(
-          offsetX + xx,
-          offsetY + yy,
-          Math.min(sq, drawW - xx),
-          Math.min(sq, drawH - yy),
-        );
-      }
-    }
 
     ctx.save();
     ctx.imageSmoothingEnabled = false;
@@ -449,8 +501,8 @@ function FinalizePage() {
     ctx.restore();
 
     // Frame
-    ctx.strokeStyle = "rgba(232, 213, 163, 0.85)";
-    ctx.lineWidth = 2;
+    ctx.strokeStyle = bgMode === "black" ? "rgba(232, 213, 163, 0.85)" : "rgba(40, 56, 92, 0.55)";
+    ctx.lineWidth = 1.5;
     ctx.strokeRect(offsetX, offsetY, drawW, drawH);
 
     // Separator hints
@@ -494,7 +546,40 @@ function FinalizePage() {
       ctx.stroke();
       ctx.restore();
     }
-  }, [line, imageReady, currentLineEdit, hoverEdge, shiftHeld, brushSize]);
+  }, [line, imageReady, currentLineEdit, hoverEdge, shiftHeld, brushSize, bgMode, zoomMult, pan]);
+
+  // Ctrl/Cmd + wheel zoom around the cursor.
+  useEffect(() => {
+    const c = canvasRef.current;
+    if (!c) return;
+    const canvasEl = c;
+    function onWheel(e: WheelEvent) {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      const rect = canvasEl.getBoundingClientRect();
+      const cx = e.clientX - rect.left;
+      const cy = e.clientY - rect.top;
+      const factor = Math.exp(-e.deltaY * 0.0015);
+      setZoomMult((prev) => {
+        const next = Math.max(0.1, Math.min(16, prev * factor));
+        const ratio = next / prev;
+        // Keep cursor anchor stable: adjust pan so the point under cursor stays put.
+        setPan((p) => {
+          const view = viewRef.current;
+          if (!view) return p;
+          const dx = cx - (view.offsetX + (view.width * view.scale) / 2);
+          const dy = cy - (view.offsetY + (view.height * view.scale) / 2);
+          return {
+            x: p.x + dx * (1 - ratio),
+            y: p.y + dy * (1 - ratio),
+          };
+        });
+        return Number(next.toFixed(3));
+      });
+    }
+    canvasEl.addEventListener("wheel", onWheel, { passive: false });
+    return () => canvasEl.removeEventListener("wheel", onWheel);
+  }, []);
 
   useEffect(() => {
     render();
@@ -535,9 +620,15 @@ function FinalizePage() {
 
   function onPointerDown(e: React.PointerEvent<HTMLCanvasElement>) {
     if (!line) return;
-    const { local, view } = localFromEvent(e);
+    const { local, view, css } = localFromEvent(e);
     if (!view) return;
     canvasRef.current?.setPointerCapture(e.pointerId);
+
+    // Hand/pan tool (or Space held) takes priority.
+    if (effectiveTool === "hand") {
+      panDragRef.current = { startX: css.x, startY: css.y, startPan: { ...pan } };
+      return;
+    }
 
     if (!shiftHeld) {
       const edge = edgeAt(local.y, view);
@@ -568,8 +659,14 @@ function FinalizePage() {
     const rect = c.getBoundingClientRect();
     mouseRef.current = { x: e.clientX - rect.left, y: e.clientY - rect.top };
 
-    const { local, view } = localFromEvent(e);
+    const { local, view, css } = localFromEvent(e);
     if (!view) return;
+
+    if (panDragRef.current) {
+      const p = panDragRef.current;
+      setPan({ x: p.startPan.x + (css.x - p.startX), y: p.startPan.y + (css.y - p.startY) });
+      return;
+    }
 
     if (edgeDragRef.current && line) {
       const drag = edgeDragRef.current;
@@ -619,6 +716,7 @@ function FinalizePage() {
     canvasRef.current?.releasePointerCapture(e.pointerId);
     activeStrokeRef.current = null;
     edgeDragRef.current = null;
+    panDragRef.current = null;
   }
 
   /* ───────── save / export ───────── */
@@ -729,13 +827,77 @@ function FinalizePage() {
 
       <div className="flex flex-1 overflow-hidden">
         {/* Canvas */}
-        <section className="flex flex-1 flex-col bg-[#0b0b0b]">
-          <div className="flex items-center gap-3 border-b border-border-strong bg-[#111] px-4 py-2 text-[12px] text-text-muted">
-            <span>
+        <section className="flex flex-1 flex-col bg-bg-surface">
+          <div className="flex flex-wrap items-center gap-2 border-b border-border bg-white px-3 py-2 text-[12px] text-text-secondary">
+            <span className="font-mono text-text-muted">
               {page
                 ? `Page ${page.page_number} · ${page.page_image_filename ?? page.image_filename ?? ""}`
                 : "no page"}
             </span>
+
+            {/* Tool segmented control */}
+            <div className="ml-2 flex overflow-hidden rounded-sm border border-border-strong">
+              {(["select", "hand"] as const).map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setTool(t)}
+                  title={t === "hand" ? "Hand tool (or hold Space)" : "Select / edit tool"}
+                  className={[
+                    "h-7 cursor-pointer px-2 text-[11px] font-semibold",
+                    effectiveTool === t
+                      ? "bg-navy text-white"
+                      : "bg-white text-text-secondary hover:bg-bg-surface",
+                  ].join(" ")}
+                >
+                  {t === "select" ? "Select" : "Hand"}
+                </button>
+              ))}
+            </div>
+
+            {/* Background segmented control */}
+            <div className="ml-1 flex overflow-hidden rounded-sm border border-border-strong">
+              {(
+                [
+                  { v: "white", label: "White" },
+                  { v: "black", label: "Black" },
+                  { v: "checker", label: "Grid" },
+                  { v: "dots", label: "Dots" },
+                ] as const
+              ).map((o) => (
+                <button
+                  key={o.v}
+                  type="button"
+                  onClick={() => setBgMode(o.v)}
+                  title={`${o.label} background`}
+                  className={[
+                    "h-7 cursor-pointer px-2 text-[11px] font-semibold",
+                    bgMode === o.v
+                      ? "bg-navy text-white"
+                      : "bg-white text-text-secondary hover:bg-bg-surface",
+                  ].join(" ")}
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Zoom display + reset */}
+            <div className="ml-1 flex items-center gap-1 rounded-sm border border-border-strong bg-white px-2 py-[2px] font-mono text-[11px] text-text-muted">
+              <span>{Math.round(zoomMult * 100)}%</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setZoomMult(1);
+                  setPan({ x: 0, y: 0 });
+                }}
+                className="ml-1 cursor-pointer text-navy hover:underline"
+                title="Reset zoom & pan"
+              >
+                fit
+              </button>
+            </div>
+
             <span className="ml-auto">
               {line ? `Line ${line.line_number} · ${line.type}` : "no line"}
             </span>
@@ -743,7 +905,7 @@ function FinalizePage() {
               type="button"
               onClick={() => setLineIndex((i) => Math.max(0, i - 1))}
               disabled={!page || lineIndex <= 0}
-              className="h-7 cursor-pointer rounded-sm border border-border-strong bg-[#1a1a1a] px-2 text-[11px] text-text-muted hover:bg-[#222] disabled:opacity-40"
+              className="h-7 cursor-pointer rounded-sm border border-border-strong bg-white px-2 text-[11px] text-text-secondary hover:bg-bg-surface disabled:opacity-40"
             >
               Prev line
             </button>
@@ -751,7 +913,7 @@ function FinalizePage() {
               type="button"
               onClick={() => setLineIndex((i) => Math.min((page?.lines.length ?? 1) - 1, i + 1))}
               disabled={!page || lineIndex >= (page?.lines.length ?? 1) - 1}
-              className="h-7 cursor-pointer rounded-sm border border-border-strong bg-[#1a1a1a] px-2 text-[11px] text-text-muted hover:bg-[#222] disabled:opacity-40"
+              className="h-7 cursor-pointer rounded-sm border border-border-strong bg-white px-2 text-[11px] text-text-secondary hover:bg-bg-surface disabled:opacity-40"
             >
               Next line
             </button>
@@ -759,7 +921,7 @@ function FinalizePage() {
               type="button"
               onClick={undoStroke}
               disabled={!currentLineEdit?.erase_strokes?.length}
-              className="h-7 cursor-pointer rounded-sm border border-border-strong bg-[#1a1a1a] px-2 text-[11px] text-text-muted hover:bg-[#222] disabled:opacity-40"
+              className="h-7 cursor-pointer rounded-sm border border-border-strong bg-white px-2 text-[11px] text-text-secondary hover:bg-bg-surface disabled:opacity-40"
             >
               Undo stroke
             </button>
@@ -780,7 +942,16 @@ function FinalizePage() {
                 width: "100%",
                 height: "100%",
                 display: "block",
-                cursor: shiftHeld ? "none" : hoverEdge ? "ns-resize" : "crosshair",
+                cursor:
+                  effectiveTool === "hand"
+                    ? panDragRef.current
+                      ? "grabbing"
+                      : "grab"
+                    : shiftHeld
+                      ? "none"
+                      : hoverEdge
+                        ? "ns-resize"
+                        : "crosshair",
               }}
             />
           </div>
