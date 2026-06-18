@@ -5,6 +5,7 @@ import { AppHeader } from "@/components/upload/AppHeader";
 import { CropPreviewPane } from "@/components/upload/CropPreviewPane";
 import { FileStrip } from "@/components/upload/FileStrip";
 import { PageCanvas, type CanvasTool } from "@/components/upload/PageCanvas";
+import { useSpaceHeld } from "@/hooks/use-space-pan";
 import { RightPanel } from "@/components/upload/RightPanel";
 import {
   cropImageToBlob,
@@ -84,6 +85,8 @@ function UploadPage() {
   const [drawing, setDrawing] = useState(true);
   const [zoom, setZoom] = useState<Zoom>(-1);
   const [tool, setTool] = useState<CanvasTool>("select");
+  const spaceHeld = useSpaceHeld();
+  const effectiveTool: CanvasTool = tool === "hand" || spaceHeld ? "hand" : "select";
 
   // Desktop-style shortcuts: V = select, H = hand.
   useEffect(() => {
@@ -318,7 +321,7 @@ function UploadPage() {
           {/* Crop toolbar */}
           <div className="flex h-9 flex-shrink-0 items-center gap-2 border-b border-border bg-white px-3">
             <ToolButton
-              active={tool === "select"}
+              active={effectiveTool === "select"}
               onClick={() => setTool("select")}
               title="Select / crop tool (V)"
               aria-label="Select tool"
@@ -326,7 +329,7 @@ function UploadPage() {
               <CursorIcon />
             </ToolButton>
             <ToolButton
-              active={tool === "hand"}
+              active={effectiveTool === "hand"}
               onClick={() => setTool("hand")}
               title="Hand tool — pan the canvas (H, or hold Space)"
               aria-label="Hand tool"

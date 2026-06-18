@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { AppHeader } from "@/components/upload/AppHeader";
 import { PageReview } from "@/components/verify/PageReview";
 import {
   loadReviewResults,
@@ -559,31 +560,34 @@ function VerifyPage() {
 
   if (!results) {
     return (
-      <div className="flex h-screen items-center justify-center bg-bg-page">
-        <div className="flex w-[460px] flex-col gap-4 rounded-md border border-border bg-white p-6 shadow-[var(--shadow-md)]">
-          <h1 className="font-display text-[20px] font-bold text-navy">Verify Detection Results</h1>
-          {loadState.kind === "loading" && (
-            <p className="text-[12.5px] text-text-secondary">Loading from backend…</p>
-          )}
-          {loadState.kind === "error" && (
-            <p className="rounded-sm border border-error-border bg-error-bg px-3 py-2 text-[12px] text-error">
-              Couldn't load from backend: {loadState.message}
+      <div className="flex h-screen flex-col">
+        <AppHeader />
+        <div className="flex flex-1 items-center justify-center bg-bg-page">
+          <div className="flex w-[460px] flex-col gap-4 rounded-md border border-border bg-white p-6 shadow-[var(--shadow-md)]">
+            <h1 className="font-display text-[20px] font-bold text-navy">Verify Detection Results</h1>
+            {loadState.kind === "loading" && (
+              <p className="text-[12.5px] text-text-secondary">Loading from backend…</p>
+            )}
+            {loadState.kind === "error" && (
+              <p className="rounded-sm border border-error-border bg-error-bg px-3 py-2 text-[12px] text-error">
+                Couldn't load from backend: {loadState.message}
+              </p>
+            )}
+            <p className="text-[13px] leading-relaxed text-text-secondary">
+              Or load a <code>results.json</code> manually:
             </p>
-          )}
-          <p className="text-[13px] leading-relaxed text-text-secondary">
-            Or load a <code>results.json</code> manually:
-          </p>
-          <label className="flex flex-col gap-1">
-            <span className="text-[11.5px] font-semibold uppercase tracking-wider text-text-muted">
-              results.json
-            </span>
-            <input
-              type="file"
-              accept="application/json"
-              onChange={(e) => e.target.files?.[0] && loadResultsFile(e.target.files[0])}
-              className="text-[12.5px]"
-            />
-          </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-[11.5px] font-semibold uppercase tracking-wider text-text-muted">
+                results.json
+              </span>
+              <input
+                type="file"
+                accept="application/json"
+                onChange={(e) => e.target.files?.[0] && loadResultsFile(e.target.files[0])}
+                className="text-[12.5px]"
+              />
+            </label>
+          </div>
         </div>
       </div>
     );
@@ -591,32 +595,34 @@ function VerifyPage() {
 
   return (
     <div className="flex h-screen flex-col overflow-hidden">
-      {/* Top bar */}
-      <header className="flex h-[52px] flex-shrink-0 items-center gap-4 border-b border-border bg-white px-4">
-        <span className="font-display text-[15px] font-bold text-navy">Raqam · Verify</span>
+      <AppHeader />
+
+      {/* Page toolbar */}
+      <header className="flex h-[44px] flex-shrink-0 items-center gap-3 border-b border-border bg-white px-4 text-[12.5px]">
+        <span className="font-display text-[14px] font-bold text-navy">Verify · Page edits</span>
         <div className="ml-2 flex items-center gap-1">
           <button
             type="button"
             onClick={() => setPageIndex(Math.max(0, pageIndex - 1))}
             disabled={pageIndex <= 0}
-            className="h-8 cursor-pointer rounded-sm bg-transparent px-3 text-[12.5px] font-medium text-text-secondary hover:bg-bg-surface disabled:cursor-not-allowed disabled:opacity-50"
+            className="h-7 cursor-pointer rounded-sm bg-transparent px-2 text-text-secondary hover:bg-bg-surface disabled:cursor-not-allowed disabled:opacity-50"
           >
             ← Prev
           </button>
-          <span className="text-[12.5px] font-medium text-text-secondary">
+          <span className="text-text-secondary">
             Page {pageIndex + 1} / {results.pages.length}
           </span>
           <button
             type="button"
             onClick={() => setPageIndex(Math.min(results.pages.length - 1, pageIndex + 1))}
             disabled={pageIndex >= results.pages.length - 1}
-            className="h-8 cursor-pointer rounded-sm bg-transparent px-3 text-[12.5px] font-medium text-text-secondary hover:bg-bg-surface disabled:cursor-not-allowed disabled:opacity-50"
+            className="h-7 cursor-pointer rounded-sm bg-transparent px-2 text-text-secondary hover:bg-bg-surface disabled:cursor-not-allowed disabled:opacity-50"
           >
             Next →
           </button>
         </div>
         <div className="ml-auto flex items-center gap-2">
-          <div className="flex h-8 overflow-hidden rounded-sm border-[1.5px] border-border-strong">
+          <div className="flex h-7 overflow-hidden rounded-sm border-[1.5px] border-border-strong">
             <button
               type="button"
               onClick={undo}
@@ -636,7 +642,7 @@ function VerifyPage() {
               ↷ Redo
             </button>
           </div>
-          <label className="flex h-8 cursor-pointer items-center rounded-sm border-[1.5px] border-border-strong bg-white px-[11px] text-[12px] font-medium text-text-secondary hover:bg-bg-surface">
+          <label className="flex h-7 cursor-pointer items-center rounded-sm border-[1.5px] border-border-strong bg-white px-[11px] text-[12px] font-medium text-text-secondary hover:bg-bg-surface">
             + Add page images
             <input
               type="file"
@@ -650,7 +656,7 @@ function VerifyPage() {
             type="button"
             onClick={saveToBackend}
             disabled={saveState === "saving"}
-            className="h-8 cursor-pointer rounded-sm border-[1.5px] border-border-strong bg-white px-[13px] text-[12.5px] font-semibold text-navy hover:bg-bg-surface disabled:opacity-50"
+            className="h-7 cursor-pointer rounded-sm border-[1.5px] border-border-strong bg-white px-[13px] text-[12px] font-semibold text-navy hover:bg-bg-surface disabled:opacity-50"
           >
             {saveState === "saving"
               ? "Saving…"
@@ -661,7 +667,7 @@ function VerifyPage() {
           <button
             type="button"
             onClick={downloadJson}
-            className="h-8 cursor-pointer rounded-sm bg-navy px-[13px] text-[12.5px] font-semibold text-white hover:bg-navy-hover"
+            className="h-7 cursor-pointer rounded-sm bg-navy px-[13px] text-[12px] font-semibold text-white hover:bg-navy-hover"
           >
             Download JSON
           </button>

@@ -135,3 +135,28 @@ export function useSpacePan(opts: UseSpacePanOptions = {}): UseSpacePanReturn {
     },
   };
 }
+
+/**
+ * Read-only tracker for the global "Space held" state.
+ *
+ * Used by toolbar indicators that need to reflect the temporary hand-tool
+ * activation while the user holds Space, without owning the full pan logic.
+ */
+export function useSpaceHeld(): boolean {
+  const [held, setHeld] = useState(false);
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.code === "Space" && !isTyping(e.target) && !e.repeat) setHeld(true);
+    }
+    function onKeyUp(e: KeyboardEvent) {
+      if (e.code === "Space") setHeld(false);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+    };
+  }, []);
+  return held;
+}

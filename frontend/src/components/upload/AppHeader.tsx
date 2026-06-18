@@ -19,9 +19,8 @@ export function AppHeader() {
           className="font-display text-[16px] font-bold leading-none text-navy"
           style={{ letterSpacing: "0.01em" }}
         >
-          Raqam
+          Quran Page Splitter
         </span>
-        <span className="ml-1.5 text-[13px] font-light text-text-secondary">Mushaf Splitter</span>
       </div>
 
       <nav className="ml-auto flex items-center gap-0">

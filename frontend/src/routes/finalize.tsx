@@ -579,7 +579,7 @@ function FinalizePage() {
     }
     canvasEl.addEventListener("wheel", onWheel, { passive: false });
     return () => canvasEl.removeEventListener("wheel", onWheel);
-  }, []);
+  }, [loadState.kind]);
 
   useEffect(() => {
     render();
