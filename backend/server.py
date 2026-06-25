@@ -10,7 +10,7 @@ from typing import Any
 import uvicorn
 from fastapi import Body, FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from core.aya_separator import AyaSeparatorConfig, AyaSeparatorProcessor
@@ -78,21 +78,6 @@ def serve_spa_index() -> FileResponse:
         )
     return FileResponse(SPA_INDEX)
 
-
-@app.get("/", include_in_schema=False)
-async def redirect_to_upload():  # type: ignore[no-untyped-def]
-    return RedirectResponse(url="/upload")
-
-
-@app.get("/review", include_in_schema=False)
-async def redirect_review():  # type: ignore[no-untyped-def]
-    return RedirectResponse(url="/verify")
-
-
-@app.get("/cut-review", include_in_schema=False)
-@app.get("/line-review", include_in_schema=False)
-async def redirect_cut_review():  # type: ignore[no-untyped-def]
-    return RedirectResponse(url="/finalize")
 
 
 @app.get("/upload", include_in_schema=False)
