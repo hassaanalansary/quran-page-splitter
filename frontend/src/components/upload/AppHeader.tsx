@@ -1,9 +1,9 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 
-type Step = { label: string; to: "/" | "/verify" | "/finalize" };
+type Step = { label: string; to: "/upload" | "/verify" | "/finalize" };
 
 const STEPS: Step[] = [
-  { label: "Upload", to: "/" },
+  { label: "Upload", to: "/upload" },
   { label: "Verify", to: "/verify" },
   { label: "Finalize", to: "/finalize" },
 ];

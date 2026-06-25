@@ -1,10 +1,10 @@
-// Thin client for the Raqam FastAPI backend (default http://localhost:8000).
+// Thin client for the Raqam FastAPI backend.
 //
-// CORS: The Python server must allow this origin. If it doesn't, the
-// browser will surface a CORS error in the network panel.
+// In production, the SPA is served by FastAPI, so relative same-origin URLs
+// are enough. In development, Vite proxies these paths to localhost:8000.
 
 export const RAQAM_API_BASE =
-  (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "http://localhost:8000";
+  ((import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "").replace(/\/$/, "");
 
 export type TargetName =
   | "bounds"

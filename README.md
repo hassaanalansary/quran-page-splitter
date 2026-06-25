@@ -21,8 +21,8 @@ not accidentally split as ordinary text.
 - Tracks sura and aya numbering across pages.
 - Exports coordinate JSON from the main processing run.
 - Saves source page copies for review.
-- Lets the user correct output visually in `/review`.
-- Lets the user adjust final line cuts and eraser masks in `/cut-review`.
+- Lets the user correct output visually in `/verify`.
+- Lets the user adjust final line cuts and eraser masks in `/finalize`.
 
 ## Requirements
 
@@ -36,15 +36,25 @@ python-multipart.
 
 ## Install And Run
 
-Install dependencies:
+Install backend dependencies:
 
 ```bash
+cd backend
 uv sync
 ```
 
-Start the web server:
+Install frontend dependencies and build the SPA:
 
 ```bash
+cd ../frontend
+npm install
+npm run build
+```
+
+Start the FastAPI web server:
+
+```bash
+cd ../backend
 uv run server.py
 ```
 
@@ -54,19 +64,25 @@ Open:
 http://localhost:8000/
 ```
 
-The coordinate review editor is available at:
+`/` redirects to the upload workflow:
 
 ```text
-http://localhost:8000/review
+http://localhost:8000/upload
 ```
 
-The line cut review editor is available at:
+The coordinate verification editor is available at:
 
 ```text
-http://localhost:8000/cut-review
+http://localhost:8000/verify
 ```
 
-The review pages only work after a main processing run.
+The final line cleanup/export editor is available at:
+
+```text
+http://localhost:8000/finalize
+```
+
+The verification and finalization pages only work after a main processing run.
 
 ## Recommended Workflow
 
@@ -74,7 +90,7 @@ The review pages only work after a main processing run.
   - Use PNG/JPG/WEBP/GIF inputs.
   - Name pages in reading order, for example `001.png`, `002.png`, `003.png`.
   - If starting from PDFs, see `script/pdf_to_pngs.py`.
-2. Open `http://localhost:8000/`.
+2. Open `http://localhost:8000/upload`.
 3. Drag images into the drop zone or use `browse`.
 4. Define the required crop targets:
   - `bounds`
@@ -85,8 +101,8 @@ The review pages only work after a main processing run.
   - `aya_separator_ignore`
 6. Tune detection and numbering settings.
 7. Click `Upload all`.
-8. Open `/review` to correct remaining coordinate, numbering, or geometry issues.
-9. Open `/cut-review` to adjust final line boxes and paint transparent masks.
+8. Open `/verify` to correct remaining coordinate, numbering, or geometry issues.
+9. Open `/finalize` to adjust final line boxes and paint transparent masks.
 10. Export final line PNGs.
 
 ## Main Page Controls

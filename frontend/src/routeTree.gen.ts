@@ -10,7 +10,11 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as VerifyRouteImport } from './routes/verify'
+import { Route as UploadRouteImport } from './routes/upload'
+import { Route as ReviewRouteImport } from './routes/review'
+import { Route as LineReviewRouteImport } from './routes/line-review'
 import { Route as FinalizeRouteImport } from './routes/finalize'
+import { Route as CutReviewRouteImport } from './routes/cut-review'
 import { Route as IndexRouteImport } from './routes/index'
 
 const VerifyRoute = VerifyRouteImport.update({
@@ -18,9 +22,29 @@ const VerifyRoute = VerifyRouteImport.update({
   path: '/verify',
   getParentRoute: () => rootRouteImport,
 } as any)
+const UploadRoute = UploadRouteImport.update({
+  id: '/upload',
+  path: '/upload',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ReviewRoute = ReviewRouteImport.update({
+  id: '/review',
+  path: '/review',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LineReviewRoute = LineReviewRouteImport.update({
+  id: '/line-review',
+  path: '/line-review',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const FinalizeRoute = FinalizeRouteImport.update({
   id: '/finalize',
   path: '/finalize',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CutReviewRoute = CutReviewRouteImport.update({
+  id: '/cut-review',
+  path: '/cut-review',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -31,31 +55,69 @@ const IndexRoute = IndexRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/cut-review': typeof CutReviewRoute
   '/finalize': typeof FinalizeRoute
+  '/line-review': typeof LineReviewRoute
+  '/review': typeof ReviewRoute
+  '/upload': typeof UploadRoute
   '/verify': typeof VerifyRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/cut-review': typeof CutReviewRoute
   '/finalize': typeof FinalizeRoute
+  '/line-review': typeof LineReviewRoute
+  '/review': typeof ReviewRoute
+  '/upload': typeof UploadRoute
   '/verify': typeof VerifyRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/cut-review': typeof CutReviewRoute
   '/finalize': typeof FinalizeRoute
+  '/line-review': typeof LineReviewRoute
+  '/review': typeof ReviewRoute
+  '/upload': typeof UploadRoute
   '/verify': typeof VerifyRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/finalize' | '/verify'
+  fullPaths:
+    | '/'
+    | '/cut-review'
+    | '/finalize'
+    | '/line-review'
+    | '/review'
+    | '/upload'
+    | '/verify'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/finalize' | '/verify'
-  id: '__root__' | '/' | '/finalize' | '/verify'
+  to:
+    | '/'
+    | '/cut-review'
+    | '/finalize'
+    | '/line-review'
+    | '/review'
+    | '/upload'
+    | '/verify'
+  id:
+    | '__root__'
+    | '/'
+    | '/cut-review'
+    | '/finalize'
+    | '/line-review'
+    | '/review'
+    | '/upload'
+    | '/verify'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  CutReviewRoute: typeof CutReviewRoute
   FinalizeRoute: typeof FinalizeRoute
+  LineReviewRoute: typeof LineReviewRoute
+  ReviewRoute: typeof ReviewRoute
+  UploadRoute: typeof UploadRoute
   VerifyRoute: typeof VerifyRoute
 }
 
@@ -68,11 +130,39 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof VerifyRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/upload': {
+      id: '/upload'
+      path: '/upload'
+      fullPath: '/upload'
+      preLoaderRoute: typeof UploadRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/review': {
+      id: '/review'
+      path: '/review'
+      fullPath: '/review'
+      preLoaderRoute: typeof ReviewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/line-review': {
+      id: '/line-review'
+      path: '/line-review'
+      fullPath: '/line-review'
+      preLoaderRoute: typeof LineReviewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/finalize': {
       id: '/finalize'
       path: '/finalize'
       fullPath: '/finalize'
       preLoaderRoute: typeof FinalizeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/cut-review': {
+      id: '/cut-review'
+      path: '/cut-review'
+      fullPath: '/cut-review'
+      preLoaderRoute: typeof CutReviewRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -87,19 +177,13 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  CutReviewRoute: CutReviewRoute,
   FinalizeRoute: FinalizeRoute,
+  LineReviewRoute: LineReviewRoute,
+  ReviewRoute: ReviewRoute,
+  UploadRoute: UploadRoute,
   VerifyRoute: VerifyRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}

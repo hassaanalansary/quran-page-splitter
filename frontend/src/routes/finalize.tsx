@@ -16,15 +16,6 @@ import {
 } from "@/lib/api/cutReview";
 
 export const Route = createFileRoute("/finalize")({
-  head: () => ({
-    meta: [
-      { title: "Finalize — Raqam" },
-      {
-        name: "description",
-        content: "Adjust line cuts and erase stray strokes before exporting line PNGs.",
-      },
-    ],
-  }),
   component: FinalizePage,
 });
 
@@ -110,6 +101,10 @@ function normalizeData(raw: unknown): Data {
 /* ─────────────────────────── component ─────────────────────────── */
 
 function FinalizePage() {
+  useEffect(() => {
+    document.title = "Finalize - Quran Page Splitter";
+  }, []);
+
   const [payload, setPayload] = useState<CutReviewPayload | null>(null);
   const [data, setData] = useState<Data | null>(null);
   const [edits, setEdits] = useState<CutEdits>({ pages: [] });

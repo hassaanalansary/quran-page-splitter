@@ -14,15 +14,6 @@ import { recomputeAll } from "@/lib/verify/recompute";
 import { genId, type Line, type Page, type Results, type Segment } from "@/lib/verify/types";
 
 export const Route = createFileRoute("/verify")({
-  head: () => ({
-    meta: [
-      { title: "Verify — Raqam" },
-      {
-        name: "description",
-        content: "Verify and correct line/sura/aya detection on processed Mushaf pages.",
-      },
-    ],
-  }),
   component: VerifyPage,
 });
 
@@ -195,6 +186,10 @@ function withIds(raw: unknown): Results {
 }
 
 function VerifyPage() {
+  useEffect(() => {
+    document.title = "Verify - Quran Page Splitter";
+  }, []);
+
   // Undo/redo history of Results snapshots.
   const [history, setHistory] = useState<Results[]>([]);
   const [hIndex, setHIndex] = useState(-1);

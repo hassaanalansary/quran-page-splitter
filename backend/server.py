@@ -10,7 +10,7 @@ from typing import Any
 import uvicorn
 from fastapi import Body, FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from core.aya_separator import AyaSeparatorConfig, AyaSeparatorProcessor
@@ -42,6 +42,12 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+BACKEND_DIR = Path(__file__).resolve().parent
+REPO_ROOT = BACKEND_DIR.parent
+FRONTEND_DIST = REPO_ROOT / "frontend" / "dist"
+SPA_INDEX = FRONTEND_DIST / "index.html"
+SPA_ASSETS = FRONTEND_DIST / "assets"
+
 app = FastAPI(title="Line Cutter Server")
 app.add_middleware(
     CORSMiddleware,
@@ -56,32 +62,44 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/static", StaticFiles(directory=BACKEND_DIR / "static"), name="static")
+app.mount("/assets", StaticFiles(directory=SPA_ASSETS, check_dir=False), name="spa-assets")
 
 
-@app.get("/", response_class=HTMLResponse)
-async def serve_index():  # type: ignore[no-untyped-def]
-    index_path = Path("index.html")
-    if not index_path.exists():
-        raise HTTPException(status_code=404, detail="index.html not found")
-    return index_path.read_text(encoding="utf-8")
+def serve_spa_index() -> FileResponse:
+    if not SPA_INDEX.exists():
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "React frontend build not found. Run `npm install` and "
+                "`npm run build` from the frontend directory before using "
+                "FastAPI one-server mode."
+            ),
+        )
+    return FileResponse(SPA_INDEX)
 
 
-@app.get("/review", response_class=HTMLResponse)
-async def serve_review():  # type: ignore[no-untyped-def]
-    review_path = Path("review.html")
-    if not review_path.exists():
-        raise HTTPException(status_code=404, detail="review.html not found")
-    return review_path.read_text(encoding="utf-8")
+@app.get("/", include_in_schema=False)
+async def redirect_to_upload():  # type: ignore[no-untyped-def]
+    return RedirectResponse(url="/upload")
 
 
-@app.get("/cut-review", response_class=HTMLResponse)
-@app.get("/line-review", response_class=HTMLResponse)
-async def serve_cut_review():  # type: ignore[no-untyped-def]
-    cut_review_path = Path("cut_review.html")
-    if not cut_review_path.exists():
-        raise HTTPException(status_code=404, detail="cut_review.html not found")
-    return cut_review_path.read_text(encoding="utf-8")
+@app.get("/review", include_in_schema=False)
+async def redirect_review():  # type: ignore[no-untyped-def]
+    return RedirectResponse(url="/verify")
+
+
+@app.get("/cut-review", include_in_schema=False)
+@app.get("/line-review", include_in_schema=False)
+async def redirect_cut_review():  # type: ignore[no-untyped-def]
+    return RedirectResponse(url="/finalize")
+
+
+@app.get("/upload", include_in_schema=False)
+@app.get("/verify", include_in_schema=False)
+@app.get("/finalize", include_in_schema=False)
+async def serve_spa_route():  # type: ignore[no-untyped-def]
+    return serve_spa_index()
 
 
 @app.get("/api/suras")
@@ -315,6 +333,13 @@ async def upload_images(  # type: ignore[no-untyped-def]
 
     images_data = [(await f.read(), f.filename or "unknown") for f in images]
     return pipeline.run(images_data)
+
+
+@app.get("/{full_path:path}", include_in_schema=False)
+async def serve_spa_fallback(full_path: str):  # type: ignore[no-untyped-def]
+    if full_path.startswith(("api/", "upload/")):
+        raise HTTPException(status_code=404, detail="Not found")
+    return serve_spa_index()
 
 
 def _ignore_rect(
