@@ -1,13 +1,33 @@
 # Quran Page Splitter
 
-Quran Page Splitter is a local FastAPI web app for turning scanned Mushaf pages
-into reviewed coordinate metadata, then final transparent PNG line cuts. It
-provides one review page for correcting detected coordinates and another for
-final line-crop cleanup.
+Digital Quran applications that render text with fonts cannot fully reproduce
+the experience of reading a printed Mushaf. The core problem is that the written
+Mushaf is a handcrafted calligraphic work: a single Arabic letter can take
+different shapes depending on its position and context on the page, and lines are
+visually justified to align at both edges in a way that text layout engines
+cannot replicate. Implementing a faithful font requires encoding a unique glyph
+for every character instance on every page, which is an enormous undertaking and
+still falls short of the original.
 
-The project is designed for processing full Mushaf image datasets where the
-automatic pipeline gets most pages right, then the review editor is used to fix
-wrong aya separators, line types, sura anchors, and crop geometry.
+The image-based approach sidesteps this entirely: applications display scanned
+or photographed pages as-is, preserving every calligraphic detail and the exact
+visual layout the reader knows from the printed copy. To make those images
+interactive — highlighting an aya, jumping to a verse, playing audio in sync
+with the text — the application needs two things: the bounding box of each aya
+on each page, and the page cut into individual line images.
+
+Serving whole page images also creates a responsive layout problem. If the page
+is a single image, resizing the application window either stretches it or leaves
+dead space. The solution is to display each line as its own image and let the
+application adjust the spacing between lines to fill the available height. The
+lines themselves scale uniformly to the window width, and the vertical gaps
+absorb the remaining space, so the page always fills the screen without
+distortion at any window size.
+
+Quran Page Splitter is a local tool that produces both. It processes a full set
+of Mushaf page images, automatically detects lines and aya boundaries, lets the
+user review and correct the output, then exports coordinate JSON and transparent
+line PNG files ready to be consumed by a Mushaf application.
 
 ## What It Does
 
@@ -21,30 +41,47 @@ not accidentally split as ordinary text.
 - Tracks sura and aya numbering across pages.
 - Exports coordinate JSON from the main processing run.
 - Saves source page copies for review.
-- Lets the user correct output visually in `/review`.
-- Lets the user adjust final line cuts and eraser masks in `/cut-review`.
+- Lets the user correct output visually in `/verify`.
+- Lets the user adjust final line cuts and eraser masks in `/finalize`.
+
+## Tech Stack
+
+**Backend** — FastAPI + Uvicorn (Python ≥ 3.13), managed by `uv`. Key libraries:
+Pillow, NumPy, OpenCV headless (with optional OpenCL acceleration), PyMuPDF,
+pdf2image, python-multipart.
+
+**Frontend** — React 19 SPA built with Vite, TanStack Router (file-based
+routing), TailwindCSS 4, Radix UI components, TanStack React Query, and
+TypeScript.
 
 ## Requirements
 
 - Python `>=3.13`
+- Node.js (for the frontend build)
 - `uv`
 - A modern browser
 
-The Python dependencies are declared in [pyproject.toml](pyproject.toml):
-FastAPI, Uvicorn, Pillow, NumPy, OpenCV headless, PyMuPDF, pdf2image, and
-python-multipart.
-
 ## Install And Run
 
-Install dependencies:
+Install backend dependencies:
 
 ```bash
+cd backend
 uv sync
 ```
 
-Start the web server:
+Install frontend dependencies and build the SPA:
 
 ```bash
+cd ../frontend
+npm install
+npm run build
+```
+
+Start the FastAPI web server:
+
+```bash
+cd ../backend
 uv run server.py
 ```
 
@@ -54,19 +91,25 @@ Open:
 http://localhost:8000/
 ```
 
-The coordinate review editor is available at:
+`/` redirects to the upload workflow:
 
 ```text
-http://localhost:8000/review
+http://localhost:8000/upload
 ```
 
-The line cut review editor is available at:
+The coordinate verification editor is available at:
 
 ```text
-http://localhost:8000/cut-review
+http://localhost:8000/verify
 ```
 
-The review pages only work after a main processing run.
+The final line cleanup/export editor is available at:
+
+```text
+http://localhost:8000/finalize
+```
+
+The verification and finalization pages only work after a main processing run.
 
 ## Recommended Workflow
 
@@ -74,7 +117,7 @@ The review pages only work after a main processing run.
   - Use PNG/JPG/WEBP/GIF inputs.
   - Name pages in reading order, for example `001.png`, `002.png`, `003.png`.
   - If starting from PDFs, see `script/pdf_to_pngs.py`.
-2. Open `http://localhost:8000/`.
+2. Open `http://localhost:8000/upload`.
 3. Drag images into the drop zone or use `browse`.
 4. Define the required crop targets:
   - `bounds`
@@ -85,8 +128,8 @@ The review pages only work after a main processing run.
   - `aya_separator_ignore`
 6. Tune detection and numbering settings.
 7. Click `Upload all`.
-8. Open `/review` to correct remaining coordinate, numbering, or geometry issues.
-9. Open `/cut-review` to adjust final line boxes and paint transparent masks.
+8. Open `/verify` to correct remaining coordinate, numbering, or geometry issues.
+9. Open `/finalize` to adjust final line boxes and paint transparent masks.
 10. Export final line PNGs.
 
 ## Main Page Controls
@@ -197,8 +240,8 @@ Each new upload run clears the previous `results/` directory and removes old
 | `results/line_detection_debug/` | Line count failure   | Per-line debug crops for the page where line detection failed.                 |
 | `results/final_lines/`          | Cut review export    | Final transparent line PNGs after bbox overrides and eraser masks.             |
 | `results.json`                  | Main processing run  | Original automatic coordinate output. Kept unchanged by the review editor.     |
-| `corrected_results.json`        | Review save          | Corrected coordinate output from `/review`.                                    |
-| `line_cut_edits.json`           | Cut review save      | Bbox overrides and eraser strokes from `/cut-review`.                          |
+| `corrected_results.json`        | Review save          | Corrected coordinate output from `/verify`.                                    |
+| `line_cut_edits.json`           | Cut review save      | Bbox overrides and eraser strokes from `/finalize`.                            |
 | `line_cut_results.json`         | Cut review save/export | Final coordinate output after cut-review bbox overrides.                     |
 | `results.log`                   | Processing run       | Detailed backend processing log.                                               |
 
@@ -257,7 +300,7 @@ Each segment includes:
 Open:
 
 ```text
-http://localhost:8000/review
+http://localhost:8000/verify
 ```
 
 The review page requires:
@@ -397,7 +440,7 @@ The original automatic `results.json` remains available as the fallback source.
 Open:
 
 ```text
-http://localhost:8000/cut-review
+http://localhost:8000/finalize
 ```
 
 The cut review page loads `corrected_results.json` if it exists; otherwise it
@@ -469,7 +512,7 @@ value.
 - Use a more distinctive `sura_header` template.
 - Define a better `sura_header_ignore` if variable content is dominating the
 match.
-- Use `/review` to reclassify false header lines.
+- Use `/verify` to reclassify false header lines.
 
 ### Aya Separators Missed
 
@@ -477,19 +520,19 @@ match.
 - Crop `aya_separator` tightly around the separator ornament.
 - Define `aya_separator_ignore` around the inner aya number.
 - Disable `Prefer acceleration` if you need stricter masked matching.
-- Use `/review` to add missing separators.
+- Use `/verify` to add missing separators.
 
 ### False Aya Separators
 
 - Increase `Aya thr.`.
 - Use a cleaner separator template.
 - Check whether dots or ornamental marks resemble the separator.
-- Use `/review` to delete false separators or delete empty segments.
+- Use `/verify` to delete false separators or delete empty segments.
 
 ### Crops Have Empty Horizontal Margins
 
 Text line coordinate export uses the union of segment boxes, but you can still
-adjust `line_bbox.x` and `line_bbox.w` in `/review`. Separator cuts are clamped
+adjust `line_bbox.x` and `line_bbox.w` in `/verify`. Separator cuts are clamped
 inside the line box, and segments are regenerated from:
 
 ```text
@@ -525,22 +568,21 @@ data/<pdf-name-without-extension>/002.png
 Main endpoints:
 
 
-| Endpoint                           | Method    | Meaning                                      |
-| ---------------------------------- | --------- | -------------------------------------------- |
-| `/`                                | GET       | Main processing UI.                          |
-| `/review`                          | GET       | Visual review/correction UI.                 |
-| `/cut-review`                      | GET       | Final line cut review UI.                    |
-| `/line-review`                     | GET       | Alias for `/cut-review`.                     |
-| `/api/suras`                       | GET       | Built-in sura metadata.                      |
-| `/upload/`                         | POST      | Process uploaded images and templates.       |
-| `/api/review/status`               | GET       | Whether review data exists.                  |
-| `/api/review/results?source=latest | original` | GET                                          |
-| `/api/review/pages/{filename}`     | GET       | Serve saved original page images for review. |
-| `/api/review/save`                 | POST      | Save corrected review JSON.                  |
-| `/api/cut-review/status`           | GET       | Whether cut review data exists.              |
-| `/api/cut-review/results`          | GET       | Load source coordinates, cut edits, and merged results. |
-| `/api/cut-review/save`             | POST      | Save cut edit JSON and final coordinate JSON. |
-| `/api/cut-review/export`           | POST      | Export final transparent line PNGs.          |
+| Endpoint                                      | Method | Meaning                                                 |
+| --------------------------------------------- | ------ | ------------------------------------------------------- |
+| `/upload`                                     | GET    | Main processing UI.                                     |
+| `/verify`                                     | GET    | Visual review/correction UI.                            |
+| `/finalize`                                   | GET    | Final line cut review UI.                               |
+| `/api/suras`                                  | GET    | Built-in sura metadata.                                 |
+| `/upload/`                                    | POST   | Process uploaded images and templates.                  |
+| `/api/review/status`                          | GET    | Whether review data exists.                             |
+| `/api/review/results?source=latest\|original` | GET    | Load review coordinates (latest or original).           |
+| `/api/review/pages/{filename}`                | GET    | Serve saved original page images for review.            |
+| `/api/review/save`                            | POST   | Save corrected review JSON.                             |
+| `/api/cut-review/status`                      | GET    | Whether cut review data exists.                         |
+| `/api/cut-review/results`                     | GET    | Load source coordinates, cut edits, and merged results. |
+| `/api/cut-review/save`                        | POST   | Save cut edit JSON and final coordinate JSON.           |
+| `/api/cut-review/export`                      | POST   | Export final transparent line PNGs.                    |
 
 
 ## Development
