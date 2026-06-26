@@ -10,11 +10,11 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
+from backend.core.image_utils import find_content_bbox
 from PIL import Image
 
 from core.context import BBox, LineResult, PageContext, SegmentResult
 from core.template_matching import IgnoreRect, locate_x_matches, make_template_spec
-from image_utils import find_content_bbox
 
 logger = logging.getLogger(__name__)
 

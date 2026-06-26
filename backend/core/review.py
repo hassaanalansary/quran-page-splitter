@@ -10,10 +10,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from backend.core.image_utils import make_transparent
 from PIL import Image
 
 from core.quran_metadata import get_sura
-from image_utils import make_transparent
 
 RESULTS_JSON = Path("results.json")
 CORRECTED_RESULTS_JSON = Path("corrected_results.json")

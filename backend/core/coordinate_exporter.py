@@ -11,9 +11,10 @@ import json
 import logging
 from pathlib import Path
 
+from backend.core.image_utils import find_content_bbox
+
 from core.context import BBox, LineResult, PageContext, QuranTracker
 from core.quran_metadata import get_aya_count, get_sura
-from image_utils import find_content_bbox
 
 logger = logging.getLogger(__name__)
 

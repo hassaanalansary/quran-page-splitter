@@ -14,6 +14,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from backend.core.image_utils import make_transparent
 from PIL import Image, ImageDraw
 
 from core.review import (
@@ -25,7 +26,6 @@ from core.review import (
     normalize_review_data,
     resolve_page_copy,
 )
-from image_utils import make_transparent
 
 SCHEMA_VERSION = 1
 CUT_EDITS_JSON = Path("line_cut_edits.json")

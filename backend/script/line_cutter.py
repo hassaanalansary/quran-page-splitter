@@ -9,8 +9,7 @@ page's ink distribution.
 from __future__ import annotations
 
 import numpy as np
-
-from image_utils import clean_image, find_content_bbox
+from backend.core.image_utils import clean_image, find_content_bbox
 
 _SMOOTHING_KERNEL_SIZE = 75
 

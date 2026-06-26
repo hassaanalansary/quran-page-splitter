@@ -7,13 +7,13 @@ image export and coordinate collection based on the configured mode.
 import logging
 from pathlib import Path
 
+from backend.core.image_utils import binarize_image, make_transparent
 from PIL import Image
 
 from core.aya_separator import AyaSeparatorProcessor
 from core.context import PageContext, QuranTracker
 from core.coordinate_exporter import collect_page_coordinates, track_positions
 from core.line_detector import LineDetector
-from image_utils import binarize_image, make_transparent
 
 logger = logging.getLogger(__name__)
 

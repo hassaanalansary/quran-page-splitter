@@ -4,11 +4,11 @@ import logging
 from dataclasses import dataclass
 
 import numpy as np
+from backend.core.image_utils import find_content_bbox
 
 from core.config import CropConfig, DetectionConfig, ProcessingConfig
 from core.context import BBox, LineResult, PageContext
 from core.protected_bands import ProtectedBand, ProtectedBandLocator
-from image_utils import find_content_bbox
 from script.line_cutter import split_by_valleys
 
 logger = logging.getLogger(__name__)
