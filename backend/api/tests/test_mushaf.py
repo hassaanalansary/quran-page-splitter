@@ -5,7 +5,7 @@ import uuid
 from django.core.files.uploadedfile import SimpleUploadedFile
 from ninja.errors import HttpError
 
-from api.models import Mushaf, Qiraa, Template
+from api.models import Mushaf, Page, Qiraa, Template
 from api.services import mushaf as mushaf_service
 from api.tests.helpers import MediaTestCase, make_pdf_bytes, make_png_bytes
 
@@ -98,6 +98,61 @@ class ReadDeleteTests(MediaTestCase):
         created = _create("ToDelete")
         mushaf_service.delete_mushaf(created["id"])
         self.assertFalse(Mushaf.objects.filter(id=created["id"]).exists())
+
+
+class UpdateMushafTests(MediaTestCase):
+    def test_updates_name_and_bounds(self):
+        created = _create("Up", pages=10)
+        updated = mushaf_service.update_mushaf(
+            created["id"],
+            {"name": "Up2", "first_quran_pdf_page": 3, "last_quran_pdf_page": 8},
+        )
+        self.assertEqual(updated["name"], "Up2")
+        self.assertEqual(updated["first_quran_pdf_page"], 3)
+        self.assertEqual(updated["last_quran_pdf_page"], 8)
+        self.assertEqual(updated["logical_page_count"], 6)
+
+    def test_partial_update_leaves_other_fields(self):
+        created = _create("Partial", pages=10)
+        updated = mushaf_service.update_mushaf(created["id"], {"first_quran_pdf_page": 2})
+        self.assertEqual(updated["first_quran_pdf_page"], 2)
+        self.assertEqual(updated["last_quran_pdf_page"], 10)
+
+    def test_qiraa_relink_then_clear(self):
+        Qiraa.objects.create(name="hafs")
+        created = _create("Q", qiraa="hafs")
+        relinked = mushaf_service.update_mushaf(created["id"], {"qiraa": "hafs"})
+        self.assertEqual(relinked["qiraa"], "hafs")
+        cleared = mushaf_service.update_mushaf(created["id"], {"qiraa": None})
+        self.assertIsNone(cleared["qiraa"])
+
+    def test_duplicate_name_conflicts(self):
+        _create("Existing")
+        other = _create("Other")
+        with self.assertRaises(HttpError) as ctx:
+            mushaf_service.update_mushaf(other["id"], {"name": "Existing"})
+        self.assertEqual(ctx.exception.status_code, 409)
+
+    def test_invalid_bounds_rejected(self):
+        created = _create("BadBounds", pages=5)
+        with self.assertRaises(HttpError) as ctx:
+            mushaf_service.update_mushaf(created["id"], {"last_quran_pdf_page": 99})
+        self.assertEqual(ctx.exception.status_code, 400)
+
+    def test_bounds_locked_after_processing(self):
+        created = _create("Locked", pages=10)
+        mushaf = Mushaf.objects.get(id=created["id"])
+        Page.objects.create(mushaf=mushaf, page_number=1)
+        with self.assertRaises(HttpError) as ctx:
+            mushaf_service.update_mushaf(created["id"], {"first_quran_pdf_page": 2})
+        self.assertEqual(ctx.exception.status_code, 409)
+
+    def test_renaming_with_existing_pages_is_allowed(self):
+        created = _create("Renamable", pages=10)
+        mushaf = Mushaf.objects.get(id=created["id"])
+        Page.objects.create(mushaf=mushaf, page_number=1)
+        updated = mushaf_service.update_mushaf(created["id"], {"name": "Renamed"})
+        self.assertEqual(updated["name"], "Renamed")
 
 
 class TemplateTests(MediaTestCase):

@@ -45,6 +45,13 @@ class MushafCreateOut(Schema):
     warnings: WarningsSchema
 
 
+class MushafPatchIn(Schema):
+    name: str | None = None
+    qiraa: str | None = None
+    first_quran_pdf_page: int | None = None
+    last_quran_pdf_page: int | None = None
+
+
 class TemplateForm(Schema):
     ignore_x: int | None = None
     ignore_y: int | None = None
@@ -83,6 +90,12 @@ def create_mushaf(
 @router.get("/{mushaf_id}", response=MushafOut)
 def get_mushaf(request: HttpRequest, mushaf_id: uuid.UUID) -> dict:
     return mushaf_service.get_mushaf_dict(mushaf_id)
+
+
+@router.patch("/{mushaf_id}", response=MushafOut)
+def update_mushaf(request: HttpRequest, mushaf_id: uuid.UUID, data: MushafPatchIn) -> dict:
+    """Patch name / qiraa / Quran-page bounds (only the fields actually sent)."""
+    return mushaf_service.update_mushaf(mushaf_id, data.model_dump(exclude_unset=True))
 
 
 @router.delete("/{mushaf_id}", response={204: None})

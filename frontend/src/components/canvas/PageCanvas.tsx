@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Rect, TargetName } from "@/lib/api/raqam";
+import type { Rect } from "@/lib/api/types";
 import { useSpacePan, type CanvasTool } from "@/hooks/use-space-pan";
 import { useCtrlWheelZoom } from "@/hooks/use-ctrl-wheel-zoom";
 
@@ -10,7 +10,8 @@ type Props = {
   zoom: number; // multiplier; -1 = "fit"
   onZoomChange?: (z: number) => void;
   drawing: boolean;
-  activeTarget: TargetName | null;
+  /** Badge label for the crop rect; when null, no rect overlay is drawn. */
+  label: string | null;
   rect: Rect | null;
   onRectChange: (rect: Rect | null) => void;
   onCursorChange?: (pos: { x: number; y: number } | null) => void;
@@ -35,7 +36,7 @@ export function PageCanvas({
   zoom,
   onZoomChange,
   drawing,
-  activeTarget,
+  label,
   rect,
   onRectChange,
   onCursorChange,
@@ -70,7 +71,7 @@ export function PageCanvas({
 
   // Auto-initialize a centered rect when target is active and none exists.
   useEffect(() => {
-    if (!natural || !activeTarget || rect) return;
+    if (!natural || !label || rect) return;
     const w = Math.round(natural.w * 0.4);
     const h = Math.round(natural.h * 0.25);
     onRectChange({
@@ -79,7 +80,7 @@ export function PageCanvas({
       w,
       h,
     });
-  }, [natural, activeTarget, rect, onRectChange]);
+  }, [natural, label, rect, onRectChange]);
 
   const scaleNow = zoom === -1 ? fitScale : zoom;
 
@@ -234,11 +235,11 @@ export function PageCanvas({
                 userSelect: "none",
               }}
             />
-            {rect && natural && activeTarget && (
+            {rect && natural && label && (
               <RectOverlay
                 rect={rect}
                 natural={natural}
-                label={activeTarget}
+                label={label}
                 onBodyPointerDown={startBodyDrag}
                 onHandlePointerDown={startHandleDrag}
                 dimming={drawing}

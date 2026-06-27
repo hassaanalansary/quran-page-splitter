@@ -9,162 +9,126 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as VerifyRouteImport } from './routes/verify'
-import { Route as UploadRouteImport } from './routes/upload'
-import { Route as ReviewRouteImport } from './routes/review'
-import { Route as LineReviewRouteImport } from './routes/line-review'
-import { Route as FinalizeRouteImport } from './routes/finalize'
-import { Route as CutReviewRouteImport } from './routes/cut-review'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as MushafsMushafIdRouteImport } from './routes/mushafs.$mushafId'
+import { Route as MushafsMushafIdIndexRouteImport } from './routes/mushafs.$mushafId.index'
+import { Route as MushafsMushafIdTemplatesRouteImport } from './routes/mushafs.$mushafId.templates'
+import { Route as MushafsMushafIdSetupRouteImport } from './routes/mushafs.$mushafId.setup'
+import { Route as MushafsMushafIdReviewRouteImport } from './routes/mushafs.$mushafId.review'
+import { Route as MushafsMushafIdProcessRouteImport } from './routes/mushafs.$mushafId.process'
+import { Route as MushafsMushafIdFinalizeRouteImport } from './routes/mushafs.$mushafId.finalize'
 
-const VerifyRoute = VerifyRouteImport.update({
-  id: '/verify',
-  path: '/verify',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const UploadRoute = UploadRouteImport.update({
-  id: '/upload',
-  path: '/upload',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ReviewRoute = ReviewRouteImport.update({
-  id: '/review',
-  path: '/review',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const LineReviewRoute = LineReviewRouteImport.update({
-  id: '/line-review',
-  path: '/line-review',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const FinalizeRoute = FinalizeRouteImport.update({
-  id: '/finalize',
-  path: '/finalize',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const CutReviewRoute = CutReviewRouteImport.update({
-  id: '/cut-review',
-  path: '/cut-review',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const MushafsMushafIdRoute = MushafsMushafIdRouteImport.update({
+  id: '/mushafs/$mushafId',
+  path: '/mushafs/$mushafId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MushafsMushafIdIndexRoute = MushafsMushafIdIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => MushafsMushafIdRoute,
+} as any)
+const MushafsMushafIdTemplatesRoute =
+  MushafsMushafIdTemplatesRouteImport.update({
+    id: '/templates',
+    path: '/templates',
+    getParentRoute: () => MushafsMushafIdRoute,
+  } as any)
+const MushafsMushafIdSetupRoute = MushafsMushafIdSetupRouteImport.update({
+  id: '/setup',
+  path: '/setup',
+  getParentRoute: () => MushafsMushafIdRoute,
+} as any)
+const MushafsMushafIdReviewRoute = MushafsMushafIdReviewRouteImport.update({
+  id: '/review',
+  path: '/review',
+  getParentRoute: () => MushafsMushafIdRoute,
+} as any)
+const MushafsMushafIdProcessRoute = MushafsMushafIdProcessRouteImport.update({
+  id: '/process',
+  path: '/process',
+  getParentRoute: () => MushafsMushafIdRoute,
+} as any)
+const MushafsMushafIdFinalizeRoute = MushafsMushafIdFinalizeRouteImport.update({
+  id: '/finalize',
+  path: '/finalize',
+  getParentRoute: () => MushafsMushafIdRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/cut-review': typeof CutReviewRoute
-  '/finalize': typeof FinalizeRoute
-  '/line-review': typeof LineReviewRoute
-  '/review': typeof ReviewRoute
-  '/upload': typeof UploadRoute
-  '/verify': typeof VerifyRoute
+  '/mushafs/$mushafId': typeof MushafsMushafIdRouteWithChildren
+  '/mushafs/$mushafId/finalize': typeof MushafsMushafIdFinalizeRoute
+  '/mushafs/$mushafId/process': typeof MushafsMushafIdProcessRoute
+  '/mushafs/$mushafId/review': typeof MushafsMushafIdReviewRoute
+  '/mushafs/$mushafId/setup': typeof MushafsMushafIdSetupRoute
+  '/mushafs/$mushafId/templates': typeof MushafsMushafIdTemplatesRoute
+  '/mushafs/$mushafId/': typeof MushafsMushafIdIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/cut-review': typeof CutReviewRoute
-  '/finalize': typeof FinalizeRoute
-  '/line-review': typeof LineReviewRoute
-  '/review': typeof ReviewRoute
-  '/upload': typeof UploadRoute
-  '/verify': typeof VerifyRoute
+  '/mushafs/$mushafId/finalize': typeof MushafsMushafIdFinalizeRoute
+  '/mushafs/$mushafId/process': typeof MushafsMushafIdProcessRoute
+  '/mushafs/$mushafId/review': typeof MushafsMushafIdReviewRoute
+  '/mushafs/$mushafId/setup': typeof MushafsMushafIdSetupRoute
+  '/mushafs/$mushafId/templates': typeof MushafsMushafIdTemplatesRoute
+  '/mushafs/$mushafId': typeof MushafsMushafIdIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/cut-review': typeof CutReviewRoute
-  '/finalize': typeof FinalizeRoute
-  '/line-review': typeof LineReviewRoute
-  '/review': typeof ReviewRoute
-  '/upload': typeof UploadRoute
-  '/verify': typeof VerifyRoute
+  '/mushafs/$mushafId': typeof MushafsMushafIdRouteWithChildren
+  '/mushafs/$mushafId/finalize': typeof MushafsMushafIdFinalizeRoute
+  '/mushafs/$mushafId/process': typeof MushafsMushafIdProcessRoute
+  '/mushafs/$mushafId/review': typeof MushafsMushafIdReviewRoute
+  '/mushafs/$mushafId/setup': typeof MushafsMushafIdSetupRoute
+  '/mushafs/$mushafId/templates': typeof MushafsMushafIdTemplatesRoute
+  '/mushafs/$mushafId/': typeof MushafsMushafIdIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/cut-review'
-    | '/finalize'
-    | '/line-review'
-    | '/review'
-    | '/upload'
-    | '/verify'
+    | '/mushafs/$mushafId'
+    | '/mushafs/$mushafId/finalize'
+    | '/mushafs/$mushafId/process'
+    | '/mushafs/$mushafId/review'
+    | '/mushafs/$mushafId/setup'
+    | '/mushafs/$mushafId/templates'
+    | '/mushafs/$mushafId/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/cut-review'
-    | '/finalize'
-    | '/line-review'
-    | '/review'
-    | '/upload'
-    | '/verify'
+    | '/mushafs/$mushafId/finalize'
+    | '/mushafs/$mushafId/process'
+    | '/mushafs/$mushafId/review'
+    | '/mushafs/$mushafId/setup'
+    | '/mushafs/$mushafId/templates'
+    | '/mushafs/$mushafId'
   id:
     | '__root__'
     | '/'
-    | '/cut-review'
-    | '/finalize'
-    | '/line-review'
-    | '/review'
-    | '/upload'
-    | '/verify'
+    | '/mushafs/$mushafId'
+    | '/mushafs/$mushafId/finalize'
+    | '/mushafs/$mushafId/process'
+    | '/mushafs/$mushafId/review'
+    | '/mushafs/$mushafId/setup'
+    | '/mushafs/$mushafId/templates'
+    | '/mushafs/$mushafId/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  CutReviewRoute: typeof CutReviewRoute
-  FinalizeRoute: typeof FinalizeRoute
-  LineReviewRoute: typeof LineReviewRoute
-  ReviewRoute: typeof ReviewRoute
-  UploadRoute: typeof UploadRoute
-  VerifyRoute: typeof VerifyRoute
+  MushafsMushafIdRoute: typeof MushafsMushafIdRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/verify': {
-      id: '/verify'
-      path: '/verify'
-      fullPath: '/verify'
-      preLoaderRoute: typeof VerifyRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/upload': {
-      id: '/upload'
-      path: '/upload'
-      fullPath: '/upload'
-      preLoaderRoute: typeof UploadRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/review': {
-      id: '/review'
-      path: '/review'
-      fullPath: '/review'
-      preLoaderRoute: typeof ReviewRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/line-review': {
-      id: '/line-review'
-      path: '/line-review'
-      fullPath: '/line-review'
-      preLoaderRoute: typeof LineReviewRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/finalize': {
-      id: '/finalize'
-      path: '/finalize'
-      fullPath: '/finalize'
-      preLoaderRoute: typeof FinalizeRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/cut-review': {
-      id: '/cut-review'
-      path: '/cut-review'
-      fullPath: '/cut-review'
-      preLoaderRoute: typeof CutReviewRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/': {
       id: '/'
       path: '/'
@@ -172,17 +136,83 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/mushafs/$mushafId': {
+      id: '/mushafs/$mushafId'
+      path: '/mushafs/$mushafId'
+      fullPath: '/mushafs/$mushafId'
+      preLoaderRoute: typeof MushafsMushafIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/mushafs/$mushafId/': {
+      id: '/mushafs/$mushafId/'
+      path: '/'
+      fullPath: '/mushafs/$mushafId/'
+      preLoaderRoute: typeof MushafsMushafIdIndexRouteImport
+      parentRoute: typeof MushafsMushafIdRoute
+    }
+    '/mushafs/$mushafId/templates': {
+      id: '/mushafs/$mushafId/templates'
+      path: '/templates'
+      fullPath: '/mushafs/$mushafId/templates'
+      preLoaderRoute: typeof MushafsMushafIdTemplatesRouteImport
+      parentRoute: typeof MushafsMushafIdRoute
+    }
+    '/mushafs/$mushafId/setup': {
+      id: '/mushafs/$mushafId/setup'
+      path: '/setup'
+      fullPath: '/mushafs/$mushafId/setup'
+      preLoaderRoute: typeof MushafsMushafIdSetupRouteImport
+      parentRoute: typeof MushafsMushafIdRoute
+    }
+    '/mushafs/$mushafId/review': {
+      id: '/mushafs/$mushafId/review'
+      path: '/review'
+      fullPath: '/mushafs/$mushafId/review'
+      preLoaderRoute: typeof MushafsMushafIdReviewRouteImport
+      parentRoute: typeof MushafsMushafIdRoute
+    }
+    '/mushafs/$mushafId/process': {
+      id: '/mushafs/$mushafId/process'
+      path: '/process'
+      fullPath: '/mushafs/$mushafId/process'
+      preLoaderRoute: typeof MushafsMushafIdProcessRouteImport
+      parentRoute: typeof MushafsMushafIdRoute
+    }
+    '/mushafs/$mushafId/finalize': {
+      id: '/mushafs/$mushafId/finalize'
+      path: '/finalize'
+      fullPath: '/mushafs/$mushafId/finalize'
+      preLoaderRoute: typeof MushafsMushafIdFinalizeRouteImport
+      parentRoute: typeof MushafsMushafIdRoute
+    }
   }
 }
 
+interface MushafsMushafIdRouteChildren {
+  MushafsMushafIdFinalizeRoute: typeof MushafsMushafIdFinalizeRoute
+  MushafsMushafIdProcessRoute: typeof MushafsMushafIdProcessRoute
+  MushafsMushafIdReviewRoute: typeof MushafsMushafIdReviewRoute
+  MushafsMushafIdSetupRoute: typeof MushafsMushafIdSetupRoute
+  MushafsMushafIdTemplatesRoute: typeof MushafsMushafIdTemplatesRoute
+  MushafsMushafIdIndexRoute: typeof MushafsMushafIdIndexRoute
+}
+
+const MushafsMushafIdRouteChildren: MushafsMushafIdRouteChildren = {
+  MushafsMushafIdFinalizeRoute: MushafsMushafIdFinalizeRoute,
+  MushafsMushafIdProcessRoute: MushafsMushafIdProcessRoute,
+  MushafsMushafIdReviewRoute: MushafsMushafIdReviewRoute,
+  MushafsMushafIdSetupRoute: MushafsMushafIdSetupRoute,
+  MushafsMushafIdTemplatesRoute: MushafsMushafIdTemplatesRoute,
+  MushafsMushafIdIndexRoute: MushafsMushafIdIndexRoute,
+}
+
+const MushafsMushafIdRouteWithChildren = MushafsMushafIdRoute._addFileChildren(
+  MushafsMushafIdRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  CutReviewRoute: CutReviewRoute,
-  FinalizeRoute: FinalizeRoute,
-  LineReviewRoute: LineReviewRoute,
-  ReviewRoute: ReviewRoute,
-  UploadRoute: UploadRoute,
-  VerifyRoute: VerifyRoute,
+  MushafsMushafIdRoute: MushafsMushafIdRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

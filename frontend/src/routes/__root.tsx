@@ -6,6 +6,8 @@ import {
   useRouter,
 } from "@tanstack/react-router";
 
+import { Toaster } from "@/components/ui/sonner";
+
 function NotFoundComponent() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
@@ -75,6 +77,7 @@ function RootComponent() {
   return (
     <QueryClientProvider client={queryClient}>
       <Outlet />
+      <Toaster position="top-right" richColors />
     </QueryClientProvider>
   );
 }

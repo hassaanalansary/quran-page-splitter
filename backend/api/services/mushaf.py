@@ -118,6 +118,45 @@ def create_mushaf(
     }
 
 
+def update_mushaf(mushaf_id: uuid.UUID, fields: dict) -> dict:
+    """Patch a mushaf's name / qiraa / Quran-page bounds (only the given fields).
+
+    ``fields`` holds just the keys the client sent (PATCH semantics), so an
+    explicit ``{"qiraa": None}`` clears the link while an absent key leaves it
+    untouched. Name uniqueness is re-checked (409). Bounds may only change while
+    the mushaf is unprocessed — shifting first/last would desync the
+    logical->physical mapping of stored pages (revert = reprocess).
+    """
+    mushaf = get_mushaf(mushaf_id)
+
+    if "name" in fields:
+        name = fields["name"]
+        if Mushaf.objects.filter(name=name).exclude(id=mushaf.id).exists():
+            raise HttpError(409, f"A mushaf named {name!r} already exists.")
+        mushaf.name = name
+
+    if "qiraa" in fields:
+        qiraa = fields["qiraa"]
+        mushaf.qiraa = Qiraa.objects.filter(name=qiraa).first() if qiraa else None
+
+    if "first_quran_pdf_page" in fields or "last_quran_pdf_page" in fields:
+        first = fields.get("first_quran_pdf_page", mushaf.first_quran_pdf_page)
+        last = fields.get("last_quran_pdf_page", mushaf.last_quran_pdf_page)
+        validators.validate_pdf_bounds(first, last, mushaf.pdf_page_count)
+        bounds_changed = first != mushaf.first_quran_pdf_page or last != mushaf.last_quran_pdf_page
+        if bounds_changed and mushaf.pages.exists():
+            raise HttpError(
+                409,
+                "Cannot change Quran-page bounds after pages are processed; "
+                "delete the processed pages (or the mushaf) and reprocess.",
+            )
+        mushaf.first_quran_pdf_page = first
+        mushaf.last_quran_pdf_page = last
+
+    mushaf.save()
+    return get_mushaf_dict(mushaf.id)
+
+
 def delete_mushaf(mushaf_id: uuid.UUID) -> None:
     """Delete a mushaf and (via cascade) all its pages/lines/segments/templates."""
     get_mushaf(mushaf_id).delete()
