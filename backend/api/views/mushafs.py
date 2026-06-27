@@ -32,6 +32,7 @@ class MushafOut(Schema):
     last_quran_pdf_page: int
     logical_page_count: int
     processed_page_count: int
+    reviewed_page_count: int
     created_at: datetime
     updated_at: datetime
 

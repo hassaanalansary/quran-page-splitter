@@ -22,9 +22,21 @@ export type Mushaf = {
   last_quran_pdf_page: number;
   logical_page_count: number;
   processed_page_count: number;
+  reviewed_page_count: number;
   created_at: string;
   updated_at: string;
 };
+
+export type MushafStatus = "empty" | "partial" | "processed" | "completed";
+
+/** Derive a coarse pipeline status from a mushaf's page counts. */
+export function mushafStatus(m: Mushaf): MushafStatus {
+  const total = m.logical_page_count;
+  if (m.processed_page_count === 0) return "empty";
+  if (total > 0 && m.reviewed_page_count >= total) return "completed";
+  if (m.processed_page_count >= total) return "processed";
+  return "partial";
+}
 
 export type MushafCreateResult = {
   mushaf: Mushaf;

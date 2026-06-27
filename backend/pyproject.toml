@@ -42,6 +42,11 @@ select = [
 [tool.ruff.lint.isort]
 known-first-party = ["api", "config", "core"]
 
+[tool.ruff.lint.per-file-ignores]
+# Auto-generated Django migrations: don't hand-format long help_text (E501)
+# or fight the framework's class-level mutable lists (RUF012).
+"**/migrations/*" = ["E501", "RUF012"]
+
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"

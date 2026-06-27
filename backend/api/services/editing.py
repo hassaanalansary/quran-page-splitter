@@ -37,6 +37,7 @@ def save_page(*, mushaf_id: uuid.UUID, page_number: int, bbox: dict, lines: list
             "bbox_y": bbox["y"],
             "bbox_w": bbox["w"],
             "bbox_h": bbox["h"],
+            "reviewed": True,
         },
     )
     page.lines.all().delete()

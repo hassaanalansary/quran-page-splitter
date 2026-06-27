@@ -27,7 +27,8 @@ def write_coords_to_page(*, mushaf: Mushaf, page_number: int, run: ProcessingRun
     Replaces any existing rows for that logical page (reprocessing overwrites it).
     """
     crop = coord_page.get("crop_box")
-    defaults: dict = {"last_run": run}
+    # Machine output is unreviewed; (re)processing clears any prior review flag.
+    defaults: dict = {"last_run": run, "reviewed": False}
     if crop:
         defaults |= {
             "bbox_x": crop["x"],

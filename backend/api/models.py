@@ -170,6 +170,10 @@ class Page(BaseModel):
     bbox_y = models.PositiveIntegerField(null=True, help_text="The y coordinate of the bounding box.")
     bbox_w = models.PositiveIntegerField(null=True, help_text="The width of the bounding box.")
     bbox_h = models.PositiveIntegerField(null=True, help_text="The height of the bounding box.")
+    reviewed = models.BooleanField(
+        default=False,
+        help_text="True once a user has saved this page in review; reset to False on (re)process.",
+    )
 
     class Meta:
         db_table = "page"

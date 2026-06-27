@@ -8,7 +8,7 @@ import uuid
 
 from django.core.files.base import ContentFile
 from django.core.files.uploadedfile import UploadedFile
-from django.db.models import Count
+from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404
 from ninja.errors import HttpError
 
@@ -48,6 +48,7 @@ def _serialize(row: dict) -> dict:
         "last_quran_pdf_page": last,
         "logical_page_count": last - first + 1,
         "processed_page_count": row["processed_page_count"],
+        "reviewed_page_count": row["reviewed_page_count"],
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
     }
@@ -56,8 +57,11 @@ def _serialize(row: dict) -> dict:
 def list_mushafs() -> list[dict]:
     """All mushafs, newest first (single query; page counts annotated)."""
     rows = (
-        Mushaf.objects.annotate(processed_page_count=Count("pages"))
-        .values(*_MUSHAF_VALUES, "processed_page_count")
+        Mushaf.objects.annotate(
+            processed_page_count=Count("pages"),
+            reviewed_page_count=Count("pages", filter=Q(pages__reviewed=True)),
+        )
+        .values(*_MUSHAF_VALUES, "processed_page_count", "reviewed_page_count")
         .order_by("-created_at")
     )
     return [_serialize(row) for row in rows]
@@ -67,8 +71,11 @@ def get_mushaf_dict(mushaf_id: uuid.UUID) -> dict:
     """Serialized single mushaf (404 if missing)."""
     row = (
         Mushaf.objects.filter(id=mushaf_id)
-        .annotate(processed_page_count=Count("pages"))
-        .values(*_MUSHAF_VALUES, "processed_page_count")
+        .annotate(
+            processed_page_count=Count("pages"),
+            reviewed_page_count=Count("pages", filter=Q(pages__reviewed=True)),
+        )
+        .values(*_MUSHAF_VALUES, "processed_page_count", "reviewed_page_count")
         .first()
     )
     if row is None:

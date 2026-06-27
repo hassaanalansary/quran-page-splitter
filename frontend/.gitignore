@@ -1,0 +1,9 @@
+# Build output (regenerate with `npm run build`; served by Django in production)
+dist/
+
+# Dependencies
+node_modules/
+
+# Vite
+*.local
+.vite/
