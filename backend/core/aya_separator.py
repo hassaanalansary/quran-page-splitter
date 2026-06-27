@@ -10,10 +10,10 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
-from backend.core.image_utils import find_content_bbox
 from PIL import Image
 
 from core.context import BBox, LineResult, PageContext, SegmentResult
+from core.image_utils import find_content_bbox
 from core.template_matching import IgnoreRect, locate_x_matches, make_template_spec
 
 logger = logging.getLogger(__name__)
@@ -92,11 +92,7 @@ class AyaSeparatorProcessor:
 
             if not boxes:
                 # No separators — single segment
-                seg_bbox = (
-                    line.content_bbox
-                    if content_ratio < self.config.short_line_ratio
-                    else line.bbox
-                )
+                seg_bbox = line.content_bbox if content_ratio < self.config.short_line_ratio else line.bbox
                 line.segments.append(SegmentResult(bbox=seg_bbox, has_separator=False))
                 continue
 

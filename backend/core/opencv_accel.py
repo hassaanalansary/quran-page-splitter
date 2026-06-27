@@ -62,9 +62,7 @@ def resolve_effective_backend() -> AccelName:
             cv2.ocl.setUseOpenCL(True)
             _effective = "opencl"
         else:
-            logger.warning(
-                "OPENCV_ACCEL requested OpenCL but haveOpenCL() is false; using CPU."
-            )
+            logger.warning("OPENCV_ACCEL requested OpenCL but haveOpenCL() is false; using CPU.")
             cv2.ocl.setUseOpenCL(False)
             _effective = "cpu"
         return _effective
@@ -80,7 +78,7 @@ def resolve_effective_backend() -> AccelName:
 
 
 def configure_opencv_acceleration() -> AccelName:
-    """Configure OpenCL use from env and return the effective backend.
+    """Configure OpenCL use from env and return the effective
 
     Safe to call once at pipeline startup; repeats are no-ops.
     """

@@ -11,9 +11,8 @@ import json
 import logging
 from pathlib import Path
 
-from backend.core.image_utils import find_content_bbox
-
 from core.context import BBox, LineResult, PageContext, QuranTracker
+from core.image_utils import find_content_bbox
 from core.quran_metadata import get_aya_count, get_sura
 
 logger = logging.getLogger(__name__)
@@ -34,9 +33,7 @@ def track_positions(ctx: PageContext, tracker: QuranTracker) -> None:
         if line.is_sura:
             _handle_sura_header(line, tracker)
             content_bbox = find_content_bbox(
-                ctx.binary[
-                    line.bbox.top : line.bbox.bottom, line.bbox.left : line.bbox.right
-                ]
+                ctx.binary[line.bbox.top : line.bbox.bottom, line.bbox.left : line.bbox.right]
             )
             if content_bbox is None:
                 continue
@@ -74,8 +71,7 @@ def track_positions(ctx: PageContext, tracker: QuranTracker) -> None:
 
             # Has separator → not a basmala, treat as normal text
             logger.info(
-                "  Line %d: first line after sura header has separator "
-                "→ treating as normal text (no basmala)",
+                "  Line %d: first line after sura header has separator → treating as normal text (no basmala)",
                 line.line_index,
             )
 
@@ -225,17 +221,13 @@ def collect_page_coordinates(ctx: PageContext, padding: int = 0) -> dict:
             line_data["sura_name"] = line.sura_name
         else:
             line_data["type"] = "text"
-            line_data["separator_cuts"] = sorted(
-                seg.bbox.left for seg in line.segments if seg.has_separator
-            )
+            line_data["separator_cuts"] = sorted(seg.bbox.left for seg in line.segments if seg.has_separator)
             line_data["segments"] = []
             for seg in line.segments:
                 line_data["segments"].append(
                     {
                         "sura_number": seg.sura_number,
-                        "sura_name": get_sura(seg.sura_number).name
-                        if seg.sura_number
-                        else None,
+                        "sura_name": get_sura(seg.sura_number).name if seg.sura_number else None,
                         "aya_number": seg.aya_number,
                         "is_continuation": seg.is_continuation,
                         "has_separator": seg.has_separator,

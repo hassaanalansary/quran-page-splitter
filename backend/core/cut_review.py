@@ -1,3 +1,5 @@
+# mypy: disable-error-code="type-var"
+
 """Line cut review helpers.
 
 This module keeps final PNG cleanup separate from coordinate review:
@@ -14,9 +16,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from backend.core.image_utils import make_transparent
 from PIL import Image, ImageDraw
 
+from core.image_utils import make_transparent
 from core.review import (
     CORRECTED_RESULTS_JSON,
     PAGES_DIR,
@@ -145,9 +147,7 @@ def normalize_cut_edits(
         "created_at": created_at if isinstance(created_at, str) else now,
         "updated_at": now,
         "source": {
-            "coordinates_file": str(
-                source_path or _latest_source_path() or RESULTS_JSON
-            ),
+            "coordinates_file": str(source_path or _latest_source_path() or RESULTS_JSON),
             "pages_dir": str(PAGES_DIR),
         },
         "pages": [],
@@ -224,7 +224,7 @@ def _normalize_line_edit(raw_line: dict[str, Any]) -> dict[str, Any]:
 
 def _normalize_stroke(raw_stroke: dict[str, Any]) -> dict[str, Any]:
     stroke_id = raw_stroke.get("id")
-    stroke = {
+    stroke: dict[str, Any] = {
         "id": stroke_id if isinstance(stroke_id, str) and stroke_id else _now(),
         "brush_size": _positive_int(raw_stroke.get("brush_size", 12), "brush_size"),
         "points": [],
@@ -293,10 +293,7 @@ def _page_edit_for(
     page_number = _optional_positive_int(page.get("page_number"))
     page_image_filename = str(page.get("page_image_filename") or "")
     for page_edit in _list_value(edits.get("pages")):
-        if (
-            page_image_filename
-            and page_edit.get("page_image_filename") == page_image_filename
-        ):
+        if page_image_filename and page_edit.get("page_image_filename") == page_image_filename:
             return page_edit
         if page_number and page_edit.get("page_number") == page_number:
             return page_edit

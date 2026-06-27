@@ -10,9 +10,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from backend.core.image_utils import make_transparent
 from PIL import Image
 
+from core.image_utils import make_transparent
 from core.quran_metadata import get_sura
 
 RESULTS_JSON = Path("results.json")
@@ -147,9 +147,7 @@ def load_review_results(source: str = "latest") -> tuple[dict[str, Any], Path]:
     if source == "original":
         path = RESULTS_JSON
     elif source == "latest":
-        path = (
-            CORRECTED_RESULTS_JSON if CORRECTED_RESULTS_JSON.exists() else RESULTS_JSON
-        )
+        path = CORRECTED_RESULTS_JSON if CORRECTED_RESULTS_JSON.exists() else RESULTS_JSON
     else:
         raise ValueError("source must be 'latest' or 'original'")
 
@@ -196,23 +194,12 @@ def re_export_corrected_images(
 
             segments = _list_value(line.get("segments"))
             for segment_index, segment in enumerate(segments, start=1):
-                sura_part = (
-                    f"-sura{int(segment['sura_number']):03d}"
-                    if segment.get("sura_number")
-                    else ""
-                )
-                aya_part = (
-                    f"-aya{int(segment['aya_number']):03d}"
-                    if segment.get("aya_number")
-                    else ""
-                )
+                sura_part = f"-sura{int(segment['sura_number']):03d}" if segment.get("sura_number") else ""
+                aya_part = f"-aya{int(segment['aya_number']):03d}" if segment.get("aya_number") else ""
                 if len(segments) == 1:
                     name = f"{stem}-l{line_number:02d}{sura_part}{aya_part}.png"
                 else:
-                    name = (
-                        f"{stem}-l{line_number:02d}-s{segment_index:02d}"
-                        f"{sura_part}{aya_part}.png"
-                    )
+                    name = f"{stem}-l{line_number:02d}-s{segment_index:02d}{sura_part}{aya_part}.png"
                 saved.append(_save_crop(image, segment["bbox"], output_dir / name))
 
     return {
@@ -244,9 +231,7 @@ def _regenerate_text_segments(line: dict[str, Any]) -> None:
 
     segments: list[dict[str, Any]] = []
     old_anchors = {
-        _bbox_key(_bbox_value(segment.get("bbox"), "segment.bbox")): segment[
-            "manual_aya_anchor"
-        ]
+        _bbox_key(_bbox_value(segment.get("bbox"), "segment.bbox")): segment["manual_aya_anchor"]
         for segment in old_segments
         if "manual_aya_anchor" in segment and isinstance(segment.get("bbox"), dict)
     }
@@ -280,11 +265,7 @@ def _regenerate_text_segments(line: dict[str, Any]) -> None:
 
     deleted_ranges = _deleted_segment_ranges(line)
     line["deleted_segment_ranges"] = deleted_ranges
-    segments = [
-        segment
-        for segment in segments
-        if not _is_deleted_segment(segment, deleted_ranges)
-    ]
+    segments = [segment for segment in segments if not _is_deleted_segment(segment, deleted_ranges)]
     for segment in segments:
         anchor = old_anchors.get(_bbox_key(_bbox_value(segment.get("bbox"), "bbox")))
         if anchor is not None:

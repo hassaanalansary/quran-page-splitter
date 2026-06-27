@@ -4,10 +4,10 @@ import logging
 from dataclasses import dataclass
 
 import numpy as np
-from backend.core.image_utils import find_content_bbox
 
 from core.config import CropConfig, DetectionConfig, ProcessingConfig
 from core.context import BBox, LineResult, PageContext
+from core.image_utils import find_content_bbox
 from core.protected_bands import ProtectedBand, ProtectedBandLocator
 from script.line_cutter import split_by_valleys
 
@@ -80,9 +80,7 @@ class LineDetector:
         x, y, w, h = self.crop.as_tuple()
         img_w, img_h = ctx.image.size
 
-        should_swap = (
-            self.processing.alternate_horizontal_margin and ctx.page_index % 2 == 0
-        )
+        should_swap = self.processing.alternate_horizontal_margin and ctx.page_index % 2 == 0
         crop_x = (img_w - (x + w)) if should_swap else x
 
         left = max(0, crop_x)
@@ -111,11 +109,7 @@ class LineDetector:
         binary: np.ndarray,
         expected_lines: int,
     ) -> list[_DetectedBand]:
-        protected = (
-            self.protected_locator.locate(grey)
-            if self.protected_locator is not None
-            else []
-        )
+        protected = self.protected_locator.locate(grey) if self.protected_locator is not None else []
         if not protected:
             return [
                 _DetectedBand(box=box)
@@ -145,8 +139,7 @@ class LineDetector:
         text_slots = expected_lines - protected_slots
         if text_slots < 0:
             raise ValueError(
-                "Protected bands consume more slots than expected lines: "
-                f"{protected_slots} > {expected_lines}"
+                f"Protected bands consume more slots than expected lines: {protected_slots} > {expected_lines}"
             )
 
         regions = self._allocate_text_slots(
@@ -211,15 +204,10 @@ class LineDetector:
         if not regions:
             raise ValueError("Protected bands left no text regions to split")
         if len(regions) > text_slots:
-            raise ValueError(
-                f"More text regions than remaining slots: {len(regions)} > {text_slots}"
-            )
+            raise ValueError(f"More text regions than remaining slots: {len(regions)} > {text_slots}")
 
         total_height = sum(region.content_height for region in regions)
-        raw_slots = [
-            region.content_height / max(1, total_height) * text_slots
-            for region in regions
-        ]
+        raw_slots = [region.content_height / max(1, total_height) * text_slots for region in regions]
         slots = [max(1, int(np.round(raw))) for raw in raw_slots]
 
         # while sum(slots) < text_slots:

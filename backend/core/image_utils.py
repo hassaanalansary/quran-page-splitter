@@ -34,9 +34,7 @@ def binarize_image(image: Image.Image) -> tuple[np.ndarray, np.ndarray]:
     converting to grayscale, and binarizing (Otsu thresholding + inverse)
     so that background is 0 and text is 255.
     """
-    if image.mode in ("RGBA", "LA") or (
-        image.mode == "P" and "transparency" in image.info
-    ):
+    if image.mode in ("RGBA", "LA") or (image.mode == "P" and "transparency" in image.info):
         base = Image.new("RGBA", image.size, (255, 255, 255, 255))
         try:
             base.paste(image.convert("RGBA"), mask=image.convert("RGBA").split()[3])
@@ -75,9 +73,7 @@ def clean_image(gray: np.ndarray, binary: np.ndarray) -> tuple[np.ndarray, np.nd
     return gray[y : y + h, x : x + w], binary[y : y + h, x : x + w]
 
 
-def right_strip(
-    cleaned: np.ndarray, width: int | None = None, fraction: float = 0.30
-) -> np.ndarray:
+def right_strip(cleaned: np.ndarray, width: int | None = None, fraction: float = 0.30) -> np.ndarray:
     """Return the rightmost strip.
     If width is given, take exactly that many pixels.
     Otherwise compute from fraction.

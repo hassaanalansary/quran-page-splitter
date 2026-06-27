@@ -1,7 +1,8 @@
 """Pipeline: iterates over raw image bytes and delegates to PageProcessor.
 
 Creates a QuranTracker that persists across all pages, builds PageContext
-for each page, and collects results.
+for each page, and collects results. Pure: returns plain dicts and writes no
+files unless explicit ``output_path`` / ``log_path`` are provided.
 """
 
 import io
@@ -19,8 +20,6 @@ from core.page_processor import (
     create_context,
     is_line_geometry_failure,
 )
-from core.quran_metadata import get_sura
-from core.review import PAGES_DIR, save_page_copy
 
 logger = logging.getLogger(__name__)
 
@@ -33,38 +32,26 @@ class Pipeline:
     def run(
         self,
         images_data: list[tuple[bytes, str]],
-        output_path: str = "results.json",
-        log_path: str = "results.log",
+        output_path: str | None = None,
+        log_path: str | None = None,
     ) -> dict:
-        """Process a batch of (raw_bytes, filename) pairs.
+        """Process a batch of (raw_bytes, filename) pairs and return a result dict.
 
-        Returns a dict with status, per-page results, and optionally
-        coordinate data. Detailed logs are written to ``log_path``.
+        Writes nothing unless ``output_path`` (coordinate JSON) or ``log_path``
+        (detailed log file) are supplied.
         """
-        # Set up file logging for the entire run
-        file_handler = self._setup_file_logging(log_path)
+        file_handler = self._setup_file_logging(log_path) if log_path else None
 
         cfg = self.export_config
-        tracker = QuranTracker(
-            current_sura=cfg.start_sura,
-            current_aya=cfg.start_aya,
-        )
+        tracker = QuranTracker(current_sura=cfg.start_sura, current_aya=cfg.start_aya)
 
         configure_opencv_acceleration()
-
-        logger.info("=" * 60)
-        logger.info("PIPELINE STARTED")
         logger.info(
-            "Starting from Sura #%d (%s), Aya %d",
+            "PIPELINE STARTED — Sura #%d, Aya %d, %d page(s)",
             tracker.current_sura,
-            get_sura(tracker.current_sura).name,
             tracker.current_aya,
+            len(images_data),
         )
-        logger.info("Export images: %s", cfg.export_images)
-        logger.info("Export coordinates: %s", cfg.export_coordinates)
-        logger.info("Expected lines per page: %d", cfg.expected_lines)
-        logger.info("Processing %d page(s)", len(images_data))
-        logger.info("=" * 60)
 
         page_results: list[dict] = []
         coordinate_pages: list[dict] = []
@@ -73,12 +60,6 @@ class Pipeline:
 
         for page_index, (raw_bytes, filename) in enumerate(images_data, start=1):
             logger.info("Processing %s", filename)
-            page_image_filename = save_page_copy(
-                raw_bytes,
-                filename,
-                page_index,
-                PAGES_DIR,
-            )
             try:
                 img = Image.open(io.BytesIO(raw_bytes))
             except Exception as e:
@@ -88,12 +69,7 @@ class Pipeline:
                 )
                 continue
 
-            ctx = create_context(
-                img,
-                filename,
-                page_index,
-                page_image_filename=page_image_filename,
-            )
+            ctx = create_context(img, filename, page_index, page_image_filename=None)
             result = self.processor.process(
                 ctx,
                 tracker,
@@ -102,7 +78,6 @@ class Pipeline:
                 expected_lines=cfg.expected_lines,
             )
 
-            # Extract coordinate data if present
             if "coordinates" in result:
                 coordinate_pages.append(result.pop("coordinates"))
 
@@ -118,16 +93,12 @@ class Pipeline:
                     "detected_lines": result.get("detected_lines"),
                     "detected_slots": result.get("detected_slots"),
                 }
-                remaining = images_data[page_index:]
-                for _, fn in remaining:
+                for _, fn in images_data[page_index:]:
                     page_results.append(
                         {
                             "filename": fn,
                             "status": "skipped_batch_abort",
-                            "message": (
-                                "Not processed: batch aborted after "
-                                "line detection failure"
-                            ),
+                            "message": "Not processed: batch aborted after line detection failure",
                         }
                     )
                 logger.error(
@@ -138,35 +109,6 @@ class Pipeline:
                 )
                 break
 
-        # Summary
-        sura_info = get_sura(tracker.current_sura)
-        logger.info("=" * 60)
-        if aborted:
-            logger.info("PIPELINE ABORTED (line detection)")
-            logger.info("Pages in result list: %d", len(page_results))
-            if abort_detail:
-                logger.info(
-                    "Failure at page %d — %s (expected %s lines, status=%s)",
-                    abort_detail["page_index"],
-                    abort_detail["filename"],
-                    abort_detail.get("expected_lines"),
-                    abort_detail.get("status"),
-                )
-        else:
-            logger.info("PIPELINE COMPLETE")
-            logger.info("Pages processed: %d", len(page_results))
-        logger.info(
-            "Ended at Sura #%d (%s), Aya %d",
-            tracker.current_sura,
-            sura_info.name,
-            tracker.current_aya,
-        )
-        logger.info("=" * 60)
-        logger.info(
-            f"{sum([len(page_result['lines']) for page_result in coordinate_pages])}"
-        )
-
-        # Build final output
         output: dict = {
             "status": "aborted_line_detection" if aborted else "completed",
             "pages_processed": len(page_results),
@@ -191,27 +133,24 @@ class Pipeline:
                 "pages": coordinate_pages,
             }
             output["coordinates"] = coordinate_data
+            if output_path:
+                try:
+                    with open(output_path, mode="w", encoding="utf-8") as f:
+                        json.dump(coordinate_data, f, indent=2, ensure_ascii=False)
+                except Exception as e:
+                    logger.error("Failed to write coordinates JSON: %s", e)
 
-            # Also write coordinates to a JSON file
-            try:
-                with open(output_path, mode="w", encoding="utf-8") as f:
-                    json.dump(coordinate_data, f, indent=2, ensure_ascii=False)
-                logger.info("Coordinates saved to %s", output_path)
-            except Exception as e:
-                logger.error("Failed to write coordinates JSON: %s", e)
-
-        # Clean up the file handler
-        self._teardown_file_logging(file_handler)
+        if file_handler:
+            self._teardown_file_logging(file_handler)
 
         return output
 
     # ------------------------------------------------------------------
-    # Logging helpers
+    # Optional file-logging helpers
     # ------------------------------------------------------------------
 
     @staticmethod
     def _setup_file_logging(log_path: str) -> logging.FileHandler:
-        """Add a file handler to the root logger for detailed pipeline logs."""
         file_handler = logging.FileHandler(log_path, mode="w", encoding="utf-8")
         file_handler.setLevel(logging.DEBUG)
         file_handler.setFormatter(
@@ -222,6 +161,5 @@ class Pipeline:
 
     @staticmethod
     def _teardown_file_logging(file_handler: logging.FileHandler) -> None:
-        """Remove the file handler and close it."""
         logging.getLogger().removeHandler(file_handler)
         file_handler.close()

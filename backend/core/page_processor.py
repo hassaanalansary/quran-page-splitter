@@ -7,12 +7,12 @@ image export and coordinate collection based on the configured mode.
 import logging
 from pathlib import Path
 
-from backend.core.image_utils import binarize_image, make_transparent
 from PIL import Image
 
 from core.aya_separator import AyaSeparatorProcessor
 from core.context import PageContext, QuranTracker
 from core.coordinate_exporter import collect_page_coordinates, track_positions
+from core.image_utils import binarize_image, make_transparent
 from core.line_detector import LineDetector
 
 logger = logging.getLogger(__name__)
@@ -126,9 +126,7 @@ class PageProcessor:
             return {
                 "filename": ctx.filename,
                 "status": STATUS_LINE_COUNT_MISMATCH,
-                "message": (
-                    f"Expected {expected_lines} line slots, detected {detected_slots}"
-                ),
+                "message": (f"Expected {expected_lines} line slots, detected {detected_slots}"),
                 "line_detection_ok": False,
                 "expected_lines": expected_lines,
                 "detected_lines": len(ctx.lines),
@@ -164,9 +162,7 @@ class PageProcessor:
             logger.info("  Exported %d image(s) for %s", len(saved), ctx.filename)
 
         if export_coordinates:
-            result["coordinates"] = collect_page_coordinates(
-                ctx, self.detector.detection.padding
-            )
+            result["coordinates"] = collect_page_coordinates(ctx, self.detector.detection.padding)
 
         logger.info("  Finished %s: detected=%d lines", ctx.filename, len(ctx.lines))
         return result
@@ -178,10 +174,7 @@ class PageProcessor:
 
         for line in ctx.lines:
             if line.is_sura:
-                name = (
-                    f"{stem}-l{line.line_index:02d}"
-                    f"-sura{line.sura_number:03d}-header.png"
-                )
+                name = f"{stem}-l{line.line_index:02d}-sura{line.sura_number:03d}-header.png"
                 out_path = self.results_dir / name
                 make_transparent(ctx.line_image(line)).save(out_path)
                 saved.append(str(out_path))
@@ -189,10 +182,7 @@ class PageProcessor:
                 continue
 
             if line.is_basmala:
-                name = (
-                    f"{stem}-l{line.line_index:02d}"
-                    f"-sura{line.sura_number:03d}-basmala.png"
-                )
+                name = f"{stem}-l{line.line_index:02d}-sura{line.sura_number:03d}-basmala.png"
                 out_path = self.results_dir / name
                 make_transparent(ctx.line_image(line)).save(out_path)
                 saved.append(str(out_path))
@@ -207,10 +197,7 @@ class PageProcessor:
                 if len(line.segments) == 1:
                     name = f"{stem}-l{line.line_index:02d}{sura_part}{aya_part}.png"
                 else:
-                    name = (
-                        f"{stem}-l{line.line_index:02d}-s{seg_idx:02d}"
-                        f"{sura_part}{aya_part}.png"
-                    )
+                    name = f"{stem}-l{line.line_index:02d}-s{seg_idx:02d}{sura_part}{aya_part}.png"
 
                 # Crop segment from original image
                 b = seg.bbox
@@ -226,11 +213,7 @@ class PageProcessor:
         """Save each detected line as PNG for inspection when count ≠ expected."""
         stem = Path(ctx.filename).stem
         safe_stem = stem.replace("/", "_").replace("\\", "_")
-        out_dir = (
-            self.results_dir
-            / "line_detection_debug"
-            / f"page_{ctx.page_index:04d}_{safe_stem}"
-        )
+        out_dir = self.results_dir / "line_detection_debug" / f"page_{ctx.page_index:04d}_{safe_stem}"
         out_dir.mkdir(parents=True, exist_ok=True)
         saved: list[str] = []
         for line in ctx.lines:
