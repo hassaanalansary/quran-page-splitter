@@ -31,9 +31,7 @@ def render_page(pdf_path: str, pdf_index: int, dpi: int = DEFAULT_DPI) -> bytes:
         return bytes(pixmap.tobytes("png"))
 
 
-def logical_to_pdf_index(
-    first_quran_pdf_page: int, page_number: int, source_pdf_page: int | None = None
-) -> int:
+def logical_to_pdf_index(first_quran_pdf_page: int, page_number: int, source_pdf_page: int | None = None) -> int:
     """Map a logical Quran page to its physical PDF index.
 
     ``source_pdf_page`` overrides the offset rule when set (the per-page escape hatch).

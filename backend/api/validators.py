@@ -10,9 +10,7 @@ def logical_page_count(mushaf: Mushaf) -> int:
     return mushaf.last_quran_pdf_page - mushaf.first_quran_pdf_page + 1
 
 
-def validate_pdf_bounds(
-    first_quran_pdf_page: int, last_quran_pdf_page: int, pdf_page_count: int
-) -> None:
+def validate_pdf_bounds(first_quran_pdf_page: int, last_quran_pdf_page: int, pdf_page_count: int) -> None:
     """Ensure 1 <= first <= last <= total physical pages."""
     if not 1 <= first_quran_pdf_page <= last_quran_pdf_page <= pdf_page_count:
         raise HttpError(
@@ -33,6 +31,4 @@ def validate_page_range(mushaf: Mushaf, start: int, end: int) -> None:
     """Ensure a processing range is ordered and within the mushaf's content bounds."""
     count = logical_page_count(mushaf)
     if not 1 <= start <= end <= count:
-        raise HttpError(
-            400, f"Require 1 <= start <= end <= {count} (got {start}, {end})."
-        )
+        raise HttpError(400, f"Require 1 <= start <= end <= {count} (got {start}, {end}).")

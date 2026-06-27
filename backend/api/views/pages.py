@@ -51,9 +51,7 @@ def get_page(request: HttpRequest, mushaf_id: uuid.UUID, page_number: int) -> di
 
 
 @router.post("/{mushaf_id}/pages/{page_number}", response=PageDataOut)
-def save_page(
-    request: HttpRequest, mushaf_id: uuid.UUID, page_number: int, data: PageSaveIn
-) -> dict:
+def save_page(request: HttpRequest, mushaf_id: uuid.UUID, page_number: int, data: PageSaveIn) -> dict:
     return editing_service.save_page(
         mushaf_id=mushaf_id,
         page_number=page_number,

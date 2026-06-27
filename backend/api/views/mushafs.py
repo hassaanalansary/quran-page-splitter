@@ -111,8 +111,6 @@ def put_template(
 
 
 @router.get("/{mushaf_id}/pages/{page_number}/image")
-def page_image(
-    request: HttpRequest, mushaf_id: uuid.UUID, page_number: int
-) -> HttpResponse:
+def page_image(request: HttpRequest, mushaf_id: uuid.UUID, page_number: int) -> HttpResponse:
     png = mushaf_service.render_page_image(mushaf_id, page_number)
     return HttpResponse(png, content_type="image/png")

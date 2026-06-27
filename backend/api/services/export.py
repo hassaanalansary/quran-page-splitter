@@ -26,9 +26,7 @@ def export_lines(*, mushaf_id: uuid.UUID, page_number: int) -> dict:
     if page is None:
         raise HttpError(404, "Page has no data to export.")
 
-    pdf_index = pdf.logical_to_pdf_index(
-        mushaf.first_quran_pdf_page, page_number, page.source_pdf_page
-    )
+    pdf_index = pdf.logical_to_pdf_index(mushaf.first_quran_pdf_page, page_number, page.source_pdf_page)
     image = Image.open(io.BytesIO(pdf.render_page(mushaf.pdf_file.path, pdf_index)))
     image.load()
 

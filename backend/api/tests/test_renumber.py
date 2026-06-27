@@ -51,19 +51,21 @@ class RenumberFromTests(TestCase):
         )
         # Two consecutive pages seeded with deliberately-wrong aya numbers (99).
         self.page1 = coordinates.write_coords_to_page(
-            mushaf=self.mushaf, page_number=1, run=self.run,
+            mushaf=self.mushaf,
+            page_number=1,
+            run=self.run,
             coord_page=_two_sep_text_page(2, 99, 99),
         )
         self.page2 = coordinates.write_coords_to_page(
-            mushaf=self.mushaf, page_number=2, run=self.run,
+            mushaf=self.mushaf,
+            page_number=2,
+            run=self.run,
             coord_page=_two_sep_text_page(2, 99, 99),
         )
 
     def _ayas(self, page):
         return list(
-            page.lines.get(line_number=1)
-            .segments.order_by("segment_order")
-            .values_list("aya_number", flat=True)
+            page.lines.get(line_number=1).segments.order_by("segment_order").values_list("aya_number", flat=True)
         )
 
     def test_seeds_from_run_start_and_propagates_forward(self):
@@ -79,7 +81,9 @@ class RenumberFromTests(TestCase):
     def test_header_advances_sura_and_resets_aya(self):
         # Page 1 ends mid-sura 2; a header opening page 2 must advance to sura 3.
         coordinates.write_coords_to_page(
-            mushaf=self.mushaf, page_number=2, run=self.run,
+            mushaf=self.mushaf,
+            page_number=2,
+            run=self.run,
             coord_page={
                 "crop_box": {"x": 0, "y": 0, "w": 100, "h": 100},
                 "lines": [

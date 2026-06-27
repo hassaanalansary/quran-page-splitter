@@ -64,9 +64,7 @@ class Pipeline:
                 img = Image.open(io.BytesIO(raw_bytes))
             except Exception as e:
                 logger.error("Failed to open %s: %s", filename, e)
-                page_results.append(
-                    {"filename": filename, "status": "error", "message": str(e)}
-                )
+                page_results.append({"filename": filename, "status": "error", "message": str(e)})
                 continue
 
             ctx = create_context(img, filename, page_index, page_image_filename=None)
@@ -153,9 +151,7 @@ class Pipeline:
     def _setup_file_logging(log_path: str) -> logging.FileHandler:
         file_handler = logging.FileHandler(log_path, mode="w", encoding="utf-8")
         file_handler.setLevel(logging.DEBUG)
-        file_handler.setFormatter(
-            logging.Formatter("%(asctime)s  %(name)-30s  %(levelname)-8s  %(message)s")
-        )
+        file_handler.setFormatter(logging.Formatter("%(asctime)s  %(name)-30s  %(levelname)-8s  %(message)s"))
         logging.getLogger().addHandler(file_handler)
         return file_handler
 

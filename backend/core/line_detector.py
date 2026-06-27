@@ -8,8 +8,8 @@ import numpy as np
 from core.config import CropConfig, DetectionConfig, ProcessingConfig
 from core.context import BBox, LineResult, PageContext
 from core.image_utils import find_content_bbox
+from core.line_cutter import split_by_valleys
 from core.protected_bands import ProtectedBand, ProtectedBandLocator
-from script.line_cutter import split_by_valleys
 
 logger = logging.getLogger(__name__)
 

@@ -78,17 +78,13 @@ def process(
 
     page_numbers = list(range(page_range_start, page_range_end + 1))
     overrides = dict(
-        Page.objects.filter(mushaf=mushaf, page_number__in=page_numbers).values_list(
-            "page_number", "source_pdf_page"
-        )
+        Page.objects.filter(mushaf=mushaf, page_number__in=page_numbers).values_list("page_number", "source_pdf_page")
     )
     images_data = [
         (
             pdf.render_page(
                 mushaf.pdf_file.path,
-                pdf.logical_to_pdf_index(
-                    mushaf.first_quran_pdf_page, n, overrides.get(n)
-                ),
+                pdf.logical_to_pdf_index(mushaf.first_quran_pdf_page, n, overrides.get(n)),
             ),
             f"{n}.png",
         )
@@ -132,9 +128,7 @@ def process(
             abort_info=json.dumps(output["abort_at"]) if output.get("abort_at") else "",
         )
         for page_number, coord_page in zip(page_numbers, coord_pages, strict=False):
-            coordinates.write_coords_to_page(
-                mushaf=mushaf, page_number=page_number, run=run, coord_page=coord_page
-            )
+            coordinates.write_coords_to_page(mushaf=mushaf, page_number=page_number, run=run, coord_page=coord_page)
 
     return {
         "run_id": run.id,

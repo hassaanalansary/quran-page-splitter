@@ -41,9 +41,7 @@ def _add_templates(mushaf):
         mushaf_service.upsert_template(
             mushaf_id=mushaf.id,
             template_type=template_type,
-            image=SimpleUploadedFile(
-                f"{template_type}.png", make_png_bytes((40, 40)), "image/png"
-            ),
+            image=SimpleUploadedFile(f"{template_type}.png", make_png_bytes((40, 40)), "image/png"),
             ignore_x=None,
             ignore_y=None,
             ignore_w=None,
@@ -58,17 +56,13 @@ class ProcessGuardTests(MediaTestCase):
     def test_missing_templates_rejected(self):
         mushaf = _mushaf()
         with self.assertRaises(HttpError):
-            processing_service.process(
-                mushaf, page_range_start=1, page_range_end=1, **_SETTINGS
-            )
+            processing_service.process(mushaf, page_range_start=1, page_range_end=1, **_SETTINGS)
 
     def test_invalid_range_rejected(self):
         mushaf = _mushaf(pages=3)
         _add_templates(mushaf)
         with self.assertRaises(HttpError):
-            processing_service.process(
-                mushaf, page_range_start=1, page_range_end=99, **_SETTINGS
-            )
+            processing_service.process(mushaf, page_range_start=1, page_range_end=99, **_SETTINGS)
 
 
 class ProcessRunTests(MediaTestCase):
@@ -78,9 +72,7 @@ class ProcessRunTests(MediaTestCase):
     def test_creates_run(self):
         mushaf = _mushaf(pages=2)
         _add_templates(mushaf)
-        result = processing_service.process(
-            mushaf, page_range_start=1, page_range_end=1, **_SETTINGS
-        )
+        result = processing_service.process(mushaf, page_range_start=1, page_range_end=1, **_SETTINGS)
         self.assertIn("run_id", result)
         self.assertEqual(ProcessingRun.objects.filter(mushaf=mushaf).count(), 1)
         self.assertIn(result["status"], {"completed", "aborted_line_detection"})

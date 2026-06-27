@@ -21,9 +21,7 @@ _ENGINE_TO_DB_TYPE = {
 # ---------------------------------------------------------------------------
 # Write: engine coordinate dict -> rows
 # ---------------------------------------------------------------------------
-def write_coords_to_page(
-    *, mushaf: Mushaf, page_number: int, run: ProcessingRun, coord_page: dict
-) -> Page:
+def write_coords_to_page(*, mushaf: Mushaf, page_number: int, run: ProcessingRun, coord_page: dict) -> Page:
     """Persist one engine coordinate page into Page + Line + Segment rows.
 
     Replaces any existing rows for that logical page (reprocessing overwrites it).
@@ -37,9 +35,7 @@ def write_coords_to_page(
             "bbox_w": crop["w"],
             "bbox_h": crop["h"],
         }
-    page, _ = Page.objects.update_or_create(
-        mushaf=mushaf, page_number=page_number, defaults=defaults
-    )
+    page, _ = Page.objects.update_or_create(mushaf=mushaf, page_number=page_number, defaults=defaults)
     page.lines.all().delete()
     for line_data in coord_page.get("lines", []):
         _write_engine_line(page, line_data)
@@ -201,6 +197,4 @@ def _renumber_page(page: Page, sura: int, aya: int) -> tuple[bool, tuple[int, in
 
 
 def _consecutive(page: Page, delta: int) -> Page | None:
-    return Page.objects.filter(
-        mushaf_id=page.mushaf_id, page_number=page.page_number + delta
-    ).first()
+    return Page.objects.filter(mushaf_id=page.mushaf_id, page_number=page.page_number + delta).first()

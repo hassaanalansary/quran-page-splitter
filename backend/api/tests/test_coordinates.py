@@ -64,15 +64,11 @@ class WriteCoordsToPageTests(TestCase):
         )
 
     def _write(self, coord_page):
-        return coordinates.write_coords_to_page(
-            mushaf=self.mushaf, page_number=1, run=self.run, coord_page=coord_page
-        )
+        return coordinates.write_coords_to_page(mushaf=self.mushaf, page_number=1, run=self.run, coord_page=coord_page)
 
     def test_creates_page_with_crop_bbox(self):
         page = self._write(_coord_page())
-        self.assertEqual(
-            (page.bbox_x, page.bbox_y, page.bbox_w, page.bbox_h), (10, 20, 800, 1000)
-        )
+        self.assertEqual((page.bbox_x, page.bbox_y, page.bbox_w, page.bbox_h), (10, 20, 800, 1000))
         self.assertEqual(page.last_run_id, self.run.id)
         self.assertEqual(page.lines.count(), 3)
 

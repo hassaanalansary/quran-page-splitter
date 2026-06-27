@@ -16,9 +16,7 @@ def list_suras(qiraa: str = DEFAULT_QIRAA) -> list[dict]:
 
     ``aya_count`` is ``None`` for suras with no count stored for that qiraa.
     """
-    counts = dict(
-        SuraAyaCount.objects.filter(qiraa__name=qiraa).values_list("sura_id", "count")
-    )
+    counts = dict(SuraAyaCount.objects.filter(qiraa__name=qiraa).values_list("sura_id", "count"))
     return [
         {
             "number": sura.number,
@@ -32,9 +30,7 @@ def list_suras(qiraa: str = DEFAULT_QIRAA) -> list[dict]:
 
 def seed_reference_data() -> None:
     """Idempotently seed qiraat, suras, and per-qiraa aya counts from core metadata."""
-    qiraa, _ = Qiraa.objects.get_or_create(
-        name=DEFAULT_QIRAA, defaults={"description": "Hafs an Asim"}
-    )
+    qiraa, _ = Qiraa.objects.get_or_create(name=DEFAULT_QIRAA, defaults={"description": "Hafs an Asim"})
     for entry in SURAS:
         sura, _ = Sura.objects.update_or_create(
             number=entry.number,
@@ -43,6 +39,4 @@ def seed_reference_data() -> None:
                 "transliteration": entry.transliteration,
             },
         )
-        SuraAyaCount.objects.update_or_create(
-            sura=sura, qiraa=qiraa, defaults={"count": entry.aya_count}
-        )
+        SuraAyaCount.objects.update_or_create(sura=sura, qiraa=qiraa, defaults={"count": entry.aya_count})

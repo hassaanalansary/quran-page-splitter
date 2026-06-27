@@ -159,9 +159,7 @@ def render_page_image(mushaf_id: uuid.UUID, page_number: int) -> bytes:
     mushaf = get_mushaf(mushaf_id)
     validators.validate_page_number(mushaf, page_number)
     override = (
-        Page.objects.filter(mushaf=mushaf, page_number=page_number)
-        .values_list("source_pdf_page", flat=True)
-        .first()
+        Page.objects.filter(mushaf=mushaf, page_number=page_number).values_list("source_pdf_page", flat=True).first()
     )
     index = pdf.logical_to_pdf_index(mushaf.first_quran_pdf_page, page_number, override)
     return pdf.render_page(mushaf.pdf_file.path, index)

@@ -21,17 +21,26 @@ class ExportLinesTests(MediaTestCase):
         )
         self.mushaf = mushaf_service.get_mushaf(created["mushaf"]["id"])
         run = ProcessingRun.objects.create(
-            mushaf=self.mushaf, settings={"start_sura": 1, "start_aya": 1},
-            page_range_start=1, page_range_end=1, status="completed",
+            mushaf=self.mushaf,
+            settings={"start_sura": 1, "start_aya": 1},
+            page_range_start=1,
+            page_range_end=1,
+            status="completed",
         )
         self.page = coordinates.write_coords_to_page(
-            mushaf=self.mushaf, page_number=1, run=run,
+            mushaf=self.mushaf,
+            page_number=1,
+            run=run,
             coord_page={
                 "crop_box": {"x": 0, "y": 0, "w": 400, "h": 400},
-                "lines": [{
-                    "line_number": 1, "type": "sura_header", "sura_number": 1,
-                    "line_bbox": {"x": 100, "y": 100, "w": 200, "h": 50},
-                }],
+                "lines": [
+                    {
+                        "line_number": 1,
+                        "type": "sura_header",
+                        "sura_number": 1,
+                        "line_bbox": {"x": 100, "y": 100, "w": 200, "h": 50},
+                    }
+                ],
             },
         )
 
@@ -43,9 +52,7 @@ class ExportLinesTests(MediaTestCase):
         self.assertTrue(line.line_png.name.endswith(".png"))
 
     def test_export_applies_erase_stroke(self):
-        self.page.lines.get(line_number=1).erase_strokes.create(
-            brush_size=10, points=[[120, 120], [140, 140]]
-        )
+        self.page.lines.get(line_number=1).erase_strokes.create(brush_size=10, points=[[120, 120], [140, 140]])
         result = export.export_lines(mushaf_id=self.mushaf.id, page_number=1)
         self.assertEqual(result["exported"], 1)
 

@@ -55,17 +55,26 @@ class GetPageDataTests(TestCase):
 
     def test_returns_processed_page(self):
         run = ProcessingRun.objects.create(
-            mushaf=self.mushaf, settings={"start_sura": 1, "start_aya": 1},
-            page_range_start=1, page_range_end=1, status="completed",
+            mushaf=self.mushaf,
+            settings={"start_sura": 1, "start_aya": 1},
+            page_range_start=1,
+            page_range_end=1,
+            status="completed",
         )
         coordinates.write_coords_to_page(
-            mushaf=self.mushaf, page_number=1, run=run,
+            mushaf=self.mushaf,
+            page_number=1,
+            run=run,
             coord_page={
                 "crop_box": {"x": 0, "y": 0, "w": 10, "h": 10},
-                "lines": [{
-                    "line_number": 1, "type": "sura_header", "sura_number": 1,
-                    "line_bbox": {"x": 0, "y": 0, "w": 5, "h": 5},
-                }],
+                "lines": [
+                    {
+                        "line_number": 1,
+                        "type": "sura_header",
+                        "sura_number": 1,
+                        "line_bbox": {"x": 0, "y": 0, "w": 5, "h": 5},
+                    }
+                ],
             },
         )
         data = editing.get_page_data(self.mushaf.id, 1)
@@ -82,8 +91,10 @@ class SavePageTests(TestCase):
     def test_save_replaces_and_renumbers(self):
         payload = _save_payload()
         result = editing.save_page(
-            mushaf_id=self.mushaf.id, page_number=1,
-            bbox=payload["bbox"], lines=payload["lines"],
+            mushaf_id=self.mushaf.id,
+            page_number=1,
+            bbox=payload["bbox"],
+            lines=payload["lines"],
         )
         self.assertEqual(len(result["lines"]), 2)
         text = next(line for line in result["lines"] if line["type"] == "text")
@@ -95,6 +106,8 @@ class SavePageTests(TestCase):
         payload["lines"][0]["type"] = "bogus"
         with self.assertRaises(HttpError):
             editing.save_page(
-                mushaf_id=self.mushaf.id, page_number=1,
-                bbox=payload["bbox"], lines=payload["lines"],
+                mushaf_id=self.mushaf.id,
+                page_number=1,
+                bbox=payload["bbox"],
+                lines=payload["lines"],
             )

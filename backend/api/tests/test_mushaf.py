@@ -11,9 +11,7 @@ from api.tests.helpers import MediaTestCase, make_pdf_bytes, make_png_bytes
 
 
 def _pdf_upload(num_pages: int = 10, name: str = "m.pdf") -> SimpleUploadedFile:
-    return SimpleUploadedFile(
-        name, make_pdf_bytes(num_pages), content_type="application/pdf"
-    )
+    return SimpleUploadedFile(name, make_pdf_bytes(num_pages), content_type="application/pdf")
 
 
 def _create(name: str = "M", pages: int = 10, qiraa: str | None = None):

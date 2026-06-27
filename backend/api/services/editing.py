@@ -25,9 +25,7 @@ def get_page_data(mushaf_id: uuid.UUID, page_number: int) -> dict:
     return coordinates.page_to_dict(page)
 
 
-def save_page(
-    *, mushaf_id: uuid.UUID, page_number: int, bbox: dict, lines: list[dict]
-) -> dict:
+def save_page(*, mushaf_id: uuid.UUID, page_number: int, bbox: dict, lines: list[dict]) -> dict:
     """Replace a page's lines/segments from the payload, then renumber forward."""
     mushaf = mushaf_service.get_mushaf(mushaf_id)
     validators.validate_page_number(mushaf, page_number)
@@ -79,9 +77,7 @@ def _write_edited_line(page: Page, line_data: dict) -> None:
         )
 
 
-def save_finalize(
-    *, mushaf_id: uuid.UUID, page_number: int, line_edits: list[dict]
-) -> dict:
+def save_finalize(*, mushaf_id: uuid.UUID, page_number: int, line_edits: list[dict]) -> dict:
     """Apply the cut layer: optional line bbox overrides + erase strokes.
 
     These never affect numbering (segments are independent of line bbox), so no

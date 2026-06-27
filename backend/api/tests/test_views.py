@@ -13,9 +13,7 @@ def _create_mushaf(client, name: str = "ViewMushaf", pages: int = 5):
         {
             "name": name,
             "first_quran_pdf_page": 1,
-            "pdf": SimpleUploadedFile(
-                f"{name}.pdf", make_pdf_bytes(pages), "application/pdf"
-            ),
+            "pdf": SimpleUploadedFile(f"{name}.pdf", make_pdf_bytes(pages), "application/pdf"),
         },
     )
 

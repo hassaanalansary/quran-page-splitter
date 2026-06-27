@@ -41,9 +41,7 @@ class ExportOut(Schema):
 
 
 @router.post("/{mushaf_id}/pages/{page_number}/finalize", response=PageDataOut)
-def finalize(
-    request: HttpRequest, mushaf_id: uuid.UUID, page_number: int, data: FinalizeIn
-) -> dict:
+def finalize(request: HttpRequest, mushaf_id: uuid.UUID, page_number: int, data: FinalizeIn) -> dict:
     return editing_service.save_finalize(
         mushaf_id=mushaf_id,
         page_number=page_number,
@@ -52,7 +50,5 @@ def finalize(
 
 
 @router.post("/{mushaf_id}/pages/{page_number}/export-lines", response=ExportOut)
-def export_lines(
-    request: HttpRequest, mushaf_id: uuid.UUID, page_number: int
-) -> dict:
+def export_lines(request: HttpRequest, mushaf_id: uuid.UUID, page_number: int) -> dict:
     return export_service.export_lines(mushaf_id=mushaf_id, page_number=page_number)
