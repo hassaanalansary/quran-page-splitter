@@ -72,3 +72,10 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+
+db.sqlite3
+.mypy_cache/
+.ruff_cache/
+media/
+.env
