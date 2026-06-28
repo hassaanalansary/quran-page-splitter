@@ -65,7 +65,7 @@ class CreateMushafTests(MediaTestCase):
         self.assertTrue(result["warnings"]["duplicate_file"])
 
     def test_links_qiraa(self):
-        Qiraa.objects.create(name="hafs")
+        Qiraa.objects.create(name="hafs", name_arabic="حفص")
         self.assertEqual(_create("WithQiraa", qiraa="hafs")["qiraa"], "hafs")
 
     def test_invalid_bounds(self):
@@ -119,7 +119,7 @@ class UpdateMushafTests(MediaTestCase):
         self.assertEqual(updated["last_quran_pdf_page"], 10)
 
     def test_qiraa_relink_then_clear(self):
-        Qiraa.objects.create(name="hafs")
+        Qiraa.objects.create(name="hafs", name_arabic="حفص")
         created = _create("Q", qiraa="hafs")
         relinked = mushaf_service.update_mushaf(created["id"], {"qiraa": "hafs"})
         self.assertEqual(relinked["qiraa"], "hafs")

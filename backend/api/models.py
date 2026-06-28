@@ -20,6 +20,16 @@ class RunStatusChoices(models.TextChoices):
     ERROR = "error", "Error"
 
 
+class CountingSystem(models.Model):
+    """A table for Counting Systems"""
+
+    name = models.CharField(max_length=256, unique=True)
+    name_arabic = models.CharField(max_length=256, unique=True)
+
+    def __str__(self) -> str:
+        return f"{self.name} ({self.name_arabic})"
+
+
 class BaseModel(models.Model):
     """A base model for all models"""
 
@@ -31,11 +41,21 @@ class BaseModel(models.Model):
         abstract = True
 
 
-class Qiraa(BaseModel):
+class Qiraa(models.Model):
     """A table for Qiraat"""
 
     name = models.CharField(max_length=256, unique=True)
+    name_arabic = models.CharField(max_length=256, unique=True)
     description = models.TextField(blank=True, default="")
+    counting_system = models.ForeignKey(CountingSystem, null=True, on_delete=models.CASCADE, related_name="qiraat")
+
+    class Meta:
+        db_table = "qiraa"
+        verbose_name = "Qiraa"
+        verbose_name_plural = "Qiraat"
+
+    def __str__(self) -> str:
+        return f"{self.name} ({self.name_arabic})"
 
 
 class Sura(models.Model):
@@ -58,17 +78,21 @@ class SuraAyaCount(models.Model):
     """A table for the number of ayat in each sura"""
 
     sura = models.ForeignKey(Sura, on_delete=models.CASCADE, related_name="aya_counts")
-    qiraa = models.ForeignKey(Qiraa, on_delete=models.CASCADE, related_name="sura_aya_counts")
+    counting_system = models.ForeignKey(
+        CountingSystem, null=True, on_delete=models.CASCADE, related_name="sura_aya_counts"
+    )
     count = models.PositiveSmallIntegerField()
 
     class Meta:
         db_table = "sura_aya_count"
         verbose_name = "Sura Aya Count"
         verbose_name_plural = "Sura Aya Counts"
-        constraints = (models.UniqueConstraint(fields=["sura", "qiraa"], name="unique_sura_qiraa"),)
+        constraints = (models.UniqueConstraint(fields=["sura", "counting_system"], name="unique_sura_counting_system"),)
 
     def __str__(self) -> str:
-        return f"{self.sura.transliteration} has {self.count} ayat in {self.qiraa.name}"
+        if self.counting_system:
+            return f"{self.sura.transliteration} has {self.count} ayat in {self.counting_system.name}"
+        return f"{self.sura.transliteration} has {self.count} ayat"
 
 
 class Mushaf(BaseModel):
