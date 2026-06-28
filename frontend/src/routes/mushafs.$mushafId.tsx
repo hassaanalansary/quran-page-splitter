@@ -1,10 +1,4 @@
-import {
-  createFileRoute,
-  Link,
-  Outlet,
-  useParams,
-  useRouterState,
-} from "@tanstack/react-router";
+import { createFileRoute, Link, Outlet, useParams, useRouterState } from "@tanstack/react-router";
 
 import { useMushaf } from "@/lib/api";
 

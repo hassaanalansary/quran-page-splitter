@@ -73,7 +73,11 @@ export function ReviewCanvas({
           <div className="relative mx-auto my-8" style={{ width: displayW || "auto" }}>
             <div
               className="relative rounded-[4px] border border-border bg-white"
-              style={{ boxShadow: "var(--shadow-page)", width: displayW || "auto", height: displayH || "auto" }}
+              style={{
+                boxShadow: "var(--shadow-page)",
+                width: displayW || "auto",
+                height: displayH || "auto",
+              }}
             >
               <img
                 ref={imgRef}

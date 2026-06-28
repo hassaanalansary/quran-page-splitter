@@ -1,4 +1,5 @@
-import type { ReactNode } from "react";
+import { ChevronDown } from "lucide-react";
+import { useState, type ReactNode } from "react";
 
 /** Right-hand control column used by the setup / templates / process steps. */
 export function Aside({ children, footer }: { children: ReactNode; footer?: ReactNode }) {
@@ -12,7 +13,7 @@ export function Aside({ children, footer }: { children: ReactNode; footer?: Reac
 
 export function PanelCard({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div className="overflow-hidden rounded-md border border-border bg-white">
+    <div className="rounded-md border border-border bg-white">
       <div className="border-b border-border px-3 py-2 text-[12px] font-semibold tracking-[0.02em] text-text-primary">
         {title}
       </div>
@@ -21,7 +22,47 @@ export function PanelCard({ title, children }: { title: string; children: ReactN
   );
 }
 
-export function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
+/** A collapsible titled section, for dividing a long control panel. */
+export function Section({
+  title,
+  children,
+  defaultOpen = true,
+  badge,
+}: {
+  title: string;
+  children: ReactNode;
+  defaultOpen?: boolean;
+  badge?: ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="rounded-md border border-border bg-white">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center gap-2 px-3 py-2 text-[12px] font-semibold tracking-[0.02em] text-text-primary transition-colors hover:bg-bg-surface"
+      >
+        <ChevronDown
+          size={14}
+          className={`flex-shrink-0 text-text-muted transition-transform ${open ? "" : "-rotate-90"}`}
+        />
+        <span className="flex-1 text-left">{title}</span>
+        {badge}
+      </button>
+      {open && <div className="flex flex-col gap-3 border-t border-border p-3">{children}</div>}
+    </div>
+  );
+}
+
+export function Field({
+  label,
+  hint,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  children: ReactNode;
+}) {
   return (
     <label className="flex flex-col gap-1">
       <span className="text-[11.5px] font-semibold tracking-[0.03em] text-text-secondary">
@@ -33,12 +74,20 @@ export function Field({ label, hint, children }: { label: string; hint?: string;
   );
 }
 
-export function Hint({ children, tone = "info" }: { children: ReactNode; tone?: "info" | "warning" }) {
+export function Hint({
+  children,
+  tone = "info",
+}: {
+  children: ReactNode;
+  tone?: "info" | "warning";
+}) {
   const styles =
     tone === "warning"
       ? "border-[color:var(--warning-border)] bg-warning-bg text-[#92400E]"
       : "border-border bg-bg-surface text-text-secondary";
   return (
-    <div className={`rounded-md border px-3 py-2 text-[12px] leading-[1.5] ${styles}`}>{children}</div>
+    <div className={`rounded-md border px-3 py-2 text-[12px] leading-[1.5] ${styles}`}>
+      {children}
+    </div>
   );
 }

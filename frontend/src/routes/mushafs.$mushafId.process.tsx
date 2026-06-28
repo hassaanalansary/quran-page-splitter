@@ -3,8 +3,9 @@ import { createFileRoute, Link, useParams } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
 
-import { Aside, Field, Hint, PanelCard } from "@/components/app/Panel";
-import { CropStudio } from "@/components/canvas/CropStudio";
+import { Aside, Field, Hint, Section } from "@/components/app/Panel";
+import { CropPreview } from "@/components/canvas/CropPreview";
+import { FilmstripViewer } from "@/components/canvas/FilmstripViewer";
 import { Button } from "@/components/ui/button";
 import {
   ApiError,
@@ -99,16 +100,16 @@ function ProcessPage() {
 
   return (
     <div className="flex flex-1 overflow-hidden">
-      <CropStudio
-        imageUrl={pageImageUrl(mushafId, preview, mushaf.updated_at)}
-        cropLabel="bounds"
-        rect={bounds}
-        onRectChange={setBounds}
-        page={preview}
+      <FilmstripViewer
+        mushafId={mushafId}
         pageCount={logicalCount}
+        page={preview}
         onPageChange={(n) => setPreview(clamp(n, 1, logicalCount))}
-        statusText={`Page ${preview} / ${logicalCount}  ·  draw the text region (bounds)`}
-        emptyHint="Rendering page…"
+        version={mushaf.updated_at}
+        renderLabel={(logical) =>
+          `PDF page ${mushaf.first_quran_pdf_page + logical - 1} of ${mushaf.pdf_page_count}`
+        }
+        crop={{ label: "bounds", rect: bounds, onRectChange: setBounds }}
       />
 
       <Aside
@@ -116,13 +117,15 @@ function ProcessPage() {
           <div className="flex flex-col gap-2">
             {run && <ProgressFooter run={run} />}
             <Button onClick={runProcess} disabled={!canProcess}>
-              {run?.running
-                ? "Processing…"
-                : `Process pages ${rangeStart}–${rangeEnd}`}
+              {run?.running ? "Processing…" : `Process pages ${rangeStart}–${rangeEnd}`}
             </Button>
             {run?.finished && !run.error && (
               <Button asChild variant="outline">
-                <Link to="/mushafs/$mushafId/review" params={{ mushafId }} search={{ page: rangeStart }}>
+                <Link
+                  to="/mushafs/$mushafId/review"
+                  params={{ mushafId }}
+                  search={{ page: rangeStart }}
+                >
                   Continue to Review →
                 </Link>
               </Button>
@@ -131,11 +134,36 @@ function ProcessPage() {
         }
       >
         <Hint>
-          Draw the <strong>bounds</strong> around the text block (excluding margins), pick the page
-          range and the sura/aya the range starts on, then process. Templates must be saved first.
+          Set the <strong>bounds</strong>, choose the page range and where it starts, then process.
+          Save the templates first.
         </Hint>
 
-        <PanelCard title="Page range">
+        <Section title="Bounds">
+          <p className="text-[12px] text-text-muted">
+            Draw the text region on the page — the orange box. Exclude margins and decorations; line
+            detection runs inside it.
+          </p>
+          <div className="flex items-center justify-between text-[12px]">
+            <span className="text-text-secondary">Region</span>
+            <span className="font-mono text-text-primary">
+              {bounds
+                ? `${Math.round(bounds.w)}×${Math.round(bounds.h)} @ ${Math.round(bounds.x)},${Math.round(bounds.y)}`
+                : "—"}
+            </span>
+          </div>
+          <CropPreview
+            imageUrl={pageImageUrl(mushafId, preview, mushaf.updated_at)}
+            rect={bounds}
+            height={150}
+          />
+          {!boundsOk && (
+            <span className="text-[12px] text-error">
+              Draw a bounds box on the page to enable processing.
+            </span>
+          )}
+        </Section>
+
+        <Section title="Page range">
           <div className="grid grid-cols-2 gap-2">
             <Field label="Start page">
               <NumInput value={rangeStart} min={1} max={logicalCount} onChange={setRangeStart} />
@@ -145,11 +173,13 @@ function ProcessPage() {
             </Field>
           </div>
           {!rangeOk && (
-            <span className="text-[12px] text-error">Require 1 ≤ start ≤ end ≤ {logicalCount}.</span>
+            <span className="text-[12px] text-error">
+              Require 1 ≤ start ≤ end ≤ {logicalCount}.
+            </span>
           )}
-        </PanelCard>
+        </Section>
 
-        <PanelCard title="Starting position">
+        <Section title="Starting position">
           <Field label="Start sura">
             <select
               value={startSura}
@@ -181,7 +211,7 @@ function ProcessPage() {
               ))}
             </select>
           </Field>
-        </PanelCard>
+        </Section>
 
         <SettingsCard settings={settings} onChange={setSettings} />
 
@@ -239,7 +269,7 @@ function SettingsCard({
 }) {
   const u = (patch: Partial<ProcessSettings>) => onChange({ ...settings, ...patch });
   return (
-    <PanelCard title="Detection settings">
+    <Section title="Detection settings" defaultOpen={false}>
       <Row label="Padding" hint="px above/below each line">
         <NumInput value={settings.padding} min={0} onChange={(v) => u({ padding: v })} compact />
       </Row>
@@ -299,7 +329,7 @@ function SettingsCard({
           onChange={(v) => u({ prefer_acceleration: v })}
         />
       </Row>
-    </PanelCard>
+    </Section>
   );
 }
 

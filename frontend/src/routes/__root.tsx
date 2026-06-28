@@ -1,10 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import {
-  Link,
-  Outlet,
-  createRootRouteWithContext,
-  useRouter,
-} from "@tanstack/react-router";
+import { Link, Outlet, createRootRouteWithContext, useRouter } from "@tanstack/react-router";
 
 import { Toaster } from "@/components/ui/sonner";
 

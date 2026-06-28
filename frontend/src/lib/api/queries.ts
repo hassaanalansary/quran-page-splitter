@@ -9,8 +9,7 @@ export const queryKeys = {
   mushafs: ["mushafs"] as const,
   mushaf: (id: string) => ["mushaf", id] as const,
   suras: (qiraa: string) => ["suras", qiraa] as const,
-  page: (mushafId: string, pageNumber: number) =>
-    ["mushaf", mushafId, "page", pageNumber] as const,
+  page: (mushafId: string, pageNumber: number) => ["mushaf", mushafId, "page", pageNumber] as const,
 };
 
 export function useMushafs() {

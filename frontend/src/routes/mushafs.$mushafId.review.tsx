@@ -104,10 +104,7 @@ function ReviewPage() {
       <Aside
         footer={
           <div className="flex flex-col gap-2">
-            <Button
-              onClick={() => save.mutate()}
-              disabled={!processed || !draft || save.isPending}
-            >
+            <Button onClick={() => save.mutate()} disabled={!processed || !draft || save.isPending}>
               {save.isPending ? "Saving…" : "Save page"}
             </Button>
             <Button asChild variant="outline">
@@ -179,7 +176,9 @@ function LineEditor({
       onClick={onSelect}
       className={[
         "cursor-pointer rounded-md border bg-white p-2.5 transition-colors",
-        selected ? "border-orange shadow-[0_0_0_3px_var(--orange-glow)]" : "border-border hover:border-border-strong",
+        selected
+          ? "border-orange shadow-[0_0_0_3px_var(--orange-glow)]"
+          : "border-border hover:border-border-strong",
       ].join(" ")}
     >
       <div className="flex items-center gap-2">

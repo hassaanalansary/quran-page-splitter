@@ -1,12 +1,13 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, useParams } from "@tanstack/react-router";
+import { Flag, FlagOff } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { Aside, Field, Hint, PanelCard } from "@/components/app/Panel";
-import { CropStudio } from "@/components/canvas/CropStudio";
+import { FilmstripViewer } from "@/components/canvas/FilmstripViewer";
 import { Button } from "@/components/ui/button";
-import { ApiError, pageImageUrl, queryKeys, updateMushaf, useMushaf } from "@/lib/api";
+import { ApiError, queryKeys, updateMushaf, useMushaf } from "@/lib/api";
 
 export const Route = createFileRoute("/mushafs/$mushafId/setup")({ component: SetupPage });
 
@@ -22,6 +23,7 @@ function SetupPage() {
   const [preview, setPreview] = useState(1); // logical page index (1-based)
   const [first, setFirst] = useState(1);
   const [last, setLast] = useState(1);
+  const [marking, setMarking] = useState<"first" | "last" | null>(null);
 
   useEffect(() => {
     if (mushaf) {
@@ -37,7 +39,10 @@ function SetupPage() {
       queryClient.setQueryData(queryKeys.mushaf(mushafId), updated);
       queryClient.invalidateQueries({ queryKey: queryKeys.mushafs });
       setPreview(1);
-      toast.success(`Quran content set to PDF pages ${updated.first_quran_pdf_page}–${updated.last_quran_pdf_page}.`);
+      setMarking(null);
+      toast.success(
+        `Quran content set to PDF pages ${updated.first_quran_pdf_page}–${updated.last_quran_pdf_page}.`,
+      );
     },
     onError: (e) => toast.error(e instanceof ApiError ? e.message : "Failed to save bounds."),
   });
@@ -50,19 +55,33 @@ function SetupPage() {
   const processed = mushaf.processed_page_count > 0;
 
   const valid = first >= 1 && first <= last && last <= pdfPages;
-  const changed =
-    first !== mushaf.first_quran_pdf_page || last !== mushaf.last_quran_pdf_page;
+  const changed = first !== mushaf.first_quran_pdf_page || last !== mushaf.last_quran_pdf_page;
   const canSave = valid && changed && !processed && !save.isPending;
+
+  function markFirst() {
+    setFirst(clamp(physical, 1, pdfPages));
+    // Cool flourish: fly to the last page so the user immediately marks the end.
+    setMarking("last");
+    setPreview(logicalCount);
+    toast.info("First page set — now mark the last Quran page.");
+  }
+
+  function markLast() {
+    setLast(clamp(physical, 1, pdfPages));
+    setMarking(null);
+  }
 
   return (
     <div className="flex flex-1 overflow-hidden">
-      <CropStudio
-        imageUrl={pageImageUrl(mushafId, preview, mushaf.updated_at)}
-        page={preview}
+      <FilmstripViewer
+        mushafId={mushafId}
         pageCount={logicalCount}
+        page={preview}
         onPageChange={(n) => setPreview(clamp(n, 1, logicalCount))}
-        statusText={`PDF page ${physical} of ${pdfPages}  ·  preview ${preview} / ${logicalCount}`}
-        emptyHint="Rendering page…"
+        version={mushaf.updated_at}
+        renderLabel={(logical) =>
+          `PDF page ${mushaf.first_quran_pdf_page + logical - 1} of ${pdfPages}`
+        }
       />
 
       <Aside
@@ -80,13 +99,30 @@ function SetupPage() {
         }
       >
         <Hint>
-          Flip through the PDF and mark the <strong>first</strong> and <strong>last</strong> pages
-          that contain Quran text. Front/back matter outside this range is ignored.
+          Flip through the PDF with the filmstrip, then mark the <strong>first</strong> and{" "}
+          <strong>last</strong> pages that contain Quran text. Front/back matter is ignored.
         </Hint>
 
+        {!processed && (
+          <PanelCard title="Mark from current page">
+            <div className="text-[12px] text-text-secondary">
+              Currently viewing <strong className="text-text-primary">PDF page {physical}</strong>.
+            </div>
+            <Button
+              variant={marking === "first" || marking === null ? "default" : "outline"}
+              onClick={markFirst}
+            >
+              <Flag size={14} /> Set as first Quran page
+            </Button>
+            <Button variant={marking === "last" ? "default" : "outline"} onClick={markLast}>
+              <FlagOff size={14} /> Set as last Quran page
+            </Button>
+          </PanelCard>
+        )}
+
         <PanelCard title="Quran content range">
-          <Field label="First Quran page (PDF)">
-            <div className="flex gap-2">
+          <div className="grid grid-cols-2 gap-2">
+            <Field label="First page (PDF)">
               <NumberInput
                 value={first}
                 min={1}
@@ -94,20 +130,8 @@ function SetupPage() {
                 onChange={setFirst}
                 disabled={processed}
               />
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={processed}
-                onClick={() => setFirst(clamp(physical, 1, pdfPages))}
-                title="Use the currently previewed page"
-              >
-                Use page {physical}
-              </Button>
-            </div>
-          </Field>
-
-          <Field label="Last Quran page (PDF)">
-            <div className="flex gap-2">
+            </Field>
+            <Field label="Last page (PDF)">
               <NumberInput
                 value={last}
                 min={1}
@@ -115,18 +139,8 @@ function SetupPage() {
                 onChange={setLast}
                 disabled={processed}
               />
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={processed}
-                onClick={() => setLast(clamp(physical, 1, pdfPages))}
-                title="Use the currently previewed page"
-              >
-                Use page {physical}
-              </Button>
-            </div>
-          </Field>
-
+            </Field>
+          </div>
           <div className="flex items-center justify-between text-[12px] text-text-secondary">
             <span>
               {valid ? (
@@ -144,7 +158,7 @@ function SetupPage() {
                 setFirst(1);
                 setLast(pdfPages);
               }}
-              className="text-[12px] font-medium text-orange hover:underline disabled:text-text-muted disabled:no-underline"
+              className="font-medium text-orange hover:underline disabled:text-text-muted disabled:no-underline"
             >
               Reset to full PDF
             </button>

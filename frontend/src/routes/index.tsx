@@ -19,10 +19,20 @@ import {
 export const Route = createFileRoute("/")({ component: HomePage });
 
 const STATUS: Record<MushafStatus, { label: string; dot: string; text: string; bg: string }> = {
-  empty: { label: "Not processed", dot: "var(--text-muted)", text: "text-text-muted", bg: "bg-bg-muted" },
+  empty: {
+    label: "Not processed",
+    dot: "var(--text-muted)",
+    text: "text-text-muted",
+    bg: "bg-bg-muted",
+  },
   partial: { label: "Partial", dot: "var(--warning)", text: "text-[#92400E]", bg: "bg-warning-bg" },
   processed: { label: "Processed", dot: "var(--navy-light)", text: "text-navy", bg: "bg-bg-muted" },
-  completed: { label: "Completed", dot: "var(--success)", text: "text-success", bg: "bg-success-bg" },
+  completed: {
+    label: "Completed",
+    dot: "var(--success)",
+    text: "text-success",
+    bg: "bg-success-bg",
+  },
 };
 
 function HomePage() {
@@ -129,7 +139,8 @@ function MushafCard({ mushaf }: { mushaf: Mushaf }) {
         aria-label={`Delete ${mushaf.name}`}
         title="Delete mushaf"
         onClick={() => {
-          if (window.confirm(`Delete “${mushaf.name}” and all its processed data?`)) remove.mutate();
+          if (window.confirm(`Delete “${mushaf.name}” and all its processed data?`))
+            remove.mutate();
         }}
         disabled={remove.isPending}
         className="absolute right-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-md bg-white/80 text-text-secondary opacity-0 backdrop-blur transition hover:bg-error-bg hover:text-error group-hover:opacity-100 disabled:opacity-40"

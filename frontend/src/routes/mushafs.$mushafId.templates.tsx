@@ -5,7 +5,8 @@ import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { Aside, Hint, PanelCard } from "@/components/app/Panel";
-import { CropStudio } from "@/components/canvas/CropStudio";
+import { CropPreview } from "@/components/canvas/CropPreview";
+import { FilmstripViewer } from "@/components/canvas/FilmstripViewer";
 import { Button } from "@/components/ui/button";
 import {
   ApiError,
@@ -119,19 +120,16 @@ function TemplatesPage() {
 
   return (
     <div className="flex flex-1 overflow-hidden">
-      <CropStudio
-        imageUrl={pageImageUrl(mushafId, preview, mushaf.updated_at)}
-        cropLabel={activeTarget}
-        rect={working}
-        onRectChange={setWorking}
-        onApply={apply}
-        applyDisabled={!working || working.w < 2}
-        applyLabel="Capture"
-        page={preview}
+      <FilmstripViewer
+        mushafId={mushafId}
         pageCount={logicalCount}
+        page={preview}
         onPageChange={(n) => setPreview(clamp(n, 1, logicalCount))}
-        statusText={`Page ${preview} / ${logicalCount}  ·  drawing: ${activeTarget}`}
-        emptyHint="Rendering page…"
+        version={mushaf.updated_at}
+        renderLabel={(logical) =>
+          `PDF page ${mushaf.first_quran_pdf_page + logical - 1} of ${mushaf.pdf_page_count}`
+        }
+        crop={{ label: activeTarget, rect: working, onRectChange: setWorking }}
       />
 
       <Aside
@@ -144,9 +142,24 @@ function TemplatesPage() {
         }
       >
         <Hint>
-          Find a page showing each element, draw a tight crop, then <strong>Capture</strong> and{" "}
-          <strong>Save</strong>. These templates are matched against every page during processing.
+          Navigate (Prev/Next) to a page that clearly shows each element — a{" "}
+          <strong>sura header</strong> band and an <strong>aya separator</strong> (۝) — draw a tight
+          crop, then <strong>Capture</strong> and <strong>Save</strong>. Templates are matched
+          against every page during processing.
         </Hint>
+
+        <PanelCard title="Selection preview">
+          <CropPreview
+            imageUrl={pageImageUrl(mushafId, preview, mushaf.updated_at)}
+            rect={working}
+            caption={`Drawing: ${activeTarget.replace(/_/g, " ")}`}
+          />
+          <Button onClick={apply} disabled={!working || working.w < 2}>
+            {parentOf(activeTarget)
+              ? "Set ignore region"
+              : `Capture ${activeTarget.replace(/_/g, " ")}`}
+          </Button>
+        </PanelCard>
 
         {TEMPLATES.map(({ type, label, hint }) => {
           const cap = captures[type];
@@ -159,7 +172,11 @@ function TemplatesPage() {
               <div className="flex items-center gap-3">
                 <div className="flex h-16 w-24 items-center justify-center overflow-hidden rounded border border-border bg-bg-surface">
                   {cap ? (
-                    <img src={cap.url} alt={label} className="max-h-full max-w-full object-contain" />
+                    <img
+                      src={cap.url}
+                      alt={label}
+                      className="max-h-full max-w-full object-contain"
+                    />
                   ) : (
                     <span className="text-[10px] text-text-muted">no crop</span>
                   )}
@@ -183,7 +200,10 @@ function TemplatesPage() {
                 </div>
               </div>
 
-              <Button onClick={() => saveMutation.mutate(type)} disabled={!cap || saveMutation.isPending}>
+              <Button
+                onClick={() => saveMutation.mutate(type)}
+                disabled={!cap || saveMutation.isPending}
+              >
                 {saved ? (
                   <>
                     <Check size={14} /> Saved
