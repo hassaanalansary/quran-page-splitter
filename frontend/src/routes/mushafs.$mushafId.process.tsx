@@ -121,10 +121,10 @@ function ProcessPage() {
       />
 
       <div className="flex w-[400px] flex-shrink-0 flex-col gap-3 overflow-auto border-l border-border bg-white p-4">
-        <div className="text-[12px] font-semibold capitalize text-text-primary">
-          <Hint>Bounds</Hint>
+        <div className="flex w-[400px] flex-shrink-0 flex-col gap-3 overflow-auto border-l border-border bg-white p-4">
+          <h3 className="text-[12px] font-semibold capitalize text-text-primary">Bounds</h3>
           <TemplatePreview
-            mode="template"
+            mode="bounds"
             pageUrl={pageImageUrl(mushafId, preview, mushaf.updated_at)}
             working={bounds}
           />
@@ -170,10 +170,6 @@ function ProcessPage() {
                 : "—"}
             </span>
           </div>
-          <CropPreview
-            imageUrl={pageImageUrl(mushafId, preview, mushaf.updated_at)}
-            rect={bounds}
-          />
           <RectInputs rect={bounds} onChange={setBounds} max={natural} />
           {!boundsOk && (
             <span className="text-[12px] text-error">

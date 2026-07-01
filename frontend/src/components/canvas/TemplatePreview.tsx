@@ -5,6 +5,7 @@ import { CropPreview } from "@/components/canvas/CropPreview";
 import type { Rect } from "@/lib/api/types";
 
 type Props =
+  | { mode: "bounds"; pageUrl: string; working: Rect | null }
   | { mode: "template"; pageUrl: string; working: Rect | null }
   | {
       mode: "ignore";
@@ -28,6 +29,15 @@ export function TemplatePreview(props: Props) {
     return (
       <div className="flex flex-1 flex-col gap-2 overflow-auto">
         <Header title="Crop preview" />
+        <CropPreview imageUrl={props.pageUrl} rect={props.working} height={340} />
+      </div>
+    );
+  }
+
+  if (props.mode === "bounds") {
+    return (
+      <div className="flex flex-1 flex-col gap-2 overflow-auto">
+        <Header title="Bounds preview" />
         <CropPreview imageUrl={props.pageUrl} rect={props.working} height={340} />
       </div>
     );
