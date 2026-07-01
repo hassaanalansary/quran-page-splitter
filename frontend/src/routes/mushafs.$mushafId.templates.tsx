@@ -1,22 +1,27 @@
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, useParams } from "@tanstack/react-router";
 import { Check } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { MouseEvent, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
-import { Aside, Hint, PanelCard } from "@/components/app/Panel";
-import { CropPreview } from "@/components/canvas/CropPreview";
-import { FilmstripViewer } from "@/components/canvas/FilmstripViewer";
+import { Aside, Hint } from "@/components/app/Panel";
+import { PageStage } from "@/components/canvas/PageStage";
+import { RectInputs } from "@/components/canvas/RectInputs";
+import { TemplatePreview } from "@/components/canvas/TemplatePreview";
 import { Button } from "@/components/ui/button";
 import {
   ApiError,
   pageImageUrl,
+  queryKeys,
   upsertTemplate,
   useMushaf,
+  useTemplates,
   type Rect,
+  type Template,
   type TemplateType,
 } from "@/lib/api";
 import { cropUrlToBlob } from "@/lib/image";
+import { getTemplateDraft, setTemplateDraft } from "@/lib/templateDraft";
 
 export const Route = createFileRoute("/mushafs/$mushafId/templates")({ component: TemplatesPage });
 
@@ -27,7 +32,12 @@ const TEMPLATES: { type: TemplateType; label: string; hint: string }[] = [
   { type: "aya_separator", label: "Aya separator", hint: "A single end-of-aya marker (۝)." },
 ];
 
-type Capture = { blob: Blob; url: string; rect: Rect };
+const LABELS: Record<Target, string> = {
+  sura_header: "sura header",
+  aya_separator: "aya separator",
+  sura_header_ignore: "sura header · ignore",
+  aya_separator_ignore: "aya separator · ignore",
+};
 
 function parentOf(t: Target): TemplateType | null {
   if (t === "sura_header_ignore") return "sura_header";
@@ -42,37 +52,73 @@ function clamp(n: number, lo: number, hi: number) {
 function TemplatesPage() {
   const { mushafId } = useParams({ from: "/mushafs/$mushafId/templates" });
   const { data: mushaf } = useMushaf(mushafId);
+  const { data: serverTemplates } = useTemplates(mushafId);
+  const queryClient = useQueryClient();
 
+  const draft0 = useMemo(() => getTemplateDraft(mushafId), [mushafId]);
   const [preview, setPreview] = useState(1);
   const [activeTarget, setActiveTarget] = useState<Target>("sura_header");
   const [working, setWorking] = useState<Rect | null>(null);
-  const [captures, setCaptures] = useState<Partial<Record<TemplateType, Capture>>>({});
-  const [ignores, setIgnores] = useState<Partial<Record<TemplateType, Rect>>>({});
-  const [savedAt, setSavedAt] = useState<Partial<Record<TemplateType, boolean>>>({});
+  const [captures, setCaptures] = useState(draft0.captures);
+  const [ignores, setIgnores] = useState(draft0.ignores);
+  const [savedAt, setSavedAt] = useState(draft0.savedAt);
+  const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);
 
-  const urlsRef = useRef<string[]>([]);
-  useEffect(() => () => urlsRef.current.forEach((u) => URL.revokeObjectURL(u)), []);
+  // Persist the draft so leaving and returning within the app keeps captures.
+  useEffect(() => {
+    setTemplateDraft(mushafId, { captures, ignores, savedAt });
+  }, [mushafId, captures, ignores, savedAt]);
 
-  function switchTarget(t: Target) {
+  const server = (type: TemplateType): Template | undefined =>
+    serverTemplates?.find((t) => t.type === type);
+  const displayUrl = (type: TemplateType): string | null =>
+    captures[type]?.url ?? server(type)?.image_url ?? null;
+  const isSaved = (type: TemplateType): boolean =>
+    captures[type] ? !!savedAt[type] : !!server(type);
+
+  function switchTarget(t: Target, e: MouseEvent<HTMLElement>) {
+    e.preventDefault();
+    e.stopPropagation();
     setActiveTarget(t);
     const parent = parentOf(t);
-    setWorking(parent ? (ignores[parent] ?? null) : (captures[t as TemplateType]?.rect ?? null));
+    if (!parent) {
+      setWorking(captures[t as TemplateType]?.rect ?? null);
+      return;
+    }
+    const existing = ignores[parent];
+    if (existing) {
+      setWorking(existing);
+      return;
+    }
+    const pr = captures[parent]?.rect;
+    setWorking(
+      pr
+        ? {
+            x: Math.round(pr.x + pr.w * 0.35),
+            y: Math.round(pr.y + pr.h * 0.3),
+            w: Math.round(pr.w * 0.3),
+            h: Math.round(pr.h * 0.4),
+          }
+        : null,
+    );
   }
 
   async function apply() {
     if (!working || !mushaf) return;
     const parent = parentOf(activeTarget);
     if (parent) {
-      const tpl = captures[parent];
-      if (!tpl) return toast.error(`Crop the ${parent.replace("_", " ")} first.`);
+      const cap = captures[parent];
+      if (!cap?.rect) {
+        return toast.error(`Re-crop the ${LABELS[parent]} first to edit its ignore.`);
+      }
       const inside =
-        working.x >= tpl.rect.x &&
-        working.y >= tpl.rect.y &&
-        working.x + working.w <= tpl.rect.x + tpl.rect.w &&
-        working.y + working.h <= tpl.rect.y + tpl.rect.h;
+        working.x >= cap.rect.x &&
+        working.y >= cap.rect.y &&
+        working.x + working.w <= cap.rect.x + cap.rect.w &&
+        working.y + working.h <= cap.rect.y + cap.rect.h;
       if (!inside) return toast.error("The ignore region must sit inside the template crop.");
       setIgnores((p) => ({ ...p, [parent]: { ...working } }));
-      toast.success("Ignore region set.");
+      toast.success("Ignore region set — save the template to keep it.");
       return;
     }
 
@@ -80,14 +126,13 @@ function TemplatesPage() {
     try {
       const blob = await cropUrlToBlob(pageImageUrl(mushafId, preview, mushaf.updated_at), working);
       const url = URL.createObjectURL(blob);
-      urlsRef.current.push(url);
       setCaptures((p) => {
         if (p[type]?.url) URL.revokeObjectURL(p[type]!.url);
         return { ...p, [type]: { blob, url, rect: { ...working } } };
       });
       setIgnores((p) => ({ ...p, [type]: undefined }));
       setSavedAt((p) => ({ ...p, [type]: false }));
-      toast.success(`${type.replace("_", " ")} captured.`);
+      toast.success(`${LABELS[type]} captured — save it to keep it.`);
     } catch {
       toast.error("Failed to capture crop from the page.");
     }
@@ -95,43 +140,84 @@ function TemplatesPage() {
 
   const saveMutation = useMutation({
     mutationFn: async (type: TemplateType) => {
-      const cap = captures[type]!;
-      const ignoreRect = ignores[type];
-      const relIgnore: Rect | null = ignoreRect
-        ? {
-            x: ignoreRect.x - cap.rect.x,
-            y: ignoreRect.y - cap.rect.y,
-            w: ignoreRect.w,
-            h: ignoreRect.h,
-          }
+      const cap = captures[type];
+      if (!cap) throw new Error("Nothing to save.");
+      const ig = ignores[type];
+      const relIgnore: Rect | null = ig
+        ? { x: ig.x - cap.rect.x, y: ig.y - cap.rect.y, w: ig.w, h: ig.h }
         : null;
       await upsertTemplate(mushafId, type, { image: cap.blob, ignore: relIgnore });
       return type;
     },
     onSuccess: (type) => {
       setSavedAt((p) => ({ ...p, [type]: true }));
-      toast.success(`Saved ${type.replace("_", " ")} template.`);
+      queryClient.invalidateQueries({ queryKey: queryKeys.templates(mushafId) });
+      toast.success(`Saved ${LABELS[type]} template.`);
     },
     onError: (e) => toast.error(e instanceof ApiError ? e.message : "Failed to save template."),
   });
 
   if (!mushaf) return null;
   const logicalCount = mushaf.logical_page_count;
+  const pageUrl = pageImageUrl(mushafId, preview, mushaf.updated_at);
+  const activeParent = parentOf(activeTarget);
+
+  let previewNode;
+  if (activeParent) {
+    const cap = captures[activeParent];
+    const srv = server(activeParent);
+    let ignoreRelative: Rect | null = null;
+    if (working && cap?.rect) {
+      ignoreRelative = {
+        x: working.x - cap.rect.x,
+        y: working.y - cap.rect.y,
+        w: working.w,
+        h: working.h,
+      };
+    } else if (srv && "x" in srv.ignore_rects) {
+      ignoreRelative = srv.ignore_rects as Rect;
+    }
+    previewNode = (
+      <TemplatePreview
+        mode="ignore"
+        pageUrl={pageUrl}
+        working={working}
+        parentLabel={LABELS[activeParent]}
+        parentImageUrl={cap?.url ?? srv?.image_url ?? null}
+        ignoreRelative={ignoreRelative}
+      />
+    );
+  } else {
+    previewNode = <TemplatePreview mode="template" pageUrl={pageUrl} working={working} />;
+  }
 
   return (
     <div className="flex flex-1 overflow-hidden">
-      <FilmstripViewer
-        mushafId={mushafId}
-        pageCount={logicalCount}
+      <PageStage
+        imageUrl={pageUrl}
         page={preview}
+        pageCount={logicalCount}
         onPageChange={(n) => setPreview(clamp(n, 1, logicalCount))}
-        version={mushaf.updated_at}
-        renderLabel={(logical) =>
-          `PDF page ${mushaf.first_quran_pdf_page + logical - 1} of ${mushaf.pdf_page_count}`
+        renderLabel={(p) =>
+          `PDF page ${mushaf.first_quran_pdf_page + p - 1} of ${mushaf.pdf_page_count}`
         }
         crop={{ label: activeTarget, rect: working, onRectChange: setWorking }}
+        onNatural={setNatural}
       />
 
+      {/* Center: the active-cut workspace */}
+      <div className="flex w-[400px] flex-shrink-0 flex-col gap-3 overflow-auto border-l border-border bg-white p-4">
+        <div className="text-[12px] font-semibold capitalize text-text-primary">
+          {LABELS[activeTarget]}
+        </div>
+        {previewNode}
+        <RectInputs rect={working} onChange={setWorking} max={natural} />
+        <Button onClick={apply} disabled={!working || working.w < 2}>
+          {activeParent ? "Set ignore region" : `Capture ${LABELS[activeTarget]}`}
+        </Button>
+      </div>
+
+      {/* Right: per-target cards */}
       <Aside
         footer={
           <Button asChild variant="outline">
@@ -142,41 +228,40 @@ function TemplatesPage() {
         }
       >
         <Hint>
-          Navigate (Prev/Next) to a page that clearly shows each element — a{" "}
-          <strong>sura header</strong> band and an <strong>aya separator</strong> (۝) — draw a tight
-          crop, then <strong>Capture</strong> and <strong>Save</strong>. Templates are matched
-          against every page during processing.
+          Crop each element on a page that clearly shows it, draw a tight box, then{" "}
+          <strong>Save</strong>. Templates are matched against every page during processing.
         </Hint>
 
-        <PanelCard title="Selection preview">
-          <CropPreview
-            imageUrl={pageImageUrl(mushafId, preview, mushaf.updated_at)}
-            rect={working}
-            caption={`Drawing: ${activeTarget.replace(/_/g, " ")}`}
-          />
-          <Button onClick={apply} disabled={!working || working.w < 2}>
-            {parentOf(activeTarget)
-              ? "Set ignore region"
-              : `Capture ${activeTarget.replace(/_/g, " ")}`}
-          </Button>
-        </PanelCard>
-
         {TEMPLATES.map(({ type, label, hint }) => {
+          const url = displayUrl(type);
           const cap = captures[type];
-          const ignore = ignores[type];
-          const saved = savedAt[type];
+          const dirty = !!cap && !savedAt[type];
+          const saved = isSaved(type);
+          const active = activeTarget === type || activeTarget === `${type}_ignore`;
           return (
-            <PanelCard key={type} title={label}>
-              <p className="text-[12px] text-text-muted">{hint}</p>
+            <div
+              key={type}
+              onClick={(e) => switchTarget(`${type}_ignore` as Target, e)}
+              className={`overflow-hidden rounded-xl border bg-white p-3 ${active ? "border-orange" : "border-border"}`}
+            >
+              <div className="mb-2 flex items-center gap-2">
+                <span className="flex-1 text-[13px] font-semibold text-text-primary">{label}</span>
+                {dirty ? (
+                  <span className="text-[11px] font-medium text-orange">unsaved</span>
+                ) : saved ? (
+                  <span className="flex items-center gap-1 text-[11px] font-medium text-success">
+                    <Check size={12} /> saved
+                  </span>
+                ) : (
+                  <span className="text-[11px] text-text-muted">not set</span>
+                )}
+              </div>
+              <p className="mb-2 text-[11px] text-text-muted">{hint}</p>
 
-              <div className="flex items-center gap-3">
-                <div className="flex h-16 w-24 items-center justify-center overflow-hidden rounded border border-border bg-bg-surface">
-                  {cap ? (
-                    <img
-                      src={cap.url}
-                      alt={label}
-                      className="max-h-full max-w-full object-contain"
-                    />
+              <div className="flex gap-3">
+                <div className="flex h-16 w-24 flex-shrink-0 items-center justify-center overflow-hidden rounded border border-border bg-bg-surface">
+                  {url ? (
+                    <img src={url} alt={label} className="max-h-full max-w-full object-contain" />
                   ) : (
                     <span className="text-[10px] text-text-muted">no crop</span>
                   )}
@@ -184,35 +269,36 @@ function TemplatesPage() {
                 <div className="flex flex-1 flex-col gap-1.5">
                   <Button
                     size="sm"
-                    variant={activeTarget === type ? "default" : "outline"}
-                    onClick={() => switchTarget(type)}
+                    variant={active && !activeParent ? "default" : "outline"}
+                    onClick={(e) => switchTarget(type, e)}
                   >
-                    {cap ? "Re-crop" : "Crop on page"}
+                    {url ? "Re-crop" : "Crop on page"}
                   </Button>
                   <Button
                     size="sm"
                     variant={activeTarget === `${type}_ignore` ? "default" : "outline"}
-                    onClick={() => switchTarget(`${type}_ignore` as Target)}
-                    disabled={!cap}
+                    onClick={(e) => switchTarget(`${type}_ignore` as Target, e)}
+                    disabled={!cap?.rect}
                   >
-                    {ignore ? "Edit ignore region" : "Add ignore region"}
+                    {ignores[type] ? "Edit ignore" : "Add ignore"}
                   </Button>
                 </div>
               </div>
 
               <Button
+                className="mt-2 w-full"
                 onClick={() => saveMutation.mutate(type)}
                 disabled={!cap || saveMutation.isPending}
               >
-                {saved ? (
+                {savedAt[type] ? (
                   <>
                     <Check size={14} /> Saved
                   </>
                 ) : (
-                  `Save ${label.toLowerCase()} template`
+                  `Save ${label.toLowerCase()}`
                 )}
               </Button>
-            </PanelCard>
+            </div>
           );
         })}
       </Aside>

@@ -13,6 +13,7 @@ import {
   savePage,
   useMushaf,
   usePage,
+  useProcessedPages,
   useSuras,
   type Line,
   type LineType,
@@ -38,6 +39,7 @@ function ReviewPage() {
 
   const { data: mushaf } = useMushaf(mushafId);
   const { data: suras } = useSuras(mushaf?.qiraa);
+  const { data: pages } = useProcessedPages(mushafId);
   const { data: pageData, isPending } = usePage(mushafId, page);
 
   const [draft, setDraft] = useState<Line[] | null>(null);
@@ -52,6 +54,7 @@ function ReviewPage() {
     mutationFn: () => savePage(mushafId, page, { bbox: pageData!.bbox!, lines: draft! }),
     onSuccess: (result) => {
       queryClient.setQueryData(queryKeys.page(mushafId, page), result);
+      queryClient.invalidateQueries({ queryKey: queryKeys.processedPages(mushafId) });
       toast.success(`Saved page ${page}. Aya numbers recomputed.`);
     },
     onError: (e) => toast.error(e instanceof ApiError ? e.message : "Failed to save page."),
@@ -99,6 +102,8 @@ function ReviewPage() {
         page={page}
         pageCount={logicalCount}
         onPageChange={goto}
+        processed={pages?.processed}
+        reviewed={pages?.reviewed}
       />
 
       <Aside

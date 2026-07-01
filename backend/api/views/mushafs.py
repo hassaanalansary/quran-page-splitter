@@ -33,6 +33,7 @@ class MushafOut(Schema):
     logical_page_count: int
     processed_page_count: int
     reviewed_page_count: int
+    thumbnail_url: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -105,13 +106,18 @@ def delete_mushaf(request: HttpRequest, mushaf_id: uuid.UUID) -> tuple[int, None
     return 204, None
 
 
+@router.get("/{mushaf_id}/templates", response=list[TemplateOut])
+def list_templates(request: HttpRequest, mushaf_id: uuid.UUID) -> list[dict]:
+    return mushaf_service.list_templates(mushaf_id)
+
+
 @router.put("/{mushaf_id}/templates/{template_type}", response=TemplateOut)
 def put_template(
     request: HttpRequest,
     mushaf_id: uuid.UUID,
     template_type: str,
-    image: UploadedFile = File(...),
     data: TemplateForm = Form(...),
+    image: UploadedFile | None = File(None),
 ) -> dict:
     return mushaf_service.upsert_template(
         mushaf_id=mushaf_id,

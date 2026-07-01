@@ -193,6 +193,38 @@ class TemplateTests(MediaTestCase):
                 ignore_h=None,
             )
 
+    def _upsert(self, template_type, image=True, **ignore):
+        return mushaf_service.upsert_template(
+            mushaf_id=self.mushaf_id,
+            template_type=template_type,
+            image=SimpleUploadedFile("t.png", make_png_bytes(), "image/png") if image else None,
+            ignore_x=ignore.get("x"),
+            ignore_y=ignore.get("y"),
+            ignore_w=ignore.get("w"),
+            ignore_h=ignore.get("h"),
+        )
+
+    def test_image_url_is_absolute(self):
+        out = self._upsert("sura_header")
+        self.assertTrue(out["image_url"].startswith("/media/"))
+
+    def test_list_templates(self):
+        self._upsert("sura_header")
+        self._upsert("aya_separator")
+        rows = mushaf_service.list_templates(self.mushaf_id)
+        self.assertEqual({r["type"] for r in rows}, {"sura_header", "aya_separator"})
+        self.assertTrue(all(r["image_url"].startswith("/media/") for r in rows))
+
+    def test_ignore_only_update_keeps_image(self):
+        first = self._upsert("aya_separator")
+        updated = self._upsert("aya_separator", image=False, x=5, y=6, w=7, h=8)
+        self.assertEqual(updated["ignore_rects"], {"x": 5, "y": 6, "w": 7, "h": 8})
+        self.assertEqual(updated["image_url"], first["image_url"])
+
+    def test_image_required_to_create(self):
+        with self.assertRaises(HttpError):
+            self._upsert("sura_header", image=False)
+
 
 class RenderPageImageTests(MediaTestCase):
     def setUp(self):

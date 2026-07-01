@@ -23,6 +23,8 @@ export type Mushaf = {
   logical_page_count: number;
   processed_page_count: number;
   reviewed_page_count: number;
+  /** Cover thumbnail (first physical PDF page); null until generated. */
+  thumbnail_url: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -93,6 +95,9 @@ export type PageData = {
   bbox: Rect | null;
   lines: Line[];
 };
+
+/** Lightweight summary of a processed page (for the page rail indicator). */
+export type PageSummary = { page_number: number; reviewed: boolean };
 
 export type PageSave = {
   bbox: Rect;

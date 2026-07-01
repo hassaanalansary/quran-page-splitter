@@ -111,3 +111,23 @@ class SavePageTests(TestCase):
                 bbox=payload["bbox"],
                 lines=payload["lines"],
             )
+
+
+class ListPagesTests(TestCase):
+    def setUp(self):
+        suras.seed_reference_data()
+        self.mushaf = bare_mushaf("ListPages")
+
+    def test_empty_when_none_processed(self):
+        self.assertEqual(editing.list_pages(self.mushaf.id), [])
+
+    def test_lists_saved_pages_with_review_state(self):
+        payload = _save_payload()
+        editing.save_page(
+            mushaf_id=self.mushaf.id,
+            page_number=2,
+            bbox=payload["bbox"],
+            lines=payload["lines"],
+        )
+        # save_page marks the page reviewed.
+        self.assertEqual(editing.list_pages(self.mushaf.id), [{"page_number": 2, "reviewed": True}])

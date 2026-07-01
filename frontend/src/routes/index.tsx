@@ -102,8 +102,8 @@ function MushafCard({ mushaf }: { mushaf: Mushaf }) {
         <div className="relative aspect-[3/4] overflow-hidden bg-bg-muted">
           {!imgFailed ? (
             <img
-              src={pageImageUrl(mushaf.id, 1, mushaf.updated_at)}
-              alt={`${mushaf.name} first page`}
+              src={mushaf.thumbnail_url ?? pageImageUrl(mushaf.id, 1, mushaf.updated_at)}
+              alt={`${mushaf.name} cover`}
               loading="lazy"
               draggable={false}
               onError={() => setImgFailed(true)}

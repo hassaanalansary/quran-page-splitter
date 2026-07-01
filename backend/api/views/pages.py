@@ -45,6 +45,16 @@ class PageSaveIn(Schema):
     lines: list[LineSchema]
 
 
+class PageSummaryOut(Schema):
+    page_number: int
+    reviewed: bool
+
+
+@router.get("/{mushaf_id}/pages", response=list[PageSummaryOut])
+def list_pages(request: HttpRequest, mushaf_id: uuid.UUID) -> list[dict]:
+    return editing_service.list_pages(mushaf_id)
+
+
 @router.get("/{mushaf_id}/pages/{page_number}", response=PageDataOut)
 def get_page(request: HttpRequest, mushaf_id: uuid.UUID, page_number: int) -> dict:
     return editing_service.get_page_data(mushaf_id, page_number)

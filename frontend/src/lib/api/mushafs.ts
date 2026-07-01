@@ -47,13 +47,17 @@ export function deleteMushaf(id: string): Promise<void> {
   return apiDelete(`/api/mushafs/${id}`);
 }
 
+export function listTemplates(id: string, signal?: AbortSignal): Promise<Template[]> {
+  return apiGet<Template[]>(`/api/mushafs/${id}/templates`, signal);
+}
+
 export function upsertTemplate(
   id: string,
   type: TemplateType,
-  input: { image: Blob; ignore?: Rect | null },
+  input: { image?: Blob | null; ignore?: Rect | null },
 ): Promise<Template> {
   const fd = new FormData();
-  fd.append("image", input.image, `${type}.png`);
+  if (input.image) fd.append("image", input.image, `${type}.png`);
   if (input.ignore) {
     fd.append("ignore_x", String(Math.round(input.ignore.x)));
     fd.append("ignore_y", String(Math.round(input.ignore.y)));

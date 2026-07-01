@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type { Rect } from "@/lib/api/types";
 
@@ -12,62 +12,52 @@ type Props = {
 };
 
 /**
- * A magnified, fit-to-box preview of a rectangular region of a page image — so
- * the user can confirm a crop (bounds / template / ignore) without zooming the
- * main filmstrip. The page is rendered scaled and offset so the region is
- * centred and fills the box; overflow is clipped.
+ * Exact magnified preview of a crop region. Draws the region to a canvas with
+ * `drawImage` (so it always matches the selection — no CSS/measurement drift)
+ * and scales it to fit the box.
  */
-export function CropPreview({ imageUrl, rect, caption, height = 160 }: Props) {
-  const boxRef = useRef<HTMLDivElement>(null);
-  const [box, setBox] = useState({ w: 0, h: height });
-  const [nat, setNat] = useState<{ w: number; h: number } | null>(null);
-
-  useLayoutEffect(() => {
-    const measure = () => {
-      const el = boxRef.current;
-      if (el) setBox({ w: el.clientWidth, h: el.clientHeight });
-    };
-    measure();
-    window.addEventListener("resize", measure);
-    return () => window.removeEventListener("resize", measure);
-  }, []);
+export function CropPreview({ imageUrl, rect, caption, height = 220 }: Props) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [img, setImg] = useState<HTMLImageElement | null>(null);
 
   useEffect(() => {
-    setNat(null);
-    const img = new Image();
-    img.onload = () => setNat({ w: img.naturalWidth, h: img.naturalHeight });
-    img.src = imageUrl;
+    setImg(null);
+    const im = new Image();
+    im.onload = () => setImg(im);
+    im.src = imageUrl;
   }, [imageUrl]);
 
-  const ready = rect !== null && nat !== null && box.w > 0;
-  const scale = ready ? Math.min(box.w / rect.w, box.h / rect.h) : 1;
-  const left = ready ? (box.w - rect.w * scale) / 2 - rect.x * scale : 0;
-  const top = ready ? (box.h - rect.h * scale) / 2 - rect.y * scale : 0;
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const w = canvas.clientWidth;
+    const h = canvas.clientHeight;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.round(w * dpr);
+    canvas.height = Math.round(h * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    if (!img || !rect || rect.w < 1 || rect.h < 1) return;
+    const scale = Math.min(w / rect.w, h / rect.h);
+    const dw = rect.w * scale;
+    const dh = rect.h * scale;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(img, rect.x, rect.y, rect.w, rect.h, (w - dw) / 2, (h - dh) / 2, dw, dh);
+  }, [img, rect]);
 
   return (
     <div>
       <div
-        ref={boxRef}
-        className="raqam-canvas-grid relative overflow-hidden rounded-md border border-border"
+        className="raqam-canvas-grid overflow-hidden rounded-md border border-border"
         style={{ height }}
       >
-        {ready && nat ? (
-          <img
-            src={imageUrl}
-            alt="Selection preview"
-            draggable={false}
-            style={{
-              position: "absolute",
-              width: nat.w * scale,
-              height: nat.h * scale,
-              left,
-              top,
-              maxWidth: "none",
-            }}
-          />
+        {rect ? (
+          <canvas ref={canvasRef} className="h-full w-full" />
         ) : (
           <div className="flex h-full items-center justify-center px-3 text-center text-[11px] text-text-muted">
-            {rect ? "Loading…" : "Draw a region on the page to preview it here."}
+            Draw a region on the page to preview it here.
           </div>
         )}
       </div>

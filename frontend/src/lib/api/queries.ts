@@ -1,13 +1,15 @@
 // React Query hooks + shared query keys for the API.
 import { useQuery } from "@tanstack/react-query";
 
-import { getMushaf, listMushafs } from "./mushafs";
-import { getPage } from "./pages";
+import { getMushaf, listMushafs, listTemplates } from "./mushafs";
+import { getPage, listPages } from "./pages";
 import { DEFAULT_QIRAA, listSuras } from "./suras";
 
 export const queryKeys = {
   mushafs: ["mushafs"] as const,
   mushaf: (id: string) => ["mushaf", id] as const,
+  templates: (id: string) => ["mushaf", id, "templates"] as const,
+  processedPages: (id: string) => ["mushaf", id, "processed-pages"] as const,
   suras: (qiraa: string) => ["suras", qiraa] as const,
   page: (mushafId: string, pageNumber: number) => ["mushaf", mushafId, "page", pageNumber] as const,
 };
@@ -20,6 +22,25 @@ export function useMushaf(id: string) {
   return useQuery({
     queryKey: queryKeys.mushaf(id),
     queryFn: ({ signal }) => getMushaf(id, signal),
+  });
+}
+
+export function useTemplates(id: string) {
+  return useQuery({
+    queryKey: queryKeys.templates(id),
+    queryFn: ({ signal }) => listTemplates(id, signal),
+  });
+}
+
+/** Processed/reviewed logical page numbers, as sets, for the page-rail indicator. */
+export function useProcessedPages(id: string) {
+  return useQuery({
+    queryKey: queryKeys.processedPages(id),
+    queryFn: ({ signal }) => listPages(id, signal),
+    select: (rows) => ({
+      processed: new Set(rows.map((r) => r.page_number)),
+      reviewed: new Set(rows.filter((r) => r.reviewed).map((r) => r.page_number)),
+    }),
   });
 }
 

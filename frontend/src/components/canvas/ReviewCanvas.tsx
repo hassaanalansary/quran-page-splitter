@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
+import { PageRail } from "@/components/canvas/PageRail";
 import type { Line, LineType, Rect } from "@/lib/api/types";
 
 type Props = {
@@ -11,6 +12,8 @@ type Props = {
   page: number;
   pageCount: number;
   onPageChange: (n: number) => void;
+  processed?: Set<number>;
+  reviewed?: Set<number>;
 };
 
 const TYPE_COLOR: Record<LineType, string> = {
@@ -29,6 +32,8 @@ export function ReviewCanvas({
   page,
   pageCount,
   onPageChange,
+  processed,
+  reviewed,
 }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
@@ -107,6 +112,14 @@ export function ReviewCanvas({
           </div>
         )}
       </div>
+
+      <PageRail
+        page={page}
+        pageCount={pageCount}
+        onPageChange={onPageChange}
+        processed={processed}
+        reviewed={reviewed}
+      />
     </div>
   );
 }

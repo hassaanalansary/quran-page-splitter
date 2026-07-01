@@ -3,9 +3,11 @@ import { createFileRoute, Link, useParams } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
 
+import { TemplatePreview } from "@/components/canvas/TemplatePreview";
 import { Aside, Field, Hint, Section } from "@/components/app/Panel";
 import { CropPreview } from "@/components/canvas/CropPreview";
-import { FilmstripViewer } from "@/components/canvas/FilmstripViewer";
+import { PageStage } from "@/components/canvas/PageStage";
+import { RectInputs } from "@/components/canvas/RectInputs";
 import { Button } from "@/components/ui/button";
 import {
   ApiError,
@@ -14,6 +16,7 @@ import {
   processMushaf,
   queryKeys,
   useMushaf,
+  useProcessedPages,
   useSuras,
   type ProcessResult,
   type ProcessSettings,
@@ -41,12 +44,14 @@ function ProcessPage() {
   const { mushafId } = useParams({ from: "/mushafs/$mushafId/process" });
   const { data: mushaf } = useMushaf(mushafId);
   const { data: suras } = useSuras(mushaf?.qiraa);
+  const { data: pages } = useProcessedPages(mushafId);
   const queryClient = useQueryClient();
 
   const logicalCount = mushaf?.logical_page_count ?? 1;
 
   const [preview, setPreview] = useState(1);
   const [bounds, setBounds] = useState<Rect | null>(null);
+  const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);
   const [rangeStart, setRangeStart] = useState(1);
   const [rangeEnd, setRangeEnd] = useState(logicalCount);
   const [startSura, setStartSura] = useState(1);
@@ -95,22 +100,36 @@ function ProcessPage() {
     } finally {
       queryClient.invalidateQueries({ queryKey: queryKeys.mushaf(mushafId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.mushafs });
+      queryClient.invalidateQueries({ queryKey: queryKeys.processedPages(mushafId) });
     }
   }
 
   return (
     <div className="flex flex-1 overflow-hidden">
-      <FilmstripViewer
-        mushafId={mushafId}
-        pageCount={logicalCount}
+      <PageStage
+        imageUrl={pageImageUrl(mushafId, preview, mushaf.updated_at)}
         page={preview}
+        pageCount={logicalCount}
         onPageChange={(n) => setPreview(clamp(n, 1, logicalCount))}
-        version={mushaf.updated_at}
-        renderLabel={(logical) =>
-          `PDF page ${mushaf.first_quran_pdf_page + logical - 1} of ${mushaf.pdf_page_count}`
+        renderLabel={(p) =>
+          `PDF page ${mushaf.first_quran_pdf_page + p - 1} of ${mushaf.pdf_page_count}`
         }
         crop={{ label: "bounds", rect: bounds, onRectChange: setBounds }}
+        onNatural={setNatural}
+        processed={pages?.processed}
+        reviewed={pages?.reviewed}
       />
+
+      <div className="flex w-[400px] flex-shrink-0 flex-col gap-3 overflow-auto border-l border-border bg-white p-4">
+        <div className="text-[12px] font-semibold capitalize text-text-primary">
+          <Hint>Bounds</Hint>
+          <TemplatePreview
+            mode="template"
+            pageUrl={pageImageUrl(mushafId, preview, mushaf.updated_at)}
+            working={bounds}
+          />
+        </div>
+      </div>
 
       <Aside
         footer={
@@ -154,8 +173,8 @@ function ProcessPage() {
           <CropPreview
             imageUrl={pageImageUrl(mushafId, preview, mushaf.updated_at)}
             rect={bounds}
-            height={150}
           />
+          <RectInputs rect={bounds} onChange={setBounds} max={natural} />
           {!boundsOk && (
             <span className="text-[12px] text-error">
               Draw a bounds box on the page to enable processing.

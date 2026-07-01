@@ -103,6 +103,12 @@ class Mushaf(BaseModel):
     pdf_file = models.FileField(upload_to="mushafs/")
     pdf_sha256 = models.CharField(max_length=64)
     pdf_page_count = models.PositiveSmallIntegerField()
+    thumbnail = models.ImageField(
+        upload_to="thumbnails/",
+        null=True,
+        blank=True,
+        help_text="Small render of the first physical PDF page (the cover), for list views.",
+    )
     first_quran_pdf_page = models.PositiveSmallIntegerField(
         default=1, help_text="PDF physical page index (1-based) of the first logical Quran page."
     )

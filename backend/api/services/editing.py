@@ -25,6 +25,13 @@ def get_page_data(mushaf_id: uuid.UUID, page_number: int) -> dict:
     return coordinates.page_to_dict(page)
 
 
+def list_pages(mushaf_id: uuid.UUID) -> list[dict]:
+    """Summaries of processed pages (which logical pages have data + review state)."""
+    mushaf = mushaf_service.get_mushaf(mushaf_id)
+    rows = Page.objects.filter(mushaf=mushaf).order_by("page_number").values("page_number", "reviewed")
+    return [dict(row) for row in rows]
+
+
 def save_page(*, mushaf_id: uuid.UUID, page_number: int, bbox: dict, lines: list[dict]) -> dict:
     """Replace a page's lines/segments from the payload, then renumber forward."""
     mushaf = mushaf_service.get_mushaf(mushaf_id)

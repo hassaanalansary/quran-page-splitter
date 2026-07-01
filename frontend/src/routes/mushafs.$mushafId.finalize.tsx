@@ -13,6 +13,7 @@ import {
   pageImageUrl,
   useMushaf,
   usePage,
+  useProcessedPages,
   type ExportResult,
 } from "@/lib/api";
 
@@ -27,6 +28,7 @@ function FinalizePage() {
   const navigate = useNavigate({ from: "/mushafs/$mushafId/finalize" });
 
   const { data: mushaf } = useMushaf(mushafId);
+  const { data: pages } = useProcessedPages(mushafId);
   const { data: pageData } = usePage(mushafId, page);
   const [result, setResult] = useState<ExportResult | null>(null);
 
@@ -59,6 +61,8 @@ function FinalizePage() {
         page={page}
         pageCount={logicalCount}
         onPageChange={goto}
+        processed={pages?.processed}
+        reviewed={pages?.reviewed}
       />
 
       <Aside

@@ -6,6 +6,7 @@ plain dicts also lives here so the engine and views stay decoupled from models.
 
 import uuid
 
+from django.conf import settings
 from django.core.files.base import ContentFile
 from django.core.files.uploadedfile import UploadedFile
 from django.db.models import Count, Q
@@ -16,6 +17,25 @@ from api import validators
 from api.models import Mushaf, Page, Qiraa, Template, TemplateTypeChoices
 from api.services import pdf
 
+# Low-DPI render of the cover page used for list thumbnails.
+THUMBNAIL_DPI = 50
+
+
+def _media_url(name: str | None) -> str | None:
+    """Absolute (leading-slash) media URL for a stored file name, or None."""
+    if not name:
+        return None
+    return "/" + (settings.MEDIA_URL + name).lstrip("/")
+
+
+def generate_thumbnail(mushaf: Mushaf) -> None:
+    """Render the first physical PDF page (the cover) at low DPI as the thumbnail."""
+    try:
+        png = pdf.render_page(mushaf.pdf_file.path, 1, dpi=THUMBNAIL_DPI)
+    except Exception:  # best-effort; a missing thumbnail just falls back to on-demand render
+        return
+    mushaf.thumbnail.save(f"{mushaf.pdf_sha256}_thumb.png", ContentFile(png), save=True)
+
 # Columns read straight from the DB for serialization. ``processed_page_count``
 # is annotated in the same query (no per-row COUNT), so list views avoid N+1.
 _MUSHAF_VALUES = (
@@ -25,6 +45,7 @@ _MUSHAF_VALUES = (
     "pdf_page_count",
     "first_quran_pdf_page",
     "last_quran_pdf_page",
+    "thumbnail",
     "created_at",
     "updated_at",
 )
@@ -49,6 +70,7 @@ def _serialize(row: dict) -> dict:
         "logical_page_count": last - first + 1,
         "processed_page_count": row["processed_page_count"],
         "reviewed_page_count": row["reviewed_page_count"],
+        "thumbnail_url": _media_url(row["thumbnail"]),
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
     }
@@ -118,6 +140,7 @@ def create_mushaf(
     )
     mushaf.pdf_file.save(f"{sha}.pdf", ContentFile(data), save=False)
     mushaf.save()
+    generate_thumbnail(mushaf)
 
     return {
         "mushaf": get_mushaf_dict(mushaf.id),
@@ -169,17 +192,36 @@ def delete_mushaf(mushaf_id: uuid.UUID) -> None:
     get_mushaf(mushaf_id).delete()
 
 
+def _serialize_template(template: Template) -> dict:
+    return {
+        "id": template.id,
+        "type": template.type,
+        "image_url": _media_url(template.image.name) or "",
+        "ignore_rects": template.ignore_rects,
+    }
+
+
+def list_templates(mushaf_id: uuid.UUID) -> list[dict]:
+    """All saved templates for a mushaf (so the editor can rehydrate on revisit)."""
+    mushaf = get_mushaf(mushaf_id)
+    return [_serialize_template(t) for t in mushaf.templates.order_by("type")]
+
+
 def upsert_template(
     *,
     mushaf_id: uuid.UUID,
     template_type: str,
-    image: UploadedFile,
+    image: UploadedFile | None,
     ignore_x: int | None,
     ignore_y: int | None,
     ignore_w: int | None,
     ignore_h: int | None,
 ) -> dict:
-    """Create or replace one template (unique per mushaf+type)."""
+    """Create or replace one template (unique per mushaf+type).
+
+    ``image`` is optional: omit it to update only the ignore region of an existing
+    template (e.g. when the picture is already in the DB after a reload).
+    """
     if template_type not in TemplateTypeChoices.values:
         raise HttpError(400, f"Invalid template type {template_type!r}.")
 
@@ -188,16 +230,15 @@ def upsert_template(
     if None not in (ignore_x, ignore_y, ignore_w, ignore_h):
         ignore_rect = {"x": ignore_x, "y": ignore_y, "w": ignore_w, "h": ignore_h}
 
+    if image is None and not Template.objects.filter(mushaf=mushaf, type=template_type).exists():
+        raise HttpError(400, "An image is required to create a template.")
+
     template, _ = Template.objects.update_or_create(
         mushaf=mushaf, type=template_type, defaults={"ignore_rects": ignore_rect}
     )
-    template.image.save(f"{template_type}.png", image, save=True)
-    return {
-        "id": template.id,
-        "type": template.type,
-        "image_url": template.image.url,
-        "ignore_rects": template.ignore_rects,
-    }
+    if image is not None:
+        template.image.save(f"{template_type}.png", image, save=True)
+    return _serialize_template(template)
 
 
 def render_page_image(mushaf_id: uuid.UUID, page_number: int) -> bytes:

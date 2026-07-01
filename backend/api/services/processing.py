@@ -6,7 +6,6 @@ runs outside the DB transaction; only the persistence step is transactional.
 """
 
 import json
-import tempfile
 from pathlib import Path
 
 from django.db import transaction
@@ -91,17 +90,19 @@ def process(
         for n in page_numbers
     ]
 
-    with tempfile.TemporaryDirectory() as tmp:
-        pipeline = build_pipeline(
-            crop_cfg=crop_cfg,
-            det_cfg=det_cfg,
-            proc_cfg=proc_cfg,
-            export_cfg=export_cfg,
-            aya_processor=aya_processor,
-            results_dir=Path(tmp),
-            protected_locator=protected,
-        )
-        output = pipeline.run(images_data)
+    results_dir = Path(__file__).resolve().parents[2] / "tmp" / "processing"
+    results_dir.mkdir(parents=True, exist_ok=True)
+
+    pipeline = build_pipeline(
+        crop_cfg=crop_cfg,
+        det_cfg=det_cfg,
+        proc_cfg=proc_cfg,
+        export_cfg=export_cfg,
+        aya_processor=aya_processor,
+        results_dir=results_dir,
+        protected_locator=protected,
+    )
+    output = pipeline.run(images_data)
 
     settings_used = {
         "padding": padding,

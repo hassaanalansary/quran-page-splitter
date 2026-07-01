@@ -1,9 +1,14 @@
 // Per-page review, finalize, and line-PNG export.
 import { apiGet, apiJson } from "./http";
-import type { ExportResult, FinalizeLine, PageData, PageSave } from "./types";
+import type { ExportResult, FinalizeLine, PageData, PageSave, PageSummary } from "./types";
 
 export function getPage(id: string, pageNumber: number, signal?: AbortSignal): Promise<PageData> {
   return apiGet<PageData>(`/api/mushafs/${id}/pages/${pageNumber}`, signal);
+}
+
+/** Summaries of processed pages (which logical pages have data + review state). */
+export function listPages(id: string, signal?: AbortSignal): Promise<PageSummary[]> {
+  return apiGet<PageSummary[]>(`/api/mushafs/${id}/pages`, signal);
 }
 
 /** Save edited coordinates. Aya/sura numbers come back recomputed server-side. */
