@@ -69,8 +69,8 @@ class TemplateOut(Schema):
 
 
 @router.get("", response=list[MushafOut])
-def list_mushafs(request: HttpRequest) -> list[dict]:
-    return mushaf_service.list_mushafs()
+def list_mushafs(request: HttpRequest, qiraa: str | None = None) -> list[dict]:
+    return mushaf_service.list_mushafs(qiraa=qiraa)
 
 
 @router.post("", response={201: MushafCreateOut})

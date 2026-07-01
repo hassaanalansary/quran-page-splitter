@@ -36,6 +36,7 @@ def generate_thumbnail(mushaf: Mushaf) -> None:
         return
     mushaf.thumbnail.save(f"{mushaf.pdf_sha256}_thumb.png", ContentFile(png), save=True)
 
+
 # Columns read straight from the DB for serialization. ``processed_page_count``
 # is annotated in the same query (no per-row COUNT), so list views avoid N+1.
 _MUSHAF_VALUES = (
@@ -76,7 +77,7 @@ def _serialize(row: dict) -> dict:
     }
 
 
-def list_mushafs() -> list[dict]:
+def list_mushafs(qiraa: str | None = None) -> list[dict]:
     """All mushafs, newest first (single query; page counts annotated)."""
     rows = (
         Mushaf.objects.annotate(
@@ -86,6 +87,8 @@ def list_mushafs() -> list[dict]:
         .values(*_MUSHAF_VALUES, "processed_page_count", "reviewed_page_count")
         .order_by("-created_at")
     )
+    if qiraa is not None:
+        rows = rows.filter(qiraa__name=qiraa)
     return [_serialize(row) for row in rows]
 
 
