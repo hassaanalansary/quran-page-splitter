@@ -14,6 +14,6 @@ class QiraaOut(Schema):
 
 
 @router.get("", response=list[QiraaOut])
-def list_qiraat(request: HttpRequest) -> list[dict]:
+def list_qiraat(request: HttpRequest, lang: str | None = None) -> list[dict]:
     """List all qiraat (schools of recitation) for the mushaf picker."""
-    return qiraat_service.list_qiraat()
+    return qiraat_service.list_qiraat(lang=lang)

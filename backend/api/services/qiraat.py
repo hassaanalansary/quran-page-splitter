@@ -9,9 +9,12 @@ from django.db.models.functions import Lower
 from api.models import Qiraa
 
 
-def list_qiraat() -> list[dict]:
+def list_qiraat(lang: str | None = None) -> list[dict]:
     """List every qiraa as ``{name, counting_system}``, ordered case-insensitively by name."""
     return [
-        {"name": q.name, "counting_system": q.counting_system.name}
+        {
+            "name": q.name if lang != "ar" else q.name_arabic,
+            "counting_system": q.counting_system.name if lang != "ar" else q.counting_system.name_arabic,
+        }
         for q in Qiraa.objects.select_related("counting_system").order_by(Lower("name"))
     ]
