@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class AyaSeparatorConfig:
-    match_threshold: float = 0.5
+    match_threshold: float = 0.35
     short_line_ratio: float = 0.98
     min_segment_width: int = 20
 

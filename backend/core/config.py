@@ -46,9 +46,9 @@ class DetectionConfig:
         max_sura_headers: Maximum sura headers expected on one page.
     """
 
-    padding: int = 4
+    padding: int = 0
     sura_header_slots: int = 1
-    sura_header_threshold: float = 0.60
+    sura_header_threshold: float = 0.90
     basmala_threshold: float = 0.70
     max_sura_headers: int = 3
 
