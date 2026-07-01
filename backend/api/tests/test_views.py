@@ -3,6 +3,7 @@
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test.client import BOUNDARY, MULTIPART_CONTENT, encode_multipart
 
+from api.models import Qiraa
 from api.services import suras
 from api.tests.helpers import MediaTestCase, make_pdf_bytes, make_png_bytes
 
@@ -28,6 +29,17 @@ class SurasViewTests(MediaTestCase):
         body = resp.json()
         self.assertEqual(len(body), 114)
         self.assertEqual(body[0]["number"], 1)
+
+
+class QiraatViewTests(MediaTestCase):
+    def test_list(self):
+        Qiraa.objects.create(name="Hafs", name_arabic="حفص")
+        Qiraa.objects.create(name="warsh", name_arabic="ورش")
+        resp = self.client.get("/api/qiraat")
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertEqual({q["name"] for q in body}, {"Hafs", "warsh"})
+        self.assertIn("name_arabic", body[0])
 
 
 class MushafViewTests(MediaTestCase):

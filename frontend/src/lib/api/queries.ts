@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { getMushaf, listMushafs, listTemplates } from "./mushafs";
 import { getPage, listPages } from "./pages";
+import { listQiraat } from "./qiraat";
 import { DEFAULT_QIRAA, listSuras } from "./suras";
 
 export const queryKeys = {
@@ -10,6 +11,7 @@ export const queryKeys = {
   mushaf: (id: string) => ["mushaf", id] as const,
   templates: (id: string) => ["mushaf", id, "templates"] as const,
   processedPages: (id: string) => ["mushaf", id, "processed-pages"] as const,
+  qiraat: ["qiraat"] as const,
   suras: (qiraa: string) => ["suras", qiraa] as const,
   page: (mushafId: string, pageNumber: number) => ["mushaf", mushafId, "page", pageNumber] as const,
 };
@@ -41,6 +43,15 @@ export function useProcessedPages(id: string) {
       processed: new Set(rows.map((r) => r.page_number)),
       reviewed: new Set(rows.filter((r) => r.reviewed).map((r) => r.page_number)),
     }),
+  });
+}
+
+/** All qiraat (recitation schools) for the mushaf picker; effectively static. */
+export function useQiraat() {
+  return useQuery({
+    queryKey: queryKeys.qiraat,
+    queryFn: ({ signal }) => listQiraat(signal),
+    staleTime: Infinity,
   });
 }
 

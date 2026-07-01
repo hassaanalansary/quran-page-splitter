@@ -156,7 +156,7 @@ function AddCard({ onClick }: { onClick: () => void }) {
     <button
       type="button"
       onClick={onClick}
-      className="group flex aspect-[3/4.3] flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed border-border-strong bg-white/40 text-text-secondary transition hover:border-orange hover:bg-orange-tint hover:text-orange"
+      className="group flex aspect-[3/4.3] flex-col items-center justify-center gap-3 cursor-pointer rounded-xl border-2 border-dashed border-border-strong bg-white/40 text-text-secondary transition hover:border-orange hover:bg-orange-tint hover:text-orange"
     >
       <span className="flex h-12 w-12 items-center justify-center rounded-full border-2 border-current">
         <Plus size={22} />

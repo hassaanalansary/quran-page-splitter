@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -14,10 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ApiError, createMushaf, queryKeys } from "@/lib/api";
-
-// Only "hafs" is seeded today (see backend seed_suras); widen when more qiraat exist.
-const QIRAA_OPTIONS = ["hafs"];
+import { ApiError, createMushaf, DEFAULT_QIRAA, queryKeys, useQiraat } from "@/lib/api";
 
 export function CreateMushafDialog({
   open,
@@ -28,22 +25,32 @@ export function CreateMushafDialog({
 }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { data: qiraat } = useQiraat();
   const [name, setName] = useState("");
-  const [qiraa, setQiraa] = useState(QIRAA_OPTIONS[0]);
+  const [qiraa, setQiraa] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Default to Hafs (or the first available) until the user picks another. Keyed
+  // by the qiraa's real DB `name` — the value create/PATCH match on exactly.
+  const defaultQiraa = useMemo(() => {
+    if (!qiraat || qiraat.length === 0) return "";
+    const preferred = qiraat.find((q) => q.name.toLowerCase() === DEFAULT_QIRAA);
+    return (preferred ?? qiraat[0]).name;
+  }, [qiraat]);
+  const selectedQiraa = qiraa || defaultQiraa;
 
   useEffect(() => {
     if (!open) {
       setName("");
-      setQiraa(QIRAA_OPTIONS[0]);
+      setQiraa("");
       setFile(null);
       setError(null);
     }
   }, [open]);
 
   const mutation = useMutation({
-    mutationFn: () => createMushaf({ pdf: file!, name: name.trim(), qiraa }),
+    mutationFn: () => createMushaf({ pdf: file!, name: name.trim(), qiraa: selectedQiraa }),
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.mushafs });
       if (result.warnings.duplicate_file) {
@@ -91,15 +98,22 @@ export function CreateMushafDialog({
               <Label htmlFor="mushaf-qiraa">Qiraa</Label>
               <select
                 id="mushaf-qiraa"
-                value={qiraa}
+                value={selectedQiraa}
                 onChange={(e) => setQiraa(e.target.value)}
-                className="h-9 cursor-pointer rounded-md border-[1.5px] border-border-strong bg-white px-2.5 text-sm capitalize outline-none focus:border-orange focus:shadow-[0_0_0_3px_var(--orange-glow)]"
+                disabled={!qiraat || qiraat.length === 0}
+                className="h-9 cursor-pointer rounded-md border-[1.5px] border-border-strong bg-white px-2.5 text-sm capitalize outline-none focus:border-orange focus:shadow-[0_0_0_3px_var(--orange-glow)] disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {QIRAA_OPTIONS.map((q) => (
-                  <option key={q} value={q} className="capitalize">
-                    {q}
-                  </option>
-                ))}
+                {!qiraat ? (
+                  <option value="">Loading…</option>
+                ) : qiraat.length === 0 ? (
+                  <option value="">No qiraat available</option>
+                ) : (
+                  qiraat.map((q) => (
+                    <option key={q.name} value={q.name}>
+                      {q.name} — {q.counting_system}
+                    </option>
+                  ))
+                )}
               </select>
             </div>
 

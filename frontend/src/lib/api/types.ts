@@ -12,6 +12,12 @@ export type Sura = {
   aya_count: number | null;
 };
 
+/** A qiraa (recitation school); `name` is the value stored on a mushaf. */
+export type Qiraa = {
+  name: string;
+  counting_system: string;
+};
+
 // ── Mushaf ──────────────────────────────────────────────────────────────────
 export type Mushaf = {
   id: string;
