@@ -1,8 +1,9 @@
 # Quran Page Splitter — Project Handoff
 
 > Definitive state-of-the-project reference (supersedes the historical
-> `FRONTEND_REFACTOR_HANDOFF.md`). Backend **and** frontend are now built. Branch:
-> `refactor/django-backend`. Read §9 for what's uncommitted / pending.
+> `FRONTEND_REFACTOR_HANDOFF.md`). Backend **and** frontend are built, including the
+> **Mushaf Details landing page**. Branch: `refactor/django-backend`. Read §9 for
+> what's uncommitted / pending.
 
 ---
 
@@ -13,7 +14,8 @@ A **local desktop-style tool** that turns scanned/printed **Mushaf (Quran) pages
 consumer: "mushaf-imad"). Two outputs:
 
 1. **Per-aya coordinates** — bounding box of each aya on each page (for
-   highlighting, audio sync, verse navigation).
+   highlighting, audio sync, verse navigation). Downloadable as one JSON document
+   (`GET /api/mushafs/{id}/coordinates`, schema `aya-bbox/v1`).
 2. **Transparent line PNGs** — each page cut into individual line images so an app
    can lay lines out responsively (scale to width, fill height) instead of
    stretching one full-page image.
@@ -38,7 +40,8 @@ ways text engines can't reproduce. Images preserve the exact printed layout.
 
 Multi-mushaf, DB-backed: every processed mushaf persists; nothing is wiped between
 runs. Pages are **rendered on demand** from the stored PDF (never stored as files;
-only a small cover thumbnail is cached — see Mushaf.thumbnail).
+only a small cover thumbnail is cached — see Mushaf.thumbnail). Every meaningful
+mutation also writes an **ActivityEvent** (per-mushaf audit feed on the details page).
 
 ---
 
@@ -49,22 +52,24 @@ backend/
   config/     settings.py (.env via django-environ), urls.py (/admin, /api, /media, SPA catch-all), spa.py, wsgi.py
   api/
     api.py    NinjaAPI + routers;  models.py;  common.py (RectSchema);  validators.py;  admin.py
-    views/    suras, mushafs, pages, processing, finalize  (THIN; Ninja schemas co-located)
-    services/ pdf, mushaf, coordinates, editing, export, processing, suras  (ALL ORM + wiring)
+    views/    counting_systems, qiraat, suras, mushafs, pages, processing, finalize  (THIN; Ninja schemas co-located)
+    services/ pdf, mushaf, coordinates, editing, export, processing, suras, qiraat, counting_system, activity
     management/commands/seed_suras.py
-    migrations/ 0001..0008
+    migrations/ 0001..0009
     tests/    per-area + helpers.py (make_pdf_bytes, make_png_bytes, MediaTestCase, bare_mushaf)
   core/       pure engine: line_detector, aya_separator, page_processor, pipeline, builder,
               coordinate_exporter, protected_bands, template_matching, quran_metadata, image_utils, …
   aya_count_per_path.json  (repo root: per-counting-system aya counts, seeded into SuraAyaCount)
 frontend/
-  src/routes/       index (home), mushafs.$mushafId (layout + step nav), .setup .templates .process .review .finalize
+  src/routes/       index (home), mushafs.$mushafId (workspace layout + step nav),
+                    mushafs.$mushafId.index (DETAILS landing page), .setup .templates .process .review .finalize
   src/components/
     app/            Panel (Aside/PanelCard/Section/Field/Hint), CreateMushafDialog
+    app/details/    DetailsChrome, DetailsRail, OverviewTab, PagesTab, RunsTab, ExportTab, SettingsTab, helpers
     canvas/         PageStage, PageCanvas, ChevronNav, PageJump, ZoomControl, ToolToggle, RectInputs,
                     PageRail, CropPreview, TemplatePreview, FilmstripViewer, CroppableImage, ReviewCanvas
     ui/             shadcn components (Radix)
-  src/lib/api/      http, types, mushafs, pages, suras, processing, queries (React Query hooks + queryKeys)
+  src/lib/api/      http, types, mushafs, pages, suras, qiraat, processing, queries (React Query hooks + queryKeys)
   src/lib/          image (cropUrlToBlob), templateDraft (in-memory template-capture store)
 ```
 
@@ -87,16 +92,17 @@ npm run build      # → frontend/dist (what Django serves in prod)
 npx tsc --noEmit ; npx eslint .
 ```
 
-Green baseline (last verified this session): **76 backend tests, ruff, mypy; frontend tsc + eslint (0 errors) + build.**
+Green baseline (last verified 2026-07-02): **102 backend tests, ruff, mypy;
+frontend tsc + eslint (0 errors) + build.**
 
 ---
 
 ## 4. Data model (`backend/api/models.py`)
 
 `mushaf → page → line → segment`, plus `template`, `processing_run`, `erase_stroke`,
-and reference tables. `BaseModel` gives UUID PK + timestamps (reference tables use
-int PKs). Media: PDFs → `media/mushafs/`, templates → `media/templates/`, thumbnails
-→ `media/thumbnails/`, line PNGs → `media/lines/`.
+`activity_event`, and reference tables. `BaseModel` gives UUID PK + timestamps
+(reference tables use int PKs). Media: PDFs → `media/mushafs/`, templates →
+`media/templates/`, thumbnails → `media/thumbnails/`, line PNGs → `media/lines/`.
 
 - **CountingSystem** (int PK): `name`, `name_arabic`. The schools of aya numbering
   (kufi, basri, dimashqi, makki, madani-first, madani-last).
@@ -106,14 +112,17 @@ int PKs). Media: PDFs → `media/mushafs/`, templates → `media/templates/`, th
 - **Sura** (int PK): `number`, `name_arabic`, `transliteration`.
 - **SuraAyaCount**: `sura`(FK), `counting_system`(FK), `count`. Unique
   `(sura, counting_system)`. Aya counts are **per counting system** (not per qiraa).
-- **Mushaf**: `name`(unique), `pdf_file`, `pdf_sha256`, `pdf_page_count`,
+- **Mushaf**: `name`(unique), `pdf_file`, **`pdf_original_name`** (filename as
+  uploaded; the stored file is renamed to its hash), `pdf_sha256`, `pdf_page_count`,
   `first_quran_pdf_page`, `last_quran_pdf_page`, `qiraa`(FK, SET_NULL),
   `thumbnail`(ImageField — cover render of physical page 1, for the home grid).
 - **Template**: `mushaf`(FK), `type`(`sura_header`|`aya_separator`), `image`,
   `ignore_rects`(JSON `{x,y,w,h}` relative to the template crop, or `{}`). Unique
   `(mushaf, type)`.
 - **ProcessingRun**: `mushaf`(FK), `settings`(JSON, incl. bounds), `page_range_start/end`,
-  `status`(`completed`|`aborted_line_detection`|`error`), `abort_info`.
+  `status`(`completed`|`aborted_line_detection`|`error`), `abort_info` (JSON string,
+  engine abort detail: `page_index` is 0-based into the batch → aborted logical page
+  = `page_range_start + page_index`).
 - **Page**: `mushaf`(FK), `page_number`(logical), `source_pdf_page`(null),
   `last_run`(FK null), `bbox_x/y/w/h`, `reviewed`(bool — set True on review-save,
   reset False on (re)process). A Page row exists **iff** the page has data.
@@ -122,6 +131,12 @@ int PKs). Media: PDFs → `media/mushafs/`, templates → `media/templates/`, th
 - **Segment**: `line`(FK), `segment_order`(1-based, right→left), `bbox_x`, `bbox_w`
   (y/h inherited from line), `has_separator`, `aya_number`(derived).
 - **EraseStroke**: `line`(FK), `brush_size`, `points`(JSON `[[x,y],…]`).
+- **ActivityEvent**: `mushaf`(FK), `type`(`mushaf_created`|`bounds_set`|
+  `template_saved`|`run_finished`|`review_saved`|`lines_exported`), `payload`(JSON).
+  Emitted by the services at their commit points (`services/activity.py`):
+  create, bounds actually changed, template upsert, run persisted (with
+  `run_number`, `pages_saved`, `abort_page`), **first** review of a page since its
+  last processing, line export. Feeds the details-page Activity panel.
 
 **Reference-data seeding** (`services/suras.py` → `seed_suras`): sura names from
 `core.quran_metadata`; per-counting-system aya counts from **`aya_count_per_path.json`**
@@ -137,16 +152,24 @@ Base `/api` (Ninja). Interactive docs `/api/docs`. UUIDs are strings.
 
 | Method | Path | Notes |
 | --- | --- | --- |
+| GET | `/api/counting-systems` | `[{name, name_arabic}]`, case-insensitive name order |
+| GET | `/api/qiraat?lang=ar` | `[{name, counting_system}]` (labels switch to Arabic with `lang=ar`), case-insensitive name order |
 | GET | `/api/suras?qiraa=hafs` | `[{number, name_arabic, transliteration, aya_count}]`; qiraa lookup is **case-insensitive**, aya_count from the qiraa's counting system |
-| GET | `/api/mushafs` | `[MushafOut]` newest-first (annotated counts, `thumbnail_url`) |
-| POST | `/api/mushafs` | multipart `pdf,name,qiraa,first_quran_pdf_page,last_quran_pdf_page` → `201 {mushaf, warnings:{duplicate_file}}`; dup name → 409; generates the cover thumbnail |
-| GET / DELETE | `/api/mushafs/{id}` | `MushafOut` / `204` |
-| PATCH | `/api/mushafs/{id}` | name / qiraa / bounds (bounds locked once pages exist) |
-| GET | `/api/mushafs/{id}/templates` | **`[TemplateOut]`** (rehydrate the editor on revisit) |
+| GET | `/api/mushafs?qiraa=…` | `[MushafOut]` newest-first (annotated counts, `thumbnail_url`); optional case-insensitive qiraa filter |
+| POST | `/api/mushafs` | multipart `pdf,name,qiraa,first_quran_pdf_page,last_quran_pdf_page` → `201 {mushaf, warnings:{duplicate_file}}`; dup name → 409; captures `pdf_original_name`, generates the cover thumbnail |
+| GET | `/api/mushafs/{id}` | **`MushafDetailOut`** = MushafOut + `counting_system{name,name_arabic,total_ayat}\|null`, `pdf_url`, `pdf_file_size`, `pdf_original_name` |
+| PATCH | `/api/mushafs/{id}` | name / qiraa / bounds (bounds locked once pages exist → 409) |
+| DELETE | `/api/mushafs/{id}` | `204` |
+| GET | `/api/mushafs/{id}/stats` | `{lines_cut, segments, ayat_found, sura_headers, besmella_lines, exported_pngs}` (ayat_found = segments with `has_separator`) |
+| GET | `/api/mushafs/{id}/runs` | `[{id, run_number(oldest=1), created_at, status, page_range_start/end, pages_saved, settings, abort_info\|null}]`, newest first |
+| GET | `/api/mushafs/{id}/activity?limit=50` | `[{id, type, payload, created_at}]`, newest first (limit clamped 1..200) |
+| GET | `/api/mushafs/{id}/coordinates` | aya-coordinates JSON **attachment**: `{schema:"aya-bbox/v1", mushaf:{id,name,qiraa,pages}, pages:[{page, ayas:[{sura, aya, rects:[{x,y,w,h}]}]}]}` — rects per aya grouped across segments/lines in reading order |
+| POST | `/api/mushafs/{id}/thumbnail` | regenerate the cover thumbnail → `MushafDetailOut` |
+| GET | `/api/mushafs/{id}/templates` | `[TemplateOut]` (rehydrate the editor on revisit) |
 | PUT | `/api/mushafs/{id}/templates/{type}` | multipart; **`image` optional** (omit to update only the ignore region); `ignore_x/y/w/h` all-or-nothing → `TemplateOut {id,type,image_url,ignore_rects}` |
 | GET | `/api/mushafs/{id}/pages/{n}/image` | `image/png` — logical page `n`, rendered on demand |
-| GET | `/api/mushafs/{id}/pages` | **`[{page_number, reviewed}]`** — processed-page summaries (page-rail indicator) |
-| GET / POST | `/api/mushafs/{id}/pages/{n}` | `PageDataOut` (empty if unprocessed) / save (aya numbers recomputed server-side) |
+| GET | `/api/mushafs/{id}/pages` | **extended summaries**: `[{page_number, reviewed, source_pdf_page(resolved), lines, ayat, segments, has_header, suras:[{number,transliteration,name_arabic}]}]` |
+| GET / POST | `/api/mushafs/{id}/pages/{n}` | `PageDataOut` (empty if unprocessed) / save (aya numbers recomputed server-side; first save since processing emits `review_saved`) |
 | POST | `/api/mushafs/{id}/pages/{n}/finalize` | erase strokes + bbox overrides |
 | POST | `/api/mushafs/{id}/pages/{n}/export-lines` | writes transparent line PNGs |
 | POST | `/api/mushafs/{id}/process` | run the CV pipeline over a page range; synchronous, chunked (frontend loops 50 pages/call); may abort at a line-count mismatch |
@@ -160,14 +183,39 @@ reviewed_page_count, thumbnail_url, created_at, updated_at}`.
 
 ---
 
-## 6. Frontend — the 6-step flow & canvas library
+## 6. Frontend — details landing page + the 5-step flow
 
-Flow: **Home → Setup → Templates → Process → Review → Finalize**. `mushafs.$mushafId.tsx`
-is the layout (breadcrumb + step nav); each step is a sibling route.
+Routing: **Home → Mushaf Details (`/mushafs/:id`) → Setup → Templates → Process →
+Review → Finalize**. Home cards open the **details page**; the create dialog still
+drops a fresh mushaf straight into Setup. `mushafs.$mushafId.tsx` is the *workspace*
+layout (breadcrumb + step nav) for the five step routes only — for the index child
+it renders a bare `<Outlet/>` (the details page brings its own chrome).
 
 - **Home** (`index.tsx`): thumbnail-card grid (cover from `thumbnail_url`), status
   badge via `mushafStatus()` — `empty`/`partial`/`processed`/`completed` (completed =
-  all pages reviewed), + a dashed add-card → `CreateMushafDialog`.
+  all pages reviewed), + a dashed add-card → `CreateMushafDialog` (real qiraa
+  dropdown fed by `GET /api/qiraat`).
+- **Details** (`mushafs.$mushafId.index.tsx` + `components/app/details/`): the
+  chosen "enhanced Cockpit" Claude-Design layout —
+  - **Chrome** (navy bar): breadcrumb, status pill, "Updated …", **Continue →** CTA
+    (derives the next step: Templates → Process → Review(first unreviewed page,
+    deep-linked `?page=N`) → Finalize; fresh mushaf → Setup), `PDF ↗` (`pdf_url`),
+    `JSON ↓` (coordinates download).
+  - **Rail** (282px): cover, name, qiraa + counting (`Kufan · 6236`),
+    processed/reviewed progress bars, ayat/lines/PNGs stat trio, template
+    thumbnails (+ Edit →), Record kv (range, logical pages, original filename,
+    size, uploaded, short id), per-page **coverage map**.
+  - **Tabs**: `Overview` (clickable 5-cell pipeline strip, Activity feed from
+    `/activity`, "Detected so far" stats, abort-warning w/ Resume), `Pages`
+    (filter chips, client-sortable table w/ Arabic sura names + header badge,
+    totals footer, Open → Review `?page=N`), `Runs` (cards: settings kv, outcome
+    bar, abort_info, Resume), `Export` ("Export all lines" loops
+    `POST export-lines` with progress; reviewed-only variant; JSON download card;
+    review-completeness warning), `Settings` (name/qiraa PATCH form, Quran range
+    locked-once-processed, thumbnail Regenerate, danger zone: Reprocess = link to
+    Process, Delete).
+  - Derivations live in `components/app/details/helpers.ts` (pipeline states,
+    continue target, activity formatting, run abort page).
 - **Setup** (`.setup`): the **`FilmstripViewer`** (peeking-neighbour filmstrip, whoosh
   jumps, floating page-jump, compact page rail, auto-advance to last after marking
   first). Marks `first_quran_pdf_page`/`last_quran_pdf_page` → PATCH. Bounds lock once
@@ -182,88 +230,84 @@ is the layout (breadcrumb + step nav); each step is a sibling route.
   `Section`s (Bounds w/ `CropPreview`+`RectInputs`, Page range, Starting position with
   the sura/aya selects, Detection settings). Loops the pipeline in 50-page chunks;
   handles the abort case.
-- **Review** (`.review`) / **Finalize** (`.finalize`): **`ReviewCanvas`** (page image +
-  selectable line/segment overlays + aya labels). Review edits line types / separators /
-  sura and POSTs back (aya numbers recomputed). Finalize does erase + export.
+- **Review** (`.review`, takes `?page=N`) / **Finalize** (`.finalize`):
+  **`ReviewCanvas`** (page image + selectable line/segment overlays + aya labels).
+  Review edits line types / separators / sura and POSTs back (aya numbers recomputed).
+  Finalize does erase + export.
 
-**Canvas component library** (`components/canvas/`, all reusable):
-- `PageStage` — composer: zoomable/pannable single page + toolbar (`ToolToggle`
-  select/hand + Space-hold, `ZoomControl` 50/100/200/Fit + Ctrl-wheel) + `ChevronNav`
-  + floating `PageJump` + status bar + `PageRail`. Optional `crop` (draggable rect) +
-  `onNatural` + `processed`/`reviewed` sets.
-- `PageCanvas` — the zoom/pan/crop surface (uses `use-space-pan`, `use-ctrl-wheel-zoom`).
-- `PageRail` — compact numbered rail (first…current±3…last); optional processed
-  (navy bar) / reviewed (green bar) indicators. Added to `PageStage` and `ReviewCanvas`.
-- `CropPreview` — exact magnified region via canvas `drawImage`.
-- `TemplatePreview` — large template/ignore preview (red box for ignore + validation).
-- `FilmstripViewer` + `CroppableImage` — Setup's peeking filmstrip (kept only for Setup).
-- `ReviewCanvas` — read-only overlay viewer for review/finalize.
+**Canvas component library** (`components/canvas/`, all reusable): `PageStage`
+(zoomable/pannable page + toolbar + `ChevronNav` + `PageJump` + `PageRail`),
+`PageCanvas`, `PageRail`, `CropPreview`, `TemplatePreview`, `FilmstripViewer` +
+`CroppableImage` (Setup only), `ReviewCanvas`.
 
 State: React Query for all server state (`lib/api/queries.ts` — `queryKeys`,
-`useMushaf(s)`, `useTemplates`, `useProcessedPages`, `useSuras`, `usePage`).
+`useMushaf(s)` (detail shape), `useTemplates`, `useProcessedPages` (sets) /
+`usePageSummaries` (full rows, same cache entry), `useRuns`, `useStats`,
+`useActivity`, `useQiraat`, `useSuras`, `usePage`).
+
+Fonts: Outfit (sans) + Syne (display) + **Amiri** (`font-arabic`, for Arabic names
+and the ۝ glyph) — loaded in `index.html`, mapped in `styles.css` `@theme`.
 
 ---
 
 ## 7. Done & verified
 
 - Django serves the SPA single-origin + `/media`; home redesign; page `reviewed` flag.
-- Counting-system reference-model refactor landed (service/seed from
-  `aya_count_per_path.json`; `/api/suras` correct: Hafs→Kufan 286, Warsh→Madani 285).
-- Cover thumbnails on the mushaf list (`thumbnail_url`; backfilled).
-- Setup filmstrip (verified live). Crop steps reworked to a single **zoomable** canvas
-  with select/hand/space tools, numeric crop, chevron nav, floating page-jump.
-- Templates enhancement: GET templates + fetch-on-load, large `TemplatePreview` with
-  ignore red-box + validation, per-target cards, draft persistence, auto-absolute image
-  URLs, optional-image PUT. Capture → Save → backend persist → reload shows saved:
-  **verified end-to-end via API + DOM eval** this session.
-- Compact page rail added to Templates/Process/Review/Finalize; processed/reviewed
-  indicator wired on Process/Review/Finalize (`/api/mushafs/{id}/pages`).
+- Counting-system reference-model refactor (service/seed from `aya_count_per_path.json`;
+  `/api/suras` correct: Hafs→Kufan 286, Warsh→Madani 285); `GET /api/counting-systems`
+  + `GET /api/qiraat` (`lang=ar`) + qiraa filter on the mushaf list.
+- Cover thumbnails on the mushaf list (`thumbnail_url`; backfilled) + regenerate endpoint.
+- Setup filmstrip; crop steps on a single **zoomable** canvas (select/hand/space tools,
+  numeric crop, chevron nav, floating page-jump); Templates rehydrate + large preview +
+  per-target cards; compact page rail w/ processed/reviewed indicators on all steps.
+- **Qiraa picker** in `CreateMushafDialog` (real dropdown from `/api/qiraat`).
+- **Mushaf Details landing page** (2026-07-02, per the Claude-Design "enhanced
+  Cockpit" handoff): chrome/rail/5 tabs as in §6, plus the backend that feeds it —
+  runs/stats/activity endpoints, ActivityEvent emission, coordinates JSON export,
+  extended page summaries, `pdf_original_name` (migration 0009, applied to dev DB).
+  Verified statically: 102 backend tests, ruff, mypy; tsc, eslint, vite build.
 
 ---
 
 ## 8. Known issues / pending / gaps
 
-- **Uncommitted**: everything after commit `4b98e8b` is in the working tree (thumbnail +
-  migration 0008, crop-canvas rework, templates enhancement, page rail + processed
-  indicator, plus the user's model/settings/CORS edits). Needs a commit — see §9.
-- **Qiraa picker**: `CreateMushafDialog` still hardcodes `qiraa: ["hafs"]`. There are
-  ~20 qiraat in the DB and **no `GET /api/qiraat` endpoint** — add one + a real dropdown.
-- **Templates resizable panels**: user wanted the center/settings panels resizable;
-  shipped a **wider** `TemplatePreview` (320→400px) as the safe option (`resizable.tsx`
-  exists if we revisit). A possible small bug to confirm: "Add ignore" enable/disable
-  vs a fetched-but-not-recropped parent (design says re-crop to edit).
-- **Review/Finalize navigation**: the compact rail is added; the full filmstrip-style
-  nav (chevrons + floating jump) was **not** ported to `ReviewCanvas` (still Prev/Next
-  top bar).
-- **CORS**: the user added `django-cors-headers` (settings.py / pyproject) — likely for
-  a separate frontend host; wiring may be in progress.
-- **Verification tooling**: the Claude preview MCP was flaky all session (screenshot
-  timeouts, disconnects) — much was verified via `preview_eval` (DOM) + `curl` + tests
-  instead. Port 5173 is often held by the user's own `vite dev`.
+- **User runtime pass pending** on the details page (backend + frontend are only
+  statically verified; the user does all live testing).
+- **Activity feed starts empty** for mushafs that existed before migration 0009
+  (real event table — events record from now on; no backfill).
+- **Coverage map** renders one 6px cell per logical page (500+ divs for a full
+  mushaf) — fine locally; cap/virtualize if it ever feels heavy.
+- **Review/Finalize navigation**: the compact rail is there; the full filmstrip-style
+  nav (chevrons + floating jump) was never ported to `ReviewCanvas`.
+- **Templates**: resizable center/settings panels still not implemented (shipped a
+  wider preview instead); possible "Add ignore" enable/disable edge case vs a
+  fetched-but-not-recropped parent.
+- **CORS**: `django-cors-headers` present in settings/pyproject — wiring may still be
+  in progress (user-owned).
+- **Runs tab** has no "full audit log" view — the Overview Activity feed (limit 50)
+  serves that role for now.
 
 ---
 
 ## 9. Uncommitted work — how to land it
 
-Working tree (branch `refactor/django-backend`) has a large, coherent batch. Suggested
-commit split (backend + frontend), after a full green check (`manage.py test api`,
-ruff, mypy; `tsc`, `eslint`, `build`):
+Working tree (branch `refactor/django-backend`) holds the details-page batch.
+Suggested split, after a green check (`manage.py test api`, ruff, mypy; `tsc`,
+`eslint`, `build`):
 
-- **Backend**: `models.py` (+ migration 0008 thumbnail; the user's CountingSystem/Qiraa
-  edits), `services/{mushaf,editing,processing}.py`, `views/{mushafs,pages}.py`,
-  `config/settings.py` (CORS), `pyproject.toml`/`uv.lock`, tests. Feature: templates GET
-  + optional-image PUT + absolute URLs; cover thumbnail; processed-pages endpoint.
-- **Frontend**: new `components/canvas/{PageStage,PageCanvas,ChevronNav,PageJump,
-  ZoomControl,ToolToggle,RectInputs,PageRail,TemplatePreview}.tsx`, `lib/templateDraft.ts`,
-  recovered `hooks/use-space-pan.ts` + `use-ctrl-wheel-zoom.ts`; edits to the routes,
-  `CropPreview`, `ReviewCanvas`, `lib/api/*`. Feature: crop-canvas rework + templates
-  enhancement + page rail + processed indicator.
+- **Backend** — "feat: mushaf details endpoints + activity feed": `models.py` +
+  migration `0009` (pdf_original_name, ActivityEvent), `services/{activity,mushaf,
+  processing,editing,export,qiraat}.py`, `views/{mushafs,processing,pages,qiraat}.py`,
+  tests (`test_activity` + extended `test_mushaf/processing/pages/export/views/qiraat`).
+- **Frontend** — "feat: mushaf details landing page (cockpit)": `routes/
+  mushafs.$mushafId.index.tsx` (redirect → page), `routes/mushafs.$mushafId.tsx`
+  (bare Outlet for index), `routes/index.tsx` (card link), `components/app/details/*`,
+  `lib/api/{types,mushafs,processing,queries}.ts`, `index.html` + `styles.css` (Amiri).
+- `PROJECT_HANDOFF.md` (this file) — commit alongside either.
 
-> Note: the user has been editing the backend concurrently (Qiraa int PK, CountingSystem,
-> CORS) and a couple of frontend files (`RectInputs`, `CroppableImage`) — reconcile,
-> don't blind-revert. `git status` is the source of truth.
-
-**End-to-end smoke test**: create a mushaf (PDF) → Setup mark first/last → Templates
-capture+save sura_header & aya_separator (+ ignore) → Process a small range → Review a
-page + save → Finalize + export. Confirm the page rail shows the processed indicator on
-Process/Review/Finalize, and Templates rehydrates saved templates on revisit.
+**End-to-end smoke test** (user-run): create a mushaf (PDF) → details page shows the
+zero state → Setup mark first/last → Templates capture+save both (+ ignore) →
+Process a small range → details Overview shows the run + activity; Pages tab rows;
+JSON download sane → Review a page (+ save) → Finalize/Export → stat trio + PNG
+card update. Confirm the workspace steps still show their own header, and the home
+card opens the details page.

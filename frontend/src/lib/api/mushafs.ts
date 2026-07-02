@@ -1,9 +1,12 @@
 // Mushaf CRUD, template upload, and on-demand page-image URLs.
 import { API_BASE, apiDelete, apiForm, apiGet, apiJson } from "./http";
 import type {
+  ActivityEvent,
   Mushaf,
   MushafCreateResult,
+  MushafDetail,
   MushafPatch,
+  MushafStats,
   Rect,
   Template,
   TemplateType,
@@ -13,8 +16,30 @@ export function listMushafs(signal?: AbortSignal): Promise<Mushaf[]> {
   return apiGet<Mushaf[]>("/api/mushafs", signal);
 }
 
-export function getMushaf(id: string, signal?: AbortSignal): Promise<Mushaf> {
-  return apiGet<Mushaf>(`/api/mushafs/${id}`, signal);
+export function getMushaf(id: string, signal?: AbortSignal): Promise<MushafDetail> {
+  return apiGet<MushafDetail>(`/api/mushafs/${id}`, signal);
+}
+
+export function getStats(id: string, signal?: AbortSignal): Promise<MushafStats> {
+  return apiGet<MushafStats>(`/api/mushafs/${id}/stats`, signal);
+}
+
+export function listActivity(
+  id: string,
+  limit = 50,
+  signal?: AbortSignal,
+): Promise<ActivityEvent[]> {
+  return apiGet<ActivityEvent[]>(`/api/mushafs/${id}/activity?limit=${limit}`, signal);
+}
+
+/** Re-render the cover thumbnail from physical page 1. */
+export function regenerateThumbnail(id: string): Promise<MushafDetail> {
+  return apiJson<MushafDetail>("POST", `/api/mushafs/${id}/thumbnail`);
+}
+
+/** Download URL of the aya-coordinates JSON document (attachment). */
+export function coordinatesUrl(id: string): string {
+  return `${API_BASE}/api/mushafs/${id}/coordinates`;
 }
 
 export type CreateMushafInput = {

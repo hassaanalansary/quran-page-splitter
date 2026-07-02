@@ -11,6 +11,7 @@
 @theme inline {
   --font-sans: "Outfit", system-ui, sans-serif;
   --font-display: "Syne", system-ui, sans-serif;
+  --font-arabic: "Amiri", serif;
 
   --radius-xs: 3px;
   --radius-sm: 5px;

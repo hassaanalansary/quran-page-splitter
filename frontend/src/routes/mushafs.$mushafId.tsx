@@ -16,7 +16,11 @@ function WorkspaceLayout() {
   const { mushafId } = useParams({ from: "/mushafs/$mushafId" });
   const { data: mushaf, isPending, isError, error } = useMushaf(mushafId);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const activeSlug = STEPS.find((s) => pathname.endsWith(`/${s.slug}`))?.slug ?? "setup";
+  const step = STEPS.find((s) => pathname.endsWith(`/${s.slug}`));
+  const activeSlug = step?.slug ?? "setup";
+
+  // The details page (the index child) brings its own chrome — no step header.
+  if (!step) return <Outlet />;
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-bg-page">

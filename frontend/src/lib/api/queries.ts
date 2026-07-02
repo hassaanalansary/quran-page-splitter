@@ -1,8 +1,9 @@
 // React Query hooks + shared query keys for the API.
 import { useQuery } from "@tanstack/react-query";
 
-import { getMushaf, listMushafs, listTemplates } from "./mushafs";
+import { getMushaf, getStats, listActivity, listMushafs, listTemplates } from "./mushafs";
 import { getPage, listPages } from "./pages";
+import { listRuns } from "./processing";
 import { listQiraat } from "./qiraat";
 import { DEFAULT_QIRAA, listSuras } from "./suras";
 
@@ -11,6 +12,9 @@ export const queryKeys = {
   mushaf: (id: string) => ["mushaf", id] as const,
   templates: (id: string) => ["mushaf", id, "templates"] as const,
   processedPages: (id: string) => ["mushaf", id, "processed-pages"] as const,
+  runs: (id: string) => ["mushaf", id, "runs"] as const,
+  stats: (id: string) => ["mushaf", id, "stats"] as const,
+  activity: (id: string) => ["mushaf", id, "activity"] as const,
   qiraat: ["qiraat"] as const,
   suras: (qiraa: string) => ["suras", qiraa] as const,
   page: (mushafId: string, pageNumber: number) => ["mushaf", mushafId, "page", pageNumber] as const,
@@ -43,6 +47,29 @@ export function useProcessedPages(id: string) {
       processed: new Set(rows.map((r) => r.page_number)),
       reviewed: new Set(rows.filter((r) => r.reviewed).map((r) => r.page_number)),
     }),
+  });
+}
+
+/** Full per-page summaries (details page); shares the cache entry of useProcessedPages. */
+export function usePageSummaries(id: string) {
+  return useQuery({
+    queryKey: queryKeys.processedPages(id),
+    queryFn: ({ signal }) => listPages(id, signal),
+  });
+}
+
+export function useRuns(id: string) {
+  return useQuery({ queryKey: queryKeys.runs(id), queryFn: ({ signal }) => listRuns(id, signal) });
+}
+
+export function useStats(id: string) {
+  return useQuery({ queryKey: queryKeys.stats(id), queryFn: ({ signal }) => getStats(id, signal) });
+}
+
+export function useActivity(id: string) {
+  return useQuery({
+    queryKey: queryKeys.activity(id),
+    queryFn: ({ signal }) => listActivity(id, 50, signal),
   });
 }
 

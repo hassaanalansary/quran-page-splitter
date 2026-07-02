@@ -46,6 +46,21 @@ export function mushafStatus(m: Mushaf): MushafStatus {
   return "partial";
 }
 
+/** Counting-system summary attached to the mushaf detail payload. */
+export type CountingSystemInfo = {
+  name: string;
+  name_arabic: string;
+  total_ayat: number;
+};
+
+/** GET /api/mushafs/{id} — the list shape plus detail-only fields. */
+export type MushafDetail = Mushaf & {
+  counting_system: CountingSystemInfo | null;
+  pdf_url: string | null;
+  pdf_file_size: number;
+  pdf_original_name: string;
+};
+
 export type MushafCreateResult = {
   mushaf: Mushaf;
   warnings: { duplicate_file: boolean };
@@ -102,8 +117,21 @@ export type PageData = {
   lines: Line[];
 };
 
-/** Lightweight summary of a processed page (for the page rail indicator). */
-export type PageSummary = { page_number: number; reviewed: boolean };
+export type PageSura = { number: number; transliteration: string; name_arabic: string };
+
+/** Per-page summary (page rail indicator + the details Pages tab). */
+export type PageSummary = {
+  page_number: number;
+  reviewed: boolean;
+  /** Resolved physical PDF page (override or derived from the Quran range). */
+  source_pdf_page: number;
+  lines: number;
+  /** Aya-closing segments (has_separator=true). */
+  ayat: number;
+  segments: number;
+  has_header: boolean;
+  suras: PageSura[];
+};
 
 export type PageSave = {
   bbox: Rect;
@@ -146,6 +174,47 @@ export type ProcessResult = {
   end_aya: number;
   results: ProcessPageResult[];
   abort_info: Record<string, unknown> | null;
+};
+
+/** One stored processing run (GET /api/mushafs/{id}/runs, newest first). */
+export type Run = {
+  id: string;
+  /** Chronological (oldest = 1), stable regardless of display order. */
+  run_number: number;
+  created_at: string;
+  status: "completed" | "aborted_line_detection" | "error" | string;
+  page_range_start: number;
+  page_range_end: number;
+  /** Pages currently attributed to this run. */
+  pages_saved: number;
+  settings: Record<string, unknown>;
+  abort_info: Record<string, unknown> | null;
+};
+
+/** Aggregate detection counts (GET /api/mushafs/{id}/stats). */
+export type MushafStats = {
+  lines_cut: number;
+  segments: number;
+  ayat_found: number;
+  sura_headers: number;
+  besmella_lines: number;
+  exported_pngs: number;
+};
+
+export type ActivityType =
+  | "mushaf_created"
+  | "bounds_set"
+  | "template_saved"
+  | "run_finished"
+  | "review_saved"
+  | "lines_exported";
+
+/** One audit-feed entry (GET /api/mushafs/{id}/activity, newest first). */
+export type ActivityEvent = {
+  id: string;
+  type: ActivityType | string;
+  payload: Record<string, unknown>;
+  created_at: string;
 };
 
 // ── Finalize + export ───────────────────────────────────────────────────────

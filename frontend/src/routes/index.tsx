@@ -97,7 +97,7 @@ function MushafCard({ mushaf }: { mushaf: Mushaf }) {
 
   return (
     <div className="group relative overflow-hidden rounded-xl border border-border bg-white shadow-[var(--shadow-sm)] transition hover:-translate-y-0.5 hover:border-border-strong hover:shadow-[var(--shadow-md)]">
-      <Link to="/mushafs/$mushafId/setup" params={{ mushafId: mushaf.id }} className="block">
+      <Link to="/mushafs/$mushafId" params={{ mushafId: mushaf.id }} className="block">
         {/* Thumbnail */}
         <div className="relative aspect-[3/4] overflow-hidden bg-bg-muted">
           {!imgFailed ? (
