@@ -9,13 +9,24 @@ import uuid
 from django.conf import settings
 from django.core.files.base import ContentFile
 from django.core.files.uploadedfile import UploadedFile
-from django.db.models import Count, Q
+from django.db.models import Count, Q, Sum
 from django.shortcuts import get_object_or_404
 from ninja.errors import HttpError
 
 from api import validators
-from api.models import Mushaf, Page, Qiraa, Template, TemplateTypeChoices
-from api.services import pdf
+from api.models import (
+    ActivityTypeChoices,
+    Line,
+    LineTypeChoices,
+    Mushaf,
+    Page,
+    Qiraa,
+    Segment,
+    SuraAyaCount,
+    Template,
+    TemplateTypeChoices,
+)
+from api.services import activity, pdf
 
 # Low-DPI render of the cover page used for list thumbnails.
 THUMBNAIL_DPI = 50
@@ -88,7 +99,8 @@ def list_mushafs(qiraa: str | None = None) -> list[dict]:
         .order_by("-created_at")
     )
     if qiraa is not None:
-        rows = rows.filter(qiraa__name=qiraa)
+        qiraa = qiraa.strip().lower()
+        rows = rows.filter(qiraa__name__iexact=qiraa)
     return [_serialize(row) for row in rows]
 
 
@@ -106,6 +118,59 @@ def get_mushaf_dict(mushaf_id: uuid.UUID) -> dict:
     if row is None:
         raise HttpError(404, "Mushaf not found.")
     return _serialize(row)
+
+
+def get_mushaf_detail(mushaf_id: uuid.UUID) -> dict:
+    """Serialized mushaf enriched for the detail page: counting system + source file.
+
+    A superset of ``get_mushaf_dict`` (the lean list shape), kept separate so the
+    list endpoint never pays for the counting-system sum or the file stat.
+    """
+    data = get_mushaf_dict(mushaf_id)  # 404s if missing
+    mushaf = Mushaf.objects.select_related("qiraa__counting_system").get(id=mushaf_id)
+
+    counting_system = None
+    system = mushaf.qiraa.counting_system if mushaf.qiraa else None
+    if system is not None:
+        total = SuraAyaCount.objects.filter(counting_system=system).aggregate(total=Sum("count"))["total"]
+        counting_system = {"name": system.name, "name_arabic": system.name_arabic, "total_ayat": total or 0}
+
+    data["counting_system"] = counting_system
+    data["pdf_url"] = _media_url(mushaf.pdf_file.name) if mushaf.pdf_file else None
+    data["pdf_file_size"] = mushaf.pdf_file.size if mushaf.pdf_file else 0
+    data["pdf_original_name"] = mushaf.pdf_original_name
+    return data
+
+
+def regenerate_thumbnail(mushaf_id: uuid.UUID) -> dict:
+    """Re-render the cover thumbnail from physical page 1; returns the detail dict."""
+    mushaf = get_mushaf(mushaf_id)
+    if mushaf.thumbnail:
+        mushaf.thumbnail.delete(save=False)
+    generate_thumbnail(mushaf)
+    return get_mushaf_detail(mushaf.id)
+
+
+def mushaf_stats(mushaf_id: uuid.UUID) -> dict:
+    """Aggregate detection counts across all of a mushaf's processed pages.
+
+    Feeds the detail page's stat strips (ayat / lines / segments / exported PNGs).
+    ``ayat_found`` counts segments that close an aya (i.e. carry a separator).
+    """
+    mushaf = get_mushaf(mushaf_id)  # 404s if missing
+    lines = Line.objects.filter(page__mushaf=mushaf)
+    segments = Segment.objects.filter(line__page__mushaf=mushaf)
+    line_counts = lines.aggregate(
+        lines_cut=Count("id"),
+        sura_headers=Count("id", filter=Q(type=LineTypeChoices.SURA_HEADER)),
+        besmella_lines=Count("id", filter=Q(type=LineTypeChoices.BESMELLA)),
+        exported_pngs=Count("id", filter=Q(line_png__isnull=False) & ~Q(line_png="")),
+    )
+    seg_counts = segments.aggregate(
+        segments=Count("id"),
+        ayat_found=Count("id", filter=Q(has_separator=True)),
+    )
+    return {**line_counts, **seg_counts}
 
 
 def create_mushaf(
@@ -136,6 +201,7 @@ def create_mushaf(
     mushaf = Mushaf(
         name=name,
         qiraa=qiraa_obj,
+        pdf_original_name=pdf_file.name or "",
         pdf_sha256=sha,
         pdf_page_count=count,
         first_quran_pdf_page=first_quran_pdf_page,
@@ -144,6 +210,7 @@ def create_mushaf(
     mushaf.pdf_file.save(f"{sha}.pdf", ContentFile(data), save=False)
     mushaf.save()
     generate_thumbnail(mushaf)
+    activity.emit(mushaf, ActivityTypeChoices.MUSHAF_CREATED, {"pdf_original_name": mushaf.pdf_original_name})
 
     return {
         "mushaf": get_mushaf_dict(mushaf.id),
@@ -172,6 +239,7 @@ def update_mushaf(mushaf_id: uuid.UUID, fields: dict) -> dict:
         qiraa = fields["qiraa"]
         mushaf.qiraa = Qiraa.objects.filter(name=qiraa).first() if qiraa else None
 
+    bounds_changed = False
     if "first_quran_pdf_page" in fields or "last_quran_pdf_page" in fields:
         first = fields.get("first_quran_pdf_page", mushaf.first_quran_pdf_page)
         last = fields.get("last_quran_pdf_page", mushaf.last_quran_pdf_page)
@@ -187,6 +255,12 @@ def update_mushaf(mushaf_id: uuid.UUID, fields: dict) -> dict:
         mushaf.last_quran_pdf_page = last
 
     mushaf.save()
+    if bounds_changed:
+        activity.emit(
+            mushaf,
+            ActivityTypeChoices.BOUNDS_SET,
+            {"first": mushaf.first_quran_pdf_page, "last": mushaf.last_quran_pdf_page},
+        )
     return get_mushaf_dict(mushaf.id)
 
 
@@ -241,6 +315,7 @@ def upsert_template(
     )
     if image is not None:
         template.image.save(f"{template_type}.png", image, save=True)
+    activity.emit(mushaf, ActivityTypeChoices.TEMPLATE_SAVED, {"template_type": template_type})
     return _serialize_template(template)
 
 

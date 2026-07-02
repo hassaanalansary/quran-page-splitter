@@ -1,6 +1,7 @@
 """Processing endpoint: run detection over a page range and persist the results."""
 
 import uuid
+from datetime import datetime
 
 from django.http import HttpRequest
 from ninja import Router, Schema
@@ -41,8 +42,27 @@ class ProcessOut(Schema):
     abort_info: dict | None = None
 
 
+class RunOut(Schema):
+    id: uuid.UUID
+    run_number: int
+    created_at: datetime
+    status: str
+    page_range_start: int
+    page_range_end: int
+    pages_saved: int
+    settings: dict
+    abort_info: dict | None = None
+
+
 @router.post("/{mushaf_id}/process", response=ProcessOut)
 def process(request: HttpRequest, mushaf_id: uuid.UUID, data: ProcessIn) -> dict:
     """Process a logical page range and persist Page/Line/Segment rows."""
     mushaf = mushaf_service.get_mushaf(mushaf_id)
     return processing_service.process(mushaf, **data.model_dump())
+
+
+@router.get("/{mushaf_id}/runs", response=list[RunOut])
+def list_runs(request: HttpRequest, mushaf_id: uuid.UUID) -> list[dict]:
+    """Processing-run history for a mushaf (newest first)."""
+    mushaf = mushaf_service.get_mushaf(mushaf_id)
+    return processing_service.list_runs(mushaf)

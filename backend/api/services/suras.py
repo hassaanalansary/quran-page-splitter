@@ -39,9 +39,7 @@ def list_suras(qiraa: str = DEFAULT_QIRAA) -> list[dict]:
     counting_system = qiraa_obj.counting_system if qiraa_obj else None
     counts: dict[int, int] = {}
     if counting_system is not None:
-        counts = dict(
-            SuraAyaCount.objects.filter(counting_system=counting_system).values_list("sura_id", "count")
-        )
+        counts = dict(SuraAyaCount.objects.filter(counting_system=counting_system).values_list("sura_id", "count"))
     return [
         {
             "number": sura.number,

@@ -7,11 +7,12 @@ rows from the payload, then recomputes aya numbers forward.
 
 import uuid
 
+from django.db.models import Count, Q
 from ninja.errors import HttpError
 
 from api import validators
-from api.models import EraseStroke, Line, LineTypeChoices, Page, Segment
-from api.services import coordinates
+from api.models import ActivityTypeChoices, EraseStroke, Line, LineTypeChoices, Mushaf, Page, Segment
+from api.services import activity, coordinates
 from api.services import mushaf as mushaf_service
 
 
@@ -26,16 +27,72 @@ def get_page_data(mushaf_id: uuid.UUID, page_number: int) -> dict:
 
 
 def list_pages(mushaf_id: uuid.UUID) -> list[dict]:
-    """Summaries of processed pages (which logical pages have data + review state)."""
+    """Per-page summaries: review state + detection counts (rail map + Pages tab).
+
+    ``ayat`` counts aya-closing segments (``has_separator=True``);
+    ``source_pdf_page`` is the resolved physical page (override or derived).
+    """
     mushaf = mushaf_service.get_mushaf(mushaf_id)
-    rows = Page.objects.filter(mushaf=mushaf).order_by("page_number").values("page_number", "reviewed")
-    return [dict(row) for row in rows]
+    rows = (
+        Page.objects.filter(mushaf=mushaf)
+        .annotate(
+            lines_count=Count("lines", distinct=True),
+            segments_count=Count("lines__segments", distinct=True),
+            ayat_count=Count("lines__segments", filter=Q(lines__segments__has_separator=True), distinct=True),
+            headers_count=Count("lines", filter=Q(lines__type=LineTypeChoices.SURA_HEADER), distinct=True),
+        )
+        .values(
+            "page_number",
+            "reviewed",
+            "source_pdf_page",
+            "lines_count",
+            "segments_count",
+            "ayat_count",
+            "headers_count",
+        )
+        .order_by("page_number")
+    )
+    suras_by_page = _suras_by_page(mushaf)
+    return [
+        {
+            "page_number": row["page_number"],
+            "reviewed": row["reviewed"],
+            "source_pdf_page": row["source_pdf_page"] or mushaf.first_quran_pdf_page + row["page_number"] - 1,
+            "lines": row["lines_count"],
+            "ayat": row["ayat_count"],
+            "segments": row["segments_count"],
+            "has_header": row["headers_count"] > 0,
+            "suras": suras_by_page.get(row["page_number"], []),
+        }
+        for row in rows
+    ]
+
+
+def _suras_by_page(mushaf: Mushaf) -> dict[int, list[dict]]:
+    """Distinct suras appearing on each page (ordered by sura number)."""
+    rows = (
+        Line.objects.filter(page__mushaf=mushaf, sura__isnull=False)
+        .values("page__page_number", "sura__number", "sura__transliteration", "sura__name_arabic")
+        .distinct()
+        .order_by("page__page_number", "sura__number")
+    )
+    result: dict[int, list[dict]] = {}
+    for row in rows:
+        result.setdefault(row["page__page_number"], []).append(
+            {
+                "number": row["sura__number"],
+                "transliteration": row["sura__transliteration"],
+                "name_arabic": row["sura__name_arabic"],
+            }
+        )
+    return result
 
 
 def save_page(*, mushaf_id: uuid.UUID, page_number: int, bbox: dict, lines: list[dict]) -> dict:
     """Replace a page's lines/segments from the payload, then renumber forward."""
     mushaf = mushaf_service.get_mushaf(mushaf_id)
     validators.validate_page_number(mushaf, page_number)
+    was_reviewed = Page.objects.filter(mushaf=mushaf, page_number=page_number, reviewed=True).exists()
     page, _ = Page.objects.update_or_create(
         mushaf=mushaf,
         page_number=page_number,
@@ -51,6 +108,9 @@ def save_page(*, mushaf_id: uuid.UUID, page_number: int, bbox: dict, lines: list
     for line_data in lines:
         _write_edited_line(page, line_data)
     coordinates.renumber_from(page)
+    # Only the first review of a page (since its last processing) is feed-worthy.
+    if not was_reviewed:
+        activity.emit(mushaf, ActivityTypeChoices.REVIEW_SAVED, {"page_number": page_number})
     return coordinates.page_to_dict(page)
 
 

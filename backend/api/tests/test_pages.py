@@ -121,7 +121,7 @@ class ListPagesTests(TestCase):
     def test_empty_when_none_processed(self):
         self.assertEqual(editing.list_pages(self.mushaf.id), [])
 
-    def test_lists_saved_pages_with_review_state(self):
+    def test_lists_saved_pages_with_summary(self):
         payload = _save_payload()
         editing.save_page(
             mushaf_id=self.mushaf.id,
@@ -129,5 +129,13 @@ class ListPagesTests(TestCase):
             bbox=payload["bbox"],
             lines=payload["lines"],
         )
-        # save_page marks the page reviewed.
-        self.assertEqual(editing.list_pages(self.mushaf.id), [{"page_number": 2, "reviewed": True}])
+        [row] = editing.list_pages(self.mushaf.id)
+        self.assertEqual(row["page_number"], 2)
+        self.assertTrue(row["reviewed"])  # save_page marks the page reviewed
+        self.assertEqual(row["source_pdf_page"], 2)  # first_quran_pdf_page=1 → 1 + 2 - 1
+        self.assertEqual(row["lines"], 2)
+        self.assertEqual(row["segments"], 2)
+        self.assertEqual(row["ayat"], 1)  # only the has_separator segment closes an aya
+        self.assertTrue(row["has_header"])
+        self.assertEqual(row["suras"][0]["number"], 1)
+        self.assertEqual(row["suras"][0]["transliteration"], "Al-Fatiha")

@@ -9,12 +9,13 @@ import io
 import uuid
 
 from django.core.files.base import ContentFile
+from django.db.models import Prefetch
 from ninja.errors import HttpError
 from PIL import Image, ImageDraw
 
-from api.models import Line, Page
+from api.models import ActivityTypeChoices, Line, Page, Segment
+from api.services import activity, pdf
 from api.services import mushaf as mushaf_service
-from api.services import pdf
 from core.cut_review import _apply_eraser_stroke
 from core.image_utils import make_transparent
 
@@ -39,7 +40,64 @@ def export_lines(*, mushaf_id: uuid.UUID, page_number: int) -> dict:
         line.line_png.save(filename, ContentFile(png_bytes), save=True)
         exported.append({"line_number": line.line_number, "line_png": line.line_png.url})
 
+    activity.emit(mushaf, ActivityTypeChoices.LINES_EXPORTED, {"page_number": page_number, "exported": len(exported)})
     return {"page_number": page_number, "exported": len(exported), "lines": exported}
+
+
+def coordinates_json(mushaf_id: uuid.UUID) -> tuple[str, dict]:
+    """Assemble the downloadable aya-coordinates document (schema ``aya-bbox/v1``).
+
+    One entry per aya per page, in reading order (line by line, right-to-left
+    within a line). An aya's rects are its segments' boxes: x/w from the segment,
+    y/h from the segment's line. Pages without aya data are omitted.
+    """
+    mushaf = mushaf_service.get_mushaf(mushaf_id)
+    pages = (
+        Page.objects.filter(mushaf=mushaf)
+        .order_by("page_number")
+        .prefetch_related(
+            Prefetch(
+                "lines",
+                queryset=Line.objects.order_by("line_number").prefetch_related(
+                    Prefetch("segments", queryset=Segment.objects.order_by("segment_order"))
+                ),
+            )
+        )
+    )
+    pages_out = []
+    for page in pages:
+        ayas: dict[tuple[int, int], dict] = {}
+        for line in page.lines.all():
+            if line.sura_id is None:
+                continue
+            for segment in line.segments.all():
+                if segment.aya_number is None:
+                    continue
+                entry = ayas.setdefault(
+                    (line.sura_id, segment.aya_number),
+                    {"sura": line.sura_id, "aya": segment.aya_number, "rects": []},
+                )
+                entry["rects"].append({"x": segment.bbox_x, "y": line.bbox_y, "w": segment.bbox_w, "h": line.bbox_h})
+        if ayas:
+            pages_out.append({"page": page.page_number, "ayas": list(ayas.values())})
+
+    doc = {
+        "schema": "aya-bbox/v1",
+        "mushaf": {
+            "id": str(mushaf.id),
+            "name": mushaf.name,
+            "qiraa": mushaf.qiraa.name if mushaf.qiraa else None,
+            "pages": mushaf.last_quran_pdf_page - mushaf.first_quran_pdf_page + 1,
+        },
+        "pages": pages_out,
+    }
+    return f"{_safe_filename(mushaf.name)}-coordinates.json", doc
+
+
+def _safe_filename(name: str) -> str:
+    """A header-safe download filename stem (alnum/dash/underscore only)."""
+    cleaned = "".join(c if c.isalnum() or c in "-_" else "-" for c in name.strip())
+    return cleaned.strip("-") or "mushaf"
 
 
 def _render_line_png(image: Image.Image, line: Line) -> bytes:

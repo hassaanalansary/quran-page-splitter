@@ -9,16 +9,17 @@ import json
 from pathlib import Path
 
 from django.db import transaction
+from django.db.models import Count
 from ninja.errors import HttpError
 from PIL import Image
 
 from api import validators
-from api.models import Mushaf, Page, ProcessingRun, Template
-from api.services import coordinates, pdf
+from api.models import ActivityTypeChoices, Mushaf, Page, ProcessingRun, Template
+from api.services import activity, coordinates, pdf
 from core.aya_separator import AyaSeparatorConfig, AyaSeparatorProcessor
 from core.builder import build_pipeline, init_configs
 from core.config import ExportConfig
-from core.protected_bands import IgnoreRect, ProtectedBandLocator
+from core.sura_header import IgnoreRect, SuraHeaderLocator
 
 
 def process(
@@ -60,11 +61,11 @@ def process(
         start_aya=start_aya,
         expected_lines=expected_lines,
     )
-    protected = ProtectedBandLocator(
+    sura_header_locator = SuraHeaderLocator(
         _load_image(sura_template),
-        sura_header_ignore=_ignore_rect(sura_template.ignore_rects),
-        sura_header_slots=sura_header_slots,
-        sura_header_threshold=sura_header_threshold,
+        ignore=_ignore_rect(sura_template.ignore_rects),
+        slots=sura_header_slots,
+        threshold=sura_header_threshold,
         max_sura_headers=max_sura_headers,
         prefer_acceleration=prefer_acceleration,
     )
@@ -100,7 +101,7 @@ def process(
         export_cfg=export_cfg,
         aya_processor=aya_processor,
         results_dir=results_dir,
-        protected_locator=protected,
+        sura_header_locator_locator=sura_header_locator,
     )
     output = pipeline.run(images_data)
 
@@ -128,8 +129,22 @@ def process(
             status=output["status"],
             abort_info=json.dumps(output["abort_at"]) if output.get("abort_at") else "",
         )
+        pages_saved = 0
         for page_number, coord_page in zip(page_numbers, coord_pages, strict=False):
             coordinates.write_coords_to_page(mushaf=mushaf, page_number=page_number, run=run, coord_page=coord_page)
+            pages_saved += 1
+        event = {
+            "run_id": str(run.id),
+            "run_number": ProcessingRun.objects.filter(mushaf=mushaf).count(),
+            "status": output["status"],
+            "pages_saved": pages_saved,
+            "page_range_start": page_range_start,
+            "page_range_end": page_range_end,
+        }
+        abort_at = output.get("abort_at")
+        if isinstance(abort_at, dict) and abort_at.get("page_index") is not None:
+            event["abort_page"] = page_range_start + abort_at["page_index"]
+        activity.emit(mushaf, ActivityTypeChoices.RUN_FINISHED, event)
 
     return {
         "run_id": run.id,
@@ -142,6 +157,44 @@ def process(
         "results": output["results"],
         "abort_info": output.get("abort_at"),
     }
+
+
+def list_runs(mushaf: Mushaf) -> list[dict]:
+    """Processing-run history for a mushaf, newest first.
+
+    ``run_number`` is assigned in chronological order (oldest = #1) so it stays
+    stable regardless of display order; ``pages_saved`` is how many pages currently
+    point at this run; ``abort_info`` is parsed back from its stored JSON string.
+    """
+    rows = list(
+        mushaf.processing_runs.annotate(pages_saved=Count("pages"))
+        .values(
+            "id",
+            "created_at",
+            "status",
+            "page_range_start",
+            "page_range_end",
+            "pages_saved",
+            "settings",
+            "abort_info",
+        )
+        .order_by("created_at")
+    )
+    serialized = [
+        {
+            "id": row["id"],
+            "run_number": number,
+            "created_at": row["created_at"],
+            "status": row["status"],
+            "page_range_start": row["page_range_start"],
+            "page_range_end": row["page_range_end"],
+            "pages_saved": row["pages_saved"],
+            "settings": row["settings"],
+            "abort_info": json.loads(row["abort_info"]) if row["abort_info"] else None,
+        }
+        for number, row in enumerate(rows, start=1)
+    ]
+    return serialized[::-1]
 
 
 def _required_templates(mushaf: Mushaf) -> tuple[Template, Template]:

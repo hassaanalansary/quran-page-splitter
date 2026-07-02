@@ -9,16 +9,14 @@ from core.config import CropConfig, DetectionConfig, ProcessingConfig
 from core.context import BBox, LineResult, PageContext
 from core.image_utils import find_content_bbox
 from core.line_cutter import split_by_valleys
-from core.protected_bands import ProtectedBand, ProtectedBandLocator
+from core.sura_header import SuraHeaderLocator, SuraHeaderSpec
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass
-class _DetectedBand:
+class _DetectedHeader:
     box: dict[str, int]
-    is_sura: bool = False
-    is_basmala: bool = False
     slot_count: int = 1
 
 
@@ -36,19 +34,19 @@ class LineDetector:
         crop: CropConfig,
         detection: DetectionConfig,
         processing: ProcessingConfig | None = None,
-        protected_locator: ProtectedBandLocator | None = None,
+        sura_header_locator: SuraHeaderLocator | None = None,
     ):
         self.crop = crop
         self.detection = detection
         self.processing = processing or ProcessingConfig()
-        self.protected_locator = protected_locator
+        self.sura_header_locator = sura_header_locator
 
     @staticmethod
-    def _set_lines_from_bands(
+    def _set_lines_from_sura_headers(
         ctx: PageContext,
         left: int,
         top: int,
-        bands: list[_DetectedBand],
+        bands: list[_DetectedHeader],
     ) -> None:
         ctx.lines.clear()
         for i, band in enumerate(bands, start=1):
@@ -97,22 +95,22 @@ class LineDetector:
         cropped_grey = ctx.cropped_grey()
         cropped_binary = ctx.cropped_binary()
 
-        logger.info("Start detecting bands")
-        bands = self._detect_bands(cropped_grey, cropped_binary, n_lines)
-        self._set_lines_from_bands(ctx, left, top, bands)
+        logger.info("Start detecting sura header")
+        bands = self._detect_sura_header(cropped_grey, cropped_binary, n_lines)
+        self._set_lines_from_sura_headers(ctx, left, top, bands)
 
         logger.info("  Detected %d lines", len(ctx.lines))
 
-    def _detect_bands(
+    def _detect_sura_header(
         self,
         grey: np.ndarray,
         binary: np.ndarray,
         expected_lines: int,
-    ) -> list[_DetectedBand]:
-        protected = self.protected_locator.locate(grey) if self.protected_locator is not None else []
-        if not protected:
+    ) -> list[_DetectedHeader]:
+        sura_headers = self.sura_header_locator.locate(grey) if self.sura_header_locator is not None else []
+        if not sura_headers:
             return [
-                _DetectedBand(box=box)
+                _DetectedHeader(box=box)
                 for box in split_by_valleys(
                     grey,
                     binary,
@@ -121,34 +119,34 @@ class LineDetector:
                 )
             ]
 
-        return self._detect_with_protected_bands(
+        return self._detect_with_sura_headers(
             grey,
             binary,
             expected_lines,
-            protected,
+            sura_headers,
         )
 
-    def _detect_with_protected_bands(
+    def _detect_with_sura_headers(
         self,
         grey: np.ndarray,
         binary: np.ndarray,
         expected_lines: int,
-        protected: list[ProtectedBand],
-    ) -> list[_DetectedBand]:
-        protected_slots = sum(band.slot_count for band in protected)
-        text_slots = expected_lines - protected_slots
+        sura_headers: list[SuraHeaderSpec],
+    ) -> list[_DetectedHeader]:
+        sura_header_slots = sum(header.slot_count for header in sura_headers)
+        text_slots = expected_lines - sura_header_slots
         if text_slots < 0:
             raise ValueError(
-                f"Protected bands consume more slots than expected lines: {protected_slots} > {expected_lines}"
+                f"Sura headers consume more slots than expected lines: {sura_header_slots} > {expected_lines}"
             )
 
         regions = self._allocate_text_slots(
             binary,
-            protected,
+            sura_headers,
             text_slots,
             expected_lines,
         )
-        detected: list[_DetectedBand] = []
+        detected: list[_DetectedHeader] = []
 
         for region in regions:
             if region.slots <= 0:
@@ -160,7 +158,7 @@ class LineDetector:
                 self.detection.padding,
             )
             detected.extend(
-                _DetectedBand(
+                _DetectedHeader(
                     box={
                         "left": box["left"],
                         "top": box["top"] + region.top,
@@ -172,18 +170,16 @@ class LineDetector:
             )
 
         _h, w = binary.shape
-        for band in protected:
+        for header in sura_headers:
             detected.append(
-                _DetectedBand(
+                _DetectedHeader(
                     box={
                         "left": 0,
-                        "top": band.top,
+                        "top": header.top,
                         "right": w,
-                        "bottom": band.bottom,
+                        "bottom": header.bottom,
                     },
-                    is_sura=band.kind == "sura_header",
-                    is_basmala=band.kind == "basmala",
-                    slot_count=band.slot_count,
+                    slot_count=header.slot_count,
                 )
             )
 
@@ -193,39 +189,22 @@ class LineDetector:
     def _allocate_text_slots(
         self,
         binary: np.ndarray,
-        protected: list[ProtectedBand],
+        sura_headers: list[SuraHeaderSpec],
         text_slots: int,
         expected_lines: int,
     ) -> list[_TextRegion]:
         min_region_height = max(1, round(binary.shape[0] / expected_lines * 0.75))
-        regions = self._content_regions(binary, protected, min_region_height)
+        regions = self._content_regions(binary, sura_headers, min_region_height)
         if text_slots == 0:
             return regions
         if not regions:
-            raise ValueError("Protected bands left no text regions to split")
+            raise ValueError("Sura headers left no text regions to split")
         if len(regions) > text_slots:
             raise ValueError(f"More text regions than remaining slots: {len(regions)} > {text_slots}")
 
         total_height = sum(region.content_height for region in regions)
         raw_slots = [region.content_height / max(1, total_height) * text_slots for region in regions]
         slots = [max(1, int(np.round(raw))) for raw in raw_slots]
-
-        # while sum(slots) < text_slots:
-        #     idx = max(
-        #         range(len(regions)),
-        #         key=lambda i: (raw_slots[i] - np.floor(raw_slots[i]), raw_slots[i]),
-        #     )
-        #     slots[idx] += 1
-
-        # while sum(slots) > text_slots:
-        #     candidates = [i for i, value in enumerate(slots) if value > 1]
-        #     if not candidates:
-        #         break
-        #     idx = min(
-        #         candidates,
-        #         key=lambda i: (raw_slots[i] - np.floor(raw_slots[i]), raw_slots[i]),
-        #     )
-        #     slots[idx] -= 1
 
         for region, slot_count in zip(regions, slots, strict=True):
             region.slots = slot_count
@@ -241,15 +220,15 @@ class LineDetector:
     @staticmethod
     def _content_regions(
         binary: np.ndarray,
-        protected: list[ProtectedBand],
+        protected: list[SuraHeaderSpec],
         min_region_height: int,
     ) -> list[_TextRegion]:
         h = binary.shape[0]
         ranges: list[tuple[int, int]] = []
         cursor = 0
-        for band in sorted(protected, key=lambda item: item.top):
-            top = max(0, min(h, band.top))
-            bottom = max(0, min(h, band.bottom))
+        for header in sorted(protected, key=lambda item: item.top):
+            top = max(0, min(h, header.top))
+            bottom = max(0, min(h, header.bottom))
             if top > cursor:
                 ranges.append((cursor, top))
             cursor = max(cursor, bottom)

@@ -1,5 +1,7 @@
 """Qiraa reference endpoints."""
 
+from typing import Literal
+
 from django.http import HttpRequest
 from ninja import Router, Schema
 
@@ -14,6 +16,6 @@ class QiraaOut(Schema):
 
 
 @router.get("", response=list[QiraaOut])
-def list_qiraat(request: HttpRequest, lang: str | None = None) -> list[dict]:
+def list_qiraat(request: HttpRequest, lang: Literal["ar", "en"] | None = None) -> list[dict]:
     """List all qiraat (schools of recitation) for the mushaf picker."""
     return qiraat_service.list_qiraat(lang=lang)

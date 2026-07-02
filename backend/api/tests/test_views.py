@@ -39,7 +39,7 @@ class QiraatViewTests(MediaTestCase):
         self.assertEqual(resp.status_code, 200)
         body = resp.json()
         self.assertEqual({q["name"] for q in body}, {"Hafs", "warsh"})
-        self.assertIn("name_arabic", body[0])
+        self.assertIn("counting_system", body[0])
 
 
 class MushafViewTests(MediaTestCase):
@@ -98,3 +98,37 @@ class MushafViewTests(MediaTestCase):
         resp = self.client.get(f"/api/mushafs/{mushaf_id}/pages/1/image")
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp["Content-Type"], "image/png")
+
+    def test_stats_endpoint(self):
+        mushaf_id = _create_mushaf(self.client, "StatsView").json()["mushaf"]["id"]
+        resp = self.client.get(f"/api/mushafs/{mushaf_id}/stats")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["lines_cut"], 0)
+        self.assertEqual(resp.json()["ayat_found"], 0)
+
+    def test_runs_endpoint_empty(self):
+        mushaf_id = _create_mushaf(self.client, "RunsView").json()["mushaf"]["id"]
+        resp = self.client.get(f"/api/mushafs/{mushaf_id}/runs")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json(), [])
+
+    def test_activity_endpoint(self):
+        mushaf_id = _create_mushaf(self.client, "ActView").json()["mushaf"]["id"]
+        resp = self.client.get(f"/api/mushafs/{mushaf_id}/activity")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual([e["type"] for e in resp.json()], ["mushaf_created"])
+
+    def test_coordinates_download(self):
+        mushaf_id = _create_mushaf(self.client, "CoordView").json()["mushaf"]["id"]
+        resp = self.client.get(f"/api/mushafs/{mushaf_id}/coordinates")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("attachment", resp["Content-Disposition"])
+        body = resp.json()
+        self.assertEqual(body["schema"], "aya-bbox/v1")
+        self.assertEqual(body["pages"], [])
+
+    def test_thumbnail_regenerate(self):
+        mushaf_id = _create_mushaf(self.client, "ThumbView").json()["mushaf"]["id"]
+        resp = self.client.post(f"/api/mushafs/{mushaf_id}/thumbnail")
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.json()["thumbnail_url"])

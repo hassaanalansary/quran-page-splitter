@@ -20,8 +20,17 @@ class RunStatusChoices(models.TextChoices):
     ERROR = "error", "Error"
 
 
+class ActivityTypeChoices(models.TextChoices):
+    MUSHAF_CREATED = "mushaf_created", "Mushaf Created"
+    BOUNDS_SET = "bounds_set", "Bounds Set"
+    TEMPLATE_SAVED = "template_saved", "Template Saved"
+    RUN_FINISHED = "run_finished", "Run Finished"
+    REVIEW_SAVED = "review_saved", "Review Saved"
+    LINES_EXPORTED = "lines_exported", "Lines Exported"
+
+
 class CountingSystem(models.Model):
-    """A table for Counting Systems"""
+    """A table for Quran Counting Systems, e.g. Kufi"""
 
     name = models.CharField(max_length=256, unique=True)
     name_arabic = models.CharField(max_length=256, unique=True)
@@ -101,6 +110,12 @@ class Mushaf(BaseModel):
     qiraa = models.ForeignKey(Qiraa, null=True, on_delete=models.SET_NULL, related_name="mushafs")
     name = models.CharField(max_length=256, unique=True)
     pdf_file = models.FileField(upload_to="mushafs/")
+    pdf_original_name = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text="Filename of the uploaded PDF (the stored file is renamed to its hash).",
+    )
     pdf_sha256 = models.CharField(max_length=64)
     pdf_page_count = models.PositiveSmallIntegerField()
     thumbnail = models.ImageField(
@@ -270,3 +285,27 @@ class Segment(BaseModel):
         db_table = "segment"
         verbose_name = "Segment"
         verbose_name_plural = "Segments"
+
+
+class ActivityEvent(BaseModel):
+    """A table for Activity Events (the per-mushaf audit feed)"""
+
+    mushaf = models.ForeignKey(Mushaf, on_delete=models.CASCADE, related_name="activity_events")
+    type = models.CharField(max_length=32, choices=ActivityTypeChoices.choices)
+    payload = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text=(
+            "Event details keyed by type, e.g. {'template_type': ...} for template_saved,"
+            " {'run_id', 'run_number', 'status', 'pages_saved', 'page_range_start', 'page_range_end'}"
+            " for run_finished, {'page_number': ...} for review_saved."
+        ),
+    )
+
+    class Meta:
+        db_table = "activity_event"
+        verbose_name = "Activity Event"
+        verbose_name_plural = "Activity Events"
+
+    def __str__(self) -> str:
+        return f"{self.type} on {self.mushaf.name}"

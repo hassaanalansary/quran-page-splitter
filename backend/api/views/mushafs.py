@@ -4,6 +4,7 @@
 Endpoints are thin: each parses/returns schemas and calls one service function.
 """
 
+import json
 import uuid
 from datetime import datetime
 
@@ -11,6 +12,8 @@ from django.http import HttpRequest, HttpResponse
 from ninja import File, Form, Router, Schema
 from ninja.files import UploadedFile
 
+from api.services import activity as activity_service
+from api.services import export as export_service
 from api.services import mushaf as mushaf_service
 
 router = Router(tags=["mushafs"])
@@ -36,6 +39,37 @@ class MushafOut(Schema):
     thumbnail_url: str | None = None
     created_at: datetime
     updated_at: datetime
+
+
+class CountingSystemOut(Schema):
+    name: str
+    name_arabic: str
+    total_ayat: int
+
+
+class MushafDetailOut(MushafOut):
+    """MushafOut plus the extra fields the detail page needs (never on the list)."""
+
+    counting_system: CountingSystemOut | None = None
+    pdf_url: str | None = None
+    pdf_file_size: int = 0
+    pdf_original_name: str = ""
+
+
+class ActivityEventOut(Schema):
+    id: uuid.UUID
+    type: str
+    payload: dict
+    created_at: datetime
+
+
+class MushafStatsOut(Schema):
+    lines_cut: int
+    segments: int
+    ayat_found: int
+    sura_headers: int
+    besmella_lines: int
+    exported_pngs: int
 
 
 class WarningsSchema(Schema):
@@ -89,9 +123,40 @@ def create_mushaf(
     return 201, result
 
 
-@router.get("/{mushaf_id}", response=MushafOut)
+@router.get("/{mushaf_id}", response=MushafDetailOut)
 def get_mushaf(request: HttpRequest, mushaf_id: uuid.UUID) -> dict:
-    return mushaf_service.get_mushaf_dict(mushaf_id)
+    return mushaf_service.get_mushaf_detail(mushaf_id)
+
+
+@router.get("/{mushaf_id}/stats", response=MushafStatsOut)
+def mushaf_stats(request: HttpRequest, mushaf_id: uuid.UUID) -> dict:
+    """Aggregate detection counts (ayat, lines, segments, exported PNGs)."""
+    return mushaf_service.mushaf_stats(mushaf_id)
+
+
+@router.get("/{mushaf_id}/activity", response=list[ActivityEventOut])
+def list_activity(request: HttpRequest, mushaf_id: uuid.UUID, limit: int = 50) -> list[dict]:
+    """Newest-first activity feed (uploads, templates, runs, review saves, exports)."""
+    mushaf = mushaf_service.get_mushaf(mushaf_id)
+    return activity_service.list_events(mushaf, limit=limit)
+
+
+@router.get("/{mushaf_id}/coordinates")
+def download_coordinates(request: HttpRequest, mushaf_id: uuid.UUID) -> HttpResponse:
+    """The aya-coordinates JSON document (schema aya-bbox/v1), as an attachment."""
+    filename, doc = export_service.coordinates_json(mushaf_id)
+    response = HttpResponse(
+        json.dumps(doc, ensure_ascii=False, indent=2),
+        content_type="application/json; charset=utf-8",
+    )
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response
+
+
+@router.post("/{mushaf_id}/thumbnail", response=MushafDetailOut)
+def regenerate_thumbnail(request: HttpRequest, mushaf_id: uuid.UUID) -> dict:
+    """Re-render the cover thumbnail from physical page 1."""
+    return mushaf_service.regenerate_thumbnail(mushaf_id)
 
 
 @router.patch("/{mushaf_id}", response=MushafOut)

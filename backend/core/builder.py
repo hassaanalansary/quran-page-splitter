@@ -11,7 +11,7 @@ from core.config import CropConfig, DetectionConfig, ExportConfig, ProcessingCon
 from core.line_detector import LineDetector
 from core.page_processor import PageProcessor
 from core.pipeline import Pipeline
-from core.protected_bands import ProtectedBandLocator
+from core.sura_header import SuraHeaderLocator
 
 
 def init_configs(
@@ -45,14 +45,14 @@ def build_pipeline(
     export_cfg: ExportConfig,
     aya_processor: AyaSeparatorProcessor,
     results_dir: Path,
-    protected_locator: ProtectedBandLocator | None = None,
+    sura_header_locator: SuraHeaderLocator | None = None,
 ) -> Pipeline:
     """Assemble the detector, page processor, and pipeline from the given configs."""
     detector = LineDetector(
         crop=crop_cfg,
         detection=det_cfg,
         processing=proc_cfg,
-        protected_locator=protected_locator,
+        sura_header_locator=sura_header_locator,
     )
     processor = PageProcessor(
         detector=detector,

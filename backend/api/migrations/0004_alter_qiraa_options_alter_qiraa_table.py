@@ -4,18 +4,17 @@ from django.db import migrations
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('api', '0003_countingsystem_remove_suraayacount_unique_sura_qiraa_and_more'),
+        ("api", "0003_countingsystem_remove_suraayacount_unique_sura_qiraa_and_more"),
     ]
 
     operations = [
         migrations.AlterModelOptions(
-            name='qiraa',
-            options={'verbose_name': 'Qiraa', 'verbose_name_plural': 'Qiraat'},
+            name="qiraa",
+            options={"verbose_name": "Qiraa", "verbose_name_plural": "Qiraat"},
         ),
         migrations.AlterModelTable(
-            name='qiraa',
-            table='qiraa',
+            name="qiraa",
+            table="qiraa",
         ),
     ]

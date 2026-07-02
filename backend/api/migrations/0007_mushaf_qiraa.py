@@ -5,15 +5,16 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('api', '0006_alter_qiraa_id'),
+        ("api", "0006_alter_qiraa_id"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='mushaf',
-            name='qiraa',
-            field=models.ForeignKey(null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='mushafs', to='api.qiraa'),
+            model_name="mushaf",
+            name="qiraa",
+            field=models.ForeignKey(
+                null=True, on_delete=django.db.models.deletion.SET_NULL, related_name="mushafs", to="api.qiraa"
+            ),
         ),
     ]

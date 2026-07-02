@@ -5,46 +5,52 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('api', '0002_page_reviewed_alter_processingrun_page_range_start_and_more'),
+        ("api", "0002_page_reviewed_alter_processingrun_page_range_start_and_more"),
     ]
 
     operations = [
         migrations.CreateModel(
-            name='CountingSystem',
+            name="CountingSystem",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('name', models.CharField(max_length=256, unique=True)),
-                ('name_arabic', models.CharField(max_length=256, unique=True)),
+                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
+                ("name", models.CharField(max_length=256, unique=True)),
+                ("name_arabic", models.CharField(max_length=256, unique=True)),
             ],
         ),
         migrations.RemoveConstraint(
-            model_name='suraayacount',
-            name='unique_sura_qiraa',
+            model_name="suraayacount",
+            name="unique_sura_qiraa",
         ),
         migrations.AddField(
-            model_name='qiraa',
-            name='name_arabic',
-            field=models.CharField(default='', max_length=256, unique=True),
+            model_name="qiraa",
+            name="name_arabic",
+            field=models.CharField(default="", max_length=256, unique=True),
             preserve_default=False,
         ),
         migrations.AddField(
-            model_name='qiraa',
-            name='counting_system',
-            field=models.ForeignKey(null=True, on_delete=django.db.models.deletion.CASCADE, related_name='qiraat', to='api.countingsystem'),
+            model_name="qiraa",
+            name="counting_system",
+            field=models.ForeignKey(
+                null=True, on_delete=django.db.models.deletion.CASCADE, related_name="qiraat", to="api.countingsystem"
+            ),
         ),
         migrations.AddField(
-            model_name='suraayacount',
-            name='counting_system',
-            field=models.ForeignKey(null=True, on_delete=django.db.models.deletion.CASCADE, related_name='sura_aya_counts', to='api.countingsystem'),
+            model_name="suraayacount",
+            name="counting_system",
+            field=models.ForeignKey(
+                null=True,
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="sura_aya_counts",
+                to="api.countingsystem",
+            ),
         ),
         migrations.AddConstraint(
-            model_name='suraayacount',
-            constraint=models.UniqueConstraint(fields=('sura', 'counting_system'), name='unique_sura_counting_system'),
+            model_name="suraayacount",
+            constraint=models.UniqueConstraint(fields=("sura", "counting_system"), name="unique_sura_counting_system"),
         ),
         migrations.RemoveField(
-            model_name='suraayacount',
-            name='qiraa',
+            model_name="suraayacount",
+            name="qiraa",
         ),
     ]

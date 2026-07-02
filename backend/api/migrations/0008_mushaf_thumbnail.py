@@ -4,15 +4,19 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('api', '0007_mushaf_qiraa'),
+        ("api", "0007_mushaf_qiraa"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='mushaf',
-            name='thumbnail',
-            field=models.ImageField(blank=True, help_text='Small render of the first physical PDF page (the cover), for list views.', null=True, upload_to='thumbnails/'),
+            model_name="mushaf",
+            name="thumbnail",
+            field=models.ImageField(
+                blank=True,
+                help_text="Small render of the first physical PDF page (the cover), for list views.",
+                null=True,
+                upload_to="thumbnails/",
+            ),
         ),
     ]

@@ -5,8 +5,9 @@ import uuid
 from django.core.files.uploadedfile import SimpleUploadedFile
 from ninja.errors import HttpError
 
-from api.models import Mushaf, Page, Qiraa, Template
+from api.models import CountingSystem, Line, Mushaf, Page, Qiraa, Segment, Template
 from api.services import mushaf as mushaf_service
+from api.services import suras
 from api.tests.helpers import MediaTestCase, make_pdf_bytes, make_png_bytes
 
 
@@ -224,6 +225,53 @@ class TemplateTests(MediaTestCase):
     def test_image_required_to_create(self):
         with self.assertRaises(HttpError):
             self._upsert("sura_header", image=False)
+
+
+class MushafDetailTests(MediaTestCase):
+    def setUp(self):
+        suras.seed_reference_data()
+
+    def test_includes_counting_system_and_source(self):
+        kufi = CountingSystem.objects.get(name_arabic="الكوفي")
+        Qiraa.objects.create(name="hafs", name_arabic="حفص", counting_system=kufi)
+        created = _create("Detail", qiraa="hafs")
+        detail = mushaf_service.get_mushaf_detail(created["id"])
+        self.assertEqual(detail["counting_system"]["name"], kufi.name)
+        self.assertEqual(detail["counting_system"]["total_ayat"], 6236)  # canonical Kufan total
+        self.assertTrue(detail["pdf_url"].startswith("/media/"))
+        self.assertGreater(detail["pdf_file_size"], 0)
+        self.assertEqual(detail["pdf_original_name"], "m.pdf")
+
+    def test_no_qiraa_yields_null_counting_system(self):
+        detail = mushaf_service.get_mushaf_detail(_create("NoQ")["id"])
+        self.assertIsNone(detail["counting_system"])
+
+
+class MushafStatsTests(MediaTestCase):
+    def test_aggregates_detection_counts(self):
+        mushaf = Mushaf.objects.get(id=_create("Stats")["id"])
+        page = Page.objects.create(mushaf=mushaf, page_number=1)
+
+        def _line(n, line_type):
+            return Line.objects.create(page=page, line_number=n, type=line_type, bbox_x=0, bbox_y=0, bbox_w=1, bbox_h=1)
+
+        _line(1, "sura_header")
+        _line(2, "besmella")
+        text = _line(3, "text")
+        Segment.objects.create(line=text, segment_order=1, bbox_x=0, bbox_w=1, has_separator=True, aya_number=1)
+        Segment.objects.create(line=text, segment_order=2, bbox_x=1, bbox_w=1, has_separator=False)
+
+        stats = mushaf_service.mushaf_stats(mushaf.id)
+        self.assertEqual(stats["lines_cut"], 3)
+        self.assertEqual(stats["sura_headers"], 1)
+        self.assertEqual(stats["besmella_lines"], 1)
+        self.assertEqual(stats["segments"], 2)
+        self.assertEqual(stats["ayat_found"], 1)  # only the has_separator segment
+        self.assertEqual(stats["exported_pngs"], 0)
+
+    def test_empty_mushaf_is_all_zero(self):
+        stats = mushaf_service.mushaf_stats(_create("Empty")["id"])
+        self.assertEqual(set(stats.values()), {0})
 
 
 class RenderPageImageTests(MediaTestCase):

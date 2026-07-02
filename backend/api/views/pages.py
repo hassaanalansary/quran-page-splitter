@@ -45,9 +45,21 @@ class PageSaveIn(Schema):
     lines: list[LineSchema]
 
 
+class PageSuraOut(Schema):
+    number: int
+    transliteration: str
+    name_arabic: str
+
+
 class PageSummaryOut(Schema):
     page_number: int
     reviewed: bool
+    source_pdf_page: int
+    lines: int
+    ayat: int
+    segments: int
+    has_header: bool
+    suras: list[PageSuraOut] = Field(default_factory=list)
 
 
 @router.get("/{mushaf_id}/pages", response=list[PageSummaryOut])

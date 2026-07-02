@@ -1,9 +1,12 @@
 """Tests for api.services.processing (guards + render→pipeline→persist wiring)."""
 
+from datetime import timedelta
+
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.utils import timezone
 from ninja.errors import HttpError
 
-from api.models import ProcessingRun
+from api.models import ActivityEvent, ActivityTypeChoices, Page, ProcessingRun
 from api.services import mushaf as mushaf_service
 from api.services import processing as processing_service
 from api.services import suras
@@ -76,3 +79,43 @@ class ProcessRunTests(MediaTestCase):
         self.assertIn("run_id", result)
         self.assertEqual(ProcessingRun.objects.filter(mushaf=mushaf).count(), 1)
         self.assertIn(result["status"], {"completed", "aborted_line_detection"})
+        event = ActivityEvent.objects.get(mushaf=mushaf, type=ActivityTypeChoices.RUN_FINISHED)
+        self.assertEqual(event.payload["run_id"], str(result["run_id"]))
+        self.assertEqual(event.payload["run_number"], 1)
+        self.assertEqual(event.payload["status"], result["status"])
+        self.assertEqual(event.payload["page_range_start"], 1)
+
+
+class ListRunsTests(MediaTestCase):
+    def setUp(self):
+        suras.seed_reference_data()
+
+    def test_orders_newest_first_with_stable_numbers(self):
+        mushaf = _mushaf(pages=3)
+        run1 = ProcessingRun.objects.create(
+            mushaf=mushaf, settings={"expected_lines": 15}, page_range_start=1, page_range_end=3, status="completed"
+        )
+        # Force run1 clearly older so created_at ordering is deterministic.
+        ProcessingRun.objects.filter(id=run1.id).update(created_at=timezone.now() - timedelta(days=1))
+        run2 = ProcessingRun.objects.create(
+            mushaf=mushaf,
+            settings={"expected_lines": 15, "match_threshold": 0.35},
+            page_range_start=1,
+            page_range_end=50,
+            status="aborted_line_detection",
+            abort_info='{"page": 25, "expected": 15, "detected": 14}',
+        )
+        Page.objects.create(mushaf=mushaf, page_number=1, last_run=run2)
+        Page.objects.create(mushaf=mushaf, page_number=2, last_run=run2)
+
+        runs = processing_service.list_runs(mushaf)
+
+        self.assertEqual([r["run_number"] for r in runs], [2, 1])  # newest first, numbers stable
+        self.assertEqual(runs[0]["id"], run2.id)
+        self.assertEqual(runs[0]["pages_saved"], 2)
+        self.assertEqual(runs[0]["abort_info"], {"page": 25, "expected": 15, "detected": 14})
+        self.assertIsNone(runs[1]["abort_info"])
+        self.assertEqual(runs[1]["pages_saved"], 0)
+
+    def test_empty_when_no_runs(self):
+        self.assertEqual(processing_service.list_runs(_mushaf(pages=1)), [])
