@@ -132,3 +132,21 @@ class MushafViewTests(MediaTestCase):
         resp = self.client.post(f"/api/mushafs/{mushaf_id}/thumbnail")
         self.assertEqual(resp.status_code, 200)
         self.assertTrue(resp.json()["thumbnail_url"])
+
+    def test_review_data_endpoint(self):
+        mushaf_id = _create_mushaf(self.client, "ReviewData").json()["mushaf"]["id"]
+        resp = self.client.get(f"/api/mushafs/{mushaf_id}/review-data")
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertEqual(body["start"], {"sura": 1, "aya": 1})
+        self.assertEqual(body["pages"], [])
+
+    def test_bulk_save_endpoint(self):
+        mushaf_id = _create_mushaf(self.client, "BulkSave").json()["mushaf"]["id"]
+        resp = self.client.post(
+            f"/api/mushafs/{mushaf_id}/pages/bulk",
+            data={"pages": [], "reviewed_pages": []},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("start", resp.json())

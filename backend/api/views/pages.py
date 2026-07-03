@@ -62,9 +62,51 @@ class PageSummaryOut(Schema):
     suras: list[PageSuraOut] = Field(default_factory=list)
 
 
+class ReviewStartOut(Schema):
+    sura: int
+    aya: int
+
+
+class ReviewPageOut(PageDataOut):
+    reviewed: bool = False
+    run_start: ReviewStartOut | None = None
+
+
+class ReviewDataOut(Schema):
+    start: ReviewStartOut
+    pages: list[ReviewPageOut]
+
+
+class BulkPageIn(Schema):
+    page_number: int
+    bbox: RectSchema
+    lines: list[LineSchema] = Field(default_factory=list)
+
+
+class BulkSaveIn(Schema):
+    pages: list[BulkPageIn] = Field(default_factory=list)
+    reviewed_pages: list[int] = Field(default_factory=list)
+
+
 @router.get("/{mushaf_id}/pages", response=list[PageSummaryOut])
 def list_pages(request: HttpRequest, mushaf_id: uuid.UUID) -> list[dict]:
     return editing_service.list_pages(mushaf_id)
+
+
+@router.get("/{mushaf_id}/review-data", response=ReviewDataOut)
+def review_data(request: HttpRequest, mushaf_id: uuid.UUID) -> dict:
+    """Whole-document review payload: numbering seed + all processed pages."""
+    return editing_service.review_data(mushaf_id)
+
+
+@router.post("/{mushaf_id}/pages/bulk", response=ReviewDataOut)
+def bulk_save(request: HttpRequest, mushaf_id: uuid.UUID, data: BulkSaveIn) -> dict:
+    """Save edited pages + review flags in one transaction; returns fresh review data."""
+    return editing_service.bulk_save(
+        mushaf_id=mushaf_id,
+        pages=[p.model_dump() for p in data.pages],
+        reviewed_pages=data.reviewed_pages,
+    )
 
 
 @router.get("/{mushaf_id}/pages/{page_number}", response=PageDataOut)

@@ -138,7 +138,7 @@ def renumber_from(page: Page) -> None:
     page). Stops at a page-number gap or once a page yields no change (the shift
     has converged, so everything downstream is already correct).
     """
-    sura, aya = _entry_state(page)
+    sura, aya = entry_state(page)
     current: Page | None = page
     while current is not None:
         changed, (sura, aya) = _renumber_page(current, sura, aya)
@@ -147,7 +147,7 @@ def renumber_from(page: Page) -> None:
         current = _consecutive(current, 1)
 
 
-def _entry_state(page: Page) -> tuple[int, int]:
+def entry_state(page: Page) -> tuple[int, int]:
     previous = _consecutive(page, -1)
     if previous is not None:
         return _exit_state(previous)

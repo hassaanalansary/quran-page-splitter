@@ -101,7 +101,7 @@ def process(
         export_cfg=export_cfg,
         aya_processor=aya_processor,
         results_dir=results_dir,
-        sura_header_locator_locator=sura_header_locator,
+        sura_header_locator=sura_header_locator,
     )
     output = pipeline.run(images_data)
 
