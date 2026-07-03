@@ -133,7 +133,9 @@ export function DetailsRail({
           <LegendDot color="var(--bg-muted)" label="To do" />
         </div>
       </div>
-      {openTemplate && <TemplateModal template={openTemplate} onClose={() => setOpenTemplate(undefined)} />}
+      {openTemplate && (
+        <TemplateModal template={openTemplate} onClose={() => setOpenTemplate(undefined)} />
+      )}
     </div>
   );
 }
@@ -211,7 +213,15 @@ function StatCell({
   );
 }
 
-function TemplateRow({ label, template, onClick }: { label: string; template: Template | undefined; onClick: () => void }) {
+function TemplateRow({
+  label,
+  template,
+  onClick,
+}: {
+  label: string;
+  template: Template | undefined;
+  onClick: () => void;
+}) {
   return (
     <div
       className="mb-[7px] flex items-center gap-2 last:mb-0 cursor-zoom-in hover:opacity-80"
@@ -291,7 +301,13 @@ function LegendDot({ color, label }: { color: string; label: string }) {
   );
 }
 
-function TemplateModal({ template, onClose }: { template: Template | undefined; onClose: () => void }) {
+function TemplateModal({
+  template,
+  onClose,
+}: {
+  template: Template | undefined;
+  onClose: () => void;
+}) {
   if (!template) return null;
   return (
     <div

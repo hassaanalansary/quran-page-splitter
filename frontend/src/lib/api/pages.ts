@@ -1,6 +1,14 @@
 // Per-page review, finalize, and line-PNG export.
 import { apiGet, apiJson } from "./http";
-import type { ExportResult, FinalizeLine, PageData, PageSave, PageSummary } from "./types";
+import type {
+  BulkSaveInput,
+  ExportResult,
+  FinalizeLine,
+  PageData,
+  PageSave,
+  PageSummary,
+  ReviewData,
+} from "./types";
 
 export function getPage(id: string, pageNumber: number, signal?: AbortSignal): Promise<PageData> {
   return apiGet<PageData>(`/api/mushafs/${id}/pages/${pageNumber}`, signal);
@@ -26,4 +34,12 @@ export function finalizePage(
 
 export function exportLines(id: string, pageNumber: number): Promise<ExportResult> {
   return apiJson<ExportResult>("POST", `/api/mushafs/${id}/pages/${pageNumber}/export-lines`, {});
+}
+
+export function getReviewData(id: string, signal?: AbortSignal): Promise<ReviewData> {
+  return apiGet<ReviewData>(`/api/mushafs/${id}/review-data`, signal);
+}
+
+export function bulkSavePages(id: string, input: BulkSaveInput): Promise<ReviewData> {
+  return apiJson<ReviewData>("POST", `/api/mushafs/${id}/pages/bulk`, input);
 }

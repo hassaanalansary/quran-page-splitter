@@ -92,8 +92,9 @@ npm run build      # → frontend/dist (what Django serves in prod)
 npx tsc --noEmit ; npx eslint .
 ```
 
-Green baseline (last verified 2026-07-02): **102 backend tests, ruff, mypy;
-frontend tsc + eslint (0 errors) + build.**
+Green baseline (last verified 2026-07-02): **116 backend tests, ruff;
+frontend tsc + eslint (0 errors) + build.** `mypy` has **3 pre-existing errors** confined to
+the user's in-progress `core` rename (§8) — everything outside `core/` is mypy-clean.
 
 ---
 
@@ -170,6 +171,8 @@ Base `/api` (Ninja). Interactive docs `/api/docs`. UUIDs are strings.
 | GET | `/api/mushafs/{id}/pages/{n}/image` | `image/png` — logical page `n`, rendered on demand |
 | GET | `/api/mushafs/{id}/pages` | **extended summaries**: `[{page_number, reviewed, source_pdf_page(resolved), lines, ayat, segments, has_header, suras:[{number,transliteration,name_arabic}]}]` |
 | GET / POST | `/api/mushafs/{id}/pages/{n}` | `PageDataOut` (empty if unprocessed) / save (aya numbers recomputed server-side; first save since processing emits `review_saved`) |
+| GET | `/api/mushafs/{id}/review-data` | whole-document review payload: `{start:{sura,aya}, pages:[{…PageDataOut, reviewed, run_start:{sura,aya}\|null}]}`. `start` = logical **page 1's** entry state; `run_start` = each page's processing-run start (the island seed; null for manual pages) |
+| POST | `/api/mushafs/{id}/pages/bulk` | `{pages:[{page_number,bbox,lines}], reviewed_pages:[int]}` → one transaction: rewrites pages (**creates** rows for manual pages; does NOT flip reviewed), flags `reviewed_pages`; **stores sura/aya VERBATIM — no `renumber_from` (the client owns numbering)**; range `review_saved` payload `{page_start,page_end,count}`; returns fresh `review-data` |
 | POST | `/api/mushafs/{id}/pages/{n}/finalize` | erase strokes + bbox overrides |
 | POST | `/api/mushafs/{id}/pages/{n}/export-lines` | writes transparent line PNGs |
 | POST | `/api/mushafs/{id}/process` | run the CV pipeline over a page range; synchronous, chunked (frontend loops 50 pages/call); may abort at a line-count mismatch |
@@ -230,10 +233,31 @@ it renders a bare `<Outlet/>` (the details page brings its own chrome).
   `Section`s (Bounds w/ `CropPreview`+`RectInputs`, Page range, Starting position with
   the sura/aya selects, Detection settings). Loops the pipeline in 50-page chunks;
   handles the abort case.
-- **Review** (`.review`, takes `?page=N`) / **Finalize** (`.finalize`):
-  **`ReviewCanvas`** (page image + selectable line/segment overlays + aya labels).
-  Review edits line types / separators / sura and POSTs back (aya numbers recomputed).
-  Finalize does erase + export.
+- **Review** (`.review`, takes `?page=N`): a **whole-mushaf editing session** built on
+  **`ReviewEditCanvas`** (interactive: drag/resize line boxes with 8 handles, double-click a
+  text line to add an aya separator, drag the red separator bars; ToolToggle/ZoomControl/
+  ChevronNav/PageJump/PageRail). Loads once via `GET /review-data` into a client store holding
+  **ALL logical pages 1..N** — blank/unprocessable pages are editable (manual processing; saving
+  a manual page creates its `Page` row). **The client OWNS numbering** (`lib/review/{model,
+  recompute}.ts`): sura/aya are derived per **island** — a page whose previous page has no lines
+  is a *gap* that stops propagation, and each island seeds from that page's `run_start` (page 1
+  uses `start`), so the first processed page after a gap begins at its processing start (not
+  renumbered from 1). Sura headers carry an **editable explicit sura anchor** (dropdown; anchoring
+  a header resets the running aya to 1); aya then counts up one per separator — there is no manual
+  aya field (add a header to reset, add separators to count). `bulk_save` stores the client's
+  numbers **verbatim** (no server renumber). Per-qiraa aya-count overflow warnings. Undo/redo
+  (Ctrl+Z/Y, 500 ms coalescing; **history+index are ONE state object** updated functionally, so
+  rapid drags can't corrupt the pointer), free page nav, dirty + reviewed-pending tracking,
+  `useBlocker` leave-guard. **Mark reviewed → next** is **client-only** (marks the page + its
+  ending sura's span reviewed in the store, instant nav — persisted later). **Save changes** is
+  **fire-and-forget** (POSTs dirty pages' data + pending review flags, patches the baseline on
+  success, never rebuilds the store so in-flight edits survive). The review-data query has its
+  **own key** (`["review-data", id]`, `refetchOnWindowFocus:false`) and the store builds **once
+  per mushaf** (`builtForRef`) so refetches/invalidations never wipe edits; the canvas image URL
+  is un-cache-busted (stable). Right `Aside`: line list (+ add Text/Sura/Besmella) and a
+  selected-line editor (type, **sura dropdown** for headers, bbox via `RectInputs`,
+  segments/separators merge/remove, delete).
+- **Finalize** (`.finalize`): **`ReviewCanvas`** (read-only overlay viewer) + erase + export.
 
 **Canvas component library** (`components/canvas/`, all reusable): `PageStage`
 (zoomable/pannable page + toolbar + `ChevronNav` + `PageJump` + `PageRail`),
@@ -277,8 +301,12 @@ and the ۝ glyph) — loaded in `index.html`, mapped in `styles.css` `@theme`.
   (real event table — events record from now on; no backfill).
 - **Coverage map** renders one 6px cell per logical page (500+ divs for a full
   mushaf) — fine locally; cap/virtualize if it ever feels heavy.
-- **Review/Finalize navigation**: the compact rail is there; the full filmstrip-style
-  nav (chevrons + floating jump) was never ported to `ReviewCanvas`.
+- **Core `sura_header`/`besmella` rename in progress (mypy RED, detection broken)**: a
+  concurrent refactor (`protected_bands`→`sura_header`, `basmala`→`besmella`) left
+  `SuraHeaderSpec` without `.kind` (read at `core/sura_header.py:90`) and `_DetectedHeader`
+  without `.is_sura`/`.is_besmella` (`core/line_detector.py:66-67`) — 3 mypy errors + a runtime
+  `'SuraHeaderSpec' object has no attribute 'kind'` during processing. All of `backend/core/*`
+  is uncommitted WIP; unrelated to the review page.
 - **Templates**: resizable center/settings panels still not implemented (shipped a
   wider preview instead); possible "Add ignore" enable/disable edge case vs a
   fetched-but-not-recropped parent.
@@ -289,25 +317,30 @@ and the ۝ glyph) — loaded in `index.html`, mapped in `styles.css` `@theme`.
 
 ---
 
-## 9. Uncommitted work — how to land it
+## 9. Commit state — what's landed, what's pending
 
-Working tree (branch `refactor/django-backend`) holds the details-page batch.
-Suggested split, after a green check (`manage.py test api`, ruff, mypy; `tsc`,
-`eslint`, `build`):
+Branch `refactor/django-backend`. The **details-page batch is committed**:
+`2cdf07d` (backend: details endpoints, ActivityEvent + migration 0009, coordinates
+export, extended page summaries, sura-header locator rename) and `7e09ac0`
+(frontend: details landing page + API layer + Amiri fonts + this handoff). No
+co-author lines (per user request).
 
-- **Backend** — "feat: mushaf details endpoints + activity feed": `models.py` +
-  migration `0009` (pdf_original_name, ActivityEvent), `services/{activity,mushaf,
-  processing,editing,export,qiraat}.py`, `views/{mushafs,processing,pages,qiraat}.py`,
-  tests (`test_activity` + extended `test_mushaf/processing/pages/export/views/qiraat`).
-- **Frontend** — "feat: mushaf details landing page (cockpit)": `routes/
-  mushafs.$mushafId.index.tsx` (redirect → page), `routes/mushafs.$mushafId.tsx`
-  (bare Outlet for index), `routes/index.tsx` (card link), `components/app/details/*`,
-  `lib/api/{types,mushafs,processing,queries}.ts`, `index.html` + `styles.css` (Amiri).
-- `PROJECT_HANDOFF.md` (this file) — commit alongside either.
+**Uncommitted in the working tree (the review-page rework + user's core WIP):**
+- **Review page** (verified green, ready to commit as its own batch):
+  - Backend: `services/editing.py` (`review_data`+`run_start`, `bulk_save` — no
+    renumber), `services/coordinates.py` (`entry_state` public wrapper), `views/pages.py`
+    (review-data/bulk schemas incl. `ReviewPageOut.run_start`), tests in `test_pages.py`.
+  - Frontend: `routes/mushafs.$mushafId.review.tsx` (rewritten),
+    `components/canvas/ReviewEditCanvas.tsx` (new), `lib/review/{model,recompute}.ts` (new),
+    `lib/api/{types,pages}.ts`, `components/app/details/helpers.ts` (activity range label).
+- **User's `core` rename WIP** (`backend/core/*` — do NOT bundle with the review commit;
+  it's incomplete and mypy-red, see §8).
+- `REVIEW_REWORK_WALKTHROUGH.md` (scratch guide) — delete or gitignore.
+- `PROJECT_HANDOFF.md` (this file).
 
-**End-to-end smoke test** (user-run): create a mushaf (PDF) → details page shows the
-zero state → Setup mark first/last → Templates capture+save both (+ ignore) →
-Process a small range → details Overview shows the run + activity; Pages tab rows;
-JSON download sane → Review a page (+ save) → Finalize/Export → stat trio + PNG
-card update. Confirm the workspace steps still show their own header, and the home
-card opens the details page.
+**Review-page smoke test** (user-run): open Review on a processed mushaf → drag a line
+box / drag a separator / double-click to add one → aya numbers update live and the box
+doesn't vanish; go to a blank front page → `+ Sura` (pick sura) → `+ Text` → double-click
+to add separators → ayas count from 1; **Mark reviewed → next** is instant (no request);
+**Save changes** persists; leave with unsaved edits → confirm dialog; reopen → saved
+numbers/reviewed state are there.

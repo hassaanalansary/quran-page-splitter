@@ -115,7 +115,13 @@ export function activityMeta(event: ActivityEvent): { dot: string; text: string 
       return { dot: "var(--error)", text: `Run ${num} failed` };
     }
     case "review_saved":
-      return { dot: "var(--orange)", text: `Review saved — page ${p.page_number}` };
+      return {
+        dot: "var(--orange)",
+        text:
+          p.page_start != null
+            ? `Review saved — pages ${p.page_start}–${p.page_end} (${p.count})`
+            : `Review saved — page ${p.page_number}`,
+      };
     case "lines_exported":
       return {
         dot: "var(--navy-light)",

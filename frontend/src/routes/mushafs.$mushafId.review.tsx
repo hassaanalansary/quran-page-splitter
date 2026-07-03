@@ -1,31 +1,50 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute, Link, useNavigate, useParams } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { createFileRoute, Link, useBlocker, useNavigate, useParams } from "@tanstack/react-router";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
-import { Aside, Hint } from "@/components/app/Panel";
-import { ReviewCanvas } from "@/components/canvas/ReviewCanvas";
+import { Aside, Field, Hint } from "@/components/app/Panel";
+import { ReviewEditCanvas } from "@/components/canvas/ReviewEditCanvas";
+import { RectInputs } from "@/components/canvas/RectInputs";
 import { Button } from "@/components/ui/button";
 import {
   ApiError,
+  bulkSavePages,
+  getReviewData,
   pageImageUrl,
   queryKeys,
-  savePage,
   useMushaf,
-  usePage,
-  useProcessedPages,
   useSuras,
-  type Line,
-  type LineType,
+  type BulkSaveInput,
+  type Rect,
   type Sura,
 } from "@/lib/api";
+import {
+  fromApi,
+  genId,
+  type EditLine,
+  type EditLineType,
+  type EditPage,
+  type ReviewStore,
+} from "@/lib/review/model";
+import {
+  cutIndexAt,
+  pageSignature,
+  recompute,
+  suraSpanPages,
+  toApiPage,
+  type DerivedLine,
+} from "@/lib/review/recompute";
 
 export const Route = createFileRoute("/mushafs/$mushafId/review")({
   validateSearch: (s: Record<string, unknown>) => ({ page: Math.max(1, Number(s.page) || 1) }),
   component: ReviewPage,
 });
 
-const LINE_TYPES: { value: LineType; label: string }[] = [
+const HISTORY_LIMIT = 100;
+const COALESCE_MS = 500;
+
+const LINE_TYPES: { value: EditLineType; label: string }[] = [
   { value: "text", label: "Text" },
   { value: "sura_header", label: "Sura header" },
   { value: "besmella", label: "Besmella" },
@@ -39,119 +58,444 @@ function ReviewPage() {
 
   const { data: mushaf } = useMushaf(mushafId);
   const { data: suras } = useSuras(mushaf?.qiraa);
-  const { data: pages } = useProcessedPages(mushafId);
-  const { data: pageData, isPending } = usePage(mushafId, page);
-
-  const [draft, setDraft] = useState<Line[] | null>(null);
-  const [selected, setSelected] = useState<number | null>(null);
-
-  useEffect(() => {
-    setDraft(pageData ? pageData.lines.map((l) => structuredClone(l)) : null);
-    setSelected(null);
-  }, [pageData]);
-
-  const save = useMutation({
-    mutationFn: () => savePage(mushafId, page, { bbox: pageData!.bbox!, lines: draft! }),
-    onSuccess: (result) => {
-      queryClient.setQueryData(queryKeys.page(mushafId, page), result);
-      queryClient.invalidateQueries({ queryKey: queryKeys.processedPages(mushafId) });
-      toast.success(`Saved page ${page}. Aya numbers recomputed.`);
-    },
-    onError: (e) => toast.error(e instanceof ApiError ? e.message : "Failed to save page."),
+  // Own key (NOT under the mushaf prefix) so mushaf invalidations don't refetch
+  // it, and no window-focus refetch — the store is authoritative for the session.
+  const { data: reviewData } = useQuery({
+    queryKey: ["review-data", mushafId],
+    queryFn: ({ signal }) => getReviewData(mushafId, signal),
+    refetchOnWindowFocus: false,
   });
 
-  if (!mushaf) return null;
-  const logicalCount = mushaf.logical_page_count;
-  const processed = !!pageData && pageData.lines.length > 0 && pageData.bbox != null;
+  // ── editing store + undo/redo history ──────────────────────────────────────
+  // history + index as ONE state so updates are atomic (see applyStore).
+  const [hist, setHist] = useState<{ stack: ReviewStore[]; index: number }>({
+    stack: [],
+    index: -1,
+  });
+  const store = hist.stack[hist.index] ?? null;
+  const [selectedUid, setSelectedUid] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);
+  // Bumped when the saved baseline changes without the store changing (post-save).
+  const [baselineVersion, setBaselineVersion] = useState(0);
+
+  const coalesceRef = useRef<{ key: string; at: number } | null>(null);
+  const baselineRef = useRef<Map<number, string>>(new Map());
+  const baselineReviewedRef = useRef<Set<number>>(new Set());
+  const builtForRef = useRef<string | null>(null);
+
+  // Build the store for ALL logical pages exactly ONCE per mushaf. Later
+  // refetches (focus, invalidations) must NOT rebuild — that would wipe local
+  // edits. A different mushaf id (or a remount) triggers a fresh build.
+  useEffect(() => {
+    if (!reviewData || !mushaf) return;
+    if (builtForRef.current === mushafId) return;
+    builtForRef.current = mushafId;
+    const next = fromApi(reviewData, mushaf.logical_page_count);
+    baselineRef.current = new Map(next.pages.map((p) => [p.page_number, pageSignature(p)]));
+    baselineReviewedRef.current = new Set(
+      next.pages.filter((p) => p.reviewed).map((p) => p.page_number),
+    );
+    coalesceRef.current = null;
+    setHist({ stack: [next], index: 0 });
+    setSelectedUid(null);
+    setBaselineVersion((v) => v + 1);
+  }, [reviewData, mushaf, mushafId]);
+
+  // Push a store snapshot via a FUNCTIONAL update over the combined {stack,index}.
+  // Rapid drag edits fire many events before React re-renders; a closure-based
+  // update would read a stale index and corrupt the pointer (blanking the page
+  // → "Loading…"). The functional updater always sees the latest state.
+  const applyStore = useCallback((next: ReviewStore, key?: string) => {
+    const now = Date.now();
+    const prev = coalesceRef.current;
+    const replace = !!key && !!prev && prev.key === key && now - prev.at < COALESCE_MS;
+    coalesceRef.current = key ? { key, at: now } : null;
+    setHist((h) => {
+      if (replace && h.index >= 0) {
+        const stack = h.stack.slice();
+        stack[h.index] = next;
+        return { stack, index: h.index };
+      }
+      const appended = [...h.stack.slice(0, h.index + 1), next];
+      const stack = appended.length > HISTORY_LIMIT ? appended.slice(-HISTORY_LIMIT) : appended;
+      return { stack, index: stack.length - 1 };
+    });
+  }, []);
+
+  const canUndo = hist.index > 0;
+  const canRedo = hist.index >= 0 && hist.index < hist.stack.length - 1;
+  const undo = useCallback(() => {
+    coalesceRef.current = null;
+    setHist((h) => ({ ...h, index: Math.max(0, h.index - 1) }));
+  }, []);
+  const redo = useCallback(() => {
+    coalesceRef.current = null;
+    setHist((h) => ({ ...h, index: Math.min(h.stack.length - 1, h.index + 1) }));
+  }, []);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      const tag = (e.target as HTMLElement | null)?.tagName ?? "";
+      if (/^(INPUT|TEXTAREA|SELECT)$/.test(tag)) return;
+      if (e.key === "z" && !e.shiftKey) {
+        e.preventDefault();
+        if (canUndo) undo();
+      } else if ((e.key === "z" && e.shiftKey) || e.key === "y") {
+        e.preventDefault();
+        if (canRedo) redo();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [undo, redo, canUndo, canRedo]);
+
+  // ── derived numbering (mirrors the server) ─────────────────────────────────
+  const derived = useMemo(() => (store ? recompute(store, suras) : null), [store, suras]);
+  const currentEdit = store?.pages.find((p) => p.page_number === page) ?? null;
+  const currentDerived = derived?.pages.find((p) => p.page_number === page) ?? null;
+  const selectedEdit = currentEdit?.lines.find((l) => l.uid === selectedUid) ?? null;
+  const selectedDerived = currentDerived?.lines.find((l) => l.uid === selectedUid) ?? null;
+
+  // Content-dirty pages (structure changed vs the last-saved baseline).
+  const dirtyPages = useMemo(() => {
+    if (!store) return [] as number[];
+    return store.pages
+      .filter((p) => pageSignature(p) !== baselineRef.current.get(p.page_number))
+      .map((p) => p.page_number);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store, baselineVersion]);
+
+  // Pages marked reviewed in the client but not yet persisted.
+  const reviewedPending = useMemo(() => {
+    if (!store) return [] as number[];
+    return store.pages
+      .filter((p) => p.reviewed && !baselineReviewedRef.current.has(p.page_number))
+      .map((p) => p.page_number);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store, baselineVersion]);
+
+  const unsavedCount = dirtyPages.length + reviewedPending.length;
+
+  // Rail indicators derive from the live store (all pages are present).
+  const railProcessed = useMemo(
+    () => new Set((store?.pages ?? []).filter((p) => p.lines.length > 0).map((p) => p.page_number)),
+    [store],
+  );
+  const railReviewed = useMemo(
+    () => new Set((store?.pages ?? []).filter((p) => p.reviewed).map((p) => p.page_number)),
+    [store],
+  );
+
+  const logicalCount = mushaf?.logical_page_count ?? 1;
 
   function goto(n: number) {
     navigate({ search: { page: Math.max(1, Math.min(logicalCount, n)) } });
   }
 
-  function updateLine(lineNumber: number, patch: Partial<Line>) {
-    setDraft((d) =>
-      d ? d.map((l) => (l.line_number === lineNumber ? { ...l, ...patch } : l)) : d,
-    );
+  // ── leave guard (free within the route; confirm on real navigation) ─────────
+  useBlocker({
+    enableBeforeUnload: () => unsavedCount > 0,
+    shouldBlockFn: ({ current, next }) => {
+      if (current.pathname === next.pathname) return false;
+      if (unsavedCount === 0) return false;
+      return !window.confirm("You have unsaved review edits. Leave without saving?");
+    },
+  });
+
+  // ── mutation helpers (keyed by line uid; every edit lands in history) ───────
+  const mutatePage = useCallback(
+    (fn: (p: EditPage) => EditPage, key?: string) => {
+      if (!store) return;
+      applyStore(
+        { ...store, pages: store.pages.map((p) => (p.page_number === page ? fn(p) : p)) },
+        key,
+      );
+    },
+    [store, page, applyStore],
+  );
+
+  const updateLine = useCallback(
+    (uid: string, patch: Partial<EditLine>, key?: string) => {
+      mutatePage(
+        (p) => ({ ...p, lines: p.lines.map((l) => (l.uid === uid ? { ...l, ...patch } : l)) }),
+        key,
+      );
+    },
+    [mutatePage],
+  );
+
+  const updateLineBbox = (uid: string, bbox: Rect) => updateLine(uid, { bbox }, `bbox:${uid}`);
+  const addCut = (uid: string, x: number) => {
+    const line = currentEdit?.lines.find((l) => l.uid === uid);
+    if (line) updateLine(uid, { cuts: [...line.cuts, Math.round(x)] });
+  };
+  const moveCut = (uid: string, i: number, x: number) => {
+    const line = currentEdit?.lines.find((l) => l.uid === uid);
+    if (!line) return;
+    const cuts = line.cuts.slice();
+    cuts[i] = Math.round(x);
+    updateLine(uid, { cuts }, `sep:${uid}:${i}`);
+  };
+  const removeCut = (uid: string, i: number) => {
+    const line = currentEdit?.lines.find((l) => l.uid === uid);
+    if (line) updateLine(uid, { cuts: line.cuts.filter((_, idx) => idx !== i) });
+  };
+  const removeSegment = (uid: string, segIndex: number) => {
+    const el = currentEdit?.lines.find((l) => l.uid === uid);
+    const dl = currentDerived?.lines.find((l) => l.uid === uid);
+    if (!el || !dl) return;
+    if (dl.segments.length <= 1) {
+      updateLine(uid, { cuts: [] });
+      return;
+    }
+    const seg = dl.segments[segIndex];
+    // Merge: drop the cut on this segment's separator edge (its left, or — for
+    // the leftmost/open segment — its right).
+    const boundaryX = seg.has_separator ? seg.bbox.x : seg.bbox.x + seg.bbox.w;
+    const ci = cutIndexAt(el.bbox, el.cuts, boundaryX);
+    if (ci >= 0) updateLine(uid, { cuts: el.cuts.filter((_, idx) => idx !== ci) });
+  };
+
+  const setLineType = (uid: string, type: EditLineType) =>
+    updateLine(uid, {
+      type,
+      cuts: type === "text" ? (currentEdit?.lines.find((l) => l.uid === uid)?.cuts ?? []) : [],
+      sura:
+        type === "sura_header" ? currentEdit?.lines.find((l) => l.uid === uid)?.sura : undefined,
+    });
+
+  // Anchor the running sura at a header (propagates forward until the next anchor).
+  const setSura = (uid: string, sura: number) => updateLine(uid, { sura });
+
+  const deleteLine = (uid: string) => {
+    mutatePage((p) => ({ ...p, lines: p.lines.filter((l) => l.uid !== uid) }));
+    if (selectedUid === uid) setSelectedUid(null);
+  };
+
+  const addLineAfter = (uid: string | null, type: EditLineType) => {
+    const newUid = genId("line");
+    // A sensible default box for a fresh line (esp. on a blank/manual page).
+    const fresh: Rect = natural
+      ? {
+          x: Math.round(natural.w * 0.08),
+          y: Math.round(natural.h * 0.08),
+          w: Math.round(natural.w * 0.84),
+          h: Math.max(40, Math.round(natural.h * 0.05)),
+        }
+      : { x: 20, y: 20, w: 600, h: 60 };
+    mutatePage((p) => {
+      const idx = uid ? p.lines.findIndex((l) => l.uid === uid) : p.lines.length - 1;
+      const ref = idx >= 0 ? p.lines[idx] : null;
+      const bbox: Rect = ref
+        ? { x: ref.bbox.x, y: ref.bbox.y + ref.bbox.h + 10, w: ref.bbox.w, h: ref.bbox.h }
+        : fresh;
+      const lines = p.lines.slice();
+      lines.splice(idx + 1, 0, { uid: newUid, type, bbox, cuts: [] });
+      return { ...p, lines };
+    });
+    setSelectedUid(newUid);
+  };
+
+  // ── persistence (fire-and-forget: never blocks navigation) ──────────────────
+  function persist(input: BulkSaveInput): Promise<boolean> {
+    return bulkSavePages(mushafId, input)
+      .then(() => {
+        queryClient.invalidateQueries({ queryKey: queryKeys.processedPages(mushafId) });
+        queryClient.invalidateQueries({ queryKey: queryKeys.stats(mushafId) });
+        queryClient.invalidateQueries({ queryKey: queryKeys.activity(mushafId) });
+        queryClient.invalidateQueries({ queryKey: queryKeys.mushaf(mushafId) });
+        return true;
+      })
+      .catch((e) => {
+        toast.error(e instanceof ApiError ? e.message : "Save failed.");
+        return false;
+      });
   }
 
-  function toggleSeparator(lineNumber: number, order: number) {
-    setDraft((d) =>
-      d
-        ? d.map((l) =>
-            l.line_number === lineNumber
-              ? {
-                  ...l,
-                  segments: l.segments.map((s) =>
-                    s.segment_order === order ? { ...s, has_separator: !s.has_separator } : s,
-                  ),
-                }
-              : l,
-          )
-        : d,
-    );
+  // Mark reviewed is CLIENT-ONLY (persisted later by Save) → instant navigation.
+  function markReviewedAndNext() {
+    if (!store || !derived) return;
+    const span = suraSpanPages(derived, page);
+    const targets = new Set([page, ...span]);
+    applyStore({
+      ...store,
+      pages: store.pages.map((p) => (targets.has(p.page_number) ? { ...p, reviewed: true } : p)),
+    });
+    if (span.length) toast.success(`Marked pages ${Math.min(...targets)}–${page} reviewed.`);
+    goto(page + 1);
   }
+
+  function saveChanges() {
+    if (!store || !derived || saving) return;
+    const contentDirty = dirtyPages;
+    const reviewedToSave = reviewedPending;
+    if (!contentDirty.length && !reviewedToSave.length) {
+      toast.info("Nothing to save.");
+      return;
+    }
+    // Capture what we send so edits made after clicking Save stay dirty.
+    const sent = new Map(
+      contentDirty.map((n) => [n, pageSignature(store.pages.find((p) => p.page_number === n)!)]),
+    );
+    const pages = contentDirty.map((n) => {
+      const ep = store.pages.find((p) => p.page_number === n)!;
+      const dp = derived.pages.find((p) => p.page_number === n)!;
+      return toApiPage(ep, dp);
+    });
+    setSaving(true);
+    persist({ pages, reviewed_pages: reviewedToSave }).then((ok) => {
+      setSaving(false);
+      if (!ok) return;
+      sent.forEach((sig, n) => baselineRef.current.set(n, sig));
+      reviewedToSave.forEach((n) => baselineReviewedRef.current.add(n));
+      setBaselineVersion((v) => v + 1);
+      toast.success(
+        `Saved ${pages.length} page(s)${reviewedToSave.length ? ` · ${reviewedToSave.length} reviewed` : ""}.`,
+      );
+    });
+  }
+
+  function nextWarningPage() {
+    if (!derived) return;
+    const ordered = derived.pages.filter((p) => p.warnings > 0).map((p) => p.page_number);
+    const target = ordered.find((n) => n > page) ?? ordered[0];
+    if (target != null) goto(target);
+  }
+
+  if (!mushaf) return null;
+
+  const statusSlot = (
+    <div className="flex items-center gap-2 text-[11.5px]">
+      {unsavedCount > 0 && <span className="font-medium text-orange">{unsavedCount} unsaved</span>}
+      {derived && derived.totalWarnings > 0 && (
+        <button
+          type="button"
+          onClick={nextWarningPage}
+          title="Jump to the next page with a numbering warning"
+          className="cursor-pointer rounded-sm border border-[color:var(--warning-border)] bg-warning-bg px-1.5 py-0.5 font-medium text-[#8a4b0d]"
+        >
+          ⚠ {derived.totalWarnings}
+        </button>
+      )}
+      <div className="flex h-[26px] overflow-hidden rounded-sm border-[1.5px] border-border-strong">
+        <button
+          type="button"
+          onClick={undo}
+          disabled={!canUndo}
+          title="Undo (Ctrl+Z)"
+          className="cursor-pointer border-r border-border bg-white px-2 text-text-secondary hover:bg-bg-surface disabled:opacity-40"
+        >
+          ↶
+        </button>
+        <button
+          type="button"
+          onClick={redo}
+          disabled={!canRedo}
+          title="Redo (Ctrl+Shift+Z)"
+          className="cursor-pointer bg-white px-2 text-text-secondary hover:bg-bg-surface disabled:opacity-40"
+        >
+          ↷
+        </button>
+      </div>
+    </div>
+  );
 
   return (
     <div className="flex flex-1 overflow-hidden">
-      <ReviewCanvas
-        imageUrl={pageImageUrl(mushafId, page, mushaf.updated_at)}
-        lines={draft ?? []}
-        bbox={pageData?.bbox ?? null}
-        selected={selected}
-        onSelect={setSelected}
+      <ReviewEditCanvas
+        imageUrl={pageImageUrl(mushafId, page)}
+        lines={currentDerived?.lines ?? []}
+        selectedUid={selectedUid}
+        onSelectLine={setSelectedUid}
+        onUpdateLineBbox={updateLineBbox}
+        onAddCut={addCut}
+        onMoveCut={moveCut}
         page={page}
         pageCount={logicalCount}
         onPageChange={goto}
-        processed={pages?.processed}
-        reviewed={pages?.reviewed}
+        processed={railProcessed}
+        reviewed={railReviewed}
+        onNatural={setNatural}
+        statusSlot={statusSlot}
       />
 
       <Aside
         footer={
           <div className="flex flex-col gap-2">
-            <Button onClick={() => save.mutate()} disabled={!processed || !draft || save.isPending}>
-              {save.isPending ? "Saving…" : "Save page"}
+            <Button onClick={markReviewedAndNext} disabled={!store}>
+              Mark reviewed → next
             </Button>
-            <Button asChild variant="outline">
-              <Link to="/mushafs/$mushafId/finalize" params={{ mushafId }} search={{ page }}>
-                Continue to Finalize →
-              </Link>
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={saveChanges}
+                disabled={unsavedCount === 0 || saving}
+              >
+                {saving ? "Saving…" : "Save changes"}
+              </Button>
+              <Button asChild variant="outline" className="flex-1">
+                <Link to="/mushafs/$mushafId/finalize" params={{ mushafId }} search={{ page }}>
+                  Finalize →
+                </Link>
+              </Button>
+            </div>
           </div>
         }
       >
-        {isPending ? (
-          <Hint>Loading page…</Hint>
-        ) : !processed ? (
-          <Hint tone="warning">
-            Page {page} has not been processed yet. Process this page range first, or use the page
-            arrows to find a processed page.
-          </Hint>
+        {!store ? (
+          <Hint>Loading review data…</Hint>
         ) : (
           <>
             <Hint>
-              Fix line types, sura assignments, and aya separators. Aya numbers are recomputed on
-              the server when you save.
+              Drag a line box to move it, its handles to resize. Double-click a text line to add an
+              aya separator; drag the red bars to reposition. Blank pages are editable — add lines
+              to process them manually. Numbering is derived live across the whole mushaf.
             </Hint>
-            <div className="flex flex-col gap-2">
-              {(draft ?? []).map((line) => (
-                <LineEditor
-                  key={line.line_number}
-                  line={line}
-                  suras={suras ?? []}
-                  selected={selected === line.line_number}
-                  onSelect={() => setSelected(line.line_number)}
-                  onChangeType={(type) =>
-                    updateLine(line.line_number, {
-                      type,
-                      segments: type === "text" ? line.segments : [],
-                    })
-                  }
-                  onChangeSura={(sura_number) => updateLine(line.line_number, { sura_number })}
-                  onToggleSeparator={(order) => toggleSeparator(line.line_number, order)}
-                />
-              ))}
-            </div>
+
+            {currentDerived && (
+              <div className="rounded-md border border-border bg-white px-2.5 py-1.5 text-[11.5px] text-text-secondary">
+                Enters sura {currentDerived.entry.sura}:{currentDerived.entry.aya} · exits sura{" "}
+                {currentDerived.exit.sura}:{Math.max(1, currentDerived.exit.aya - 1)}
+                {currentEdit?.reviewed && (
+                  <span className="ml-1 font-semibold text-success">· reviewed</span>
+                )}
+                {currentDerived.warnings > 0 && (
+                  <span className="ml-1 font-semibold text-[#8a4b0d]">
+                    · ⚠ {currentDerived.warnings}
+                  </span>
+                )}
+              </div>
+            )}
+
+            <LineList
+              lines={currentDerived?.lines ?? []}
+              selectedUid={selectedUid}
+              onSelect={setSelectedUid}
+              onAdd={(type) => addLineAfter(selectedUid, type)}
+            />
+
+            {selectedEdit && selectedDerived ? (
+              <SelectedLineEditor
+                edit={selectedEdit}
+                derived={selectedDerived}
+                suras={suras ?? []}
+                onSetType={(t) => setLineType(selectedEdit.uid, t)}
+                onSetSura={(n) => setSura(selectedEdit.uid, n)}
+                onUpdateBbox={(b) => updateLineBbox(selectedEdit.uid, b)}
+                onDelete={() => deleteLine(selectedEdit.uid)}
+                onRemoveCut={(i) => removeCut(selectedEdit.uid, i)}
+                onRemoveSegment={(i) => removeSegment(selectedEdit.uid, i)}
+              />
+            ) : (
+              <p className="py-4 text-center text-[12px] text-text-muted">
+                {currentEdit && currentEdit.lines.length === 0
+                  ? "Blank page — add lines with the buttons above to process it manually."
+                  : "Select a line on the page to edit it."}
+              </p>
+            )}
           </>
         )}
       </Aside>
@@ -159,42 +503,115 @@ function ReviewPage() {
   );
 }
 
-function LineEditor({
-  line,
-  suras,
-  selected,
+// ── sidebar sub-components ────────────────────────────────────────────────────
+
+function LineList({
+  lines,
+  selectedUid,
   onSelect,
-  onChangeType,
-  onChangeSura,
-  onToggleSeparator,
+  onAdd,
 }: {
-  line: Line;
-  suras: Sura[];
-  selected: boolean;
-  onSelect: () => void;
-  onChangeType: (t: LineType) => void;
-  onChangeSura: (n: number) => void;
-  onToggleSeparator: (order: number) => void;
+  lines: DerivedLine[];
+  selectedUid: string | null;
+  onSelect: (uid: string) => void;
+  onAdd: (type: EditLineType) => void;
 }) {
   return (
-    <div
-      onClick={onSelect}
-      className={[
-        "cursor-pointer rounded-md border bg-white p-2.5 transition-colors",
-        selected
-          ? "border-orange shadow-[0_0_0_3px_var(--orange-glow)]"
-          : "border-border hover:border-border-strong",
-      ].join(" ")}
-    >
-      <div className="flex items-center gap-2">
-        <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded bg-bg-muted text-[10px] font-semibold text-text-secondary">
-          {line.line_number}
+    <div className="rounded-md border border-border bg-white">
+      <div className="flex items-center justify-between border-b border-border px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-text-muted">
+        <span>Lines</span>
+        <span className="font-normal normal-case">{lines.length} total</span>
+      </div>
+      <ul className="max-h-[240px] overflow-y-auto">
+        {lines.map((l) => {
+          const active = l.uid === selectedUid;
+          const summary =
+            l.type === "text"
+              ? `${l.segments.length} seg${l.segments.length === 1 ? "" : "s"}${
+                  l.segments.length
+                    ? ` · aya ${l.segments[0].aya}–${l.segments[l.segments.length - 1].aya}`
+                    : ""
+                }`
+              : `sura ${l.sura}`;
+          const hasWarn = l.boundaryWarning || l.segments.some((s) => s.overflow);
+          return (
+            <li key={l.uid}>
+              <button
+                type="button"
+                onClick={() => onSelect(l.uid)}
+                className={[
+                  "flex w-full items-center gap-2 border-b border-border px-3 py-[7px] text-left text-[12px]",
+                  active ? "bg-orange-tint" : "bg-white hover:bg-bg-surface",
+                ].join(" ")}
+              >
+                <span className="w-5 font-mono text-text-muted">{l.line_number}</span>
+                <TypeChip type={l.type} />
+                <span className="ml-auto truncate text-[11.5px] text-text-secondary">
+                  {summary}
+                </span>
+                {hasWarn && <span className="h-1.5 w-1.5 flex-none rounded-full bg-warning" />}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+      <div className="flex gap-1 border-t border-border bg-bg-surface px-3 py-2">
+        {LINE_TYPES.map((t) => (
+          <button
+            key={t.value}
+            type="button"
+            onClick={() => onAdd(t.value)}
+            className="flex-1 cursor-pointer rounded-sm border-[1.5px] border-border-strong bg-white px-2 py-[5px] text-[11px] font-medium text-text-secondary hover:bg-bg-surface"
+          >
+            + {t.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SelectedLineEditor({
+  edit,
+  derived,
+  suras,
+  onSetType,
+  onSetSura,
+  onUpdateBbox,
+  onDelete,
+  onRemoveCut,
+  onRemoveSegment,
+}: {
+  edit: EditLine;
+  derived: DerivedLine;
+  suras: Sura[];
+  onSetType: (t: EditLineType) => void;
+  onSetSura: (n: number) => void;
+  onUpdateBbox: (b: Rect) => void;
+  onDelete: () => void;
+  onRemoveCut: (i: number) => void;
+  onRemoveSegment: (i: number) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-3 rounded-md border border-border bg-white p-3">
+      <div className="flex items-center justify-between">
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-text-muted">
+          Line {derived.line_number}
         </span>
+        <button
+          type="button"
+          onClick={onDelete}
+          className="cursor-pointer rounded-sm border border-error-border bg-error-bg px-2 py-[3px] text-[11px] font-medium text-error hover:brightness-95"
+        >
+          Delete line
+        </button>
+      </div>
+
+      <Field label="Type">
         <select
-          value={line.type}
-          onClick={(e) => e.stopPropagation()}
-          onChange={(e) => onChangeType(e.target.value as LineType)}
-          className="h-7 flex-1 cursor-pointer rounded border border-border-strong bg-white px-1.5 text-[12px] outline-none focus:border-orange"
+          value={edit.type}
+          onChange={(e) => onSetType(e.target.value as EditLineType)}
+          className="h-8 w-full cursor-pointer rounded-sm border-[1.5px] border-border-strong bg-white px-2 text-[12.5px]"
         >
           {LINE_TYPES.map((t) => (
             <option key={t.value} value={t.value}>
@@ -202,48 +619,147 @@ function LineEditor({
             </option>
           ))}
         </select>
-      </div>
+      </Field>
 
-      {(line.type === "sura_header" || line.type === "besmella") && (
-        <select
-          value={line.sura_number ?? ""}
-          onClick={(e) => e.stopPropagation()}
-          onChange={(e) => onChangeSura(Number(e.target.value))}
-          className="mt-2 h-7 w-full cursor-pointer rounded border border-border-strong bg-white px-1.5 text-[12px] outline-none focus:border-orange"
-        >
-          <option value="">— sura —</option>
-          {suras.map((s) => (
-            <option key={s.number} value={s.number}>
-              {s.number}. {s.transliteration}
-            </option>
-          ))}
-        </select>
+      {edit.type === "sura_header" && (
+        <Field label="Sura (anchors numbering from here)">
+          <select
+            value={edit.sura ?? derived.sura}
+            onChange={(e) => onSetSura(Number(e.target.value))}
+            className="h-8 w-full cursor-pointer rounded-sm border-[1.5px] border-border-strong bg-white px-2 text-[12.5px]"
+          >
+            {suras.map((s) => (
+              <option key={s.number} value={s.number}>
+                {s.number}. {s.transliteration}
+              </option>
+            ))}
+          </select>
+        </Field>
       )}
 
-      {line.type === "text" && line.segments.length > 0 && (
-        <div className="mt-2 flex flex-wrap gap-1.5">
-          {line.segments.map((seg) => (
-            <button
-              key={seg.segment_order}
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onToggleSeparator(seg.segment_order);
-              }}
-              title={`Segment ${seg.segment_order} · aya ${seg.aya_number ?? "?"}${seg.has_separator ? " · ends aya" : ""}`}
-              className={[
-                "flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium transition-colors",
-                seg.has_separator
-                  ? "bg-orange text-white"
-                  : "bg-bg-muted text-text-secondary hover:bg-bg-surface",
-              ].join(" ")}
-            >
-              {seg.aya_number ?? "?"}
-              {seg.has_separator && <span aria-hidden>۝</span>}
-            </button>
-          ))}
+      {edit.type === "besmella" && (
+        <div className="rounded-sm border border-border bg-bg-surface px-2.5 py-1.5 text-[11.5px] text-text-secondary">
+          Besmella of sura <b className="text-text-primary">{derived.sura}</b> (derived from the
+          preceding header).
         </div>
       )}
+
+      <div>
+        <div className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-text-muted">
+          Bounding box (px)
+        </div>
+        <RectInputs rect={edit.bbox} onChange={onUpdateBbox} />
+      </div>
+
+      {edit.type === "text" && (
+        <>
+          <ListCard
+            title="Segments (right → left)"
+            count={derived.segments.length}
+            empty="Add separators to split the line."
+          >
+            {derived.segments.map((s, i) => (
+              <li key={`${i}_${s.bbox.x}`} className="flex items-center gap-2 text-[11.5px]">
+                <span className="w-4 text-text-muted">{i + 1}.</span>
+                <span className={`font-medium ${s.overflow ? "text-error" : "text-text-primary"}`}>
+                  aya {s.aya}
+                  {!s.has_separator ? " (cont.)" : ""}
+                  {s.overflow ? " ⚠" : ""}
+                </span>
+                <span className="ml-auto font-mono text-text-muted">
+                  {Math.round(s.bbox.x)}·{Math.round(s.bbox.w)}
+                </span>
+                <IconX
+                  title="Remove segment (merge into neighbour)"
+                  onClick={() => onRemoveSegment(i)}
+                />
+              </li>
+            ))}
+          </ListCard>
+
+          <ListCard
+            title="Separators"
+            count={edit.cuts.length}
+            empty="Double-click inside the line to add one."
+          >
+            {edit.cuts.map((cx, i) => (
+              <li key={i} className="flex items-center gap-2 text-[11.5px]">
+                <span className="w-4 text-text-muted">{i + 1}.</span>
+                <span className="font-mono">x = {Math.round(cx)} px</span>
+                <IconX
+                  title="Remove separator"
+                  onClick={() => onRemoveCut(i)}
+                  className="ml-auto"
+                />
+              </li>
+            ))}
+          </ListCard>
+        </>
+      )}
     </div>
+  );
+}
+
+function ListCard({
+  title,
+  count,
+  empty,
+  children,
+}: {
+  title: string;
+  count: number;
+  empty: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-md border border-border bg-white p-2">
+      <div className="mb-1 flex items-center justify-between text-[11px] font-semibold uppercase tracking-wider text-text-muted">
+        <span>{title}</span>
+        <span className="font-normal normal-case">{count}</span>
+      </div>
+      {count === 0 ? (
+        <p className="py-1 text-[11.5px] text-text-muted">{empty}</p>
+      ) : (
+        <ul className="flex flex-col gap-1">{children}</ul>
+      )}
+    </div>
+  );
+}
+
+function IconX({
+  title,
+  onClick,
+  className,
+}: {
+  title: string;
+  onClick: () => void;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      title={title}
+      onClick={onClick}
+      className={`cursor-pointer rounded-sm border border-border-strong bg-white px-[5px] text-[10.5px] text-text-secondary hover:bg-bg-surface ${className ?? ""}`}
+    >
+      ✕
+    </button>
+  );
+}
+
+function TypeChip({ type }: { type: EditLineType }) {
+  const colors: Record<EditLineType, string> = {
+    sura_header: "var(--navy)",
+    besmella: "var(--success)",
+    text: "var(--orange)",
+  };
+  const label = type === "sura_header" ? "sura" : type;
+  return (
+    <span
+      className="rounded-pill px-[6px] py-[1px] text-[9.5px] font-semibold uppercase tracking-wider text-white"
+      style={{ background: colors[type] }}
+    >
+      {label}
+    </span>
   );
 }

@@ -246,3 +246,21 @@ export const DEFAULT_PROCESS_SETTINGS: ProcessSettings = {
   alternate_horizontal_margin: false,
   prefer_acceleration: true,
 };
+
+/** One page in the review payload — coordinate data, review flag, and the
+ * (sura, aya) its processing run began at (null for manual pages). */
+export type ReviewPage = PageData & {
+  reviewed: boolean;
+  run_start: { sura: number; aya: number } | null;
+};
+
+/** Whole-document review payload (GET /api/mushafs/{id}/review-data). */
+export type ReviewData = {
+  start: { sura: number; aya: number };
+  pages: ReviewPage[];
+};
+
+export type BulkSaveInput = {
+  pages: { page_number: number; bbox: Rect; lines: Line[] }[];
+  reviewed_pages: number[];
+};
