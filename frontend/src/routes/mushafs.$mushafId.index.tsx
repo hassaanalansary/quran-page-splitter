@@ -1,7 +1,7 @@
 import { createFileRoute, useParams } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 
-import { DetailsChrome } from "@/components/app/details/DetailsChrome";
+import { MushafHeader } from "@/components/app/MushafHeader";
 import { DetailsRail } from "@/components/app/details/DetailsRail";
 import { ExportTab } from "@/components/app/details/ExportTab";
 import { continueTarget, pipelineSteps, runAbortPage } from "@/components/app/details/helpers";
@@ -66,7 +66,7 @@ function MushafDetailsPage() {
 
   return (
     <div className="flex h-screen w-full flex-col overflow-hidden bg-bg-page">
-      <DetailsChrome mushaf={mushaf} cta={cta} />
+      <MushafHeader mushaf={mushaf} activeSlug={null} cta={cta} />
 
       <div className="grid min-h-0 flex-1 grid-cols-[282px_1fr]">
         <DetailsRail mushaf={mushaf} stats={stats} summaries={summaries} templates={templates} />

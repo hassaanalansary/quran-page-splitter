@@ -277,7 +277,11 @@ function CoverageMap({
       {Array.from({ length: logical }, (_, i) => {
         const n = i + 1;
         const row = byPage.get(n);
-        const bg = row ? (row.reviewed ? "var(--orange)" : "var(--navy-light)") : "var(--bg-muted)";
+        const bg = row
+          ? row.reviewed
+            ? "var(--success)"
+            : "var(--navy-light)"
+          : "var(--bg-muted)";
         const state = row ? (row.reviewed ? "reviewed" : "processed") : "not processed";
         return (
           <div
