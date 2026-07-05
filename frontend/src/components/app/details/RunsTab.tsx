@@ -4,10 +4,10 @@ import type { Run } from "@/lib/api";
 
 import {
   fmtDayTime,
-  RUN_SETTING_ROWS,
   RUN_STATUS_META,
   runAbortPage,
   runNumberLabel,
+  runSettingsRows,
 } from "./helpers";
 
 export function RunsTab({ mushafId, runs }: { mushafId: string; runs: Run[] | undefined }) {
@@ -64,6 +64,7 @@ function RunCard({ run, mushafId }: { run: Run; mushafId: string }) {
   const aborted = run.status === "aborted_line_detection";
   const expected = run.abort_info?.["expected_lines"];
   const detected = run.abort_info?.["detected_lines"];
+  const settingRows = runSettingsRows(run);
 
   return (
     <div className="overflow-hidden rounded-[11px] border border-border bg-white">
@@ -86,86 +87,103 @@ function RunCard({ run, mushafId }: { run: Run; mushafId: string }) {
         </span>
       </div>
 
-      {aborted ? (
-        <div className="grid grid-cols-[230px_1fr] gap-[18px] p-3.5">
-          <div>
-            <div className="mb-2 text-[9.5px] font-semibold uppercase tracking-[0.1em] text-text-muted">
-              Settings
-            </div>
-            {RUN_SETTING_ROWS.map(({ key, label }, i) => (
-              <div
-                key={key}
-                className={`flex justify-between py-1 ${i === RUN_SETTING_ROWS.length - 1 ? "" : "border-b border-bg-surface"}`}
-              >
-                <span className="font-mono text-[11px] font-medium text-text-secondary">
-                  {label}
-                </span>
-                <span className="font-mono text-[11px] font-bold text-text-primary">
-                  {String(run.settings[key] ?? "—")}
-                </span>
-              </div>
-            ))}
-          </div>
-          <div>
-            <div className="mb-2 text-[9.5px] font-semibold uppercase tracking-[0.1em] text-text-muted">
-              Outcome
-            </div>
-            <div className="mb-[9px] flex items-center gap-2.5">
-              <div className="h-1.5 flex-1 overflow-hidden rounded-[3px] bg-bg-muted">
-                <div className="h-full bg-warning" style={{ width: `${pct}%` }} />
-              </div>
-              <span className="whitespace-nowrap font-mono text-[10.5px] font-semibold text-text-muted">
-                reached p.{abortPage ?? "?"} / {run.page_range_end}
+      <div className="p-3.5">
+        <div className="mb-2 text-[9.5px] font-semibold uppercase tracking-[0.1em] text-text-muted">
+          Settings
+        </div>
+        <div className="grid grid-cols-2 gap-x-6">
+          {settingRows.map((row) => (
+            <div
+              key={row.label}
+              className="flex items-center justify-between gap-2 border-b border-bg-surface py-1"
+            >
+              <span className="font-mono text-[11px] font-medium text-text-secondary">
+                {row.label}
+              </span>
+              <span className="truncate font-mono text-[11px] font-bold text-text-primary">
+                {row.value}
               </span>
             </div>
-            <div className="text-[11.5px] leading-[1.6] text-text-secondary">
-              Line-count mismatch
-              {expected != null && detected != null ? (
-                <>
-                  : template expects <b className="text-text-primary">{String(expected)}</b>,
-                  detector found <b className="text-text-primary">{String(detected)}</b>.
-                </>
-              ) : (
-                "."
-              )}{" "}
-              Pages {run.page_range_start}–{run.page_range_start + run.pages_saved - 1} committed
-              {abortPage ? `; ${abortPage}–${run.page_range_end} skipped.` : "."}
+          ))}
+        </div>
+
+        <div className="mt-3.5">
+          {aborted ? (
+            <>
+              <div className="mb-2 text-[9.5px] font-semibold uppercase tracking-[0.1em] text-text-muted">
+                Outcome
+              </div>
+              <div className="mb-[9px] flex items-center gap-2.5">
+                <div className="h-1.5 flex-1 overflow-hidden rounded-[3px] bg-bg-muted">
+                  <div className="h-full bg-warning" style={{ width: `${pct}%` }} />
+                </div>
+                <span className="whitespace-nowrap font-mono text-[10.5px] font-semibold text-text-muted">
+                  reached p.{abortPage ?? "?"} / {run.page_range_end}
+                </span>
+              </div>
+              <div className="text-[11.5px] leading-[1.6] text-text-secondary">
+                Line-count mismatch
+                {expected != null && detected != null ? (
+                  <>
+                    : template expects <b className="text-text-primary">{String(expected)}</b>,
+                    detector found <b className="text-text-primary">{String(detected)}</b>.
+                  </>
+                ) : (
+                  "."
+                )}{" "}
+                Pages {run.page_range_start}–{run.page_range_start + run.pages_saved - 1} committed
+                {abortPage ? `; ${abortPage}–${run.page_range_end} skipped.` : "."}
+              </div>
+              <div className="mt-2.5 rounded-[7px] border border-border bg-bg-surface px-2.5 py-2 font-mono text-[10.5px] font-medium text-text-muted">
+                abort_info = {JSON.stringify(run.abort_info)}
+              </div>
+            </>
+          ) : (
+            <div className="flex items-center gap-3.5">
+              <div className="flex flex-1 items-center gap-2">
+                <div className="h-1.5 max-w-[180px] flex-1 overflow-hidden rounded-[3px] bg-bg-muted">
+                  <div
+                    className="h-full"
+                    style={{
+                      width: `${pct}%`,
+                      background: run.status === "completed" ? "var(--success)" : "var(--error)",
+                    }}
+                  />
+                </div>
+                <span className="font-mono text-[10.5px] font-semibold text-text-muted">
+                  {run.pages_saved} / {rangeSize}
+                </span>
+              </div>
+              <span className="text-[11.5px] text-text-secondary">
+                {run.status === "completed"
+                  ? "Completed — all pages in range persisted."
+                  : "Run failed — check the settings and try again."}
+              </span>
             </div>
-            <div className="mt-2.5 rounded-[7px] border border-border bg-bg-surface px-2.5 py-2 font-mono text-[10.5px] font-medium text-text-muted">
-              abort_info = {JSON.stringify(run.abort_info)}
-            </div>
+          )}
+        </div>
+
+        <div className="mt-3.5 flex flex-wrap items-center gap-x-5 gap-y-1.5 border-t border-bg-surface pt-3">
+          <Link
+            to="/mushafs/$mushafId/process"
+            params={{ mushafId }}
+            search={{ run: run.id }}
+            className="text-[11px] font-bold text-orange hover:text-orange-hover"
+          >
+            Re-run with these settings →
+          </Link>
+          {aborted && (
             <Link
               to="/mushafs/$mushafId/process"
               params={{ mushafId }}
-              className="mt-2.5 inline-block text-[11px] font-bold text-orange hover:text-orange-hover"
+              search={{ run: run.id, from: abortPage ?? undefined }}
+              className="text-[11px] font-bold text-text-secondary hover:text-text-primary"
             >
               Resume{abortPage ? ` from p.${abortPage}` : ""} →
             </Link>
-          </div>
+          )}
         </div>
-      ) : (
-        <div className="flex items-center gap-3.5 px-3.5 py-3">
-          <div className="flex flex-1 items-center gap-2">
-            <div className="h-1.5 max-w-[180px] flex-1 overflow-hidden rounded-[3px] bg-bg-muted">
-              <div
-                className="h-full"
-                style={{
-                  width: `${pct}%`,
-                  background: run.status === "completed" ? "var(--success)" : "var(--error)",
-                }}
-              />
-            </div>
-            <span className="font-mono text-[10.5px] font-semibold text-text-muted">
-              {run.pages_saved} / {rangeSize}
-            </span>
-          </div>
-          <span className="text-[11.5px] text-text-secondary">
-            {run.status === "completed"
-              ? "Completed — all pages in range persisted."
-              : "Run failed — check the settings and try again."}
-          </span>
-        </div>
-      )}
+      </div>
     </div>
   );
 }

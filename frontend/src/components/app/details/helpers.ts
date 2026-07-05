@@ -5,6 +5,7 @@ import type {
   MushafStats,
   MushafStatus,
   PageSummary,
+  Rect,
   Run,
 } from "@/lib/api";
 
@@ -78,14 +79,34 @@ export const RUN_STATUS_META: Record<
   error: { label: "Error", dot: "var(--error)", bg: "bg-error-bg", text: "text-error" },
 };
 
-/** The five run settings the design surfaces, in display order. */
-export const RUN_SETTING_ROWS: { key: string; label: string }[] = [
-  { key: "expected_lines", label: "expected_lines" },
-  { key: "match_threshold", label: "match_threshold" },
-  { key: "sura_header_threshold", label: "header_threshold" },
-  { key: "padding", label: "padding" },
-  { key: "max_sura_headers", label: "max_headers" },
-];
+const fmtBool = (v: unknown): string => (v ? "on" : "off");
+const fmtNum = (v: unknown): string => (v == null ? "—" : String(v));
+
+/** Every setting a run captured, as readable label/value rows for the run card
+ * (range + start position + bounds + detection settings, in display order). */
+export function runSettingsRows(run: Run): { label: string; value: string }[] {
+  const s = run.settings;
+  const b = s.bounds as Rect | undefined;
+  return [
+    { label: "range", value: `pp. ${run.page_range_start}–${run.page_range_end}` },
+    { label: "start", value: `${fmtNum(s.start_sura)}:${fmtNum(s.start_aya)}` },
+    {
+      label: "bounds",
+      value:
+        b && typeof b.w === "number"
+          ? `${Math.round(b.w)}×${Math.round(b.h)} @ ${Math.round(b.x)},${Math.round(b.y)}`
+          : "—",
+    },
+    { label: "expected_lines", value: fmtNum(s.expected_lines) },
+    { label: "match_threshold", value: fmtNum(s.match_threshold) },
+    { label: "header_threshold", value: fmtNum(s.sura_header_threshold) },
+    { label: "header_slots", value: fmtNum(s.sura_header_slots) },
+    { label: "max_headers", value: fmtNum(s.max_sura_headers) },
+    { label: "padding", value: fmtNum(s.padding) },
+    { label: "alt_margins", value: fmtBool(s.alternate_horizontal_margin) },
+    { label: "acceleration", value: fmtBool(s.prefer_acceleration) },
+  ];
+}
 
 // ── Activity feed ────────────────────────────────────────────────────────────
 export function activityMeta(event: ActivityEvent): { dot: string; text: string } {

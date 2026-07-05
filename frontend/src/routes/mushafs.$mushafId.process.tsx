@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, useParams } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { TemplatePreview } from "@/components/canvas/TemplatePreview";
@@ -17,13 +17,24 @@ import {
   queryKeys,
   useMushaf,
   useProcessedPages,
+  useRuns,
   useSuras,
   type ProcessResult,
   type ProcessSettings,
   type Rect,
 } from "@/lib/api";
 
-export const Route = createFileRoute("/mushafs/$mushafId/process")({ component: ProcessPage });
+export const Route = createFileRoute("/mushafs/$mushafId/process")({
+  component: ProcessPage,
+  // Optional `?run=<id>` pre-fills the form from a stored run's settings;
+  // optional `?from=<page>` overrides the start page (used by "Resume").
+  validateSearch: (s: Record<string, unknown>): { run?: string; from?: number } => {
+    const run = typeof s.run === "string" && s.run ? s.run : undefined;
+    const fromNum = Math.floor(Number(s.from));
+    const from = Number.isFinite(fromNum) && fromNum >= 1 ? fromNum : undefined;
+    return { run, from };
+  },
+});
 
 const CHUNK_SIZE = 50;
 
@@ -42,9 +53,11 @@ type RunState = {
 
 function ProcessPage() {
   const { mushafId } = useParams({ from: "/mushafs/$mushafId/process" });
+  const { run: runId, from: resumeFrom } = Route.useSearch();
   const { data: mushaf } = useMushaf(mushafId);
   const { data: suras } = useSuras(mushaf?.qiraa);
   const { data: pages } = useProcessedPages(mushafId);
+  const { data: runs } = useRuns(mushafId);
   const queryClient = useQueryClient();
 
   const logicalCount = mushaf?.logical_page_count ?? 1;
@@ -58,6 +71,51 @@ function ProcessPage() {
   const [startAya, setStartAya] = useState(1);
   const [settings, setSettings] = useState<ProcessSettings>(DEFAULT_PROCESS_SETTINGS);
   const [run, setRun] = useState<RunState | null>(null);
+  const [loadedRun, setLoadedRun] = useState<{ label: string; from?: number } | null>(null);
+  const appliedRunRef = useRef<string | null>(null);
+
+  // Pre-fill the form from a stored run when arriving via `?run=<id>` (Runs tab
+  // → "Re-run with these settings"). Applied once per run id so later manual
+  // edits are never clobbered by a query refetch.
+  useEffect(() => {
+    if (!runId || !runs || !mushaf) return;
+    if (appliedRunRef.current === runId) return;
+    const target = runs.find((r) => r.id === runId);
+    if (!target) return;
+    appliedRunRef.current = runId;
+
+    const s = target.settings;
+    const numOr = (v: unknown, fallback: number) =>
+      v == null || Number.isNaN(Number(v)) ? fallback : Number(v);
+    setSettings({
+      padding: numOr(s.padding, DEFAULT_PROCESS_SETTINGS.padding),
+      expected_lines: numOr(s.expected_lines, DEFAULT_PROCESS_SETTINGS.expected_lines),
+      sura_header_slots: numOr(s.sura_header_slots, DEFAULT_PROCESS_SETTINGS.sura_header_slots),
+      sura_header_threshold: numOr(
+        s.sura_header_threshold,
+        DEFAULT_PROCESS_SETTINGS.sura_header_threshold,
+      ),
+      max_sura_headers: numOr(s.max_sura_headers, DEFAULT_PROCESS_SETTINGS.max_sura_headers),
+      match_threshold: numOr(s.match_threshold, DEFAULT_PROCESS_SETTINGS.match_threshold),
+      alternate_horizontal_margin: Boolean(s.alternate_horizontal_margin),
+      prefer_acceleration:
+        s.prefer_acceleration == null
+          ? DEFAULT_PROCESS_SETTINGS.prefer_acceleration
+          : Boolean(s.prefer_acceleration),
+    });
+    if (s.start_sura != null) setStartSura(Number(s.start_sura));
+    if (s.start_aya != null) setStartAya(Number(s.start_aya));
+    setRangeStart(clamp(resumeFrom ?? target.page_range_start, 1, logicalCount));
+    setRangeEnd(clamp(target.page_range_end, 1, logicalCount));
+    const b = s.bounds as Rect | undefined;
+    if (b && typeof b.x === "number") setBounds({ x: b.x, y: b.y, w: b.w, h: b.h });
+
+    const label = `#${String(target.run_number).padStart(2, "0")}`;
+    setLoadedRun({ label, from: resumeFrom });
+    toast.success(
+      `Loaded settings from run ${label}${resumeFrom ? ` · resuming from p.${resumeFrom}` : ""}.`,
+    );
+  }, [runId, runs, mushaf, resumeFrom, logicalCount]);
 
   if (!mushaf) return null;
 
@@ -156,6 +214,14 @@ function ProcessPage() {
           Set the <strong>bounds</strong>, choose the page range and where it starts, then process.
           Save the templates first.
         </Hint>
+
+        {loadedRun && (
+          <Hint>
+            Settings loaded from run <strong>{loadedRun.label}</strong>
+            {loadedRun.from ? ` — start page set to ${loadedRun.from} to resume` : ""}. Adjust
+            anything below, then process.
+          </Hint>
+        )}
 
         <Section title="Bounds">
           <p className="text-[12px] text-text-muted">
