@@ -46,12 +46,12 @@ def track_positions(ctx: PageContext, tracker: QuranTracker) -> None:
             )
             continue
 
-        if tracker.pending_basmala:
-            tracker.pending_basmala = False
+        if tracker.pending_besmella:
+            tracker.pending_besmella = False
             has_any_separator = any(seg.has_separator for seg in line.segments)
 
             if not has_any_separator:
-                _handle_basmala(line, tracker)
+                _handle_besmella(line, tracker)
                 content_bbox = find_content_bbox(
                     ctx.binary[
                         line.bbox.top : line.bbox.bottom,
@@ -69,9 +69,9 @@ def track_positions(ctx: PageContext, tracker: QuranTracker) -> None:
                 )
                 continue
 
-            # Has separator → not a basmala, treat as normal text
+            # Has separator → not a besmella, treat as normal text
             logger.info(
-                "  Line %d: first line after sura header has separator → treating as normal text (no basmala)",
+                "  Line %d: first line after sura header has separator → treating as normal text (no besmella)",
                 line.line_index,
             )
 
@@ -88,7 +88,7 @@ def _handle_sura_header(line: LineResult, tracker: QuranTracker) -> None:
     if tracker.current_aya != 1:
         tracker.advance_sura()
     else:
-        tracker.pending_basmala = True
+        tracker.pending_besmella = True
     sura_info = get_sura(tracker.current_sura)
 
     line.sura_number = tracker.current_sura
@@ -105,9 +105,9 @@ def _handle_sura_header(line: LineResult, tracker: QuranTracker) -> None:
     logger.info("    Total ayas in this sura: %d", sura_info.aya_count)
 
 
-def _handle_basmala(line: LineResult, tracker: QuranTracker) -> None:
-    """Process a basmala line (first line after sura header with no separator)."""
-    line.is_basmala = True
+def _handle_besmella(line: LineResult, tracker: QuranTracker) -> None:
+    """Process a besmella line (first line after sura header with no separator)."""
+    line.is_besmella = True
     line.sura_number = tracker.current_sura
     sura_info = get_sura(tracker.current_sura)
     line.sura_name = sura_info.name
@@ -215,8 +215,8 @@ def collect_page_coordinates(ctx: PageContext, padding: int = 0) -> dict:
             line_data["sura_number"] = line.sura_number
             line_data["sura_name"] = line.sura_name
             line_data["sura_transliteration"] = line.sura_transliteration
-        elif line.is_basmala:
-            line_data["type"] = "basmala"
+        elif line.is_besmella:
+            line_data["type"] = "besmella"
             line_data["sura_number"] = line.sura_number
             line_data["sura_name"] = line.sura_name
         else:
@@ -242,7 +242,7 @@ def collect_page_coordinates(ctx: PageContext, padding: int = 0) -> dict:
 
 def _export_line_bbox(line: LineResult) -> BBox:
     """Use segment extents for text lines so review bounds avoid empty margins."""
-    if line.is_sura or line.is_basmala or not line.segments:
+    if line.is_sura or line.is_besmella or not line.segments:
         return line.bbox
 
     return BBox(

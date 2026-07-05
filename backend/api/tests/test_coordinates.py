@@ -19,7 +19,7 @@ def _coord_page() -> dict:
             },
             {
                 "line_number": 2,
-                "type": "basmala",
+                "type": "besmella",
                 "sura_number": 2,
                 "line_bbox": {"x": 1, "y": 6, "w": 3, "h": 4},
             },
@@ -72,7 +72,7 @@ class WriteCoordsToPageTests(TestCase):
         self.assertEqual(page.last_run_id, self.run.id)
         self.assertEqual(page.lines.count(), 3)
 
-    def test_translates_basmala_to_besmella(self):
+    def test_translates_besmella_to_besmella(self):
         page = self._write(_coord_page())
         types = list(page.lines.order_by("line_number").values_list("type", flat=True))
         self.assertEqual(types, ["sura_header", "besmella", "text"])

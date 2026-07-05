@@ -175,7 +175,7 @@ one without is a **continuation**.
 - A `page` row exists **iff** the page has data ("processed").
 - `segment` stores only `bbox_x` / `bbox_w` (vertical extent is inherited from
   the line) plus `has_separator` and a derived `aya_number`.
-- Line type is `text`, `sura_header`, or `besmella` (the engine's `basmala` is
+- Line type is `text`, `sura_header`, or `besmella` (the engine's `besmella` is
   translated to this canonical spelling on persistence).
 - Detection settings are **not** authoritative config — they are pipeline inputs,
   logged per run in `processing_run.settings` for audit.

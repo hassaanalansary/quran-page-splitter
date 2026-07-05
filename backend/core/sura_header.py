@@ -26,7 +26,7 @@ class SuraHeaderSpec:
 
 
 class SuraHeaderLocator:
-    """Locate headers/basmala before line splitting so cuts avoid them."""
+    """Locate sura headers before line splitting so cuts avoid them."""
 
     def __init__(
         self,
@@ -86,8 +86,7 @@ class SuraHeaderLocator:
         selected.sort(key=lambda sura_header: sura_header.top)
         for sura_header in selected:
             logger.info(
-                "  Protected %s band: y=%d..%d score=%.4f slots=%d",
-                sura_header.kind,
+                "  Protected sura header band: y=%d..%d score=%.4f slots=%d",
                 sura_header.top,
                 sura_header.bottom,
                 sura_header.score,

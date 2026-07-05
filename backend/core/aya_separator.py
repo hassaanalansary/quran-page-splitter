@@ -54,7 +54,7 @@ class AyaSeparatorProcessor:
         Mutates ctx.lines by setting line.segments and line.content_bbox.
         """
         for line in ctx.lines:
-            if line.is_sura or line.is_basmala:
+            if line.is_sura or line.is_besmella:
                 continue
 
             line_binary = ctx.line_binary(line)

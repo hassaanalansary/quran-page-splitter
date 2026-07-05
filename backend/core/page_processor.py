@@ -181,8 +181,8 @@ class PageProcessor:
                 logger.info("    Saved %s", out_path)
                 continue
 
-            if line.is_basmala:
-                name = f"{stem}-l{line.line_index:02d}-sura{line.sura_number:03d}-basmala.png"
+            if line.is_besmella:
+                name = f"{stem}-l{line.line_index:02d}-sura{line.sura_number:03d}-besmella.png"
                 out_path = self.results_dir / name
                 make_transparent(ctx.line_image(line)).save(out_path)
                 saved.append(str(out_path))

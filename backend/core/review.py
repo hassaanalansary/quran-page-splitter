@@ -90,7 +90,7 @@ def normalize_review_data(data: dict[str, Any]) -> dict[str, Any]:
                 line.pop("deleted_segment_ranges", None)
                 continue
 
-            if line_type == "basmala":
+            if line_type == "besmella":
                 sura_info = get_sura(current_sura)
                 line["sura_number"] = current_sura
                 line["sura_name"] = sura_info.name
@@ -186,9 +186,9 @@ def re_export_corrected_images(
                 saved.append(_save_crop(image, line["line_bbox"], output_dir / name))
                 continue
 
-            if line_type == "basmala":
+            if line_type == "besmella":
                 sura_number = _positive_int(line.get("sura_number"), "sura_number")
-                name = f"{stem}-l{line_number:02d}-sura{sura_number:03d}-basmala.png"
+                name = f"{stem}-l{line_number:02d}-sura{sura_number:03d}-besmella.png"
                 saved.append(_save_crop(image, line["line_bbox"], output_dir / name))
                 continue
 

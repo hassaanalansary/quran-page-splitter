@@ -1,7 +1,7 @@
 """ORM <-> coordinate mapping for pages, lines, and segments.
 
 Three responsibilities:
-  * ``write_coords_to_page`` — engine output dict -> rows (``basmala`` -> ``besmella``)
+  * ``write_coords_to_page`` — engine output dict -> rows
   * ``page_to_dict``         — rows -> editor dict (flat bbox fields, DB type values)
   * ``renumber_from``        — recompute sura/aya forward across consecutive pages
 """
@@ -13,7 +13,7 @@ from api.models import Line, LineTypeChoices, Mushaf, Page, ProcessingRun, Segme
 # Engine line-type string -> DB LineTypeChoices value.
 _ENGINE_TO_DB_TYPE = {
     "sura_header": LineTypeChoices.SURA_HEADER,
-    "basmala": LineTypeChoices.BESMELLA,
+    "besmella": LineTypeChoices.BESMELLA,
     "text": LineTypeChoices.TEXT,
 }
 
@@ -73,7 +73,7 @@ def _write_engine_line(page: Page, line_data: dict) -> None:
 
 
 def _engine_line_sura(line_data: dict) -> int | None:
-    if line_data["type"] in ("sura_header", "basmala"):
+    if line_data["type"] in ("sura_header", "besmella"):
         return line_data.get("sura_number")
     segments = line_data.get("segments", [])
     return segments[0].get("sura_number") if segments else None

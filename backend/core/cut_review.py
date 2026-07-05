@@ -320,9 +320,9 @@ def _line_output_name(page: dict[str, Any], line: dict[str, Any]) -> str:
     if line_type == "sura_header":
         sura = _optional_positive_int(line.get("sura_number"))
         return f"{stem}-l{line_number:02d}-sura{sura or 0:03d}-header.png"
-    if line_type == "basmala":
+    if line_type == "besmella":
         sura = _optional_positive_int(line.get("sura_number"))
-        return f"{stem}-l{line_number:02d}-sura{sura or 0:03d}-basmala.png"
+        return f"{stem}-l{line_number:02d}-sura{sura or 0:03d}-besmella.png"
     return f"{stem}-l{line_number:02d}{_text_line_suffix(line)}.png"
 
 

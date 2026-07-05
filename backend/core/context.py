@@ -58,7 +58,7 @@ class LineResult:
     line_index: int  # 1-based index within the page
     slot_count: int = 1
     is_sura: bool = False
-    is_basmala: bool = False
+    is_besmella: bool = False
     segments: list[SegmentResult] = field(default_factory=list)
     # Tight bounding box of actual content — computed once, cached
     content_bbox: BBox | None = None
@@ -131,13 +131,13 @@ class QuranTracker:
 
     current_sura: int = 1
     current_aya: int = 1
-    pending_basmala: bool = False
+    pending_besmella: bool = False
 
     def advance_sura(self) -> None:
-        """Move to the next sura, reset aya to 1, flag basmala check."""
+        """Move to the next sura, reset aya to 1, flag besmella check."""
         self.current_sura += 1
         self.current_aya = 1
-        self.pending_basmala = True
+        self.pending_besmella = True
 
     def advance_aya(self) -> None:
         """Move to the next aya within the current sura."""
