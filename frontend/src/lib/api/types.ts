@@ -109,6 +109,8 @@ export type Line = {
   bbox_w: number;
   bbox_h: number;
   segments: Segment[];
+  /** Cut-layer erase strokes (from GET pages/{n}); absent on the review-save path. */
+  erase_strokes?: EraseStroke[];
 };
 
 export type PageData = {
