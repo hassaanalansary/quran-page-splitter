@@ -163,9 +163,8 @@ def save_finalize(*, mushaf_id: uuid.UUID, page_number: int, line_edits: list[di
             continue
         override = edit.get("bbox_override")
         if override:
-            line.bbox_x, line.bbox_y = override["x"], override["y"]
-            line.bbox_w, line.bbox_h = override["w"], override["h"]
-            line.save(update_fields=["bbox_x", "bbox_y", "bbox_w", "bbox_h"])
+            line.bbox_y, line.bbox_h = override["y"], override["h"]
+            line.save(update_fields=["bbox_y", "bbox_h"])
         line.erase_strokes.all().delete()
         strokes = edit.get("erase_strokes") or []
         if strokes:

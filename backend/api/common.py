@@ -11,3 +11,10 @@ class RectSchema(Schema):
     y: int = Field(ge=0)
     w: int = Field(ge=1)
     h: int = Field(ge=1)
+
+
+class EraseStrokeSchema(Schema):
+    """One eraser stroke: a page-space polyline punched out of a line's alpha."""
+
+    brush_size: int = 12
+    points: list[list[int]] = Field(default_factory=list)

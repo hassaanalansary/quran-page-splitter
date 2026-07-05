@@ -6,7 +6,7 @@ from django.http import HttpRequest
 from ninja import Router, Schema
 from pydantic import Field
 
-from api.common import RectSchema
+from api.common import EraseStrokeSchema, RectSchema
 from api.services import editing as editing_service
 
 router = Router(tags=["pages"])
@@ -32,6 +32,9 @@ class LineSchema(Schema):
     bbox_w: int
     bbox_h: int
     segments: list[SegmentSchema] = Field(default_factory=list)
+    # Cut-layer state (output-only; ignored on the review-save path). Populated
+    # by ``page_to_dict`` so the Finalize editor can round-trip saved erases.
+    erase_strokes: list[EraseStrokeSchema] = Field(default_factory=list)
 
 
 class PageDataOut(Schema):

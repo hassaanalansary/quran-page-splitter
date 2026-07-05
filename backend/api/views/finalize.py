@@ -6,17 +6,12 @@ from django.http import HttpRequest
 from ninja import Router, Schema
 from pydantic import Field
 
-from api.common import RectSchema
+from api.common import EraseStrokeSchema, RectSchema
 from api.services import editing as editing_service
 from api.services import export as export_service
 from api.views.pages import PageDataOut
 
 router = Router(tags=["finalize"])
-
-
-class EraseStrokeSchema(Schema):
-    brush_size: int = 12
-    points: list[list[int]] = Field(default_factory=list)
 
 
 class LineFinalizeSchema(Schema):

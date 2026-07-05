@@ -14,7 +14,7 @@ from ninja.errors import HttpError
 from PIL import Image, ImageDraw
 
 from api.models import ActivityTypeChoices, Line, Page, Segment
-from api.services import activity, pdf
+from api.services import activity, coordinates, pdf
 from api.services import mushaf as mushaf_service
 from core.cut_review import _apply_eraser_stroke
 from core.image_utils import make_transparent
@@ -31,9 +31,10 @@ def export_lines(*, mushaf_id: uuid.UUID, page_number: int) -> dict:
     image = Image.open(io.BytesIO(pdf.render_page(mushaf.pdf_file.path, pdf_index)))
     image.load()
 
+    column = coordinates.page_column(page)
     exported: list[dict] = []
     for line in page.lines.order_by("line_number").prefetch_related("erase_strokes"):
-        png_bytes = _render_line_png(image, line)
+        png_bytes = _render_line_png(image, line, column)
         filename = f"{mushaf.id}_p{page_number:04d}_l{line.line_number:02d}.png"
         if line.line_png:
             line.line_png.delete(save=False)
@@ -100,10 +101,15 @@ def _safe_filename(name: str) -> str:
     return cleaned.strip("-") or "mushaf"
 
 
-def _render_line_png(image: Image.Image, line: Line) -> bytes:
-    left = max(0, line.bbox_x)
+def _render_line_png(image: Image.Image, line: Line, column: dict | None) -> bytes:
+    # The line cut spans the page's text-column bounds (coordinates.page_column);
+    # the line's own x/w track content extent (from segments) and are left
+    # untouched. Only the vertical extent (Y/H) comes from the line.
+    col_x = column["x"] if column else line.bbox_x
+    col_w = column["w"] if column else line.bbox_w
+    left = max(0, col_x)
     top = max(0, line.bbox_y)
-    right = min(image.width, line.bbox_x + line.bbox_w)
+    right = min(image.width, col_x + col_w)
     bottom = min(image.height, line.bbox_y + line.bbox_h)
     rgba = make_transparent(image.crop((left, top, right, bottom)))
 

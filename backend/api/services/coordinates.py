@@ -86,14 +86,15 @@ def page_to_dict(page: Page) -> dict:
     """Serialize a page's rows into the editor's coordinate representation."""
     return {
         "page_number": page.page_number,
-        "bbox": _page_bbox(page),
+        "bbox": page_column(page),
         "lines": [_line_to_dict(line) for line in _ordered_lines(page)],
     }
 
 
 def _ordered_lines(page: Page) -> QuerySet[Line]:
     return page.lines.order_by("line_number").prefetch_related(
-        Prefetch("segments", queryset=Segment.objects.order_by("segment_order"))
+        Prefetch("segments", queryset=Segment.objects.order_by("segment_order")),
+        "erase_strokes",
     )
 
 
@@ -101,6 +102,26 @@ def _page_bbox(page: Page) -> dict | None:
     if page.bbox_x is None:
         return None
     return {"x": page.bbox_x, "y": page.bbox_y, "w": page.bbox_w, "h": page.bbox_h}
+
+
+def page_column(page: Page) -> dict | None:
+    """The page's text-column bounds, used to crop uniform-width line PNGs.
+
+    Processed pages carry a real crop box. Manually-added pages carry only a 1x1
+    placeholder, so the column is DERIVED from the union (bounding box) of their
+    line boxes — each line's x/w already tracks its content, so the union is the
+    text column. Nothing is stored; it re-derives as the page is edited.
+    """
+    if page.bbox_x is not None and page.bbox_w is not None and page.bbox_w > 1:
+        return {"x": page.bbox_x, "y": page.bbox_y, "w": page.bbox_w, "h": page.bbox_h}
+    lines = list(page.lines.all())
+    if not lines:
+        return _page_bbox(page)
+    left = min(line.bbox_x for line in lines)
+    top = min(line.bbox_y for line in lines)
+    right = max(line.bbox_x + line.bbox_w for line in lines)
+    bottom = max(line.bbox_y + line.bbox_h for line in lines)
+    return {"x": left, "y": top, "w": right - left, "h": bottom - top}
 
 
 def _line_to_dict(line: Line) -> dict:
@@ -124,6 +145,10 @@ def _line_to_dict(line: Line) -> dict:
                 "sura_number": line.sura_id,
             }
             for segment in line.segments.all()
+        ],
+        "erase_strokes": [
+            {"brush_size": stroke.brush_size, "points": stroke.points}
+            for stroke in line.erase_strokes.all()
         ],
     }
 
