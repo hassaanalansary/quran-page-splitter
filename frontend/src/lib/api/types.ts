@@ -249,11 +249,28 @@ export const DEFAULT_PROCESS_SETTINGS: ProcessSettings = {
   prefer_acceleration: true,
 };
 
-/** One page in the review payload — coordinate data, review flag, and the
+/** One line in the slim review payload — only what the review client consumes.
+ * Ids, segment coordinates, and erase strokes are intentionally omitted. */
+export type ReviewLine = {
+  type: LineType;
+  /** Anchor sura for header lines (null on text lines). */
+  sura_number: number | null;
+  bbox_x: number;
+  bbox_y: number;
+  bbox_w: number;
+  bbox_h: number;
+  /** Separator x-cuts (text lines only), ordered right→left by segment order. */
+  cuts?: number[];
+};
+
+/** One page in the review payload — slim coordinate data, review flag, and the
  * (sura, aya) its processing run began at (null for manual pages). */
-export type ReviewPage = PageData & {
+export type ReviewPage = {
+  page_number: number;
+  bbox: Rect | null;
   reviewed: boolean;
   run_start: { sura: number; aya: number } | null;
+  lines: ReviewLine[];
 };
 
 /** Whole-document review payload (GET /api/mushafs/{id}/review-data). */

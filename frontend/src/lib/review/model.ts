@@ -1,7 +1,7 @@
 // Editable in-memory model of the whole review session.
 // Segments are NEVER stored — they are derived from line bbox + separator cuts.
 
-import type { Line as ApiLine, ReviewData, Rect } from "@/lib/api";
+import type { ReviewData, ReviewLine, Rect } from "@/lib/api";
 
 export type EditLineType = "text" | "sura_header" | "besmella";
 
@@ -36,17 +36,6 @@ export function genId(prefix = "id"): string {
   return `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
-/** Cuts from stored segments: a cut at the left edge of every aya-closing
- * segment. Mid-line `has_separator=false` boundaries merge (lossless — same
- * aya, adjacent spans); an edge cut round-trips as a dropped sliver whose
- * separator is preserved (see deriveSegmentsAndCuts). */
-function cutsFromSegments(segments: ApiLine["segments"]): number[] {
-  return [...segments]
-    .sort((a, b) => a.segment_order - b.segment_order) // right → left
-    .filter((s) => s.has_separator)
-    .map((s) => s.bbox_x);
-}
-
 /** A placeholder crop box for pages with no server data yet (manual pages). */
 const DEFAULT_BBOX: Rect = { x: 0, y: 0, w: 1, h: 1 };
 
@@ -62,11 +51,11 @@ export function fromApi(data: ReviewData, logicalCount: number): ReviewStore {
       bbox: p?.bbox ?? DEFAULT_BBOX,
       reviewed: p?.reviewed ?? false,
       run_start: p?.run_start ?? null,
-      lines: (p?.lines ?? []).map((l: ApiLine) => ({
+      lines: (p?.lines ?? []).map((l: ReviewLine) => ({
         uid: genId("line"),
         type: l.type,
         bbox: { x: l.bbox_x, y: l.bbox_y, w: l.bbox_w, h: l.bbox_h },
-        cuts: l.type === "text" ? cutsFromSegments(l.segments) : [],
+        cuts: l.type === "text" ? (l.cuts ?? []) : [],
         // Existing sura headers anchor to their stored sura (editable in review).
         sura: l.type === "sura_header" && l.sura_number != null ? l.sura_number : undefined,
       })),
