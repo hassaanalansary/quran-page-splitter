@@ -68,6 +68,7 @@ export function ReviewEditCanvas({
   const { scrollRef: wrapRef, effectiveTool, handCursor, containerProps } = useSpacePan({ tool });
 
   const imgRef = useRef<HTMLImageElement>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
   const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);
   const [box, setBox] = useState({ w: 0, h: 0 });
   const [zoom, setZoom] = useState<Zoom>(-1); // -1 = fit
@@ -83,6 +84,10 @@ export function ReviewEditCanvas({
       }
     | { kind: "sep"; uid: string; cutIndex: number }
   >(null);
+  // Magnifier loupe shown at the cursor during a precision drag (see MagnifierLens).
+  const [lens, setLens] = useState<{ x: number; y: number; imgX: number; imgY: number } | null>(
+    null,
+  );
 
   useEffect(() => setNatural(null), [imageUrl]);
 
@@ -134,10 +139,20 @@ export function ReviewEditCanvas({
 
   // Global pointer move/up while a drag is active.
   useEffect(() => {
-    if (!drag) return;
+    if (!drag) {
+      setLens(null);
+      return;
+    }
     function onMove(e: PointerEvent) {
       const p = clientToImg(e);
       if (!p || !natural) return;
+      // Loupe follows the cursor while resizing an edge or dragging a separator
+      // (the precision ops) — skipped for a plain box move.
+      const stage = stageRef.current;
+      if (stage && drag!.kind !== "move") {
+        const rect = stage.getBoundingClientRect();
+        setLens({ x: e.clientX - rect.left, y: e.clientY - rect.top, imgX: p.x, imgY: p.y });
+      }
       if (drag!.kind === "sep") {
         onMoveCut(drag!.uid, drag!.cutIndex, Math.round(p.x));
         return;
@@ -176,6 +191,7 @@ export function ReviewEditCanvas({
     }
     function onUp() {
       setDrag(null);
+      setLens(null);
     }
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
@@ -243,7 +259,7 @@ export function ReviewEditCanvas({
       </div>
 
       {/* Canvas */}
-      <div className="relative flex flex-1 overflow-hidden">
+      <div ref={stageRef} className="relative flex flex-1 overflow-hidden">
         <div
           ref={wrapRef}
           className="raqam-canvas-grid relative flex-1 overflow-auto outline-none"
@@ -308,6 +324,17 @@ export function ReviewEditCanvas({
         <div className="absolute bottom-3 left-1/2 z-10 -translate-x-1/2 rounded-pill border border-border bg-white/90 px-3 py-1.5 shadow-[var(--shadow-sm)] backdrop-blur">
           <PageJump page={page} pageCount={pageCount} onPageChange={onPageChange} />
         </div>
+        {lens && natural && imageUrl && (
+          <MagnifierLens
+            x={lens.x}
+            y={lens.y}
+            imgX={lens.imgX}
+            imgY={lens.imgY}
+            natural={natural}
+            scale={scale}
+            imageUrl={imageUrl}
+          />
+        )}
       </div>
 
       <PageRail
@@ -316,6 +343,75 @@ export function ReviewEditCanvas({
         onPageChange={onPageChange}
         processed={processed}
         reviewed={reviewed}
+      />
+    </div>
+  );
+}
+
+// ── magnifier lens ────────────────────────────────────────────────────────────
+const LENS_MAG = 2.5;
+const LENS_R = 66; // css radius of the loupe
+const LENS_MARGIN = 22;
+
+/** A circular loupe near the cursor that magnifies the page image at the exact
+ * point being dragged — the DOM analogue of FinalizeCanvas's canvas `drawLens`,
+ * sampling the page <img> via background-image instead of canvas pixels. */
+function MagnifierLens({
+  x,
+  y,
+  imgX,
+  imgY,
+  natural,
+  scale,
+  imageUrl,
+}: {
+  x: number;
+  y: number;
+  imgX: number;
+  imgY: number;
+  natural: { w: number; h: number };
+  scale: number;
+  imageUrl: string;
+}) {
+  const dispW = natural.w * scale;
+  const dispH = natural.h * scale;
+  // sit above the cursor; drop below when too near the top edge
+  let cy = y - LENS_R - LENS_MARGIN;
+  if (cy - LENS_R < 4) cy = y + LENS_R + LENS_MARGIN;
+  return (
+    <div
+      className="pointer-events-none absolute z-30 overflow-hidden rounded-full"
+      style={{
+        left: x - LENS_R,
+        top: cy - LENS_R,
+        width: LENS_R * 2,
+        height: LENS_R * 2,
+        backgroundColor: "white",
+        backgroundImage: `url(${imageUrl})`,
+        backgroundRepeat: "no-repeat",
+        backgroundSize: `${dispW * LENS_MAG}px ${dispH * LENS_MAG}px`,
+        backgroundPosition: `${LENS_R - imgX * scale * LENS_MAG}px ${LENS_R - imgY * scale * LENS_MAG}px`,
+        boxShadow:
+          "0 0 0 3px rgba(0,0,0,0.4), inset 0 0 0 1.5px rgba(255,255,255,0.9), var(--shadow-md)",
+      }}
+    >
+      <div
+        className="absolute"
+        style={{
+          left: LENS_R - 7,
+          top: LENS_R,
+          width: 14,
+          borderTop: "1px solid rgba(255,141,106,0.95)",
+        }}
+      />
+      <div
+        className="absolute"
+        style={{
+          left: LENS_R,
+          top: LENS_R - 7,
+          height: 14,
+          borderLeft: "1px solid rgba(255,141,106,0.95)",
+        }}
       />
     </div>
   );
