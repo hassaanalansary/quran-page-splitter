@@ -253,6 +253,7 @@ class Line(BaseModel):
         db_table = "line"
         verbose_name = "Line"
         verbose_name_plural = "Lines"
+        ordering = ("line_number",)
 
 
 class EraseStroke(BaseModel):
@@ -285,6 +286,7 @@ class Segment(BaseModel):
         db_table = "segment"
         verbose_name = "Segment"
         verbose_name_plural = "Segments"
+        ordering = ("segment_order",)
 
 
 class ActivityEvent(BaseModel):

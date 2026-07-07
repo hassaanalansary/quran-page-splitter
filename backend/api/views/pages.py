@@ -2,7 +2,7 @@
 
 import uuid
 
-from django.http import HttpRequest
+from django.http import HttpRequest, JsonResponse
 from ninja import Router, Schema
 from pydantic import Field
 
@@ -65,21 +65,6 @@ class PageSummaryOut(Schema):
     suras: list[PageSuraOut] = Field(default_factory=list)
 
 
-class ReviewStartOut(Schema):
-    sura: int
-    aya: int
-
-
-class ReviewPageOut(PageDataOut):
-    reviewed: bool = False
-    run_start: ReviewStartOut | None = None
-
-
-class ReviewDataOut(Schema):
-    start: ReviewStartOut
-    pages: list[ReviewPageOut]
-
-
 class BulkPageIn(Schema):
     page_number: int
     bbox: RectSchema
@@ -96,19 +81,25 @@ def list_pages(request: HttpRequest, mushaf_id: uuid.UUID) -> list[dict]:
     return editing_service.list_pages(mushaf_id)
 
 
-@router.get("/{mushaf_id}/review-data", response=ReviewDataOut)
-def review_data(request: HttpRequest, mushaf_id: uuid.UUID) -> dict:
-    """Whole-document review payload: numbering seed + all processed pages."""
-    return editing_service.review_data(mushaf_id)
+@router.get("/{mushaf_id}/review-data")
+def review_data(request: HttpRequest, mushaf_id: uuid.UUID) -> JsonResponse:
+    """Whole-document review payload: numbering seed + all processed pages.
+
+    Hand-serialized (no ``response=`` schema) so the large payload skips Pydantic
+    validation/re-serialization on the way out — a big chunk of the response time.
+    """
+    return JsonResponse(editing_service.review_data(mushaf_id))
 
 
-@router.post("/{mushaf_id}/pages/bulk", response=ReviewDataOut)
-def bulk_save(request: HttpRequest, mushaf_id: uuid.UUID, data: BulkSaveIn) -> dict:
+@router.post("/{mushaf_id}/pages/bulk")
+def bulk_save(request: HttpRequest, mushaf_id: uuid.UUID, data: BulkSaveIn) -> JsonResponse:
     """Save edited pages + review flags in one transaction; returns fresh review data."""
-    return editing_service.bulk_save(
-        mushaf_id=mushaf_id,
-        pages=[p.model_dump() for p in data.pages],
-        reviewed_pages=data.reviewed_pages,
+    return JsonResponse(
+        editing_service.bulk_save(
+            mushaf_id=mushaf_id,
+            pages=[p.model_dump() for p in data.pages],
+            reviewed_pages=data.reviewed_pages,
+        )
     )
 
 

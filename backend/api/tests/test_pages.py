@@ -1,6 +1,8 @@
 """Tests for editing.get_page_data and editing.save_page."""
 
+from django.db import connection
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
 from ninja.errors import HttpError
 
 from api.models import ActivityEvent, ActivityTypeChoices, Page, ProcessingRun
@@ -217,6 +219,19 @@ class ReviewDataTests(TestCase):
         )
         # First processed page is 3, but the client numbers from page 1 → seed (1,1).
         self.assertEqual(editing.review_data(self.mushaf.id)["start"], {"sura": 1, "aya": 1})
+
+    def test_review_data_query_count_is_constant(self):
+        """Review-data holds a fixed query count regardless of page count (no N+1)."""
+        small = bare_mushaf("Rev-q-small", last_quran_pdf_page=2)
+        _seed_pages(small, 2)
+        big = bare_mushaf("Rev-q-big", last_quran_pdf_page=8)
+        _seed_pages(big, 8)
+        with CaptureQueriesContext(connection) as small_q:
+            editing.review_data(small.id)
+        with CaptureQueriesContext(connection) as big_q:
+            editing.review_data(big.id)
+        self.assertEqual(len(big_q.captured_queries), len(small_q.captured_queries))
+        self.assertLessEqual(len(big_q.captured_queries), 6)
 
 
 class BulkSaveTests(TestCase):

@@ -6,6 +6,8 @@ rows from the payload, then recomputes aya numbers forward.
 """
 
 import uuid
+from collections.abc import Mapping, Sequence
+from typing import Any
 
 from django.db import transaction
 from django.db.models import Count, Q
@@ -190,32 +192,98 @@ def review_data(mushaf_id: uuid.UUID) -> dict:
     processed with a different start). The client fills in the blank pages 1..N.
     """
     mushaf = mushaf_service.get_mushaf(mushaf_id)
-    pages = list(Page.objects.filter(mushaf=mushaf).order_by("page_number"))
-    page_one = pages[0] if pages and pages[0].page_number == 1 else None
-    if page_one is not None:
-        sura, aya = coordinates.entry_state(page_one)
-        start = {"sura": sura, "aya": aya}
-    else:
-        start = {"sura": 1, "aya": 1}
+    page_rows = list(
+        Page.objects.filter(mushaf=mushaf)
+        .order_by("page_number")
+        .values(
+            "id",
+            "page_number",
+            "reviewed",
+            "bbox_x",
+            "bbox_y",
+            "bbox_w",
+            "bbox_h",
+            "last_run__settings",
+        )
+    )
+    line_rows = (
+        Line.objects.filter(page__mushaf=mushaf)
+        .order_by("page_id", "line_number")
+        .values("id", "page_id", "type", "sura_id", "bbox_x", "bbox_y", "bbox_w", "bbox_h")
+    )
+    # Only aya-closing segments become cuts — filter + skinny projection in SQL.
+    cut_rows = (
+        Segment.objects.filter(line__page__mushaf=mushaf, has_separator=True)
+        .order_by("line_id", "segment_order")
+        .values_list("line_id", "bbox_x")
+    )
 
-    out = []
-    for page in pages:
-        data = coordinates.page_to_dict(page)
-        data["reviewed"] = page.reviewed
-        data["run_start"] = _run_start(page)
-        out.append(data)
-    return {"start": start, "pages": out}
+    cuts_by_line: dict = {}
+    for line_id, bbox_x in cut_rows:
+        cuts_by_line.setdefault(line_id, []).append(bbox_x)
+
+    lines_by_page: dict = {}
+    for line_row in line_rows:
+        line: dict = {
+            "type": line_row["type"],
+            "sura_number": line_row["sura_id"],
+            "bbox_x": line_row["bbox_x"],
+            "bbox_y": line_row["bbox_y"],
+            "bbox_w": line_row["bbox_w"],
+            "bbox_h": line_row["bbox_h"],
+        }
+        if line_row["type"] == LineTypeChoices.TEXT:
+            line["cuts"] = cuts_by_line.get(line_row["id"], [])
+        lines_by_page.setdefault(line_row["page_id"], []).append(line)
+
+    pages_out = []
+    for page_row in page_rows:
+        lines = lines_by_page.get(page_row["id"], [])
+        pages_out.append(
+            {
+                "page_number": page_row["page_number"],
+                "bbox": _page_column(page_row, lines),
+                "lines": lines,
+                "reviewed": page_row["reviewed"],
+                "run_start": _run_start(page_row["last_run__settings"]),
+            }
+        )
+    return {"start": _start(page_rows), "pages": pages_out}
 
 
-def _run_start(page: Page) -> dict | None:
-    """The (sura, aya) a page's processing run began at — the seed to use when
-    this page starts a numbering island (a gap breaks propagation). ``None`` for
-    manually-added pages that were never processed by a run.
-    """
-    run = page.last_run
-    if run is None or not isinstance(run.settings, dict) or "start_sura" not in run.settings:
+def _page_column(page_row: Mapping[str, Any], lines: list[dict]) -> dict | None:
+    """``coordinates.page_column`` over flat rows: the stored crop box, else the
+    union of the page's line boxes (manual pages carry only a 1x1 placeholder)."""
+    bx, bw = page_row["bbox_x"], page_row["bbox_w"]
+    if bx is not None and bw is not None and bw > 1:
+        return {"x": bx, "y": page_row["bbox_y"], "w": bw, "h": page_row["bbox_h"]}
+    if not lines:
+        if bx is None:
+            return None
+        return {"x": bx, "y": page_row["bbox_y"], "w": bw, "h": page_row["bbox_h"]}
+    left = min(ln["bbox_x"] for ln in lines)
+    top = min(ln["bbox_y"] for ln in lines)
+    right = max(ln["bbox_x"] + ln["bbox_w"] for ln in lines)
+    bottom = max(ln["bbox_y"] + ln["bbox_h"] for ln in lines)
+    return {"x": left, "y": top, "w": right - left, "h": bottom - top}
+
+
+def _run_start(settings: object) -> dict | None:
+    """The (sura, aya) a page's run began at — the island seed used when a gap
+    breaks numbering propagation. ``None`` for pages never processed by a run."""
+    if not isinstance(settings, dict) or "start_sura" not in settings:
         return None
-    return {"sura": int(run.settings.get("start_sura", 1)), "aya": int(run.settings.get("start_aya", 1))}
+    return {"sura": int(settings.get("start_sura", 1)), "aya": int(settings.get("start_aya", 1))}
+
+
+def _start(page_rows: Sequence[Mapping[str, Any]]) -> dict:
+    """Logical page 1's entry state — its run's start (else 1:1) — so manual front
+    pages number from the true start of the mushaf."""
+    if page_rows and page_rows[0]["page_number"] == 1:
+        settings = page_rows[0]["last_run__settings"]
+        if isinstance(settings, dict):
+            return {"sura": int(settings.get("start_sura", 1)), "aya": int(settings.get("start_aya", 1))}
+    return {"sura": 1, "aya": 1}
 
 
 def bulk_save(*, mushaf_id: uuid.UUID, pages: list[dict], reviewed_pages: list[int]) -> dict:
