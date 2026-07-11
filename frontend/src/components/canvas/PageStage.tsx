@@ -21,6 +21,11 @@ type Props = {
     label: string;
     rect: Rect | null;
     onRectChange: (r: Rect | null) => void;
+    /**
+     * Show the rect mirrored across the page's vertical centerline as a
+     * read-only preview (alternate-margin pages). Editing stays on normal pages.
+     */
+    mirrored?: boolean;
   };
   /** Reports the page image's natural size once loaded. */
   onNatural?: (n: { w: number; h: number }) => void;
@@ -106,6 +111,7 @@ export function PageStage({
           onCursorChange={setCursor}
           onNatural={onNatural}
           tool={tool}
+          mirrored={cropping ? !!crop.mirrored : false}
         />
         <ChevronNav page={page} pageCount={pageCount} onPageChange={onPageChange} />
         <div className="absolute bottom-3 left-1/2 z-10 -translate-x-1/2 rounded-pill border border-border bg-white/90 px-3 py-1.5 shadow-[var(--shadow-sm)] backdrop-blur">
@@ -124,10 +130,13 @@ export function PageStage({
           {cursor ? `x: ${cursor.x}  y: ${cursor.y}` : "x: —  y: —"}
         </span>
         {cropping && (
-          <span className="ml-auto font-medium text-orange">
+          <span
+            className="ml-auto font-medium"
+            style={{ color: crop.mirrored ? "var(--navy)" : "var(--orange)" }}
+          >
             ●{" "}
             {crop.rect
-              ? `${Math.round(crop.rect.w)} × ${Math.round(crop.rect.h)} px`
+              ? `${Math.round(crop.rect.w)} × ${Math.round(crop.rect.h)} px${crop.mirrored ? " · mirrored (read-only)" : ""}`
               : `Draw: ${crop.label}`}
           </span>
         )}

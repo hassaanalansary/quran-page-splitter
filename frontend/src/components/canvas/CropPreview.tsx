@@ -9,6 +9,12 @@ type Props = {
   caption?: string;
   /** Preview box height in px. */
   height?: number;
+  /**
+   * Mirror the region horizontally across the page centerline before
+   * magnifying — matches the alternate-margin engine crop. `rect` stays the
+   * base (un-mirrored) selection.
+   */
+  mirrored?: boolean;
 };
 
 /**
@@ -16,7 +22,7 @@ type Props = {
  * `drawImage` (so it always matches the selection — no CSS/measurement drift)
  * and scales it to fit the box.
  */
-export function CropPreview({ imageUrl, rect, caption, height = 220 }: Props) {
+export function CropPreview({ imageUrl, rect, caption, height = 220, mirrored = false }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [img, setImg] = useState<HTMLImageElement | null>(null);
 
@@ -43,9 +49,10 @@ export function CropPreview({ imageUrl, rect, caption, height = 220 }: Props) {
     const scale = Math.min(w / rect.w, h / rect.h);
     const dw = rect.w * scale;
     const dh = rect.h * scale;
+    const srcX = mirrored ? img.naturalWidth - (rect.x + rect.w) : rect.x;
     ctx.imageSmoothingQuality = "high";
-    ctx.drawImage(img, rect.x, rect.y, rect.w, rect.h, (w - dw) / 2, (h - dh) / 2, dw, dh);
-  }, [img, rect]);
+    ctx.drawImage(img, srcX, rect.y, rect.w, rect.h, (w - dw) / 2, (h - dh) / 2, dw, dh);
+  }, [img, rect, mirrored]);
 
   return (
     <div>

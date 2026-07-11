@@ -240,7 +240,8 @@ def _ignore_rect(data: dict) -> IgnoreRect | None:
 def _media_url(path: str) -> str:
     """Absolute path under MEDIA_ROOT → a leading-slash ``/media/...`` URL."""
     rel = Path(path).resolve().relative_to(Path(settings.MEDIA_ROOT).resolve())
-    return "/" + settings.MEDIA_URL + str(rel).replace("\\", "/")
+    media_url = settings.MEDIA_URL.lstrip("/")
+    return "/" + media_url + str(rel).replace("\\", "/")
 
 
 def run_log_file(mushaf: Mushaf, run_id: uuid.UUID) -> Path:

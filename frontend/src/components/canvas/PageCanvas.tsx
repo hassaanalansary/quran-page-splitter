@@ -19,6 +19,12 @@ type Props = {
   onNatural?: (n: { w: number; h: number }) => void;
   /** Active tool. Defaults to "select". Holding Space temporarily activates "hand". */
   tool?: CanvasTool;
+  /**
+   * When true, the crop rect is shown mirrored across the page's vertical
+   * centerline and made read-only — a preview of how the alternate-margin
+   * engine crops this page. Editing happens on non-mirrored pages.
+   */
+  mirrored?: boolean;
 };
 
 type NaturalSize = { w: number; h: number };
@@ -44,6 +50,7 @@ export function PageCanvas({
   onCursorChange,
   onNatural,
   tool = "select",
+  mirrored = false,
 }: Props) {
   const { scrollRef, effectiveTool, handCursor, containerProps } = useSpacePan({ tool });
 
@@ -244,12 +251,17 @@ export function PageCanvas({
             />
             {rect && natural && label && (
               <RectOverlay
-                rect={rect}
+                rect={
+                  mirrored
+                    ? { x: natural.w - (rect.x + rect.w), y: rect.y, w: rect.w, h: rect.h }
+                    : rect
+                }
                 natural={natural}
                 label={label}
-                onBodyPointerDown={startBodyDrag}
-                onHandlePointerDown={startHandleDrag}
+                onBodyPointerDown={mirrored ? undefined : startBodyDrag}
+                onHandlePointerDown={mirrored ? undefined : startHandleDrag}
                 dimming={drawing}
+                mirrored={mirrored}
               />
             )}
           </div>
@@ -272,15 +284,18 @@ function RectOverlay({
   onBodyPointerDown,
   onHandlePointerDown,
   dimming,
+  mirrored = false,
 }: {
   rect: Rect;
   natural: NaturalSize;
   label: string;
-  onBodyPointerDown: (e: React.PointerEvent) => void;
-  onHandlePointerDown: (
+  onBodyPointerDown?: (e: React.PointerEvent) => void;
+  onHandlePointerDown?: (
     h: "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w",
   ) => (e: React.PointerEvent) => void;
   dimming?: boolean;
+  /** Read-only preview of the mirrored (alternate-margin) crop. */
+  mirrored?: boolean;
 }) {
   const left = (rect.x / natural.w) * 100;
   const top = (rect.y / natural.h) * 100;
@@ -340,47 +355,56 @@ function RectOverlay({
 
       {/* main rect */}
       <div
-        onPointerDown={onBodyPointerDown}
-        className="absolute rounded-[3px] border-2 border-orange"
+        onPointerDown={mirrored ? undefined : onBodyPointerDown}
+        className="absolute rounded-[3px] border-2"
         style={{
           left: `${left}%`,
           top: `${top}%`,
           width: `${width}%`,
           height: `${height}%`,
-          backgroundColor: "color-mix(in oklab, var(--orange) 4%, transparent)",
-          cursor: "move",
+          borderColor: mirrored ? "var(--navy)" : "var(--orange)",
+          borderStyle: mirrored ? "dashed" : "solid",
+          backgroundColor: mirrored
+            ? "color-mix(in oklab, var(--navy) 6%, transparent)"
+            : "color-mix(in oklab, var(--orange) 4%, transparent)",
+          cursor: mirrored ? "default" : "move",
+          pointerEvents: mirrored ? "none" : undefined,
           touchAction: "none",
         }}
       >
-        {/* edge handles */}
-        {edgeHandles.map((h) => (
-          <div
-            key={h.key}
-            onPointerDown={onHandlePointerDown(h.key)}
-            className="absolute"
-            style={{ ...h.style, cursor: h.cursor, touchAction: "none" }}
-          />
-        ))}
-        {/* corner handles */}
-        {cornerHandles.map((h) => (
-          <div
-            key={h.key}
-            onPointerDown={onHandlePointerDown(h.key)}
-            className="absolute h-[12px] w-[12px] rounded-[3px] border-2 border-orange bg-white"
-            style={{ ...h.pos, cursor: h.cursor, touchAction: "none" }}
-          />
-        ))}
+        {/* resize handles — hidden on the read-only mirrored preview */}
+        {!mirrored && onHandlePointerDown && (
+          <>
+            {edgeHandles.map((h) => (
+              <div
+                key={h.key}
+                onPointerDown={onHandlePointerDown(h.key)}
+                className="absolute"
+                style={{ ...h.style, cursor: h.cursor, touchAction: "none" }}
+              />
+            ))}
+            {cornerHandles.map((h) => (
+              <div
+                key={h.key}
+                onPointerDown={onHandlePointerDown(h.key)}
+                className="absolute h-[12px] w-[12px] rounded-[3px] border-2 border-orange bg-white"
+                style={{ ...h.pos, cursor: h.cursor, touchAction: "none" }}
+              />
+            ))}
+          </>
+        )}
         {/* label badge */}
         <div
-          className="pointer-events-none absolute rounded-pill bg-orange px-2 py-[2px] text-[10px] font-semibold text-white"
+          className="pointer-events-none absolute rounded-pill px-2 py-[2px] text-[10px] font-semibold text-white"
           style={{
             top: "-22px",
             left: "0px",
             letterSpacing: "0.04em",
             whiteSpace: "nowrap",
+            background: mirrored ? "var(--navy)" : "var(--orange)",
           }}
         >
-          {label}
+          {mirrored ? `⇄ ${label} · mirrored` : label}
         </div>
         {/* dimension tag */}
         <div

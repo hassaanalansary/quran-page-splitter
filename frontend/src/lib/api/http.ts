@@ -9,6 +9,13 @@ export const API_BASE = ((import.meta.env.VITE_API_BASE_URL as string | undefine
   "",
 );
 
+/** Resolve a backend-served media path to a browser-usable URL. */
+export function mediaUrl(path: string): string {
+  if (/^[a-zA-Z][a-zA-Z\d+.-]*:/.test(path)) return path;
+  const normalized = path.replace(/^\/+/, "/");
+  return `${API_BASE}${normalized}`;
+}
+
 /** Thrown for any non-2xx response; carries the HTTP status for callers to branch on. */
 export class ApiError extends Error {
   status: number;

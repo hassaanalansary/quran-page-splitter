@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 import type { AbortInfo } from "@/lib/api";
+import { mediaUrl } from "@/lib/api/http";
 
 /** Detection diagnostics for an aborted run — pairs each detected line with its
  * debug image (the key "why did it mis-split" signal), plus header match scores,
@@ -11,6 +12,7 @@ export function AbortDiagnostics({ info, logUrl }: { info: AbortInfo; logUrl?: s
   const headers = d?.headers ?? [];
   const regions = d?.text_regions ?? [];
   const images = info.debug_images ?? [];
+  const imageUrls = images.map(mediaUrl);
 
   return (
     <div className="flex flex-col gap-2">
@@ -32,10 +34,10 @@ export function AbortDiagnostics({ info, logUrl }: { info: AbortInfo; logUrl?: s
           <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
             {lines.map((ln, i) => (
               <figure key={ln.index} className="rounded-[6px] border border-border bg-white p-1">
-                {images[i] ? (
-                  <a href={images[i]} target="_blank" rel="noreferrer">
+                {imageUrls[i] ? (
+                  <a href={imageUrls[i]} target="_blank" rel="noreferrer">
                     <img
-                      src={images[i]}
+                      src={imageUrls[i]}
                       alt={`detected line ${ln.index}`}
                       className="h-auto w-full rounded-[3px] border border-bg-surface bg-white object-contain"
                     />

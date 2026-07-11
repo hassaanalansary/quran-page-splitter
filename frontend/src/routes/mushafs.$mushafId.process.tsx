@@ -125,6 +125,14 @@ function ProcessPage() {
   const rangeOk = rangeStart >= 1 && rangeStart <= rangeEnd && rangeEnd <= logicalCount;
   const canProcess = boundsOk && rangeOk && !run?.running;
 
+  // Preview the alternate-margin flip exactly as the engine applies it: the
+  // engine anchors the mirror to the first page of the batch (page_index starts
+  // at 1) and swaps every other page from there — so a page flips when its
+  // offset from the start page is odd. Chunking by 50 (even) preserves parity,
+  // so anchoring the preview to `rangeStart` matches every chunk. See
+  // core/line_detector.py (`should_swap`) and core/pipeline.py (`enumerate`, start=1).
+  const flipPreview = settings.alternate_horizontal_margin && (preview - rangeStart) % 2 !== 0;
+
   async function runProcess() {
     if (!bounds) return;
     const total = rangeEnd - rangeStart + 1;
@@ -173,7 +181,7 @@ function ProcessPage() {
         renderLabel={(p) =>
           `PDF page ${mushaf.first_quran_pdf_page + p - 1} of ${mushaf.pdf_page_count}`
         }
-        crop={{ label: "bounds", rect: bounds, onRectChange: setBounds }}
+        crop={{ label: "bounds", rect: bounds, onRectChange: setBounds, mirrored: flipPreview }}
         onNatural={setNatural}
         processed={pages?.processed}
         reviewed={pages?.reviewed}
@@ -186,6 +194,7 @@ function ProcessPage() {
             mode="bounds"
             pageUrl={pageImageUrl(mushafId, preview, mushaf.updated_at)}
             working={bounds}
+            mirrored={flipPreview}
           />
         </div>
       </div>
@@ -241,6 +250,13 @@ function ProcessPage() {
           {!boundsOk && (
             <span className="text-[12px] text-error">
               Draw a bounds box on the page to enable processing.
+            </span>
+          )}
+          {flipPreview && (
+            <span className="text-[12px]" style={{ color: "var(--navy)" }}>
+              Alternate margin: page {preview} is shown <strong>mirrored</strong> and read-only, as
+              the engine will crop it. Edit the box on a non-mirrored page (e.g. the start page{" "}
+              {rangeStart}); the X/Y/W/H fields above still edit the base box.
             </span>
           )}
         </Section>
@@ -394,7 +410,7 @@ function SettingsCard({
           compact
         />
       </Row>
-      <Row label="Alternate margins" hint="Mirror bounds on even pages">
+      <Row label="Alternate margins" hint="Mirror bounds on alternate pages">
         <Toggle
           value={settings.alternate_horizontal_margin}
           onChange={(v) => u({ alternate_horizontal_margin: v })}
