@@ -25,6 +25,44 @@ def is_line_geometry_failure(status: str) -> bool:
     return status in (STATUS_NO_LINES, STATUS_LINE_COUNT_MISMATCH)
 
 
+def _detection_diagnostics(ctx: PageContext) -> dict:
+    """Page-coordinate diagnostics for an aborted page — the detected sura headers
+    (with match scores), the text regions (with their allocated line count), and
+    each detected line: everything the user needs to see WHY detection missed."""
+    cb = ctx.crop_box
+    ox = cb.left if cb else 0
+    oy = cb.top if cb else 0
+    cw = cb.width if cb else 0
+    headers = [
+        {
+            "x": ox,
+            "y": oy + hd["top"],
+            "w": cw,
+            "h": hd["bottom"] - hd["top"],
+            "score": round(hd["score"], 4),
+            "slots": hd["slots"],
+        }
+        for hd in ctx.detected_headers
+    ]
+    regions = [
+        {"x": ox, "y": oy + rg["top"], "w": cw, "h": rg["bottom"] - rg["top"], "expected_lines": rg["slots"]}
+        for rg in ctx.text_regions
+    ]
+    lines = [
+        {
+            "index": ln.line_index,
+            "x": ln.bbox.left,
+            "y": ln.bbox.top,
+            "w": ln.bbox.width,
+            "h": ln.bbox.height,
+            "slots": ln.slot_count,
+            "is_sura": ln.is_sura,
+        }
+        for ln in ctx.lines
+    ]
+    return {"headers": headers, "text_regions": regions, "lines": lines}
+
+
 def create_context(
     image: Image.Image,
     filename: str,
@@ -98,6 +136,7 @@ class PageProcessor:
                 "detected_slots": 0,
                 "line_heights": [],
                 "line_slots": [],
+                "diagnostics": _detection_diagnostics(ctx),
             }
 
         detected_slots = sum(line.slot_count for line in ctx.lines)
@@ -134,6 +173,7 @@ class PageProcessor:
                 "line_heights": line_heights,
                 "line_slots": line_slots,
                 "line_debug_outputs": debug_paths,
+                "diagnostics": _detection_diagnostics(ctx),
                 "outputs": [],
             }
 

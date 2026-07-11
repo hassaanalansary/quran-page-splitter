@@ -166,6 +166,35 @@ export type ProcessPageResult = {
   [key: string]: unknown;
 };
 
+/** Detection diagnostics attached to an abort — all positions are page-pixel
+ * coordinates; helps the user see WHY detection missed. */
+export type AbortDiagnostics = {
+  headers: { x: number; y: number; w: number; h: number; score: number; slots: number }[];
+  text_regions: { x: number; y: number; w: number; h: number; expected_lines: number }[];
+  lines: {
+    index: number;
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    slots: number;
+    is_sura: boolean;
+  }[];
+};
+
+/** Engine abort detail — a line-count mismatch on one page. */
+export type AbortInfo = {
+  page_index: number;
+  filename: string;
+  status: string;
+  expected_lines: number | null;
+  detected_lines: number | null;
+  detected_slots: number | null;
+  diagnostics: AbortDiagnostics | null;
+  /** URLs of the aborted page's per-line debug PNGs. */
+  debug_images: string[];
+};
+
 export type ProcessResult = {
   run_id: string;
   status: "completed" | "aborted_line_detection" | "error" | string;
@@ -175,7 +204,8 @@ export type ProcessResult = {
   end_sura: number;
   end_aya: number;
   results: ProcessPageResult[];
-  abort_info: Record<string, unknown> | null;
+  abort_info: AbortInfo | null;
+  log_url?: string | null;
 };
 
 /** One stored processing run (GET /api/mushafs/{id}/runs, newest first). */
@@ -190,7 +220,8 @@ export type Run = {
   /** Pages currently attributed to this run. */
   pages_saved: number;
   settings: Record<string, unknown>;
-  abort_info: Record<string, unknown> | null;
+  abort_info: AbortInfo | null;
+  log_url?: string | null;
 };
 
 /** Aggregate detection counts (GET /api/mushafs/{id}/stats). */

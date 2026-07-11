@@ -98,18 +98,22 @@ class LineDetector:
         cropped_binary = ctx.cropped_binary()
 
         logger.info("Start detecting bands")
-        bands = self._detect_bands(cropped_grey, cropped_binary, n_lines)
+        bands = self._detect_bands(ctx, cropped_grey, cropped_binary, n_lines)
         self._set_lines_from_bands(ctx, left, top, bands)
 
         logger.info("  Detected %d lines", len(ctx.lines))
 
     def _detect_bands(
         self,
+        ctx: PageContext,
         grey: np.ndarray,
         binary: np.ndarray,
         expected_lines: int,
     ) -> list[_DetectedBand]:
         headers = self.sura_header_locator.locate(grey) if self.sura_header_locator is not None else []
+        ctx.detected_headers = [
+            {"top": h.top, "bottom": h.bottom, "score": h.score, "slots": h.slot_count} for h in headers
+        ]
         if not headers:
             return [
                 _DetectedBand(box=box)
@@ -122,6 +126,7 @@ class LineDetector:
             ]
 
         return self._detect_with_sura_headers(
+            ctx,
             grey,
             binary,
             expected_lines,
@@ -130,6 +135,7 @@ class LineDetector:
 
     def _detect_with_sura_headers(
         self,
+        ctx: PageContext,
         grey: np.ndarray,
         binary: np.ndarray,
         expected_lines: int,
@@ -148,6 +154,9 @@ class LineDetector:
             text_slots,
             expected_lines,
         )
+        ctx.text_regions = [
+            {"top": r.top, "bottom": r.bottom, "height": r.content_height, "slots": r.slots} for r in regions
+        ]
         detected: list[_DetectedBand] = []
 
         for region in regions:

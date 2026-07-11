@@ -6,8 +6,11 @@ runs outside the DB transaction; only the persistence step is transactional.
 """
 
 import json
+import uuid
+from datetime import datetime
 from pathlib import Path
 
+from django.conf import settings
 from django.db import transaction
 from django.db.models import Count
 from ninja.errors import HttpError
@@ -91,7 +94,13 @@ def process(
         for n in page_numbers
     ]
 
-    results_dir = Path(__file__).resolve().parents[2] / "tmp" / "processing"
+    token = datetime.now().strftime("%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:6]
+    log_rel = f"runs/{token}.log"
+    log_path = settings.LOG_DIR / log_rel
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    # Line-detection debug PNGs live under MEDIA_ROOT so they can be served and
+    # shown in the abort diagnostics (see ``_media_url``).
+    results_dir = Path(settings.MEDIA_ROOT) / "run_debug" / token
     results_dir.mkdir(parents=True, exist_ok=True)
 
     pipeline = build_pipeline(
@@ -103,7 +112,12 @@ def process(
         results_dir=results_dir,
         sura_header_locator=sura_header_locator,
     )
-    output = pipeline.run(images_data)
+    output = pipeline.run(images_data, log_path=str(log_path))
+
+    abort_at = output.get("abort_at")
+    if isinstance(abort_at, dict):
+        debug_paths = abort_at.pop("line_debug_outputs", None) or []
+        abort_at["debug_images"] = [_media_url(p) for p in debug_paths]
 
     settings_used = {
         "padding": padding,
@@ -127,7 +141,8 @@ def process(
             page_range_start=page_range_start,
             page_range_end=page_range_end,
             status=output["status"],
-            abort_info=json.dumps(output["abort_at"]) if output.get("abort_at") else "",
+            abort_info=json.dumps(abort_at) if abort_at else "",
+            log_path=log_rel,
         )
         pages_saved = 0
         for page_number, coord_page in zip(page_numbers, coord_pages, strict=False):
@@ -141,7 +156,6 @@ def process(
             "page_range_start": page_range_start,
             "page_range_end": page_range_end,
         }
-        abort_at = output.get("abort_at")
         if isinstance(abort_at, dict) and abort_at.get("page_index") is not None:
             event["abort_page"] = page_range_start + abort_at["page_index"]
         activity.emit(mushaf, ActivityTypeChoices.RUN_FINISHED, event)
@@ -155,7 +169,8 @@ def process(
         "end_sura": output["end_sura"],
         "end_aya": output["end_aya"],
         "results": output["results"],
-        "abort_info": output.get("abort_at"),
+        "abort_info": abort_at,
+        "log_url": f"/api/mushafs/{mushaf.id}/runs/{run.id}/log",
     }
 
 
@@ -177,6 +192,7 @@ def list_runs(mushaf: Mushaf) -> list[dict]:
             "pages_saved",
             "settings",
             "abort_info",
+            "log_path",
         )
         .order_by("created_at")
     )
@@ -191,6 +207,7 @@ def list_runs(mushaf: Mushaf) -> list[dict]:
             "pages_saved": row["pages_saved"],
             "settings": row["settings"],
             "abort_info": json.loads(row["abort_info"]) if row["abort_info"] else None,
+            "log_url": f"/api/mushafs/{mushaf.id}/runs/{row['id']}/log" if row["log_path"] else None,
         }
         for number, row in enumerate(rows, start=1)
     ]
@@ -218,3 +235,21 @@ def _ignore_rect(data: dict) -> IgnoreRect | None:
     if not data:
         return None
     return IgnoreRect(x=data["x"], y=data["y"], w=data["w"], h=data["h"])
+
+
+def _media_url(path: str) -> str:
+    """Absolute path under MEDIA_ROOT → a leading-slash ``/media/...`` URL."""
+    rel = Path(path).resolve().relative_to(Path(settings.MEDIA_ROOT).resolve())
+    return "/" + settings.MEDIA_URL + str(rel).replace("\\", "/")
+
+
+def run_log_file(mushaf: Mushaf, run_id: uuid.UUID) -> Path:
+    """Validated filesystem path to a run's detailed log (404 if missing/foreign)."""
+    log_rel = mushaf.processing_runs.filter(id=run_id).values_list("log_path", flat=True).first()
+    if not log_rel:
+        raise HttpError(404, "No log for this run.")
+    log_dir = Path(settings.LOG_DIR).resolve()
+    path = (log_dir / log_rel).resolve()
+    if log_dir not in path.parents or not path.is_file():
+        raise HttpError(404, "Log file not found.")
+    return path

@@ -17,9 +17,11 @@ import {
   useSuras,
   type BulkSaveInput,
   type Rect,
+  type ReviewData,
   type Sura,
 } from "@/lib/api";
 import {
+  editPageFromApiPage,
   fromApi,
   genId,
   type EditLine,
@@ -157,6 +159,8 @@ function ReviewPage() {
   const currentDerived = derived?.pages.find((p) => p.page_number === page) ?? null;
   const selectedEdit = currentEdit?.lines.find((l) => l.uid === selectedUid) ?? null;
   const selectedDerived = currentDerived?.lines.find((l) => l.uid === selectedUid) ?? null;
+  const suraName = (n: number) =>
+    suras?.find((s) => s.number === n)?.transliteration ?? `sura ${n}`;
 
   // Content-dirty pages (structure changed vs the last-saved baseline).
   const dirtyPages = useMemo(() => {
@@ -299,19 +303,47 @@ function ReviewPage() {
   };
 
   // ── persistence (fire-and-forget: never blocks navigation) ──────────────────
-  function persist(input: BulkSaveInput): Promise<boolean> {
+  function persist(input: BulkSaveInput): Promise<ReviewData | null> {
     return bulkSavePages(mushafId, input)
-      .then(() => {
+      .then((fresh) => {
         queryClient.invalidateQueries({ queryKey: queryKeys.processedPages(mushafId) });
         queryClient.invalidateQueries({ queryKey: queryKeys.stats(mushafId) });
         queryClient.invalidateQueries({ queryKey: queryKeys.activity(mushafId) });
         queryClient.invalidateQueries({ queryKey: queryKeys.mushaf(mushafId) });
-        return true;
+        return fresh;
       })
       .catch((e) => {
         toast.error(e instanceof ApiError ? e.message : "Save failed.");
-        return false;
+        return null;
       });
+  }
+
+  // Re-sync saved pages from the server's authoritative bulk-save response — the
+  // backend is the source of truth between saves. A page edited DURING the save
+  // (its signature no longer matches what we sent) is left local + dirty for the
+  // next save; only cleanly round-tripped pages adopt the server version.
+  function reconcileSaved(fresh: ReviewData, sent: Map<number, string>) {
+    const freshByNum = new Map(fresh.pages.map((p) => [p.page_number, p]));
+    const rebuilt = new Map<number, EditPage>();
+    sent.forEach((_sig, n) => {
+      const fp = freshByNum.get(n);
+      if (fp) rebuilt.set(n, editPageFromApiPage(fp));
+    });
+    // Baseline = the server version's signature: reconciled pages become clean,
+    // while a page re-edited mid-save keeps a different local signature → dirty.
+    rebuilt.forEach((ep, n) => baselineRef.current.set(n, pageSignature(ep)));
+    setHist((h) => {
+      const cur = h.stack[h.index];
+      if (!cur) return h;
+      const pages = cur.pages.map((p) => {
+        const sig = sent.get(p.page_number);
+        if (sig === undefined || pageSignature(p) !== sig) return p;
+        return rebuilt.get(p.page_number) ?? p;
+      });
+      const stack = h.stack.slice();
+      stack[h.index] = { ...cur, pages };
+      return { stack, index: h.index };
+    });
   }
 
   // Mark reviewed is CLIENT-ONLY (persisted later by Save) → instant navigation.
@@ -345,10 +377,10 @@ function ReviewPage() {
       return toApiPage(ep, dp);
     });
     setSaving(true);
-    persist({ pages, reviewed_pages: reviewedToSave }).then((ok) => {
+    persist({ pages, reviewed_pages: reviewedToSave }).then((fresh) => {
       setSaving(false);
-      if (!ok) return;
-      sent.forEach((sig, n) => baselineRef.current.set(n, sig));
+      if (!fresh) return;
+      reconcileSaved(fresh, sent);
       reviewedToSave.forEach((n) => baselineReviewedRef.current.add(n));
       setBaselineVersion((v) => v + 1);
       toast.success(
@@ -457,8 +489,8 @@ function ReviewPage() {
 
             {currentDerived && (
               <div className="rounded-md border border-border bg-white px-2.5 py-1.5 text-[11.5px] text-text-secondary">
-                Enters sura {currentDerived.entry.sura}:{currentDerived.entry.aya} · exits sura{" "}
-                {currentDerived.exit.sura}:{Math.max(1, currentDerived.exit.aya - 1)}
+                Enters {suraName(currentDerived.entry.sura)}:{currentDerived.entry.aya} · exits{" "}
+                {suraName(currentDerived.exit.sura)}:{Math.max(1, currentDerived.exit.aya - 1)}
                 {currentEdit?.reviewed && (
                   <span className="ml-1 font-semibold text-success">· reviewed</span>
                 )}

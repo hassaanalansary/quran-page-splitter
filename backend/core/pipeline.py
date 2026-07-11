@@ -90,6 +90,8 @@ class Pipeline:
                     "expected_lines": result.get("expected_lines"),
                     "detected_lines": result.get("detected_lines"),
                     "detected_slots": result.get("detected_slots"),
+                    "diagnostics": result.get("diagnostics"),
+                    "line_debug_outputs": result.get("line_debug_outputs", []),
                 }
                 for _, fn in images_data[page_index:]:
                     page_results.append(

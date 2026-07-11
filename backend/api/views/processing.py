@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime
 
-from django.http import HttpRequest
+from django.http import HttpRequest, HttpResponse
 from ninja import Router, Schema
 from pydantic import Field
 
@@ -40,6 +40,7 @@ class ProcessOut(Schema):
     end_aya: int
     results: list[dict]
     abort_info: dict | None = None
+    log_url: str | None = None
 
 
 class RunOut(Schema):
@@ -52,6 +53,7 @@ class RunOut(Schema):
     pages_saved: int
     settings: dict
     abort_info: dict | None = None
+    log_url: str | None = None
 
 
 @router.post("/{mushaf_id}/process", response=ProcessOut)
@@ -66,3 +68,11 @@ def list_runs(request: HttpRequest, mushaf_id: uuid.UUID) -> list[dict]:
     """Processing-run history for a mushaf (newest first)."""
     mushaf = mushaf_service.get_mushaf(mushaf_id)
     return processing_service.list_runs(mushaf)
+
+
+@router.get("/{mushaf_id}/runs/{run_id}/log")
+def run_log(request: HttpRequest, mushaf_id: uuid.UUID, run_id: uuid.UUID) -> HttpResponse:
+    """Return a processing run's detailed log file as plain text."""
+    mushaf = mushaf_service.get_mushaf(mushaf_id)
+    path = processing_service.run_log_file(mushaf, run_id)
+    return HttpResponse(path.read_text(encoding="utf-8"), content_type="text/plain; charset=utf-8")

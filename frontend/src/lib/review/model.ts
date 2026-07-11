@@ -1,7 +1,7 @@
 // Editable in-memory model of the whole review session.
 // Segments are NEVER stored — they are derived from line bbox + separator cuts.
 
-import type { ReviewData, ReviewLine, Rect } from "@/lib/api";
+import type { ReviewData, ReviewLine, ReviewPage, Rect } from "@/lib/api";
 
 export type EditLineType = "text" | "sura_header" | "besmella";
 
@@ -39,6 +39,25 @@ export function genId(prefix = "id"): string {
 /** A placeholder crop box for pages with no server data yet (manual pages). */
 const DEFAULT_BBOX: Rect = { x: 0, y: 0, w: 1, h: 1 };
 
+/** One page's edit model from a server review-data page. Used both when building
+ * the store and when reconciling a saved page from the bulk-save response. */
+export function editPageFromApiPage(p: ReviewPage): EditPage {
+  return {
+    page_number: p.page_number,
+    bbox: p.bbox ?? DEFAULT_BBOX,
+    reviewed: p.reviewed,
+    run_start: p.run_start,
+    lines: p.lines.map((l: ReviewLine) => ({
+      uid: genId("line"),
+      type: l.type,
+      bbox: { x: l.bbox_x, y: l.bbox_y, w: l.bbox_w, h: l.bbox_h },
+      cuts: l.type === "text" ? (l.cuts ?? []) : [],
+      // Existing sura headers anchor to their stored sura (editable in review).
+      sura: l.type === "sura_header" && l.sura_number != null ? l.sura_number : undefined,
+    })),
+  };
+}
+
 /** Build the editing store for EVERY logical page 1..`logicalCount`. Pages the
  * server hasn't processed become empty, editable pages (manual processing). */
 export function fromApi(data: ReviewData, logicalCount: number): ReviewStore {
@@ -46,20 +65,11 @@ export function fromApi(data: ReviewData, logicalCount: number): ReviewStore {
   const pages: EditPage[] = [];
   for (let n = 1; n <= Math.max(logicalCount, 1); n += 1) {
     const p = byNumber.get(n);
-    pages.push({
-      page_number: n,
-      bbox: p?.bbox ?? DEFAULT_BBOX,
-      reviewed: p?.reviewed ?? false,
-      run_start: p?.run_start ?? null,
-      lines: (p?.lines ?? []).map((l: ReviewLine) => ({
-        uid: genId("line"),
-        type: l.type,
-        bbox: { x: l.bbox_x, y: l.bbox_y, w: l.bbox_w, h: l.bbox_h },
-        cuts: l.type === "text" ? (l.cuts ?? []) : [],
-        // Existing sura headers anchor to their stored sura (editable in review).
-        sura: l.type === "sura_header" && l.sura_number != null ? l.sura_number : undefined,
-      })),
-    });
+    pages.push(
+      p
+        ? editPageFromApiPage(p)
+        : { page_number: n, bbox: DEFAULT_BBOX, reviewed: false, run_start: null, lines: [] },
+    );
   }
   return { start: data.start, pages };
 }

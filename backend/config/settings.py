@@ -106,5 +106,38 @@ STATIC_URL = "static/"
 MEDIA_URL = "media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
+# --- Logging -------------------------------------------------------------
+# Console (INFO) for the dev server + a rotating file (DEBUG) with the full
+# detection trace. The processing pipeline additionally attaches a per-run
+# file handler for that run's own log (see services/processing.py).
+LOG_DIR = BASE_DIR / "logs"
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "detailed": {"format": "{asctime}  {name:<26}  {levelname:<7}  {message}", "style": "{"},
+        "console": {"format": "{levelname:<7} {name}: {message}", "style": "{"},
+    },
+    "handlers": {
+        "console": {"class": "logging.StreamHandler", "level": "INFO", "formatter": "console"},
+        "file": {
+            "class": "logging.handlers.RotatingFileHandler",
+            "filename": str(LOG_DIR / "quran.log"),
+            "maxBytes": 5 * 1024 * 1024,
+            "backupCount": 3,
+            "encoding": "utf-8",
+            "level": "DEBUG",
+            "formatter": "detailed",
+        },
+    },
+    "root": {"handlers": ["console", "file"], "level": "INFO"},
+    "loggers": {
+        "core": {"level": "DEBUG", "propagate": True},
+        "api": {"level": "INFO", "propagate": True},
+    },
+}
+
 if "test" in sys.argv:
     MIGRATION_MODULES = {"api": None}

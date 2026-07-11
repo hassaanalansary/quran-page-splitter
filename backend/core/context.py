@@ -87,6 +87,9 @@ class PageContext:
     page_image_filename: str | None = None
     crop_box: BBox | None = None
     lines: list[LineResult] = field(default_factory=list)
+    # Detection diagnostics (crop-relative), surfaced when a page aborts.
+    detected_headers: list[dict] = field(default_factory=list)
+    text_regions: list[dict] = field(default_factory=list)
 
     # -- Zero-copy array accessors ------------------------------------
 

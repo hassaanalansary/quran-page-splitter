@@ -5,6 +5,7 @@ import { toast } from "sonner";
 
 import { TemplatePreview } from "@/components/canvas/TemplatePreview";
 import { Aside, Field, Hint, Section } from "@/components/app/Panel";
+import { AbortDiagnostics } from "@/components/app/AbortDiagnostics";
 import { CropPreview } from "@/components/canvas/CropPreview";
 import { PageStage } from "@/components/canvas/PageStage";
 import { RectInputs } from "@/components/canvas/RectInputs";
@@ -324,19 +325,14 @@ function ProgressFooter({ run }: { run: RunState }) {
 }
 
 function AbortCard({ abort }: { abort: ProcessResult }) {
-  const info = abort.abort_info ?? {};
   return (
-    <div className="rounded-md border border-[color:var(--warning-border)] bg-warning-bg px-3 py-2 text-[12px] text-[#92400E]">
+    <div className="rounded-md border border-[color:var(--warning-border)] bg-warning-bg px-3 py-2.5 text-[12px] text-[#92400E]">
       <div className="font-semibold">Stopped on a line-count mismatch</div>
-      <div className="mt-1">
+      <div className="mb-2.5 mt-1">
         {abort.pages_processed} page{abort.pages_processed === 1 ? "" : "s"} were saved before the
         stop. Adjust the bounds or expected-lines, then reprocess from where it stopped.
       </div>
-      {Object.keys(info).length > 0 && (
-        <pre className="mt-1.5 overflow-x-auto rounded bg-white/60 p-1.5 text-[11px] leading-tight">
-          {JSON.stringify(info, null, 2)}
-        </pre>
-      )}
+      {abort.abort_info && <AbortDiagnostics info={abort.abort_info} logUrl={abort.log_url} />}
     </div>
   );
 }

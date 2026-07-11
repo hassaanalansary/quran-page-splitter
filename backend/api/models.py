@@ -195,6 +195,12 @@ class ProcessingRun(BaseModel):
         default=RunStatusChoices.COMPLETED,
     )
     abort_info = models.TextField(blank=True, default="")
+    log_path = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text="Path (relative to settings.LOG_DIR) of this run's detailed log file.",
+    )
 
     class Meta:
         db_table = "processing_run"

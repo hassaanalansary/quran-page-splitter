@@ -253,41 +253,6 @@ def _export_line_bbox(line: LineResult) -> BBox:
     )
 
 
-# ------------------------------------------------------------------
-# Logging setup
-# ------------------------------------------------------------------
-
-
-def setup_export_logging(log_path: Path) -> None:
-    """Configure the module logger to write detailed output to a file.
-
-    All messages at DEBUG level and above are written to the log file.
-    A summary stream is also printed to the console at INFO level.
-    """
-    export_logger = logging.getLogger(__name__)
-    export_logger.setLevel(logging.DEBUG)
-
-    # Remove existing handlers (avoid duplicate output on re-runs)
-    export_logger.handlers.clear()
-
-    # File handler — detailed log
-    file_handler = logging.FileHandler(log_path, mode="w", encoding="utf-8")
-    file_handler.setLevel(logging.DEBUG)
-    file_fmt = logging.Formatter("%(asctime)s  %(levelname)-8s  %(message)s")
-    file_handler.setFormatter(file_fmt)
-    export_logger.addHandler(file_handler)
-
-    # Console handler — summary only
-    console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging.INFO)
-    console_fmt = logging.Formatter("%(message)s")
-    console_handler.setFormatter(console_fmt)
-    export_logger.addHandler(console_handler)
-
-    # Prevent propagation to root logger
-    export_logger.propagate = False
-
-
 def save_json(data: dict, output_path: Path) -> None:
     """Save coordinate data as formatted JSON with UTF-8 encoding."""
     output_path.parent.mkdir(parents=True, exist_ok=True)

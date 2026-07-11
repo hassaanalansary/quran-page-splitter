@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
 
 import type { Run } from "@/lib/api";
+import { AbortDiagnostics } from "@/components/app/AbortDiagnostics";
 
 import {
   fmtDayTime,
@@ -134,9 +135,11 @@ function RunCard({ run, mushafId }: { run: Run; mushafId: string }) {
                 Pages {run.page_range_start}–{run.page_range_start + run.pages_saved - 1} committed
                 {abortPage ? `; ${abortPage}–${run.page_range_end} skipped.` : "."}
               </div>
-              <div className="mt-2.5 rounded-[7px] border border-border bg-bg-surface px-2.5 py-2 font-mono text-[10.5px] font-medium text-text-muted">
-                abort_info = {JSON.stringify(run.abort_info)}
-              </div>
+              {run.abort_info && (
+                <div className="mt-2.5">
+                  <AbortDiagnostics info={run.abort_info} logUrl={run.log_url} />
+                </div>
+              )}
             </>
           ) : (
             <div className="flex items-center gap-3.5">
