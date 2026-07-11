@@ -100,10 +100,10 @@ export function MushafHeader({
           to={STEP_ROUTES[cta.slug]}
           params={{ mushafId: mushaf.id }}
           search={cta.slug === "review" && cta.reviewPage ? { page: cta.reviewPage } : undefined}
-          className="flex h-8 flex-col justify-center rounded-[7px] bg-orange px-3 text-white transition-colors hover:bg-orange-hover"
+          className="flex h-12 flex-col p-6 cursor-pointer justify-center rounded-[7px] bg-orange px-3 text-white transition-colors hover:bg-orange-hover"
         >
-          <span className="text-[11px] font-bold leading-[1.05]">Continue →</span>
-          <span className="mt-px text-[9px] leading-[1.05] opacity-80">{cta.sub}</span>
+          <span className="text-[15px] font-bold leading-[1.1]">Continue →</span>
+          <span className="mt-px text-[11px] leading-[1.1] opacity-80">{cta.sub}</span>
         </Link>
       )}
       {mushaf.pdf_url && (

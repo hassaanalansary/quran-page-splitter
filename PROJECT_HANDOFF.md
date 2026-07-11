@@ -1,9 +1,10 @@
 # Quran Page Splitter — Project Handoff
 
-> Definitive state-of-the-project reference (supersedes the historical
-> `FRONTEND_REFACTOR_HANDOFF.md`). Backend **and** frontend are built, including the
-> **Mushaf Details landing page**. Branch: `refactor/django-backend`. Read §9 for
-> what's uncommitted / pending.
+> Definitive state-of-the-project reference. Backend **and** frontend are built —
+> the details landing page, the whole-mushaf **Review** editor, and the **Finalize**
+> line-cut editor. Branch: `refactor/django-backend`; **working tree clean,
+> everything committed** (§9). Green: 119 backend tests / mypy / ruff; frontend tsc /
+> eslint / build.
 
 ---
 
@@ -58,16 +59,16 @@ backend/
     migrations/ 0001..0009
     tests/    per-area + helpers.py (make_pdf_bytes, make_png_bytes, MediaTestCase, bare_mushaf)
   core/       pure engine: line_detector, aya_separator, page_processor, pipeline, builder,
-              coordinate_exporter, protected_bands, template_matching, quran_metadata, image_utils, …
+              coordinate_exporter, sura_header, cut_review, template_matching, quran_metadata, image_utils, …
   aya_count_per_path.json  (repo root: per-counting-system aya counts, seeded into SuraAyaCount)
 frontend/
   src/routes/       index (home), mushafs.$mushafId (workspace layout + step nav),
                     mushafs.$mushafId.index (DETAILS landing page), .setup .templates .process .review .finalize
   src/components/
-    app/            Panel (Aside/PanelCard/Section/Field/Hint), CreateMushafDialog
-    app/details/    DetailsChrome, DetailsRail, OverviewTab, PagesTab, RunsTab, ExportTab, SettingsTab, helpers
-    canvas/         PageStage, PageCanvas, ChevronNav, PageJump, ZoomControl, ToolToggle, RectInputs,
-                    PageRail, CropPreview, TemplatePreview, FilmstripViewer, CroppableImage, ReviewCanvas
+    app/            Panel (Aside/PanelCard/Section/Field/Hint), CreateMushafDialog, MushafHeader (shared top bar)
+    app/details/    DetailsRail, OverviewTab, PagesTab, RunsTab, ExportTab, SettingsTab, helpers
+    canvas/         PageStage, PageCanvas, ChevronNav, PageJump, ZoomControl, ToolToggle, RectInputs, PageRail,
+                    CropPreview, TemplatePreview, FilmstripViewer, CroppableImage, ReviewCanvas, ReviewEditCanvas, FinalizeCanvas
     ui/             shadcn components (Radix)
   src/lib/api/      http, types, mushafs, pages, suras, qiraat, processing, queries (React Query hooks + queryKeys)
   src/lib/          image (cropUrlToBlob), templateDraft (in-memory template-capture store)
@@ -92,9 +93,8 @@ npm run build      # → frontend/dist (what Django serves in prod)
 npx tsc --noEmit ; npx eslint .
 ```
 
-Green baseline (last verified 2026-07-02): **116 backend tests, ruff;
-frontend tsc + eslint (0 errors) + build.** `mypy` has **3 pre-existing errors** confined to
-the user's in-progress `core` rename (§8) — everything outside `core/` is mypy-clean.
+Green baseline (last verified 2026-07-05): **119 backend tests, ruff, mypy (clean —
+80 source files); frontend tsc + eslint (0 errors) + build.**
 
 ---
 
@@ -170,11 +170,11 @@ Base `/api` (Ninja). Interactive docs `/api/docs`. UUIDs are strings.
 | PUT | `/api/mushafs/{id}/templates/{type}` | multipart; **`image` optional** (omit to update only the ignore region); `ignore_x/y/w/h` all-or-nothing → `TemplateOut {id,type,image_url,ignore_rects}` |
 | GET | `/api/mushafs/{id}/pages/{n}/image` | `image/png` — logical page `n`, rendered on demand |
 | GET | `/api/mushafs/{id}/pages` | **extended summaries**: `[{page_number, reviewed, source_pdf_page(resolved), lines, ayat, segments, has_header, suras:[{number,transliteration,name_arabic}]}]` |
-| GET / POST | `/api/mushafs/{id}/pages/{n}` | `PageDataOut` (empty if unprocessed) / save (aya numbers recomputed server-side; first save since processing emits `review_saved`) |
+| GET / POST | `/api/mushafs/{id}/pages/{n}` | `PageDataOut` (empty if unprocessed; each line carries `erase_strokes`; `bbox` = the page's text column via `coordinates.page_column`) / save (aya recomputed server-side; first save since processing emits `review_saved`) |
 | GET | `/api/mushafs/{id}/review-data` | whole-document review payload: `{start:{sura,aya}, pages:[{…PageDataOut, reviewed, run_start:{sura,aya}\|null}]}`. `start` = logical **page 1's** entry state; `run_start` = each page's processing-run start (the island seed; null for manual pages) |
 | POST | `/api/mushafs/{id}/pages/bulk` | `{pages:[{page_number,bbox,lines}], reviewed_pages:[int]}` → one transaction: rewrites pages (**creates** rows for manual pages; does NOT flip reviewed), flags `reviewed_pages`; **stores sura/aya VERBATIM — no `renumber_from` (the client owns numbering)**; range `review_saved` payload `{page_start,page_end,count}`; returns fresh `review-data` |
-| POST | `/api/mushafs/{id}/pages/{n}/finalize` | erase strokes + bbox overrides |
-| POST | `/api/mushafs/{id}/pages/{n}/export-lines` | writes transparent line PNGs |
+| POST | `/api/mushafs/{id}/pages/{n}/finalize` | cut layer `{lines:[{line_number, bbox_override?, erase_strokes[]}]}` → persists erase strokes + a **Y/H-only** line bbox override (X/W untouched = content extent from segments); returns `PageDataOut` |
+| POST | `/api/mushafs/{id}/pages/{n}/export-lines` | writes transparent line PNGs, each cropped to the page **column** (`coordinates.page_column`: the real crop box, else the union of line boxes for manual pages) → white→transparent → erase strokes punched out |
 | POST | `/api/mushafs/{id}/process` | run the CV pipeline over a page range; synchronous, chunked (frontend loops 50 pages/call); may abort at a line-count mismatch |
 
 `MushafOut = {id, name, qiraa, pdf_page_count, first_quran_pdf_page,
@@ -190,9 +190,12 @@ reviewed_page_count, thumbnail_url, created_at, updated_at}`.
 
 Routing: **Home → Mushaf Details (`/mushafs/:id`) → Setup → Templates → Process →
 Review → Finalize**. Home cards open the **details page**; the create dialog still
-drops a fresh mushaf straight into Setup. `mushafs.$mushafId.tsx` is the *workspace*
-layout (breadcrumb + step nav) for the five step routes only — for the index child
-it renders a bare `<Outlet/>` (the details page brings its own chrome).
+drops a fresh mushaf straight into Setup. Every mushaf page (the details hub + the five
+steps) shares one top bar — **`MushafHeader`** (`components/app/MushafHeader.tsx`):
+breadcrumb → hub, status pill, a **status-aware 5-step nav** (done ✓ / current / to-do),
+and Continue / PDF / JSON actions. `mushafs.$mushafId.tsx` (workspace layout) renders it
+for the step routes and passes the index child through as a bare `<Outlet/>`; the details
+hub renders `MushafHeader` itself.
 
 - **Home** (`index.tsx`): thumbnail-card grid (cover from `thumbnail_url`), status
   badge via `mushafStatus()` — `empty`/`partial`/`processed`/`completed` (completed =
@@ -200,10 +203,10 @@ it renders a bare `<Outlet/>` (the details page brings its own chrome).
   dropdown fed by `GET /api/qiraat`).
 - **Details** (`mushafs.$mushafId.index.tsx` + `components/app/details/`): the
   chosen "enhanced Cockpit" Claude-Design layout —
-  - **Chrome** (navy bar): breadcrumb, status pill, "Updated …", **Continue →** CTA
-    (derives the next step: Templates → Process → Review(first unreviewed page,
-    deep-linked `?page=N`) → Finalize; fresh mushaf → Setup), `PDF ↗` (`pdf_url`),
-    `JSON ↓` (coordinates download).
+  - **Chrome**: the shared **`MushafHeader`** (above) — breadcrumb, status pill, 5-step
+    nav, **Continue →** CTA (derives the next step: Templates → Process → Review(first
+    unreviewed page, deep-linked `?page=N`) → Finalize; fresh mushaf → Setup), `PDF ↗`
+    (`pdf_url`), `JSON ↓` (coordinates download).
   - **Rail** (282px): cover, name, qiraa + counting (`Kufan · 6236`),
     processed/reviewed progress bars, ayat/lines/PNGs stat trio, template
     thumbnails (+ Edit →), Record kv (range, logical pages, original filename,
@@ -257,12 +260,23 @@ it renders a bare `<Outlet/>` (the details page brings its own chrome).
   is un-cache-busted (stable). Right `Aside`: line list (+ add Text/Sura/Besmella) and a
   selected-line editor (type, **sura dropdown** for headers, bbox via `RectInputs`,
   segments/separators merge/remove, delete).
-- **Finalize** (`.finalize`): **`ReviewCanvas`** (read-only overlay viewer) + erase + export.
+- **Finalize** (`.finalize`, takes `?page=N`): the **`FinalizeCanvas`** line-cut editor.
+  Each line is composited **independently** from its own source crop (near-white →
+  transparent + its own erase strokes) and **stacked**, so it renders exactly as it
+  exports and erasing one line never touches another. Tools: **Select** (drag a line's
+  top/bottom edge to trim Y/H — X/W are the shared page column) / **Erase** (hold Shift;
+  brush + undo/clear) / **Hand** (hold Space); White / Dark (white-ink) / Grid
+  backgrounds; a drag-time **magnifier lens**; Ctrl+Z/Y undo-redo. The route owns the
+  editable model + dirty/`useBlocker` guard; **Save cuts** (`finalizePage`, Y/H-only,
+  sends the whole page) and **Save & export page** (`exportLines` → thumbnails); bulk
+  export stays in the details Export tab. Manual front pages (no crop box) get a derived
+  column server-side (`coordinates.page_column`) so they render + export at uniform width.
 
 **Canvas component library** (`components/canvas/`, all reusable): `PageStage`
 (zoomable/pannable page + toolbar + `ChevronNav` + `PageJump` + `PageRail`),
 `PageCanvas`, `PageRail`, `CropPreview`, `TemplatePreview`, `FilmstripViewer` +
-`CroppableImage` (Setup only), `ReviewCanvas`.
+`CroppableImage` (Setup only), `ReviewCanvas` (read-only overlay), `ReviewEditCanvas`
+(Review editor), `FinalizeCanvas` (Finalize stacked line-cut editor).
 
 State: React Query for all server state (`lib/api/queries.ts` — `queryKeys`,
 `useMushaf(s)` (detail shape), `useTemplates`, `useProcessedPages` (sets) /
@@ -289,7 +303,10 @@ and the ۝ glyph) — loaded in `index.html`, mapped in `styles.css` `@theme`.
   Cockpit" handoff): chrome/rail/5 tabs as in §6, plus the backend that feeds it —
   runs/stats/activity endpoints, ActivityEvent emission, coordinates JSON export,
   extended page summaries, `pdf_original_name` (migration 0009, applied to dev DB).
-  Verified statically: 102 backend tests, ruff, mypy; tsc, eslint, vite build.
+- **Whole-mushaf Review editor**, **Finalize line-cut editor**, **Runs settings + re-run**,
+  and the **unified `MushafHeader`** (2026-07-03..05) — all as described in §6 — plus the
+  **core besmella / sura-header engine rename** finished (mypy-green). All committed (§9);
+  green at 119 backend tests, ruff, mypy; frontend tsc, eslint, vite build.
 
 ---
 
@@ -301,12 +318,12 @@ and the ۝ glyph) — loaded in `index.html`, mapped in `styles.css` `@theme`.
   (real event table — events record from now on; no backfill).
 - **Coverage map** renders one 6px cell per logical page (500+ divs for a full
   mushaf) — fine locally; cap/virtualize if it ever feels heavy.
-- **Core `sura_header`/`besmella` rename in progress (mypy RED, detection broken)**: a
-  concurrent refactor (`protected_bands`→`sura_header`, `basmala`→`besmella`) left
-  `SuraHeaderSpec` without `.kind` (read at `core/sura_header.py:90`) and `_DetectedHeader`
-  without `.is_sura`/`.is_besmella` (`core/line_detector.py:66-67`) — 3 mypy errors + a runtime
-  `'SuraHeaderSpec' object has no attribute 'kind'` during processing. All of `backend/core/*`
-  is uncommitted WIP; unrelated to the review page.
+- **Manual pages carry a 1×1 placeholder bbox** (the review model's `DEFAULT_BBOX`), so the
+  finalize/export line-cut column is **derived** from the union of the line boxes
+  (`coordinates.page_column`), not the stored bbox. Fine; if you'd rather freeze a manual
+  page's column, compute the union once in `bulk_save` and store it.
+- **Finalize perf**: the stacked canvas re-composites all line crops per frame (cheap for
+  ~15 lines); if a page ever has many lines, cache the per-line offscreen by strokes sig.
 - **Templates**: resizable center/settings panels still not implemented (shipped a
   wider preview instead); possible "Add ignore" enable/disable edge case vs a
   fetched-but-not-recropped parent.
@@ -317,30 +334,28 @@ and the ۝ glyph) — loaded in `index.html`, mapped in `styles.css` `@theme`.
 
 ---
 
-## 9. Commit state — what's landed, what's pending
+## 9. Commit state
 
-Branch `refactor/django-backend`. The **details-page batch is committed**:
-`2cdf07d` (backend: details endpoints, ActivityEvent + migration 0009, coordinates
-export, extended page summaries, sura-header locator rename) and `7e09ac0`
-(frontend: details landing page + API layer + Amiri fonts + this handoff). No
-co-author lines (per user request).
+Branch `refactor/django-backend`. **Working tree clean — everything committed, no
+co-author lines.** History (newest first):
 
-**Uncommitted in the working tree (the review-page rework + user's core WIP):**
-- **Review page** (verified green, ready to commit as its own batch):
-  - Backend: `services/editing.py` (`review_data`+`run_start`, `bulk_save` — no
-    renumber), `services/coordinates.py` (`entry_state` public wrapper), `views/pages.py`
-    (review-data/bulk schemas incl. `ReviewPageOut.run_start`), tests in `test_pages.py`.
-  - Frontend: `routes/mushafs.$mushafId.review.tsx` (rewritten),
-    `components/canvas/ReviewEditCanvas.tsx` (new), `lib/review/{model,recompute}.ts` (new),
-    `lib/api/{types,pages}.ts`, `components/app/details/helpers.ts` (activity range label).
-- **User's `core` rename WIP** (`backend/core/*` — do NOT bundle with the review commit;
-  it's incomplete and mypy-red, see §8).
-- `REVIEW_REWORK_WALKTHROUGH.md` (scratch guide) — delete or gitignore.
-- `PROJECT_HANDOFF.md` (this file).
+- `fa7b0a4` feat(frontend): unified mushaf header across the hub and step pages
+- `5e46e97` feat(frontend): show run settings + re-run from a run
+- `54f1fa0` feat(frontend): finalize line-cut editor (stacked WYSIWYG canvas)
+- `c38fb63` feat(backend): finalize cut layer — erase strokes + derived line-cut column
+- `b997964` refactor(core): besmella/sura-header engine rename (now mypy-green)
+- `ad8769b` feat(frontend): interactive whole-mushaf review editor
+- `1d7f41c` feat(backend): whole-mushaf review-data + verbatim bulk page-save
+- `7e09ac0` feat(frontend): mushaf details landing page (cockpit)
+- `2cdf07d` feat(backend): mushaf details endpoints, activity feed, sura-header locator rename
 
-**Review-page smoke test** (user-run): open Review on a processed mushaf → drag a line
-box / drag a separator / double-click to add one → aya numbers update live and the box
-doesn't vanish; go to a blank front page → `+ Sura` (pick sura) → `+ Text` → double-click
-to add separators → ayas count from 1; **Mark reviewed → next** is instant (no request);
-**Save changes** persists; leave with unsaved edits → confirm dialog; reopen → saved
-numbers/reviewed state are there.
+**Smoke tests (user-run, live):**
+- **Finalize** on a processed page → lines render stacked as they'll export; **Select** +
+  drag a top/bottom edge trims Y/H (X/W stay the shared column); **Erase** (hold Shift) an
+  intruding descender changes only that line; **Dark** bg shows white ink; the magnifier
+  lens appears on drag; **Ctrl+Z/Y**; **Save & export page** → thumbnails match the canvas
+  and are uniform width. Open the two manual front pages → they now render + export.
+- **Runs** tab → each card shows its full settings; **Re-run with these settings** /
+  **Resume** opens Process prefilled (`?run=<id>` [+ `?from=`]).
+- **Header** → the same top bar on the hub + every step; ✓ / current step states; the
+  mushaf name links back to the hub.

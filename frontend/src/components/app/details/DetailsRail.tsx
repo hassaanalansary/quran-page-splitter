@@ -126,10 +126,10 @@ export function DetailsRail({
             {processed}/{logical}
           </span>
         </div>
-        <CoverageMap logical={logical} summaries={summaries} />
+        <CoverageMap mushafId={mushaf.id} logical={logical} summaries={summaries} />
         <div className="mt-[9px] flex gap-2.5 text-[9.5px] text-text-secondary">
-          <LegendDot color="var(--orange)" label="Reviewed" />
-          <LegendDot color="var(--navy-light)" label="Processed" />
+          <LegendDot color="var(--success)" label="Reviewed" />
+          <LegendDot color="var(--orange)" label="Processed" />
           <LegendDot color="var(--bg-muted)" label="To do" />
         </div>
       </div>
@@ -265,9 +265,11 @@ function RecordRow({ label, value, muted }: { label: string; value: string; mute
 }
 
 function CoverageMap({
+  mushafId,
   logical,
   summaries,
 }: {
+  mushafId: string;
   logical: number;
   summaries: PageSummary[] | undefined;
 }) {
@@ -277,19 +279,21 @@ function CoverageMap({
       {Array.from({ length: logical }, (_, i) => {
         const n = i + 1;
         const row = byPage.get(n);
-        const bg = row
-          ? row.reviewed
-            ? "var(--success)"
-            : "var(--navy-light)"
-          : "var(--bg-muted)";
+        const bg = row ? (row.reviewed ? "var(--success)" : "var(--orange)") : "var(--bg-muted)";
         const state = row ? (row.reviewed ? "reviewed" : "processed") : "not processed";
         return (
-          <div
-            key={n}
-            title={`Page ${n} — ${state}`}
-            className="h-[6px] w-[6px] rounded-[1px]"
-            style={{ background: bg }}
-          />
+          <div key={n} className="group relative">
+            <Link
+              to="/mushafs/$mushafId/review"
+              params={{ mushafId }}
+              search={{ page: n }}
+              className="block h-[6px] w-[6px] rounded-[1px]"
+              style={{ background: bg }}
+            />
+            <p className="pointer-events-none absolute bottom-full left-1/2 z-[1000] mb-1 -translate-x-1/2 whitespace-nowrap rounded border border-gray-300 bg-black px-2 py-1 text-xs text-white opacity-0 transition-opacity group-hover:opacity-100">
+              {`Page ${n} — ${state}`}
+            </p>
+          </div>
         );
       })}
     </div>
