@@ -1,3 +1,5 @@
+import { useTranslation } from "react-i18next";
+
 import type { Rect } from "@/lib/api/types";
 
 type Props = {
@@ -9,8 +11,9 @@ type Props = {
 
 /** Pixel-precise x/y/w/h editing of a crop rectangle. */
 export function RectInputs({ rect, onChange, max }: Props) {
+  const { t } = useTranslation();
   if (!rect) {
-    return <p className="text-[11px] text-text-muted">Draw a region to fine-tune it by pixel.</p>;
+    return <p className="text-[11px] text-text-muted">{t("canvas.rectHint")}</p>;
   }
 
   const apply = (patch: Partial<Rect>) => {

@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import {
   pageImageUrl,
@@ -23,6 +24,7 @@ export function DetailsRail({
   summaries: PageSummary[] | undefined;
   templates: Template[] | undefined;
 }) {
+  const { t } = useTranslation();
   const [openTemplate, setOpenTemplate] = useState<Template | undefined>(undefined);
   const logical = mushaf.logical_page_count;
   const processed = mushaf.processed_page_count;
@@ -34,7 +36,7 @@ export function DetailsRail({
   }
 
   return (
-    <div className="flex w-[282px] flex-shrink-0 flex-col gap-4 overflow-y-auto border-r border-border bg-white p-4 pb-[18px]">
+    <div className="flex w-[282px] flex-shrink-0 flex-col gap-4 overflow-y-auto border-s border-border bg-white p-4 pb-[18px]">
       {/* identity */}
       <div className="flex items-start gap-3">
         <Cover mushaf={mushaf} />
@@ -43,12 +45,19 @@ export function DetailsRail({
             {mushaf.name}
           </div>
           <div className="mt-2 text-[10.5px] font-medium leading-[1.45] text-text-secondary">
-            {mushaf.qiraa ? <span className="capitalize">{mushaf.qiraa}</span> : "No qiraa set"}
+            {mushaf.qiraa ? (
+              <span className="capitalize">{mushaf.qiraa}</span>
+            ) : (
+              t("details.rail_noQiraa")
+            )}
             {mushaf.counting_system && (
               <>
                 <br />
                 <span className="text-text-muted">
-                  {mushaf.counting_system.name} counting · {mushaf.counting_system.total_ayat}
+                  {t("details.rail_counting", {
+                    name: mushaf.counting_system.name,
+                    total: mushaf.counting_system.total_ayat,
+                  })}
                 </span>
               </>
             )}
@@ -59,42 +68,47 @@ export function DetailsRail({
       {/* progress bars */}
       <div className="flex flex-col gap-[11px]">
         <ProgressRow
-          label="Processed"
+          label={t("details.rail_processed")}
           value={processed}
           total={logical}
           color="var(--navy-light)"
         />
-        <ProgressRow label="Reviewed" value={reviewed} total={logical} color="var(--orange)" />
+        <ProgressRow
+          label={t("details.rail_reviewed")}
+          value={reviewed}
+          total={logical}
+          color="var(--orange)"
+        />
       </div>
 
       {/* stat trio */}
       <div className="grid grid-cols-3 gap-px overflow-hidden rounded-lg border border-border bg-border">
-        <StatCell value={stats?.ayat_found} label="Ayat" />
-        <StatCell value={stats?.lines_cut} label="Lines" />
-        <StatCell value={stats?.exported_pngs} label="PNGs" muted />
+        <StatCell value={stats?.ayat_found} label={t("details.rail_ayat")} />
+        <StatCell value={stats?.lines_cut} label={t("details.rail_lines")} />
+        <StatCell value={stats?.exported_pngs} label={t("details.rail_pngs")} muted />
       </div>
 
       {/* templates */}
       <div className="border-t border-border pt-3">
         <div className="mb-2 flex items-baseline justify-between">
           <span className="text-[9.5px] font-semibold uppercase tracking-[0.1em] text-text-muted">
-            Templates
+            {t("details.rail_templates")}
           </span>
           <Link
             to="/mushafs/$mushafId/templates"
             params={{ mushafId: mushaf.id }}
             className="text-[10px] font-semibold text-orange hover:text-orange-hover"
           >
-            Edit →
+            {t("details.rail_edit")}
           </Link>
         </div>
         <TemplateRow
-          label="Sura header"
+          label={t("details.rail_suraHeader")}
           template={templates?.find((t) => t.type === "sura_header")}
           onClick={() => showTemplateDialog(templates?.find((t) => t.type === "sura_header"))}
         />
         <TemplateRow
-          label="Aya separator"
+          label={t("details.rail_ayaSeparator")}
           template={templates?.find((t) => t.type === "aya_separator")}
           onClick={() => showTemplateDialog(templates?.find((t) => t.type === "aya_separator"))}
         />
@@ -103,24 +117,27 @@ export function DetailsRail({
       {/* record */}
       <div className="flex flex-col gap-[7px] border-t border-border pt-3">
         <div className="text-[9.5px] font-semibold uppercase tracking-[0.1em] text-text-muted">
-          Record
+          {t("details.rail_record")}
         </div>
         <RecordRow
-          label="Quran range"
-          value={`p.${mushaf.first_quran_pdf_page}–${mushaf.last_quran_pdf_page}`}
+          label={t("details.rail_quranRange")}
+          value={t("details.rail_quranRangeValue", {
+            first: mushaf.first_quran_pdf_page,
+            last: mushaf.last_quran_pdf_page,
+          })}
         />
-        <RecordRow label="Logical pages" value={String(logical)} />
-        <RecordRow label="File" value={mushaf.pdf_original_name || "—"} />
-        <RecordRow label="Size" value={humanSize(mushaf.pdf_file_size)} />
-        <RecordRow label="Uploaded" value={fmtDate(mushaf.created_at)} />
-        <RecordRow label="ID" value={shortId(mushaf.id)} muted />
+        <RecordRow label={t("details.rail_logicalPages")} value={String(logical)} />
+        <RecordRow label={t("details.rail_file")} value={mushaf.pdf_original_name || "—"} />
+        <RecordRow label={t("details.rail_size")} value={humanSize(mushaf.pdf_file_size)} />
+        <RecordRow label={t("details.rail_uploaded")} value={fmtDate(mushaf.created_at)} />
+        <RecordRow label={t("details.rail_id")} value={shortId(mushaf.id)} muted />
       </div>
 
       {/* coverage map */}
       <div className="mt-auto border-t border-border pt-3">
         <div className="mb-[9px] flex items-baseline justify-between">
           <span className="text-[9.5px] font-semibold uppercase tracking-[0.1em] text-text-muted">
-            Coverage
+            {t("details.rail_coverage")}
           </span>
           <span className="font-mono text-[10px] font-semibold text-text-muted">
             {processed}/{logical}
@@ -128,9 +145,9 @@ export function DetailsRail({
         </div>
         <CoverageMap mushafId={mushaf.id} logical={logical} summaries={summaries} />
         <div className="mt-[9px] flex gap-2.5 text-[9.5px] text-text-secondary">
-          <LegendDot color="var(--success)" label="Reviewed" />
-          <LegendDot color="var(--orange)" label="Processed" />
-          <LegendDot color="var(--bg-muted)" label="To do" />
+          <LegendDot color="var(--success)" label={t("details.rail_reviewed")} />
+          <LegendDot color="var(--orange)" label={t("details.rail_processed")} />
+          <LegendDot color="var(--bg-muted)" label={t("details.rail_todo")} />
         </div>
       </div>
       {openTemplate && (
@@ -141,18 +158,19 @@ export function DetailsRail({
 }
 
 function Cover({ mushaf }: { mushaf: MushafDetail }) {
+  const { t } = useTranslation();
   const [failed, setFailed] = useState(false);
   if (failed) {
     return (
       <div className="flex h-[82px] w-[58px] flex-shrink-0 items-center justify-center rounded border border-border-strong bg-bg-muted text-[9px] text-text-muted">
-        no cover
+        {t("details.rail_noCover")}
       </div>
     );
   }
   return (
     <img
       src={mushaf.thumbnail_url ?? pageImageUrl(mushaf.id, 1, mushaf.updated_at)}
-      alt={`${mushaf.name} cover`}
+      alt={t("details.rail_coverAlt", { name: mushaf.name })}
       draggable={false}
       onError={() => setFailed(true)}
       className="h-[82px] w-[58px] flex-shrink-0 rounded border border-border-strong object-cover shadow-[var(--shadow-sm)]"
@@ -222,6 +240,7 @@ function TemplateRow({
   template: Template | undefined;
   onClick: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div
       className="mb-[7px] flex items-center gap-2 last:mb-0 cursor-zoom-in hover:opacity-80"
@@ -230,12 +249,12 @@ function TemplateRow({
       {template ? (
         <img
           src={template.image_url}
-          alt={`${label} template`}
+          alt={t("details.rail_templateAlt", { label })}
           className="h-16 min-w-0 flex-1 rounded-[5px] border border-border-strong bg-white object-contain"
         />
       ) : (
         <span className="flex h-[30px] min-w-0 flex-1 items-center justify-center rounded-[5px] border border-dashed border-border-strong text-[9.5px] text-text-muted">
-          not captured
+          {t("details.rail_notCaptured")}
         </span>
       )}
       <span className="w-[118px] flex-none text-[10.5px] font-medium text-text-secondary">
@@ -273,14 +292,23 @@ function CoverageMap({
   logical: number;
   summaries: PageSummary[] | undefined;
 }) {
+  const { t } = useTranslation();
   const byPage = new Map((summaries ?? []).map((s) => [s.page_number, s]));
   return (
-    <div className="flex flex-wrap gap-[2px]" role="img" aria-label="Page coverage">
+    <div
+      className="flex flex-wrap gap-[2px]"
+      role="img"
+      aria-label={t("details.rail_coverageAria")}
+    >
       {Array.from({ length: logical }, (_, i) => {
         const n = i + 1;
         const row = byPage.get(n);
         const bg = row ? (row.reviewed ? "var(--success)" : "var(--orange)") : "var(--bg-muted)";
-        const state = row ? (row.reviewed ? "reviewed" : "processed") : "not processed";
+        const state = row
+          ? row.reviewed
+            ? t("details.state_reviewed")
+            : t("details.state_processed")
+          : t("details.state_notProcessed");
         return (
           <div key={n} className="group relative">
             <Link
@@ -291,7 +319,7 @@ function CoverageMap({
               style={{ background: bg }}
             />
             <p className="pointer-events-none absolute bottom-full left-1/2 z-[1000] mb-1 -translate-x-1/2 whitespace-nowrap rounded border border-gray-300 bg-black px-2 py-1 text-xs text-white opacity-0 transition-opacity group-hover:opacity-100">
-              {`Page ${n} — ${state}`}
+              {t("details.rail_pageState", { n, state })}
             </p>
           </div>
         );
@@ -316,7 +344,11 @@ function TemplateModal({
   template: Template | undefined;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   if (!template) return null;
+  const typeLabel = t(
+    template.type === "sura_header" ? "details.rail_suraHeader" : "details.rail_ayaSeparator",
+  );
   return (
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50"
@@ -327,20 +359,18 @@ function TemplateModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-3">
-          <span className="text-sm font-semibold text-text-primary capitalize">
-            {template.type.replace(/_/g, " ")}
-          </span>
+          <span className="text-sm font-semibold text-text-primary capitalize">{typeLabel}</span>
           <button
             onClick={onClose}
             className="text-lg font-bold text-text-muted hover:text-text-primary"
-            aria-label="Close modal"
+            aria-label={t("details.rail_closeModal")}
           >
             ✕
           </button>
         </div>
         <img
           src={template.image_url}
-          alt={`${template.type} template`}
+          alt={t("details.rail_templateAlt", { label: typeLabel })}
           className="max-h-[80vh] max-w-[80vw] object-contain"
         />
       </div>

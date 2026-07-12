@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
 import {
@@ -15,6 +16,7 @@ import {
 } from "@/lib/api";
 
 export function SettingsTab({ mushaf }: { mushaf: MushafDetail }) {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { data: qiraat } = useQiraat();
@@ -38,9 +40,9 @@ export function SettingsTab({ mushaf }: { mushaf: MushafDetail }) {
     onSuccess: () => {
       invalidate();
       setError(null);
-      toast.success("Mushaf updated.");
+      toast.success(t("details.set_updated"));
     },
-    onError: (e) => setError(e instanceof ApiError ? e.message : "Failed to update mushaf."),
+    onError: (e) => setError(e instanceof ApiError ? e.message : t("details.set_updateFailed")),
   });
 
   const regenerate = useMutation({
@@ -48,26 +50,26 @@ export function SettingsTab({ mushaf }: { mushaf: MushafDetail }) {
     onSuccess: (detail) => {
       queryClient.setQueryData(queryKeys.mushaf(mushaf.id), detail);
       queryClient.invalidateQueries({ queryKey: queryKeys.mushafs });
-      toast.success("Cover thumbnail regenerated.");
+      toast.success(t("details.set_thumbRegenerated"));
     },
-    onError: (e) => toast.error(e instanceof ApiError ? e.message : "Failed to regenerate."),
+    onError: (e) => toast.error(e instanceof ApiError ? e.message : t("details.set_regenFailed")),
   });
 
   const remove = useMutation({
     mutationFn: () => deleteMushaf(mushaf.id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.mushafs });
-      toast.success(`Deleted “${mushaf.name}”.`);
+      toast.success(t("details.set_deleted", { name: mushaf.name }));
       navigate({ to: "/" });
     },
-    onError: (e) => toast.error(e instanceof ApiError ? e.message : "Failed to delete."),
+    onError: (e) => toast.error(e instanceof ApiError ? e.message : t("details.set_deleteFailed")),
   });
 
   function onSaveMushaf() {
     const patch: MushafPatch = {};
     if (name.trim() !== mushaf.name) patch.name = name.trim();
     if ((qiraa || null) !== mushaf.qiraa) patch.qiraa = qiraa || null;
-    if (Object.keys(patch).length === 0) return toast.info("Nothing to save.");
+    if (Object.keys(patch).length === 0) return toast.info(t("details.set_nothingToSave"));
     save.mutate(patch);
   }
 
@@ -75,7 +77,7 @@ export function SettingsTab({ mushaf }: { mushaf: MushafDetail }) {
     const patch: MushafPatch = {};
     if (first !== mushaf.first_quran_pdf_page) patch.first_quran_pdf_page = first;
     if (last !== mushaf.last_quran_pdf_page) patch.last_quran_pdf_page = last;
-    if (Object.keys(patch).length === 0) return toast.info("Nothing to save.");
+    if (Object.keys(patch).length === 0) return toast.info(t("details.set_nothingToSave"));
     save.mutate(patch);
   }
 
@@ -87,20 +89,22 @@ export function SettingsTab({ mushaf }: { mushaf: MushafDetail }) {
       <div className="grid grid-cols-2 gap-3.5">
         {/* Mushaf card */}
         <div className="rounded-[11px] border border-border bg-white p-4">
-          <div className="mb-3.5 text-[12.5px] font-bold text-text-primary">Mushaf</div>
+          <div className="mb-3.5 text-[12.5px] font-bold text-text-primary">
+            {t("details.set_mushaf")}
+          </div>
           <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-[0.06em] text-text-secondary">
-            Name
+            {t("details.set_name")}
           </label>
           <input value={name} onChange={(e) => setName(e.target.value)} className={inputClass} />
           <label className="mb-1.5 mt-[13px] block text-[10px] font-semibold uppercase tracking-[0.06em] text-text-secondary">
-            Qiraa
+            {t("details.set_qiraa")}
           </label>
           <select
             value={qiraa}
             onChange={(e) => setQiraa(e.target.value)}
             className={`${inputClass} cursor-pointer`}
           >
-            <option value="">— none —</option>
+            <option value="">{t("details.set_none")}</option>
             {(qiraat ?? []).map((q) => (
               <option key={q.name} value={q.name}>
                 {q.name}
@@ -109,16 +113,16 @@ export function SettingsTab({ mushaf }: { mushaf: MushafDetail }) {
             ))}
           </select>
           <div className="mt-[7px] text-[10.5px] leading-[1.5] text-text-muted">
-            Counting system follows the qiraa
+            {t("details.set_countingFollows")}
             {mushaf.counting_system && (
-              <>
-                {" — "}
-                <b className="text-text-secondary">
-                  {mushaf.counting_system.name} · {mushaf.counting_system.total_ayat} ayat
-                </b>
-              </>
+              <b className="text-text-secondary">
+                {t("details.set_countingDetail", {
+                  name: mushaf.counting_system.name,
+                  total: mushaf.counting_system.total_ayat,
+                })}
+              </b>
             )}
-            . {(qiraat ?? []).length} qiraat available.
+            {t("details.set_qiraatAvailable", { count: (qiraat ?? []).length })}
           </div>
           {error && (
             <div className="mt-2.5 rounded-md border border-error-border bg-error-bg px-3 py-2 text-[11.5px] text-error">
@@ -132,7 +136,7 @@ export function SettingsTab({ mushaf }: { mushaf: MushafDetail }) {
               disabled={save.isPending}
               className="h-8 cursor-pointer rounded-lg bg-navy px-4 text-[11.5px] font-bold text-white transition-colors hover:bg-navy-hover disabled:opacity-50"
             >
-              {save.isPending ? "Saving…" : "Save changes"}
+              {save.isPending ? t("common.saving") : t("details.set_saveChanges")}
             </button>
           </div>
         </div>
@@ -140,23 +144,25 @@ export function SettingsTab({ mushaf }: { mushaf: MushafDetail }) {
         {/* Quran range card */}
         <div className="rounded-[11px] border border-border bg-white p-4">
           <div className="mb-3.5 flex items-center gap-2">
-            <span className="text-[12.5px] font-bold text-text-primary">Quran range</span>
+            <span className="text-[12.5px] font-bold text-text-primary">
+              {t("details.set_quranRange")}
+            </span>
             {locked && (
               <span className="rounded-[9px] bg-bg-muted px-[7px] py-0.5 font-mono text-[8.5px] font-bold tracking-[0.08em] text-text-secondary">
-                LOCKED
+                {t("details.set_locked")}
               </span>
             )}
           </div>
           <div className="grid grid-cols-2 gap-2.5">
             <RangeField
-              label="First Quran page"
+              label={t("details.set_firstPage")}
               value={first}
               locked={locked}
               onChange={setFirst}
               max={mushaf.pdf_page_count}
             />
             <RangeField
-              label="Last Quran page"
+              label={t("details.set_lastPage")}
               value={last}
               locked={locked}
               onChange={setLast}
@@ -164,18 +170,9 @@ export function SettingsTab({ mushaf }: { mushaf: MushafDetail }) {
             />
           </div>
           <div className="mt-2.5 text-[10.5px] leading-[1.55] text-text-muted">
-            {locked ? (
-              <>
-                Bounds lock once processed pages exist — {mushaf.processed_page_count} page
-                {mushaf.processed_page_count === 1 ? " carries" : "s carry"} data from these bounds.
-                Delete the mushaf (or its pages) to change them.
-              </>
-            ) : (
-              <>
-                Physical PDF pages holding Quran content ({mushaf.pdf_page_count} pages in the
-                file). Bounds lock once pages are processed.
-              </>
-            )}
+            {locked
+              ? t("details.set_lockedNote", { count: mushaf.processed_page_count })
+              : t("details.set_unlockedNote", { count: mushaf.pdf_page_count })}
           </div>
           {!locked && (
             <div className="mt-2.5 flex justify-end">
@@ -185,21 +182,19 @@ export function SettingsTab({ mushaf }: { mushaf: MushafDetail }) {
                 disabled={save.isPending}
                 className="h-8 cursor-pointer rounded-lg border border-border-strong bg-white px-4 text-[11.5px] font-semibold text-text-primary transition-colors hover:bg-bg-surface disabled:opacity-50"
               >
-                Apply bounds
+                {t("details.set_applyBounds")}
               </button>
             </div>
           )}
           <div className="mt-3 flex items-center gap-2 rounded-lg border border-border bg-bg-surface px-[11px] py-2">
-            <span className="text-[10.5px] text-text-secondary">
-              Cover thumbnail · rendered from physical page 1
-            </span>
+            <span className="text-[10.5px] text-text-secondary">{t("details.set_thumbNote")}</span>
             <button
               type="button"
               onClick={() => regenerate.mutate()}
               disabled={regenerate.isPending}
-              className="ml-auto cursor-pointer text-[10.5px] font-semibold text-orange hover:text-orange-hover disabled:opacity-50"
+              className="ms-auto cursor-pointer text-[10.5px] font-semibold text-orange hover:text-orange-hover disabled:opacity-50"
             >
-              {regenerate.isPending ? "Rendering…" : "Regenerate"}
+              {regenerate.isPending ? t("details.set_rendering") : t("details.set_regenerate")}
             </button>
           </div>
         </div>
@@ -208,44 +203,44 @@ export function SettingsTab({ mushaf }: { mushaf: MushafDetail }) {
       {/* danger zone */}
       <div className="mt-3.5 overflow-hidden rounded-[11px] border border-[color:var(--error-border)] bg-white">
         <div className="border-b border-error-bg px-4 py-[11px] text-[10px] font-bold uppercase tracking-[0.08em] text-error">
-          Danger zone
+          {t("details.set_danger")}
         </div>
         <div className="flex items-center gap-3.5 border-b border-bg-surface px-4 py-3">
           <div className="min-w-0">
-            <div className="text-[12px] font-semibold text-text-primary">Reprocess all pages</div>
+            <div className="text-[12px] font-semibold text-text-primary">
+              {t("details.set_reprocess")}
+            </div>
             <div className="mt-px text-[11px] text-text-secondary">
-              Re-running the pipeline overwrites lines, segments and review flags on the{" "}
-              {mushaf.processed_page_count} processed page
-              {mushaf.processed_page_count === 1 ? "" : "s"}.
+              {t("details.set_reprocessDesc", { count: mushaf.processed_page_count })}
             </div>
           </div>
           <Link
             to="/mushafs/$mushafId/process"
             params={{ mushafId: mushaf.id }}
-            className="ml-auto h-[30px] flex-none rounded-lg border border-border-strong bg-white px-[13px] text-[11.5px] font-semibold leading-[30px] text-text-primary transition-colors hover:bg-bg-surface"
+            className="ms-auto h-[30px] flex-none rounded-lg border border-border-strong bg-white px-[13px] text-[11.5px] font-semibold leading-[30px] text-text-primary transition-colors hover:bg-bg-surface"
           >
-            Open Process →
+            {t("details.set_openProcess")}
           </Link>
         </div>
         <div className="flex items-center gap-3.5 px-4 py-3">
           <div className="min-w-0">
-            <div className="text-[12px] font-semibold text-text-primary">Delete this mushaf</div>
+            <div className="text-[12px] font-semibold text-text-primary">
+              {t("details.set_deleteTitle")}
+            </div>
             <div className="mt-px text-[11px] text-text-secondary">
-              Removes the PDF, {mushaf.processed_page_count} processed page
-              {mushaf.processed_page_count === 1 ? "" : "s"}, templates and all runs. This cannot be
-              undone.
+              {t("details.set_deleteDesc", { count: mushaf.processed_page_count })}
             </div>
           </div>
           <button
             type="button"
             disabled={remove.isPending}
             onClick={() => {
-              if (window.confirm(`Delete “${mushaf.name}” and all its processed data?`))
+              if (window.confirm(t("details.set_deleteConfirm", { name: mushaf.name })))
                 remove.mutate();
             }}
-            className="ml-auto h-[30px] flex-none cursor-pointer rounded-lg border border-[color:var(--error-border)] bg-error-bg px-[13px] text-[11.5px] font-semibold text-error transition-colors hover:brightness-95 disabled:opacity-50"
+            className="ms-auto h-[30px] flex-none cursor-pointer rounded-lg border border-[color:var(--error-border)] bg-error-bg px-[13px] text-[11.5px] font-semibold text-error transition-colors hover:brightness-95 disabled:opacity-50"
           >
-            {remove.isPending ? "Deleting…" : "Delete mushaf"}
+            {remove.isPending ? t("details.set_deleting") : t("details.set_deleteBtn")}
           </button>
         </div>
       </div>

@@ -1,6 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, useParams } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
 import { TemplatePreview } from "@/components/canvas/TemplatePreview";
@@ -60,6 +61,7 @@ function ProcessPage() {
   const { data: pages } = useProcessedPages(mushafId);
   const { data: runs } = useRuns(mushafId);
   const queryClient = useQueryClient();
+  const { t, i18n } = useTranslation();
 
   const logicalCount = mushaf?.logical_page_count ?? 1;
 
@@ -114,9 +116,11 @@ function ProcessPage() {
     const label = `#${String(target.run_number).padStart(2, "0")}`;
     setLoadedRun({ label, from: resumeFrom });
     toast.success(
-      `Loaded settings from run ${label}${resumeFrom ? ` · resuming from p.${resumeFrom}` : ""}.`,
+      resumeFrom
+        ? t("process.loadedToastResume", { label, from: resumeFrom })
+        : t("process.loadedToast", { label }),
     );
-  }, [runId, runs, mushaf, resumeFrom, logicalCount]);
+  }, [runId, runs, mushaf, resumeFrom, logicalCount, t]);
 
   if (!mushaf) return null;
 
@@ -159,9 +163,9 @@ function ProcessPage() {
         curAya = out.end_aya;
       }
       setRun((r) => (r ? { ...r, running: false, finished: true } : r));
-      toast.success(`Processed pages ${rangeStart}–${rangeEnd}.`);
+      toast.success(t("process.processedToast", { start: rangeStart, end: rangeEnd }));
     } catch (e) {
-      const message = e instanceof ApiError ? e.message : "Processing failed.";
+      const message = e instanceof ApiError ? e.message : t("process.processFailed");
       setRun((r) => (r ? { ...r, running: false, error: message } : r));
       toast.error(message);
     } finally {
@@ -172,16 +176,26 @@ function ProcessPage() {
   }
 
   return (
-    <div className="flex flex-1 overflow-hidden">
+    <div
+      className={`flex ${i18n.language === "ar" ? "flex-row-reverse" : "flex-row"} flex-1 overflow-hidden`}
+    >
       <PageStage
         imageUrl={pageImageUrl(mushafId, preview, mushaf.updated_at)}
         page={preview}
         pageCount={logicalCount}
         onPageChange={(n) => setPreview(clamp(n, 1, logicalCount))}
         renderLabel={(p) =>
-          `PDF page ${mushaf.first_quran_pdf_page + p - 1} of ${mushaf.pdf_page_count}`
+          t("process.pdfPageLabel", {
+            pdf: mushaf.first_quran_pdf_page + p - 1,
+            total: mushaf.pdf_page_count,
+          })
         }
-        crop={{ label: "bounds", rect: bounds, onRectChange: setBounds, mirrored: flipPreview }}
+        crop={{
+          label: t("process.boundsLabel"),
+          rect: bounds,
+          onRectChange: setBounds,
+          mirrored: flipPreview,
+        }}
         onNatural={setNatural}
         processed={pages?.processed}
         reviewed={pages?.reviewed}
@@ -189,7 +203,9 @@ function ProcessPage() {
 
       <div className="flex w-[400px] flex-shrink-0 flex-col gap-3 overflow-auto border-l border-border bg-white p-4">
         <div className="flex w-[400px] flex-shrink-0 flex-col gap-3 overflow-auto border-l border-border bg-white p-4">
-          <h3 className="text-[12px] font-semibold capitalize text-text-primary">Bounds</h3>
+          <h3 className="text-[12px] font-semibold capitalize text-text-primary">
+            {t("process.boundsTitle")}
+          </h3>
           <TemplatePreview
             mode="bounds"
             pageUrl={pageImageUrl(mushafId, preview, mushaf.updated_at)}
@@ -204,7 +220,9 @@ function ProcessPage() {
           <div className="flex flex-col gap-2">
             {run && <ProgressFooter run={run} />}
             <Button onClick={runProcess} disabled={!canProcess}>
-              {run?.running ? "Processing…" : `Process pages ${rangeStart}–${rangeEnd}`}
+              {run?.running
+                ? t("process.processing")
+                : t("process.processButton", { start: rangeStart, end: rangeEnd })}
             </Button>
             {run?.finished && !run.error && (
               <Button asChild variant="outline">
@@ -213,33 +231,27 @@ function ProcessPage() {
                   params={{ mushafId }}
                   search={{ page: rangeStart }}
                 >
-                  Continue to Review →
+                  {t("process.continueReview")}
                 </Link>
               </Button>
             )}
           </div>
         }
       >
-        <Hint>
-          Set the <strong>bounds</strong>, choose the page range and where it starts, then process.
-          Save the templates first.
-        </Hint>
+        <Hint>{t("process.intro")}</Hint>
 
         {loadedRun && (
           <Hint>
-            Settings loaded from run <strong>{loadedRun.label}</strong>
-            {loadedRun.from ? ` — start page set to ${loadedRun.from} to resume` : ""}. Adjust
-            anything below, then process.
+            {loadedRun.from
+              ? t("process.loadedRunResume", { label: loadedRun.label, from: loadedRun.from })
+              : t("process.loadedRun", { label: loadedRun.label })}
           </Hint>
         )}
 
-        <Section title="Bounds">
-          <p className="text-[12px] text-text-muted">
-            Draw the text region on the page — the orange box. Exclude margins and decorations; line
-            detection runs inside it.
-          </p>
+        <Section title={t("process.boundsTitle")}>
+          <p className="text-[12px] text-text-muted">{t("process.boundsHelp")}</p>
           <div className="flex items-center justify-between text-[12px]">
-            <span className="text-text-secondary">Region</span>
+            <span className="text-text-secondary">{t("process.region")}</span>
             <span className="font-mono text-text-primary">
               {bounds
                 ? `${Math.round(bounds.w)}×${Math.round(bounds.h)} @ ${Math.round(bounds.x)},${Math.round(bounds.y)}`
@@ -247,38 +259,32 @@ function ProcessPage() {
             </span>
           </div>
           <RectInputs rect={bounds} onChange={setBounds} max={natural} />
-          {!boundsOk && (
-            <span className="text-[12px] text-error">
-              Draw a bounds box on the page to enable processing.
-            </span>
-          )}
+          {!boundsOk && <span className="text-[12px] text-error">{t("process.boundsError")}</span>}
           {flipPreview && (
             <span className="text-[12px]" style={{ color: "var(--navy)" }}>
-              Alternate margin: page {preview} is shown <strong>mirrored</strong> and read-only, as
-              the engine will crop it. Edit the box on a non-mirrored page (e.g. the start page{" "}
-              {rangeStart}); the X/Y/W/H fields above still edit the base box.
+              {t("process.flipHint", { page: preview, start: rangeStart })}
             </span>
           )}
         </Section>
 
-        <Section title="Page range">
+        <Section title={t("process.pageRange")}>
           <div className="grid grid-cols-2 gap-2">
-            <Field label="Start page">
+            <Field label={t("process.startPage")}>
               <NumInput value={rangeStart} min={1} max={logicalCount} onChange={setRangeStart} />
             </Field>
-            <Field label="End page">
+            <Field label={t("process.endPage")}>
               <NumInput value={rangeEnd} min={1} max={logicalCount} onChange={setRangeEnd} />
             </Field>
           </div>
           {!rangeOk && (
             <span className="text-[12px] text-error">
-              Require 1 ≤ start ≤ end ≤ {logicalCount}.
+              {t("process.rangeError", { max: logicalCount })}
             </span>
           )}
         </Section>
 
-        <Section title="Starting position">
-          <Field label="Start sura">
+        <Section title={t("process.startingPosition")}>
+          <Field label={t("process.startSura")}>
             <select
               value={startSura}
               onChange={(e) => {
@@ -296,7 +302,7 @@ function ProcessPage() {
               ))}
             </select>
           </Field>
-          <Field label="Start aya">
+          <Field label={t("process.startAya")}>
             <select
               value={startAya}
               onChange={(e) => setStartAya(Number(e.target.value))}
@@ -324,6 +330,7 @@ const selectClass =
   "h-9 w-full cursor-pointer rounded-md border-[1.5px] border-border-strong bg-white px-2.5 text-[13px] text-text-primary outline-none focus:border-orange focus:shadow-[0_0_0_3px_var(--orange-glow)]";
 
 function ProgressFooter({ run }: { run: RunState }) {
+  const { t } = useTranslation();
   const pct = run.total > 0 ? Math.round((run.done / run.total) * 100) : 0;
   return (
     <div className="flex flex-col gap-1">
@@ -334,20 +341,20 @@ function ProgressFooter({ run }: { run: RunState }) {
         />
       </div>
       <span className="text-[11.5px] text-text-muted">
-        {run.done} / {run.total} pages {run.running ? "processed…" : "processed"}
+        {run.running
+          ? t("process.progressActive", { done: run.done, total: run.total })
+          : t("process.progress", { done: run.done, total: run.total })}
       </span>
     </div>
   );
 }
 
 function AbortCard({ abort }: { abort: ProcessResult }) {
+  const { t } = useTranslation();
   return (
     <div className="rounded-md border border-[color:var(--warning-border)] bg-warning-bg px-3 py-2.5 text-[12px] text-[#92400E]">
-      <div className="font-semibold">Stopped on a line-count mismatch</div>
-      <div className="mb-2.5 mt-1">
-        {abort.pages_processed} page{abort.pages_processed === 1 ? "" : "s"} were saved before the
-        stop. Adjust the bounds or expected-lines, then reprocess from where it stopped.
-      </div>
+      <div className="font-semibold">{t("process.abortTitle")}</div>
+      <div className="mb-2.5 mt-1">{t("process.abortBody", { count: abort.pages_processed })}</div>
       {abort.abort_info && <AbortDiagnostics info={abort.abort_info} logUrl={abort.log_url} />}
     </div>
   );
@@ -360,13 +367,14 @@ function SettingsCard({
   settings: ProcessSettings;
   onChange: (s: ProcessSettings) => void;
 }) {
+  const { t } = useTranslation();
   const u = (patch: Partial<ProcessSettings>) => onChange({ ...settings, ...patch });
   return (
-    <Section title="Detection settings" defaultOpen={false}>
-      <Row label="Padding" hint="px above/below each line">
+    <Section title={t("process.detectionSettings")} defaultOpen={false}>
+      <Row label={t("process.padding")} hint={t("process.paddingHint")}>
         <NumInput value={settings.padding} min={0} onChange={(v) => u({ padding: v })} compact />
       </Row>
-      <Row label="Lines / page" hint="Expected slots incl. headers">
+      <Row label={t("process.linesPerPage")} hint={t("process.linesPerPageHint")}>
         <NumInput
           value={settings.expected_lines}
           min={1}
@@ -374,7 +382,7 @@ function SettingsCard({
           compact
         />
       </Row>
-      <Row label="Header slots">
+      <Row label={t("process.headerSlots")}>
         <NumInput
           value={settings.sura_header_slots}
           min={1}
@@ -382,7 +390,7 @@ function SettingsCard({
           compact
         />
       </Row>
-      <Row label="Header threshold" hint="0–1, higher = stricter">
+      <Row label={t("process.headerThreshold")} hint={t("process.headerThresholdHint")}>
         <NumInput
           value={settings.sura_header_threshold}
           min={0}
@@ -392,7 +400,7 @@ function SettingsCard({
           compact
         />
       </Row>
-      <Row label="Max headers / page">
+      <Row label={t("process.maxHeaders")}>
         <NumInput
           value={settings.max_sura_headers}
           min={1}
@@ -400,7 +408,7 @@ function SettingsCard({
           compact
         />
       </Row>
-      <Row label="Aya threshold" hint="0–1 separator match">
+      <Row label={t("process.ayaThreshold")} hint={t("process.ayaThresholdHint")}>
         <NumInput
           value={settings.match_threshold}
           min={0}
@@ -410,13 +418,13 @@ function SettingsCard({
           compact
         />
       </Row>
-      <Row label="Alternate margins" hint="Mirror bounds on alternate pages">
+      <Row label={t("process.altMargins")} hint={t("process.altMarginsHint")}>
         <Toggle
           value={settings.alternate_horizontal_margin}
           onChange={(v) => u({ alternate_horizontal_margin: v })}
         />
       </Row>
-      <Row label="Prefer acceleration" hint="Use OpenCL when available" last>
+      <Row label={t("process.preferAccel")} hint={t("process.preferAccelHint")} last>
         <Toggle
           value={settings.prefer_acceleration}
           onChange={(v) => u({ prefer_acceleration: v })}

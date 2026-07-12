@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -23,6 +24,7 @@ export function CreateMushafDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { data: qiraat } = useQiraat();
@@ -54,20 +56,20 @@ export function CreateMushafDialog({
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.mushafs });
       if (result.warnings.duplicate_file) {
-        toast.warning("This PDF is already uploaded under another mushaf name.");
+        toast.warning(t("createDialog.duplicateWarning"));
       }
-      toast.success(`Created “${result.mushaf.name}”.`);
+      toast.success(t("createDialog.created", { name: result.mushaf.name }));
       onOpenChange(false);
       navigate({ to: "/mushafs/$mushafId/setup", params: { mushafId: result.mushaf.id } });
     },
-    onError: (e) => setError(e instanceof ApiError ? e.message : "Failed to create mushaf."),
+    onError: (e) => setError(e instanceof ApiError ? e.message : t("createDialog.createFailed")),
   });
 
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    if (!name.trim()) return setError("Give the mushaf a name.");
-    if (!file) return setError("Choose a PDF file to upload.");
+    if (!name.trim()) return setError(t("createDialog.nameRequired"));
+    if (!file) return setError(t("createDialog.fileRequired"));
     mutation.mutate();
   }
 
@@ -76,26 +78,24 @@ export function CreateMushafDialog({
       <DialogContent className="sm:max-w-md">
         <form onSubmit={onSubmit}>
           <DialogHeader>
-            <DialogTitle>New mushaf</DialogTitle>
-            <DialogDescription>
-              Upload a Quran PDF. You'll mark which pages hold the Quran content next.
-            </DialogDescription>
+            <DialogTitle>{t("createDialog.title")}</DialogTitle>
+            <DialogDescription>{t("createDialog.description")}</DialogDescription>
           </DialogHeader>
 
           <div className="flex flex-col gap-4 py-4">
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="mushaf-name">Name</Label>
+              <Label htmlFor="mushaf-name">{t("createDialog.nameLabel")}</Label>
               <Input
                 id="mushaf-name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. Madinah Mushaf"
+                placeholder={t("createDialog.namePlaceholder")}
                 autoFocus
               />
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="mushaf-qiraa">Qiraa</Label>
+              <Label htmlFor="mushaf-qiraa">{t("createDialog.qiraaLabel")}</Label>
               <select
                 id="mushaf-qiraa"
                 value={selectedQiraa}
@@ -104,9 +104,9 @@ export function CreateMushafDialog({
                 className="h-9 cursor-pointer rounded-md border-[1.5px] border-border-strong bg-white px-2.5 text-sm capitalize outline-none focus:border-orange focus:shadow-[0_0_0_3px_var(--orange-glow)] disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {!qiraat ? (
-                  <option value="">Loading…</option>
+                  <option value="">{t("createDialog.qiraaLoading")}</option>
                 ) : qiraat.length === 0 ? (
-                  <option value="">No qiraat available</option>
+                  <option value="">{t("createDialog.qiraaNone")}</option>
                 ) : (
                   qiraat.map((q) => (
                     <option key={q.name} value={q.name}>
@@ -118,7 +118,7 @@ export function CreateMushafDialog({
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="mushaf-pdf">PDF file</Label>
+              <Label htmlFor="mushaf-pdf">{t("createDialog.pdfLabel")}</Label>
               <Input
                 id="mushaf-pdf"
                 type="file"
@@ -128,7 +128,10 @@ export function CreateMushafDialog({
               />
               {file && (
                 <span className="text-xs text-text-muted">
-                  {file.name} · {(file.size / 1024 / 1024).toFixed(1)} MB
+                  {t("createDialog.fileSize", {
+                    name: file.name,
+                    size: (file.size / 1024 / 1024).toFixed(1),
+                  })}
                 </span>
               )}
             </div>
@@ -147,10 +150,10 @@ export function CreateMushafDialog({
               onClick={() => onOpenChange(false)}
               disabled={mutation.isPending}
             >
-              Cancel
+              {t("common.cancel")}
             </Button>
             <Button type="submit" disabled={mutation.isPending}>
-              {mutation.isPending ? "Uploading…" : "Create mushaf"}
+              {mutation.isPending ? t("createDialog.creating") : t("createDialog.create")}
             </Button>
           </DialogFooter>
         </form>

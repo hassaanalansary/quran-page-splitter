@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useBlocker, useNavigate, useParams } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
 import { Aside, Field, Hint, PanelCard, Section } from "@/components/app/Panel";
@@ -71,6 +72,7 @@ function FinalizePage() {
   const { page } = Route.useSearch();
   const navigate = useNavigate({ from: "/mushafs/$mushafId/finalize" });
   const queryClient = useQueryClient();
+  const { t, i18n } = useTranslation();
 
   const { data: mushaf } = useMushaf(mushafId);
   const { data: pages } = useProcessedPages(mushafId);
@@ -168,9 +170,9 @@ function FinalizePage() {
     mutationFn: () => finalizePage(mushafId, page, buildPayload()),
     onSuccess: (fresh) => {
       markSaved(fresh);
-      toast.success("Cuts saved.");
+      toast.success(t("finalize.cutsSaved"));
     },
-    onError: (e) => toast.error(e instanceof ApiError ? e.message : "Save failed."),
+    onError: (e) => toast.error(e instanceof ApiError ? e.message : t("finalize.saveFailed")),
   });
 
   const exportMutation = useMutation({
@@ -185,9 +187,9 @@ function FinalizePage() {
       setExported(new Set(res.lines.map((l) => l.line_number)));
       queryClient.invalidateQueries({ queryKey: queryKeys.stats(mushafId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.mushafs });
-      toast.success(`Exported ${res.exported} line PNG${res.exported === 1 ? "" : "s"}.`);
+      toast.success(t("finalize.exportedToast", { count: res.exported }));
     },
-    onError: (e) => toast.error(e instanceof ApiError ? e.message : "Export failed."),
+    onError: (e) => toast.error(e instanceof ApiError ? e.message : t("finalize.exportFailed")),
   });
 
   const busy = saveMutation.isPending || exportMutation.isPending;
@@ -197,7 +199,7 @@ function FinalizePage() {
     shouldBlockFn: ({ current, next }) => {
       if (current.pathname === next.pathname) return false;
       if (!dirty) return false;
-      return !window.confirm("You have unsaved line-cut edits. Leave without saving?");
+      return !window.confirm(t("finalize.leaveConfirm"));
     },
   });
 
@@ -244,7 +246,9 @@ function FinalizePage() {
   }));
 
   return (
-    <div className="flex flex-1 overflow-hidden">
+    <div
+      className={`flex ${i18n.language === "ar" ? "flex-row-reverse" : "flex-row"} flex-1 overflow-hidden`}
+    >
       <FinalizeCanvas
         imageUrl={pageImageUrl(mushafId, page, mushaf.updated_at)}
         lines={canvasLines}
@@ -255,7 +259,7 @@ function FinalizePage() {
         onPageChange={(n) => navigate({ search: { page: Math.max(1, Math.min(logicalCount, n)) } })}
         processed={pages?.processed}
         reviewed={pages?.reviewed}
-        label={`PDF page ${mushaf.first_quran_pdf_page + page - 1}`}
+        label={t("finalize.pdfPage", { pdf: mushaf.first_quran_pdf_page + page - 1 })}
         onSelectLine={setSelected}
         onResizeLine={liveLine}
         onResizeCommit={(n, box) => commitLine(n, (l) => ({ ...l, bbox: { ...l.bbox, ...box } }))}
@@ -275,7 +279,7 @@ function FinalizePage() {
                 aria-hidden
               />
               <span className="text-text-secondary">
-                {dirty ? "Unsaved line-cut edits" : "All cuts saved"}
+                {dirty ? t("finalize.unsavedStatus") : t("finalize.savedStatus")}
               </span>
             </div>
             <div className="flex gap-2">
@@ -285,52 +289,49 @@ function FinalizePage() {
                 onClick={() => saveMutation.mutate()}
                 disabled={!dirty || busy}
               >
-                {saveMutation.isPending ? "Saving…" : "Save cuts"}
+                {saveMutation.isPending ? t("common.saving") : t("finalize.saveCuts")}
               </Button>
               <Button
                 className="flex-1"
                 onClick={() => exportMutation.mutate()}
                 disabled={!hasLines || busy}
               >
-                {exportMutation.isPending ? "Exporting…" : "Save & export page"}
+                {exportMutation.isPending ? t("finalize.exporting") : t("finalize.exportPage")}
               </Button>
             </div>
           </div>
         }
       >
-        <Hint>
-          Each line is shown on its own — exactly as it exports (near-white made transparent). Drag
-          a line’s <strong>top/bottom edge</strong> to trim it; hold <strong>Shift</strong> to erase
-          bleed from neighbours; <strong>Space</strong> to pan. Erasing one line never affects
-          another.
-        </Hint>
+        <Hint>{t("finalize.intro")}</Hint>
 
         {!hasLines ? (
-          <Hint tone="warning">Page {page} has no processed lines to finalize or export.</Hint>
+          <Hint tone="warning">{t("finalize.noLines", { page })}</Hint>
         ) : (
           <>
-            <PanelCard title={`Lines · ${model.length}`}>
+            <PanelCard title={t("finalize.linesTitle", { count: model.length })}>
               <div className="-m-1 flex max-h-[220px] flex-col overflow-y-auto">
                 {canvasLines.map((l) => (
                   <button
                     key={l.line_number}
                     type="button"
                     onClick={() => setSelected(l.line_number)}
-                    className={`flex items-center gap-2 rounded px-2 py-[6px] text-left text-[12px] transition-colors ${
+                    className={`flex items-center gap-2 rounded px-2 py-[6px] text-start text-[12px] transition-colors ${
                       selected === l.line_number ? "bg-orange-tint" : "hover:bg-bg-surface"
                     }`}
                   >
                     <span className="w-5 font-mono text-text-muted">{l.line_number}</span>
-                    <span className="text-text-secondary">{l.type}</span>
-                    <span className="ml-auto flex items-center gap-1">
+                    <span className="text-text-secondary">
+                      {t(`review.chip_${l.type as LineType}`)}
+                    </span>
+                    <span className="ms-auto flex items-center gap-1">
                       {l.edited && (
                         <span className="rounded-pill bg-orange px-1.5 text-[9px] font-bold text-white">
-                          edited
+                          {t("finalize.edited")}
                         </span>
                       )}
                       {exported.has(l.line_number) && (
                         <span className="rounded-pill bg-navy px-1.5 text-[9px] font-bold text-white">
-                          png
+                          {t("finalize.png")}
                         </span>
                       )}
                     </span>
@@ -339,8 +340,8 @@ function FinalizePage() {
               </div>
             </PanelCard>
 
-            <Section title="Eraser">
-              <Field label={`Brush size · ${brushSize}px`}>
+            <Section title={t("finalize.eraser")}>
+              <Field label={t("finalize.brushSize", { size: brushSize })}>
                 <input
                   type="range"
                   min={2}
@@ -360,7 +361,7 @@ function FinalizePage() {
                     commitLine(sel.line_number, (l) => ({ ...l, strokes: l.strokes.slice(0, -1) }))
                   }
                 >
-                  Undo stroke
+                  {t("finalize.undoStroke")}
                 </Button>
                 <Button
                   variant="outline"
@@ -368,17 +369,17 @@ function FinalizePage() {
                   disabled={!sel || sel.strokes.length === 0}
                   onClick={() => sel && commitLine(sel.line_number, (l) => ({ ...l, strokes: [] }))}
                 >
-                  Clear line
+                  {t("finalize.clearLine")}
                 </Button>
               </div>
               <p className="text-[10.5px] leading-snug text-text-muted">
                 {sel
-                  ? `Line ${sel.line_number}: ${sel.strokes.length} stroke(s).`
-                  : "Select a line."}
+                  ? t("finalize.strokeInfo", { line: sel.line_number, count: sel.strokes.length })
+                  : t("finalize.selectLineShort")}
               </p>
             </Section>
 
-            <Section title="Line box (Y / H)">
+            <Section title={t("finalize.lineBox")}>
               {sel ? (
                 <>
                   <div className="grid grid-cols-2 gap-2">
@@ -406,21 +407,19 @@ function FinalizePage() {
                     className="h-8 w-full text-[11px]"
                     onClick={() => revertLine(sel.line_number)}
                   >
-                    Revert line to saved
+                    {t("finalize.revertLine")}
                   </Button>
                   <p className="text-[10.5px] leading-snug text-text-muted">
-                    X and W are locked to the page’s text column — every line shares the same width.
+                    {t("finalize.lockNote")}
                   </p>
                 </>
               ) : (
-                <p className="text-[12px] text-text-muted">Select a line to adjust its box.</p>
+                <p className="text-[12px] text-text-muted">{t("finalize.selectLineBox")}</p>
               )}
             </Section>
 
             {result && (
-              <PanelCard
-                title={`Exported ${result.exported} line PNG${result.exported === 1 ? "" : "s"}`}
-              >
+              <PanelCard title={t("finalize.exportedTitle", { count: result.exported })}>
                 <div className="flex flex-col gap-2">
                   {result.lines.map((l) => (
                     <a
@@ -435,7 +434,7 @@ function FinalizePage() {
                       </span>
                       <img
                         src={mediaSrc(l.line_png)}
-                        alt={`Line ${l.line_number}`}
+                        alt={t("finalize.lineAlt", { n: l.line_number })}
                         className="max-h-8 flex-1 bg-[repeating-conic-gradient(#eee_0_25%,transparent_0_50%)] bg-[length:10px_10px] object-contain"
                       />
                     </a>

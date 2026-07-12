@@ -13,7 +13,7 @@ from django.db.models import Count, Q, Sum
 from django.shortcuts import get_object_or_404
 from ninja.errors import HttpError
 
-from api import validators
+from api import i18n, validators
 from api.models import (
     ActivityTypeChoices,
     Line,
@@ -116,7 +116,7 @@ def get_mushaf_dict(mushaf_id: uuid.UUID) -> dict:
         .first()
     )
     if row is None:
-        raise HttpError(404, "Mushaf not found.")
+        raise HttpError(404, i18n.t("mushaf_not_found"))
     return _serialize(row)
 
 
@@ -187,7 +187,7 @@ def create_mushaf(
     under a different name is allowed and flagged via ``warnings.duplicate_file``.
     """
     if Mushaf.objects.filter(name=name).exists():
-        raise HttpError(409, f"A mushaf named {name!r} already exists.")
+        raise HttpError(409, i18n.t("mushaf_name_exists", name=name))
 
     data = pdf_file.read()
     sha = pdf.sha256_of(data)
@@ -232,7 +232,7 @@ def update_mushaf(mushaf_id: uuid.UUID, fields: dict) -> dict:
     if "name" in fields:
         name = fields["name"]
         if Mushaf.objects.filter(name=name).exclude(id=mushaf.id).exists():
-            raise HttpError(409, f"A mushaf named {name!r} already exists.")
+            raise HttpError(409, i18n.t("mushaf_name_exists", name=name))
         mushaf.name = name
 
     if "qiraa" in fields:
@@ -246,11 +246,7 @@ def update_mushaf(mushaf_id: uuid.UUID, fields: dict) -> dict:
         validators.validate_pdf_bounds(first, last, mushaf.pdf_page_count)
         bounds_changed = first != mushaf.first_quran_pdf_page or last != mushaf.last_quran_pdf_page
         if bounds_changed and mushaf.pages.exists():
-            raise HttpError(
-                409,
-                "Cannot change Quran-page bounds after pages are processed; "
-                "delete the processed pages (or the mushaf) and reprocess.",
-            )
+            raise HttpError(409, i18n.t("bounds_locked"))
         mushaf.first_quran_pdf_page = first
         mushaf.last_quran_pdf_page = last
 
@@ -300,7 +296,7 @@ def upsert_template(
     template (e.g. when the picture is already in the DB after a reload).
     """
     if template_type not in TemplateTypeChoices.values:
-        raise HttpError(400, f"Invalid template type {template_type!r}.")
+        raise HttpError(400, i18n.t("invalid_template_type", template_type=template_type))
 
     mushaf = get_mushaf(mushaf_id)
     ignore_rect: dict = {}
@@ -308,7 +304,7 @@ def upsert_template(
         ignore_rect = {"x": ignore_x, "y": ignore_y, "w": ignore_w, "h": ignore_h}
 
     if image is None and not Template.objects.filter(mushaf=mushaf, type=template_type).exists():
-        raise HttpError(400, "An image is required to create a template.")
+        raise HttpError(400, i18n.t("template_image_required"))
 
     template, _ = Template.objects.update_or_create(
         mushaf=mushaf, type=template_type, defaults={"ignore_rects": ignore_rect}

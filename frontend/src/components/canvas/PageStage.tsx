@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 
 import { ChevronNav } from "@/components/canvas/ChevronNav";
 import { PageCanvas } from "@/components/canvas/PageCanvas";
@@ -54,6 +55,7 @@ export function PageStage({
   processed,
   reviewed,
 }: Props) {
+  const { t } = useTranslation();
   const [zoom, setZoom] = useState<Zoom>(-1);
   const [tool, setTool] = useState<CanvasTool>("select");
   const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
@@ -136,8 +138,8 @@ export function PageStage({
           >
             ●{" "}
             {crop.rect
-              ? `${Math.round(crop.rect.w)} × ${Math.round(crop.rect.h)} px${crop.mirrored ? " · mirrored (read-only)" : ""}`
-              : `Draw: ${crop.label}`}
+              ? `${Math.round(crop.rect.w)} × ${Math.round(crop.rect.h)} px${crop.mirrored ? ` · ${t("canvas.mirroredReadonly")}` : ""}`
+              : t("canvas.draw", { label: crop.label })}
           </span>
         )}
       </div>

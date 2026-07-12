@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 
 import type { AbortInfo } from "@/lib/api";
 import { mediaUrl } from "@/lib/api/http";
@@ -7,6 +8,7 @@ import { mediaUrl } from "@/lib/api/http";
  * debug image (the key "why did it mis-split" signal), plus header match scores,
  * text regions, and a link to the full log. Collapsible so it stays tidy. */
 export function AbortDiagnostics({ info, logUrl }: { info: AbortInfo; logUrl?: string | null }) {
+  const { t } = useTranslation();
   const d = info.diagnostics;
   const lines = d?.lines ?? [];
   const headers = d?.headers ?? [];
@@ -17,19 +19,16 @@ export function AbortDiagnostics({ info, logUrl }: { info: AbortInfo; logUrl?: s
   return (
     <div className="flex flex-col gap-2">
       <p className="text-[11.5px] leading-[1.55] text-text-secondary">
-        Expected <b className="text-text-primary">{info.expected_lines ?? "?"}</b> line slots; the
-        detector found{" "}
-        <b className="text-text-primary">{info.detected_slots ?? info.detected_lines ?? "?"}</b>{" "}
-        across <b className="text-text-primary">{lines.length}</b> line
-        {lines.length === 1 ? "" : "s"}. Scan the detected lines for a merge or split, then tune the
-        bounds, expected-lines, or header threshold.
+        {t("canvas.diag_intro", {
+          expected: info.expected_lines ?? "?",
+          detected: info.detected_slots ?? info.detected_lines ?? "?",
+          lines: lines.length,
+        })}
       </p>
 
-      <Section title={`Detected lines · ${lines.length}`} defaultOpen>
+      <Section title={t("canvas.diag_detectedLines", { count: lines.length })} defaultOpen>
         {lines.length === 0 ? (
-          <p className="text-[11px] text-text-muted">
-            No lines were detected — check the crop bounds and the page image.
-          </p>
+          <p className="text-[11px] text-text-muted">{t("canvas.diag_noLines")}</p>
         ) : (
           <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
             {lines.map((ln, i) => (
@@ -38,13 +37,13 @@ export function AbortDiagnostics({ info, logUrl }: { info: AbortInfo; logUrl?: s
                   <a href={imageUrls[i]} target="_blank" rel="noreferrer">
                     <img
                       src={imageUrls[i]}
-                      alt={`detected line ${ln.index}`}
+                      alt={t("canvas.diag_lineAlt", { index: ln.index })}
                       className="h-auto w-full rounded-[3px] border border-bg-surface bg-white object-contain"
                     />
                   </a>
                 ) : (
                   <div className="flex h-7 items-center justify-center text-[9.5px] text-text-muted">
-                    no image
+                    {t("canvas.diag_noImage")}
                   </div>
                 )}
                 <figcaption className="mt-1 flex items-center justify-between px-0.5 font-mono text-[9.5px] text-text-secondary">
@@ -61,14 +60,14 @@ export function AbortDiagnostics({ info, logUrl }: { info: AbortInfo; logUrl?: s
       </Section>
 
       {headers.length > 0 && (
-        <Section title={`Sura headers · ${headers.length}`}>
+        <Section title={t("canvas.diag_suraHeaders", { count: headers.length })}>
           <ul className="flex flex-col gap-1 font-mono text-[10.5px] text-text-secondary">
             {headers.map((h, i) => (
               <li key={i} className="flex items-center justify-between gap-2">
-                <span>
-                  y={h.y} · {h.h}px · {h.slots} slot{h.slots === 1 ? "" : "s"}
+                <span>{t("canvas.diag_slots", { y: h.y, h: h.h, slots: h.slots })}</span>
+                <span className="font-bold text-text-primary">
+                  {t("canvas.diag_score", { score: h.score.toFixed(3) })}
                 </span>
-                <span className="font-bold text-text-primary">score {h.score.toFixed(3)}</span>
               </li>
             ))}
           </ul>
@@ -76,15 +75,13 @@ export function AbortDiagnostics({ info, logUrl }: { info: AbortInfo; logUrl?: s
       )}
 
       {regions.length > 0 && (
-        <Section title={`Text regions · ${regions.length}`}>
+        <Section title={t("canvas.diag_textRegions", { count: regions.length })}>
           <ul className="flex flex-col gap-1 font-mono text-[10.5px] text-text-secondary">
             {regions.map((r, i) => (
               <li key={i} className="flex items-center justify-between gap-2">
-                <span>
-                  y={r.y} · {r.h}px
-                </span>
+                <span>{t("canvas.diag_region", { y: r.y, h: r.h })}</span>
                 <span className="font-bold text-text-primary">
-                  expects {r.expected_lines} line{r.expected_lines === 1 ? "" : "s"}
+                  {t("canvas.diag_expects", { count: r.expected_lines })}
                 </span>
               </li>
             ))}
@@ -99,7 +96,7 @@ export function AbortDiagnostics({ info, logUrl }: { info: AbortInfo; logUrl?: s
           rel="noreferrer"
           className="mt-0.5 inline-block text-[11px] font-semibold text-orange hover:text-orange-hover"
         >
-          Download detection log ↓
+          {t("canvas.diag_downloadLog")}
         </a>
       )}
     </div>

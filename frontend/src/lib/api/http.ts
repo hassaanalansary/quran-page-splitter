@@ -16,6 +16,13 @@ export function mediaUrl(path: string): string {
   return `${API_BASE}${normalized}`;
 }
 
+/** Current UI language, mirrored onto <html lang> — sent so the API can
+ * localize its error messages (see backend api/i18n.py). */
+function acceptLanguage(): string {
+  const lang = typeof document !== "undefined" ? document.documentElement.lang : "";
+  return lang === "ar" ? "ar" : "en";
+}
+
 /** Thrown for any non-2xx response; carries the HTTP status for callers to branch on. */
 export class ApiError extends Error {
   status: number;
@@ -52,7 +59,10 @@ async function handle<T>(res: Response): Promise<T> {
 }
 
 export function apiGet<T>(path: string, signal?: AbortSignal): Promise<T> {
-  return fetch(`${API_BASE}${path}`, { signal }).then(handle<T>);
+  return fetch(`${API_BASE}${path}`, {
+    signal,
+    headers: { "Accept-Language": acceptLanguage() },
+  }).then(handle<T>);
 }
 
 export function apiJson<T>(
@@ -63,7 +73,7 @@ export function apiJson<T>(
 ): Promise<T> {
   return fetch(`${API_BASE}${path}`, {
     method,
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "Accept-Language": acceptLanguage() },
     body: body === undefined ? undefined : JSON.stringify(body),
     signal,
   }).then(handle<T>);
@@ -75,9 +85,18 @@ export function apiForm<T>(
   form: FormData,
   signal?: AbortSignal,
 ): Promise<T> {
-  return fetch(`${API_BASE}${path}`, { method, body: form, signal }).then(handle<T>);
+  return fetch(`${API_BASE}${path}`, {
+    method,
+    body: form,
+    signal,
+    headers: { "Accept-Language": acceptLanguage() },
+  }).then(handle<T>);
 }
 
 export function apiDelete(path: string, signal?: AbortSignal): Promise<void> {
-  return fetch(`${API_BASE}${path}`, { method: "DELETE", signal }).then(handle<void>);
+  return fetch(`${API_BASE}${path}`, {
+    method: "DELETE",
+    signal,
+    headers: { "Accept-Language": acceptLanguage() },
+  }).then(handle<void>);
 }

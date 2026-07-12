@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import type { Rect } from "@/lib/api/types";
 
@@ -23,6 +24,7 @@ type Props = {
  * and scales it to fit the box.
  */
 export function CropPreview({ imageUrl, rect, caption, height = 220, mirrored = false }: Props) {
+  const { t } = useTranslation();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [img, setImg] = useState<HTMLImageElement | null>(null);
 
@@ -64,7 +66,7 @@ export function CropPreview({ imageUrl, rect, caption, height = 220, mirrored = 
           <canvas ref={canvasRef} className="h-full w-full" />
         ) : (
           <div className="flex h-full items-center justify-center px-3 text-center text-[11px] text-text-muted">
-            Draw a region on the page to preview it here.
+            {t("canvas.cropPreviewEmpty")}
           </div>
         )}
       </div>

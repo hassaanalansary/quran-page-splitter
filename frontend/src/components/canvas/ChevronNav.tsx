@@ -1,4 +1,5 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 type Props = {
   page: number;
@@ -25,12 +26,13 @@ function Chevron({
   onClick: () => void;
   disabled: boolean;
 }) {
+  const { t } = useTranslation();
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={disabled}
-      aria-label={side === "left" ? "Previous page" : "Next page"}
+      aria-label={side === "left" ? t("canvas.prevPage") : t("canvas.nextPage")}
       className={[
         "absolute top-1/2 z-10 flex h-10 w-10 -translate-y-1/2 items-center justify-center cursor-pointer rounded-full border border-border bg-white/90 text-text-secondary shadow-[var(--shadow-md)] backdrop-blur transition hover:text-orange disabled:cursor-not-allowed disabled:opacity-30",
         side === "left" ? "left-3" : "right-3",

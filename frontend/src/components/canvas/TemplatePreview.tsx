@@ -1,5 +1,6 @@
 import { TriangleAlert } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { CropPreview } from "@/components/canvas/CropPreview";
 import type { Rect } from "@/lib/api/types";
@@ -25,10 +26,11 @@ type Props =
  * validation message when the parent template isn't set yet).
  */
 export function TemplatePreview(props: Props) {
+  const { t } = useTranslation();
   if (props.mode === "template") {
     return (
       <div className="flex flex-1 flex-col gap-2 overflow-auto">
-        <Header title="Crop preview" />
+        <Header title={t("canvas.tpl_cropPreview")} />
         <CropPreview imageUrl={props.pageUrl} rect={props.working} height={340} />
       </div>
     );
@@ -37,13 +39,13 @@ export function TemplatePreview(props: Props) {
   if (props.mode === "bounds") {
     return (
       <div className="flex flex-1 flex-col gap-2 overflow-auto">
-        <Header title="Bounds preview" />
+        <Header title={t("canvas.tpl_boundsPreview")} />
         <CropPreview
           imageUrl={props.pageUrl}
           rect={props.working}
           height={340}
           mirrored={props.mirrored}
-          caption={props.mirrored ? "Mirrored — alternate margin" : undefined}
+          caption={props.mirrored ? t("canvas.tpl_mirroredCaption") : undefined}
         />
       </div>
     );
@@ -52,21 +54,21 @@ export function TemplatePreview(props: Props) {
   const { pageUrl, working, parentLabel, parentImageUrl, ignoreRelative } = props;
   return (
     <div className="flex flex-1 flex-col gap-3 overflow-auto">
-      <Header title="Ignore preview" />
+      <Header title={t("canvas.tpl_ignorePreview")} />
       {!parentImageUrl ? (
         <div className="flex items-center gap-2 rounded-md border border-error-border bg-error-bg px-3 py-2.5 text-[12px] text-error">
           <TriangleAlert size={15} className="flex-shrink-0" />
-          Capture the {parentLabel} template first, then draw the area to ignore inside it.
+          {t("canvas.tpl_captureFirst", { label: parentLabel })}
         </div>
       ) : (
         <>
           <div>
-            <div className="mb-1 text-[11px] text-text-muted">Live selection</div>
+            <div className="mb-1 text-[11px] text-text-muted">{t("canvas.tpl_liveSelection")}</div>
             <CropPreview imageUrl={pageUrl} rect={working} height={90} />
           </div>
           <div className="flex flex-1 flex-col">
             <div className="mb-1 text-[11px] text-text-muted">
-              {parentLabel} · ignored area in red
+              {t("canvas.tpl_ignoredRed", { label: parentLabel })}
             </div>
             <ImageWithRedBox imageUrl={parentImageUrl} red={ignoreRelative} height={210} />
           </div>

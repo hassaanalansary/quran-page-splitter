@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, useBlocker, useNavigate, useParams } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
 import { Aside, Field, Hint } from "@/components/app/Panel";
@@ -46,17 +47,14 @@ export const Route = createFileRoute("/mushafs/$mushafId/review")({
 const HISTORY_LIMIT = 100;
 const COALESCE_MS = 500;
 
-const LINE_TYPES: { value: EditLineType; label: string }[] = [
-  { value: "text", label: "Text" },
-  { value: "sura_header", label: "Sura header" },
-  { value: "besmella", label: "Besmella" },
-];
+const LINE_TYPE_VALUES: EditLineType[] = ["text", "sura_header", "besmella"];
 
 function ReviewPage() {
   const { mushafId } = useParams({ from: "/mushafs/$mushafId/review" });
   const { page } = Route.useSearch();
   const navigate = useNavigate({ from: "/mushafs/$mushafId/review" });
   const queryClient = useQueryClient();
+  const { t, i18n } = useTranslation();
 
   const { data: mushaf } = useMushaf(mushafId);
   const { data: suras } = useSuras(mushaf?.qiraa);
@@ -160,7 +158,7 @@ function ReviewPage() {
   const selectedEdit = currentEdit?.lines.find((l) => l.uid === selectedUid) ?? null;
   const selectedDerived = currentDerived?.lines.find((l) => l.uid === selectedUid) ?? null;
   const suraName = (n: number) =>
-    suras?.find((s) => s.number === n)?.transliteration ?? `sura ${n}`;
+    suras?.find((s) => s.number === n)?.transliteration ?? t("review.suraFallback", { n });
 
   // Content-dirty pages (structure changed vs the last-saved baseline).
   const dirtyPages = useMemo(() => {
@@ -204,7 +202,7 @@ function ReviewPage() {
     shouldBlockFn: ({ current, next }) => {
       if (current.pathname === next.pathname) return false;
       if (unsavedCount === 0) return false;
-      return !window.confirm("You have unsaved review edits. Leave without saving?");
+      return !window.confirm(t("review.leaveConfirm"));
     },
   });
 
@@ -313,7 +311,7 @@ function ReviewPage() {
         return fresh;
       })
       .catch((e) => {
-        toast.error(e instanceof ApiError ? e.message : "Save failed.");
+        toast.error(e instanceof ApiError ? e.message : t("review.saveFailed"));
         return null;
       });
   }
@@ -355,7 +353,8 @@ function ReviewPage() {
       ...store,
       pages: store.pages.map((p) => (targets.has(p.page_number) ? { ...p, reviewed: true } : p)),
     });
-    if (span.length) toast.success(`Marked pages ${Math.min(...targets)}–${page} reviewed.`);
+    if (span.length)
+      toast.success(t("review.markedReviewed", { from: Math.min(...targets), to: page }));
     goto(page + 1);
   }
 
@@ -364,7 +363,7 @@ function ReviewPage() {
     const contentDirty = dirtyPages;
     const reviewedToSave = reviewedPending;
     if (!contentDirty.length && !reviewedToSave.length) {
-      toast.info("Nothing to save.");
+      toast.info(t("review.nothingToSave"));
       return;
     }
     // Capture what we send so edits made after clicking Save stay dirty.
@@ -384,7 +383,12 @@ function ReviewPage() {
       reviewedToSave.forEach((n) => baselineReviewedRef.current.add(n));
       setBaselineVersion((v) => v + 1);
       toast.success(
-        `Saved ${pages.length} page(s)${reviewedToSave.length ? ` · ${reviewedToSave.length} reviewed` : ""}.`,
+        reviewedToSave.length
+          ? t("review.savedToastReviewed", {
+              count: pages.length,
+              reviewed: reviewedToSave.length,
+            })
+          : t("review.savedToast", { count: pages.length }),
       );
     });
   }
@@ -400,12 +404,16 @@ function ReviewPage() {
 
   const statusSlot = (
     <div className="flex items-center gap-2 text-[11.5px]">
-      {unsavedCount > 0 && <span className="font-medium text-orange">{unsavedCount} unsaved</span>}
+      {unsavedCount > 0 && (
+        <span className="font-medium text-orange">
+          {t("review.unsaved", { count: unsavedCount })}
+        </span>
+      )}
       {derived && derived.totalWarnings > 0 && (
         <button
           type="button"
           onClick={nextWarningPage}
-          title="Jump to the next page with a numbering warning"
+          title={t("review.warningTitle")}
           className="cursor-pointer rounded-sm border border-[color:var(--warning-border)] bg-warning-bg px-1.5 py-0.5 font-medium text-[#8a4b0d]"
         >
           ⚠ {derived.totalWarnings}
@@ -416,7 +424,7 @@ function ReviewPage() {
           type="button"
           onClick={undo}
           disabled={!canUndo}
-          title="Undo (Ctrl+Z)"
+          title={t("review.undoTitle")}
           className="cursor-pointer border-r border-border bg-white px-2 text-text-secondary hover:bg-bg-surface disabled:opacity-40"
         >
           ↶
@@ -425,7 +433,7 @@ function ReviewPage() {
           type="button"
           onClick={redo}
           disabled={!canRedo}
-          title="Redo (Ctrl+Shift+Z)"
+          title={t("review.redoTitle")}
           className="cursor-pointer bg-white px-2 text-text-secondary hover:bg-bg-surface disabled:opacity-40"
         >
           ↷
@@ -435,7 +443,9 @@ function ReviewPage() {
   );
 
   return (
-    <div className="flex flex-1 overflow-hidden">
+    <div
+      className={`flex ${i18n.language === "ar" ? "flex-row-reverse" : "flex-row"} flex-1 overflow-hidden`}
+    >
       <ReviewEditCanvas
         imageUrl={pageImageUrl(mushafId, page)}
         lines={currentDerived?.lines ?? []}
@@ -457,7 +467,7 @@ function ReviewPage() {
         footer={
           <div className="flex flex-col gap-2">
             <Button onClick={markReviewedAndNext} disabled={!store}>
-              Mark reviewed → next
+              {t("review.markReviewedNext")}
             </Button>
             <div className="flex gap-2">
               <Button
@@ -466,11 +476,11 @@ function ReviewPage() {
                 onClick={saveChanges}
                 disabled={unsavedCount === 0 || saving}
               >
-                {saving ? "Saving…" : "Save changes"}
+                {saving ? t("common.saving") : t("review.saveChanges")}
               </Button>
               <Button asChild variant="outline" className="flex-1">
                 <Link to="/mushafs/$mushafId/finalize" params={{ mushafId }} search={{ page }}>
-                  Finalize →
+                  {t("review.finalize")}
                 </Link>
               </Button>
             </div>
@@ -478,25 +488,25 @@ function ReviewPage() {
         }
       >
         {!store ? (
-          <Hint>Loading review data…</Hint>
+          <Hint>{t("review.loadingData")}</Hint>
         ) : (
           <>
-            <Hint>
-              Drag a line box to move it, its handles to resize. Double-click a text line to add an
-              aya separator; drag the red bars to reposition. Blank pages are editable — add lines
-              to process them manually. Numbering is derived live across the whole mushaf.
-            </Hint>
+            <Hint>{t("review.intro")}</Hint>
 
             {currentDerived && (
               <div className="rounded-md border border-border bg-white px-2.5 py-1.5 text-[11.5px] text-text-secondary">
-                Enters {suraName(currentDerived.entry.sura)}:{currentDerived.entry.aya} · exits{" "}
-                {suraName(currentDerived.exit.sura)}:{Math.max(1, currentDerived.exit.aya - 1)}
+                {t("review.enters", {
+                  fromSura: suraName(currentDerived.entry.sura),
+                  fromAya: currentDerived.entry.aya,
+                  toSura: suraName(currentDerived.exit.sura),
+                  toAya: Math.max(1, currentDerived.exit.aya - 1),
+                })}
                 {currentEdit?.reviewed && (
-                  <span className="ml-1 font-semibold text-success">· reviewed</span>
+                  <span className="ms-1 font-semibold text-success">{t("review.reviewedTag")}</span>
                 )}
                 {currentDerived.warnings > 0 && (
-                  <span className="ml-1 font-semibold text-[#8a4b0d]">
-                    · ⚠ {currentDerived.warnings}
+                  <span className="ms-1 font-semibold text-[#8a4b0d]">
+                    {t("review.warnTag", { count: currentDerived.warnings })}
                   </span>
                 )}
               </div>
@@ -524,8 +534,8 @@ function ReviewPage() {
             ) : (
               <p className="py-4 text-center text-[12px] text-text-muted">
                 {currentEdit && currentEdit.lines.length === 0
-                  ? "Blank page — add lines with the buttons above to process it manually."
-                  : "Select a line on the page to edit it."}
+                  ? t("review.blankPage")
+                  : t("review.selectLine")}
               </p>
             )}
           </>
@@ -548,23 +558,28 @@ function LineList({
   onSelect: (uid: string) => void;
   onAdd: (type: EditLineType) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="rounded-md border border-border bg-white">
       <div className="flex items-center justify-between border-b border-border px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-text-muted">
-        <span>Lines</span>
-        <span className="font-normal normal-case">{lines.length} total</span>
+        <span>{t("review.linesTitle")}</span>
+        <span className="font-normal normal-case">
+          {t("review.linesTotal", { count: lines.length })}
+        </span>
       </div>
       <ul className="max-h-[240px] overflow-y-auto">
         {lines.map((l) => {
           const active = l.uid === selectedUid;
           const summary =
             l.type === "text"
-              ? `${l.segments.length} seg${l.segments.length === 1 ? "" : "s"}${
-                  l.segments.length
-                    ? ` · aya ${l.segments[0].aya}–${l.segments[l.segments.length - 1].aya}`
-                    : ""
-                }`
-              : `sura ${l.sura}`;
+              ? l.segments.length
+                ? t("review.segSummaryAya", {
+                    count: l.segments.length,
+                    from: l.segments[0].aya,
+                    to: l.segments[l.segments.length - 1].aya,
+                  })
+                : t("review.segSummary", { count: l.segments.length })
+              : t("review.suraSummary", { sura: l.sura });
           const hasWarn = l.boundaryWarning || l.segments.some((s) => s.overflow);
           return (
             <li key={l.uid}>
@@ -572,13 +587,13 @@ function LineList({
                 type="button"
                 onClick={() => onSelect(l.uid)}
                 className={[
-                  "flex w-full items-center gap-2 border-b border-border px-3 py-[7px] text-left text-[12px]",
+                  "flex w-full items-center gap-2 border-b border-border px-3 py-[7px] text-start text-[12px]",
                   active ? "bg-orange-tint" : "bg-white hover:bg-bg-surface",
                 ].join(" ")}
               >
                 <span className="w-5 font-mono text-text-muted">{l.line_number}</span>
                 <TypeChip type={l.type} />
-                <span className="ml-auto truncate text-[11.5px] text-text-secondary">
+                <span className="ms-auto truncate text-[11.5px] text-text-secondary">
                   {summary}
                 </span>
                 {hasWarn && <span className="h-1.5 w-1.5 flex-none rounded-full bg-warning" />}
@@ -588,14 +603,14 @@ function LineList({
         })}
       </ul>
       <div className="flex gap-1 border-t border-border bg-bg-surface px-3 py-2">
-        {LINE_TYPES.map((t) => (
+        {LINE_TYPE_VALUES.map((value) => (
           <button
-            key={t.value}
+            key={value}
             type="button"
-            onClick={() => onAdd(t.value)}
+            onClick={() => onAdd(value)}
             className="flex-1 cursor-pointer rounded-sm border-[1.5px] border-border-strong bg-white px-2 py-[5px] text-[11px] font-medium text-text-secondary hover:bg-bg-surface"
           >
-            + {t.label}
+            + {t(`review.type_${value}`)}
           </button>
         ))}
       </div>
@@ -624,37 +639,38 @@ function SelectedLineEditor({
   onRemoveCut: (i: number) => void;
   onRemoveSegment: (i: number) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="flex flex-col gap-3 rounded-md border border-border bg-white p-3">
       <div className="flex items-center justify-between">
         <span className="text-[11px] font-semibold uppercase tracking-wider text-text-muted">
-          Line {derived.line_number}
+          {t("review.lineN", { n: derived.line_number })}
         </span>
         <button
           type="button"
           onClick={onDelete}
           className="cursor-pointer rounded-sm border border-error-border bg-error-bg px-2 py-[3px] text-[11px] font-medium text-error hover:brightness-95"
         >
-          Delete line
+          {t("review.deleteLine")}
         </button>
       </div>
 
-      <Field label="Type">
+      <Field label={t("review.typeLabel")}>
         <select
           value={edit.type}
           onChange={(e) => onSetType(e.target.value as EditLineType)}
           className="h-8 w-full cursor-pointer rounded-sm border-[1.5px] border-border-strong bg-white px-2 text-[12.5px]"
         >
-          {LINE_TYPES.map((t) => (
-            <option key={t.value} value={t.value}>
-              {t.label}
+          {LINE_TYPE_VALUES.map((value) => (
+            <option key={value} value={value}>
+              {t(`review.type_${value}`)}
             </option>
           ))}
         </select>
       </Field>
 
       {edit.type === "sura_header" && (
-        <Field label="Sura (anchors numbering from here)">
+        <Field label={t("review.suraAnchorLabel")}>
           <select
             value={edit.sura ?? derived.sura}
             onChange={(e) => onSetSura(Number(e.target.value))}
@@ -671,14 +687,13 @@ function SelectedLineEditor({
 
       {edit.type === "besmella" && (
         <div className="rounded-sm border border-border bg-bg-surface px-2.5 py-1.5 text-[11.5px] text-text-secondary">
-          Besmella of sura <b className="text-text-primary">{derived.sura}</b> (derived from the
-          preceding header).
+          {t("review.besmellaNote", { sura: derived.sura })}
         </div>
       )}
 
       <div>
         <div className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-text-muted">
-          Bounding box (px)
+          {t("review.bbox")}
         </div>
         <RectInputs rect={edit.bbox} onChange={onUpdateBbox} />
       </div>
@@ -686,42 +701,39 @@ function SelectedLineEditor({
       {edit.type === "text" && (
         <>
           <ListCard
-            title="Segments (right → left)"
+            title={t("review.segmentsTitle")}
             count={derived.segments.length}
-            empty="Add separators to split the line."
+            empty={t("review.segmentsEmpty")}
           >
             {derived.segments.map((s, i) => (
               <li key={`${i}_${s.bbox.x}`} className="flex items-center gap-2 text-[11.5px]">
                 <span className="w-4 text-text-muted">{i + 1}.</span>
                 <span className={`font-medium ${s.overflow ? "text-error" : "text-text-primary"}`}>
-                  aya {s.aya}
-                  {!s.has_separator ? " (cont.)" : ""}
+                  {t("review.ayaN", { n: s.aya })}
+                  {!s.has_separator ? t("review.ayaCont") : ""}
                   {s.overflow ? " ⚠" : ""}
                 </span>
-                <span className="ml-auto font-mono text-text-muted">
+                <span className="ms-auto font-mono text-text-muted">
                   {Math.round(s.bbox.x)}·{Math.round(s.bbox.w)}
                 </span>
-                <IconX
-                  title="Remove segment (merge into neighbour)"
-                  onClick={() => onRemoveSegment(i)}
-                />
+                <IconX title={t("review.removeSegment")} onClick={() => onRemoveSegment(i)} />
               </li>
             ))}
           </ListCard>
 
           <ListCard
-            title="Separators"
+            title={t("review.separatorsTitle")}
             count={edit.cuts.length}
-            empty="Double-click inside the line to add one."
+            empty={t("review.separatorsEmpty")}
           >
             {edit.cuts.map((cx, i) => (
               <li key={i} className="flex items-center gap-2 text-[11.5px]">
                 <span className="w-4 text-text-muted">{i + 1}.</span>
-                <span className="font-mono">x = {Math.round(cx)} px</span>
+                <span className="font-mono">{t("review.separatorX", { x: Math.round(cx) })}</span>
                 <IconX
-                  title="Remove separator"
+                  title={t("review.removeSeparator")}
                   onClick={() => onRemoveCut(i)}
-                  className="ml-auto"
+                  className="ms-auto"
                 />
               </li>
             ))}
@@ -780,18 +792,18 @@ function IconX({
 }
 
 function TypeChip({ type }: { type: EditLineType }) {
+  const { t } = useTranslation();
   const colors: Record<EditLineType, string> = {
     sura_header: "var(--navy)",
     besmella: "var(--success)",
     text: "var(--orange)",
   };
-  const label = type === "sura_header" ? "sura" : type;
   return (
     <span
       className="rounded-pill px-[6px] py-[1px] text-[9.5px] font-semibold uppercase tracking-wider text-white"
       style={{ background: colors[type] }}
     >
-      {label}
+      {t(`review.chip_${type}`)}
     </span>
   );
 }

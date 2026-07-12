@@ -1,5 +1,6 @@
 import { createFileRoute, useParams } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { MushafHeader } from "@/components/app/MushafHeader";
 import { DetailsRail } from "@/components/app/details/DetailsRail";
@@ -22,15 +23,10 @@ export const Route = createFileRoute("/mushafs/$mushafId/")({ component: MushafD
 
 type Tab = "overview" | "pages" | "runs" | "export" | "settings";
 
-const TABS: { id: Tab; label: string }[] = [
-  { id: "overview", label: "Overview" },
-  { id: "pages", label: "Pages" },
-  { id: "runs", label: "Runs" },
-  { id: "export", label: "Export" },
-  { id: "settings", label: "Settings" },
-];
+const TAB_IDS: Tab[] = ["overview", "pages", "runs", "export", "settings"];
 
 function MushafDetailsPage() {
+  const { t } = useTranslation();
   const { mushafId } = useParams({ from: "/mushafs/$mushafId/" });
   const { data: mushaf, isPending, isError, error } = useMushaf(mushafId);
   const { data: stats } = useStats(mushafId);
@@ -50,12 +46,12 @@ function MushafDetailsPage() {
     return latest && latest.status === "aborted_line_detection" ? runAbortPage(latest) : null;
   }, [runs]);
 
-  if (isPending) return <Centered>Loading mushaf…</Centered>;
+  if (isPending) return <Centered>{t("workspace.loadingMushaf")}</Centered>;
   if (isError || !mushaf) {
     return (
       <Centered>
         <span className="text-error">
-          {error instanceof Error ? error.message : "Failed to load mushaf."}
+          {error instanceof Error ? error.message : t("workspace.loadFailed")}
         </span>
       </Centered>
     );
@@ -74,7 +70,7 @@ function MushafDetailsPage() {
         <div className="flex min-w-0 flex-col overflow-y-auto">
           {/* tab bar */}
           <div className="flex flex-shrink-0 items-center gap-6 border-b border-border bg-white px-5">
-            {TABS.map(({ id, label }) => (
+            {TAB_IDS.map((id) => (
               <button
                 key={id}
                 type="button"
@@ -85,7 +81,7 @@ function MushafDetailsPage() {
                     : "border-transparent text-text-muted hover:text-text-secondary"
                 }`}
               >
-                {label}
+                {t(`details.tab_${id}`)}
                 {id === "pages" && summaries && summaries.length > 0 && (
                   <CountChip n={summaries.length} />
                 )}

@@ -1,4 +1,5 @@
 // Shared formatting + derivation helpers for the mushaf details page.
+import i18n from "@/i18n/config";
 import type {
   ActivityEvent,
   MushafDetail,
@@ -79,7 +80,8 @@ export const RUN_STATUS_META: Record<
   error: { label: "Error", dot: "var(--error)", bg: "bg-error-bg", text: "text-error" },
 };
 
-const fmtBool = (v: unknown): string => (v ? "on" : "off");
+const fmtBool = (v: unknown): string =>
+  v ? i18n.t("details.bool_on") : i18n.t("details.bool_off");
 const fmtNum = (v: unknown): string => (v == null ? "—" : String(v));
 
 /** Every setting a run captured, as readable label/value rows for the run card
@@ -88,23 +90,26 @@ export function runSettingsRows(run: Run): { label: string; value: string }[] {
   const s = run.settings;
   const b = s.bounds as Rect | undefined;
   return [
-    { label: "range", value: `pp. ${run.page_range_start}–${run.page_range_end}` },
-    { label: "start", value: `${fmtNum(s.start_sura)}:${fmtNum(s.start_aya)}` },
     {
-      label: "bounds",
+      label: i18n.t("details.row_range"),
+      value: `pp. ${run.page_range_start}–${run.page_range_end}`,
+    },
+    { label: i18n.t("details.row_start"), value: `${fmtNum(s.start_sura)}:${fmtNum(s.start_aya)}` },
+    {
+      label: i18n.t("details.row_bounds"),
       value:
         b && typeof b.w === "number"
           ? `${Math.round(b.w)}×${Math.round(b.h)} @ ${Math.round(b.x)},${Math.round(b.y)}`
           : "—",
     },
-    { label: "expected_lines", value: fmtNum(s.expected_lines) },
-    { label: "match_threshold", value: fmtNum(s.match_threshold) },
-    { label: "header_threshold", value: fmtNum(s.sura_header_threshold) },
-    { label: "header_slots", value: fmtNum(s.sura_header_slots) },
-    { label: "max_headers", value: fmtNum(s.max_sura_headers) },
-    { label: "padding", value: fmtNum(s.padding) },
-    { label: "alt_margins", value: fmtBool(s.alternate_horizontal_margin) },
-    { label: "acceleration", value: fmtBool(s.prefer_acceleration) },
+    { label: i18n.t("details.row_expected_lines"), value: fmtNum(s.expected_lines) },
+    { label: i18n.t("details.row_match_threshold"), value: fmtNum(s.match_threshold) },
+    { label: i18n.t("details.row_header_threshold"), value: fmtNum(s.sura_header_threshold) },
+    { label: i18n.t("details.row_header_slots"), value: fmtNum(s.sura_header_slots) },
+    { label: i18n.t("details.row_max_headers"), value: fmtNum(s.max_sura_headers) },
+    { label: i18n.t("details.row_padding"), value: fmtNum(s.padding) },
+    { label: i18n.t("details.row_alt_margins"), value: fmtBool(s.alternate_horizontal_margin) },
+    { label: i18n.t("details.row_acceleration"), value: fmtBool(s.prefer_acceleration) },
   ];
 }
 
@@ -113,40 +118,65 @@ export function activityMeta(event: ActivityEvent): { dot: string; text: string 
   const p = event.payload as Record<string, string | number | undefined>;
   switch (event.type) {
     case "mushaf_created":
-      return { dot: "var(--text-muted)", text: `${p.pdf_original_name || "PDF"} uploaded` };
+      return {
+        dot: "var(--text-muted)",
+        text: i18n.t("details.act_uploaded", {
+          name: p.pdf_original_name || i18n.t("details.act_pdfFallback"),
+        }),
+      };
     case "bounds_set":
-      return { dot: "var(--navy-light)", text: `Quran bounds set — pp.${p.first}–${p.last}` };
+      return {
+        dot: "var(--navy-light)",
+        text: i18n.t("details.act_boundsSet", { first: p.first, last: p.last }),
+      };
     case "template_saved":
       return {
         dot: "var(--success)",
-        text: `${p.template_type === "aya_separator" ? "Aya-separator" : "Sura-header"} template saved`,
+        text: i18n.t("details.act_templateSaved", {
+          type:
+            p.template_type === "aya_separator"
+              ? i18n.t("details.act_tplAya")
+              : i18n.t("details.act_tplSura"),
+        }),
       };
     case "run_finished": {
       const num = runNumberLabel(Number(p.run_number ?? 0));
       if (p.status === "completed") {
         return {
           dot: "var(--success)",
-          text: `Run ${num} completed (pp.${p.page_range_start}–${p.page_range_end})`,
+          text: i18n.t("details.act_runCompleted", {
+            num,
+            start: p.page_range_start,
+            end: p.page_range_end,
+          }),
         };
       }
       if (p.status === "aborted_line_detection") {
-        const where = p.abort_page ? ` at p.${p.abort_page}` : "";
-        return { dot: "var(--warning)", text: `Run ${num} aborted — line mismatch${where}` };
+        return {
+          dot: "var(--warning)",
+          text: p.abort_page
+            ? i18n.t("details.act_runAbortedAt", { num, page: p.abort_page })
+            : i18n.t("details.act_runAborted", { num }),
+        };
       }
-      return { dot: "var(--error)", text: `Run ${num} failed` };
+      return { dot: "var(--error)", text: i18n.t("details.act_runFailed", { num }) };
     }
     case "review_saved":
       return {
         dot: "var(--orange)",
         text:
           p.page_start != null
-            ? `Review saved — pages ${p.page_start}–${p.page_end} (${p.count})`
-            : `Review saved — page ${p.page_number}`,
+            ? i18n.t("details.act_reviewRange", {
+                start: p.page_start,
+                end: p.page_end,
+                shown: p.count,
+              })
+            : i18n.t("details.act_reviewPage", { page: p.page_number }),
       };
     case "lines_exported":
       return {
         dot: "var(--navy-light)",
-        text: `Line PNGs exported — page ${p.page_number} (${p.exported} lines)`,
+        text: i18n.t("details.act_linesExported", { page: p.page_number, lines: p.exported }),
       };
     default:
       return { dot: "var(--text-muted)", text: event.type };
@@ -179,63 +209,90 @@ export function pipelineSteps(
 
   const process: StepInfo =
     processed === 0
-      ? { slug: "process", label: "Process", state: "todo", detail: `0 / ${logical} pages` }
+      ? {
+          slug: "process",
+          label: i18n.t("header.steps.process"),
+          state: "todo",
+          detail: i18n.t("details.step_pages", { done: 0, total: logical }),
+        }
       : processed >= logical
         ? {
             slug: "process",
-            label: "Process",
+            label: i18n.t("header.steps.process"),
             state: "done",
-            detail: `${processed} / ${logical} pages`,
+            detail: i18n.t("details.step_pages", { done: processed, total: logical }),
           }
         : {
             slug: "process",
-            label: "Process",
+            label: i18n.t("header.steps.process"),
             state: "active",
-            detail: `${processed} / ${logical}${abortPage ? " · abort" : ""}`,
+            detail: abortPage
+              ? i18n.t("details.step_pagesAbort", { done: processed, total: logical })
+              : i18n.t("details.step_pages", { done: processed, total: logical }),
             warn: !!abortPage,
           };
 
   const review: StepInfo =
     processed === 0
-      ? { slug: "review", label: "Review", state: "todo", detail: "awaiting pages" }
+      ? {
+          slug: "review",
+          label: i18n.t("header.steps.review"),
+          state: "todo",
+          detail: i18n.t("details.step_awaiting"),
+        }
       : reviewed >= processed
         ? {
             slug: "review",
-            label: "Review",
+            label: i18n.t("header.steps.review"),
             state: "done",
-            detail: `${reviewed} / ${processed} pages`,
+            detail: i18n.t("details.step_pages", { done: reviewed, total: processed }),
           }
         : {
             slug: "review",
-            label: "Review",
+            label: i18n.t("header.steps.review"),
             state: "active",
-            detail: `${reviewed} / ${processed} pages`,
+            detail: i18n.t("details.step_pages", { done: reviewed, total: processed }),
           };
 
   const finalize: StepInfo =
     exported === 0
-      ? { slug: "finalize", label: "Finalize", state: "todo", detail: "0 PNGs out" }
+      ? {
+          slug: "finalize",
+          label: i18n.t("header.steps.finalize"),
+          state: "todo",
+          detail: i18n.t("details.step_pngsOut", { count: 0 }),
+        }
       : exported >= linesCut && linesCut > 0
-        ? { slug: "finalize", label: "Finalize", state: "done", detail: `${exported} PNGs out` }
+        ? {
+            slug: "finalize",
+            label: i18n.t("header.steps.finalize"),
+            state: "done",
+            detail: i18n.t("details.step_pngsOut", { count: exported }),
+          }
         : {
             slug: "finalize",
-            label: "Finalize",
+            label: i18n.t("header.steps.finalize"),
             state: "active",
-            detail: `${exported} / ${linesCut} PNGs`,
+            detail: i18n.t("details.step_pngsProgress", { done: exported, total: linesCut }),
           };
 
   return [
     {
       slug: "setup",
-      label: "Setup",
+      label: i18n.t("header.steps.setup"),
       state: "done",
-      detail: `Range pp.${mushaf.first_quran_pdf_page}–${mushaf.last_quran_pdf_page}`,
+      detail: i18n.t("details.step_setupDetail", {
+        first: mushaf.first_quran_pdf_page,
+        last: mushaf.last_quran_pdf_page,
+      }),
     },
     {
       slug: "templates",
-      label: "Templates",
+      label: i18n.t("header.steps.templates"),
       state: templatesReady ? "done" : "active",
-      detail: templatesReady ? "Header + separator" : "capture both",
+      detail: templatesReady
+        ? i18n.t("details.step_templatesReady")
+        : i18n.t("details.step_templatesTodo"),
     },
     process,
     review,
@@ -252,19 +309,24 @@ export function continueTarget(
 ): { slug: StepSlug; sub: string; reviewPage?: number } {
   const processed = mushaf.processed_page_count;
   const reviewed = mushaf.reviewed_page_count;
-  if (!templatesReady && processed === 0) return { slug: "setup", sub: "Setup · mark Quran range" };
-  if (!templatesReady) return { slug: "templates", sub: "Templates · capture both" };
-  if (processed === 0) return { slug: "process", sub: `Process · 0/${mushaf.logical_page_count}` };
+  if (!templatesReady && processed === 0)
+    return { slug: "setup", sub: i18n.t("details.cta_setup") };
+  if (!templatesReady) return { slug: "templates", sub: i18n.t("details.cta_templates") };
+  if (processed === 0)
+    return {
+      slug: "process",
+      sub: i18n.t("details.cta_process", { total: mushaf.logical_page_count }),
+    };
   if (reviewed < processed) {
     const firstUnreviewed = summaries?.find((s) => !s.reviewed)?.page_number ?? reviewed + 1;
     return {
       slug: "review",
-      sub: `Review · p.${firstUnreviewed}/${processed}`,
+      sub: i18n.t("details.cta_review", { page: firstUnreviewed, total: processed }),
       reviewPage: firstUnreviewed,
     };
   }
   const exported = stats?.exported_pngs ?? 0;
-  return { slug: "finalize", sub: `Finalize · ${exported} PNGs out` };
+  return { slug: "finalize", sub: i18n.t("details.cta_finalize", { count: exported }) };
 }
 
 export const STEP_ROUTES = {

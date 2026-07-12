@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, useParams } from "@tanstack/react-router";
 import { Check } from "lucide-react";
 import { MouseEvent, useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
 import { Aside, Hint } from "@/components/app/Panel";
@@ -27,17 +28,7 @@ export const Route = createFileRoute("/mushafs/$mushafId/templates")({ component
 
 type Target = TemplateType | "sura_header_ignore" | "aya_separator_ignore";
 
-const TEMPLATES: { type: TemplateType; label: string; hint: string }[] = [
-  { type: "sura_header", label: "Sura header", hint: "The ornamental sura-title band." },
-  { type: "aya_separator", label: "Aya separator", hint: "A single end-of-aya marker (۝)." },
-];
-
-const LABELS: Record<Target, string> = {
-  sura_header: "sura header",
-  aya_separator: "aya separator",
-  sura_header_ignore: "sura header · ignore",
-  aya_separator_ignore: "aya separator · ignore",
-};
+const TEMPLATE_TYPES: TemplateType[] = ["sura_header", "aya_separator"];
 
 function parentOf(t: Target): TemplateType | null {
   if (t === "sura_header_ignore") return "sura_header";
@@ -54,6 +45,8 @@ function TemplatesPage() {
   const { data: mushaf } = useMushaf(mushafId);
   const { data: serverTemplates } = useTemplates(mushafId);
   const queryClient = useQueryClient();
+  const { t, i18n } = useTranslation();
+  const label = (target: Target) => t(`templates.label_${target}`);
 
   const draft0 = useMemo(() => getTemplateDraft(mushafId), [mushafId]);
   const [preview, setPreview] = useState(1);
@@ -109,16 +102,16 @@ function TemplatesPage() {
     if (parent) {
       const cap = captures[parent];
       if (!cap?.rect) {
-        return toast.error(`Re-crop the ${LABELS[parent]} first to edit its ignore.`);
+        return toast.error(t("templates.recropIgnore", { label: label(parent) }));
       }
       const inside =
         working.x >= cap.rect.x &&
         working.y >= cap.rect.y &&
         working.x + working.w <= cap.rect.x + cap.rect.w &&
         working.y + working.h <= cap.rect.y + cap.rect.h;
-      if (!inside) return toast.error("The ignore region must sit inside the template crop.");
+      if (!inside) return toast.error(t("templates.ignoreInside"));
       setIgnores((p) => ({ ...p, [parent]: { ...working } }));
-      toast.success("Ignore region set — save the template to keep it.");
+      toast.success(t("templates.ignoreSet"));
       return;
     }
 
@@ -132,9 +125,9 @@ function TemplatesPage() {
       });
       setIgnores((p) => ({ ...p, [type]: undefined }));
       setSavedAt((p) => ({ ...p, [type]: false }));
-      toast.success(`${LABELS[type]} captured — save it to keep it.`);
+      toast.success(t("templates.captured", { label: label(type) }));
     } catch {
-      toast.error("Failed to capture crop from the page.");
+      toast.error(t("templates.captureFailed"));
     }
   }
 
@@ -152,9 +145,9 @@ function TemplatesPage() {
     onSuccess: (type) => {
       setSavedAt((p) => ({ ...p, [type]: true }));
       queryClient.invalidateQueries({ queryKey: queryKeys.templates(mushafId) });
-      toast.success(`Saved ${LABELS[type]} template.`);
+      toast.success(t("templates.savedTemplateToast", { label: label(type) }));
     },
-    onError: (e) => toast.error(e instanceof ApiError ? e.message : "Failed to save template."),
+    onError: (e) => toast.error(e instanceof ApiError ? e.message : t("templates.saveFailed")),
   });
 
   if (!mushaf) return null;
@@ -182,7 +175,7 @@ function TemplatesPage() {
         mode="ignore"
         pageUrl={pageUrl}
         working={working}
-        parentLabel={LABELS[activeParent]}
+        parentLabel={label(activeParent)}
         parentImageUrl={cap?.url ?? srv?.image_url ?? null}
         ignoreRelative={ignoreRelative}
       />
@@ -192,28 +185,35 @@ function TemplatesPage() {
   }
 
   return (
-    <div className="flex flex-1 overflow-hidden">
+    <div
+      className={`flex ${i18n.language === "ar" ? "flex-row-reverse" : "flex-row"} flex-1 overflow-hidden`}
+    >
       <PageStage
         imageUrl={pageUrl}
         page={preview}
         pageCount={logicalCount}
         onPageChange={(n) => setPreview(clamp(n, 1, logicalCount))}
         renderLabel={(p) =>
-          `PDF page ${mushaf.first_quran_pdf_page + p - 1} of ${mushaf.pdf_page_count}`
+          t("process.pdfPageLabel", {
+            pdf: mushaf.first_quran_pdf_page + p - 1,
+            total: mushaf.pdf_page_count,
+          })
         }
-        crop={{ label: activeTarget, rect: working, onRectChange: setWorking }}
+        crop={{ label: label(activeTarget), rect: working, onRectChange: setWorking }}
         onNatural={setNatural}
       />
 
       {/* Center: the active-cut workspace */}
-      <div className="flex w-[400px] flex-shrink-0 flex-col gap-3 overflow-auto border-l border-border bg-white p-4">
+      <div className="flex w-[400px] flex-shrink-0 flex-col gap-3 overflow-auto border-s border-border bg-white p-4">
         <div className="text-[12px] font-semibold capitalize text-text-primary">
-          {LABELS[activeTarget]}
+          {label(activeTarget)}
         </div>
         {previewNode}
         <RectInputs rect={working} onChange={setWorking} max={natural} />
         <Button onClick={apply} disabled={!working || working.w < 2}>
-          {activeParent ? "Set ignore region" : `Capture ${LABELS[activeTarget]}`}
+          {activeParent
+            ? t("templates.setIgnore")
+            : t("templates.capture", { label: label(activeTarget) })}
         </Button>
       </div>
 
@@ -222,17 +222,16 @@ function TemplatesPage() {
         footer={
           <Button asChild variant="outline">
             <Link to="/mushafs/$mushafId/process" params={{ mushafId }}>
-              Continue to Process →
+              {t("templates.continueProcess")}
             </Link>
           </Button>
         }
       >
-        <Hint>
-          Crop each element on a page that clearly shows it, draw a tight box, then{" "}
-          <strong>Save</strong>. Templates are matched against every page during processing.
-        </Hint>
+        <Hint>{t("templates.intro")}</Hint>
 
-        {TEMPLATES.map(({ type, label, hint }) => {
+        {TEMPLATE_TYPES.map((type) => {
+          const name = t(`templates.name_${type}`);
+          const hint = t(`templates.hint_${type}`);
           const url = displayUrl(type);
           const cap = captures[type];
           const dirty = !!cap && !savedAt[type];
@@ -245,15 +244,17 @@ function TemplatesPage() {
               className={`overflow-hidden rounded-xl border bg-white p-3 ${active ? "border-orange" : "border-border"}`}
             >
               <div className="mb-2 flex items-center gap-2">
-                <span className="flex-1 text-[13px] font-semibold text-text-primary">{label}</span>
+                <span className="flex-1 text-[13px] font-semibold text-text-primary">{name}</span>
                 {dirty ? (
-                  <span className="text-[11px] font-medium text-orange">unsaved</span>
+                  <span className="text-[11px] font-medium text-orange">
+                    {t("templates.unsaved")}
+                  </span>
                 ) : saved ? (
                   <span className="flex items-center gap-1 text-[11px] font-medium text-success">
-                    <Check size={12} /> saved
+                    <Check size={12} /> {t("templates.saved")}
                   </span>
                 ) : (
-                  <span className="text-[11px] text-text-muted">not set</span>
+                  <span className="text-[11px] text-text-muted">{t("templates.notSet")}</span>
                 )}
               </div>
               <p className="mb-2 text-[11px] text-text-muted">{hint}</p>
@@ -261,9 +262,9 @@ function TemplatesPage() {
               <div className="flex gap-3">
                 <div className="flex h-16 w-24 flex-shrink-0 items-center justify-center overflow-hidden rounded border border-border bg-bg-surface">
                   {url ? (
-                    <img src={url} alt={label} className="max-h-full max-w-full object-contain" />
+                    <img src={url} alt={name} className="max-h-full max-w-full object-contain" />
                   ) : (
-                    <span className="text-[10px] text-text-muted">no crop</span>
+                    <span className="text-[10px] text-text-muted">{t("templates.noCrop")}</span>
                   )}
                 </div>
                 <div className="flex flex-1 flex-col gap-1.5">
@@ -272,7 +273,7 @@ function TemplatesPage() {
                     variant={active && !activeParent ? "default" : "outline"}
                     onClick={(e) => switchTarget(type, e)}
                   >
-                    {url ? "Re-crop" : "Crop on page"}
+                    {url ? t("templates.recrop") : t("templates.cropOnPage")}
                   </Button>
                   <Button
                     size="sm"
@@ -280,7 +281,7 @@ function TemplatesPage() {
                     onClick={(e) => switchTarget(`${type}_ignore` as Target, e)}
                     disabled={!cap?.rect}
                   >
-                    {ignores[type] ? "Edit ignore" : "Add ignore"}
+                    {ignores[type] ? t("templates.editIgnore") : t("templates.addIgnore")}
                   </Button>
                 </div>
               </div>
@@ -292,10 +293,10 @@ function TemplatesPage() {
               >
                 {savedAt[type] ? (
                   <>
-                    <Check size={14} /> Saved
+                    <Check size={14} /> {t("templates.savedBtn")}
                   </>
                 ) : (
-                  `Save ${label.toLowerCase()}`
+                  t("templates.saveNamed", { label: label(type) })
                 )}
               </Button>
             </div>

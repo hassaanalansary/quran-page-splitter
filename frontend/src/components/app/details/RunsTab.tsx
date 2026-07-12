@@ -1,4 +1,5 @@
 import { Link } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 
 import type { Run } from "@/lib/api";
 import { AbortDiagnostics } from "@/components/app/AbortDiagnostics";
@@ -12,19 +13,22 @@ import {
 } from "./helpers";
 
 export function RunsTab({ mushafId, runs }: { mushafId: string; runs: Run[] | undefined }) {
+  const { t } = useTranslation();
   if (!runs || runs.length === 0) {
     return (
       <div className="flex flex-col items-center gap-3 rounded-[11px] border border-border bg-white px-6 py-14 text-center">
-        <span className="text-[13px] font-semibold text-text-primary">No processing runs yet</span>
+        <span className="text-[13px] font-semibold text-text-primary">
+          {t("details.runs_none")}
+        </span>
         <span className="max-w-[380px] text-[11.5px] leading-[1.6] text-text-secondary">
-          Every run of the detection pipeline is recorded here with its settings and outcome.
+          {t("details.runs_noneDesc")}
         </span>
         <Link
           to="/mushafs/$mushafId/process"
           params={{ mushafId }}
           className="mt-1 rounded-lg bg-orange px-4 py-2 text-[12px] font-bold text-white transition-colors hover:bg-orange-hover"
         >
-          + New run
+          {t("details.runs_new")}
         </Link>
       </div>
     );
@@ -34,17 +38,17 @@ export function RunsTab({ mushafId, runs }: { mushafId: string; runs: Run[] | un
     <div>
       <div className="mb-3 flex items-center gap-2">
         <span className="text-[11.5px] font-bold text-text-primary">
-          {runs.length} processing run{runs.length === 1 ? "" : "s"}
+          {t("details.runs_count", { count: runs.length })}
         </span>
         <span className="text-[11.5px] text-text-muted">
-          · latest {fmtDayTime(runs[0].created_at)}
+          {t("details.runs_latest", { time: fmtDayTime(runs[0].created_at) })}
         </span>
         <Link
           to="/mushafs/$mushafId/process"
           params={{ mushafId }}
-          className="ml-auto rounded-[7px] bg-orange px-3 py-[5px] text-[10.5px] font-bold text-white transition-colors hover:bg-orange-hover"
+          className="ms-auto rounded-[7px] bg-orange px-3 py-[5px] text-[10.5px] font-bold text-white transition-colors hover:bg-orange-hover"
         >
-          + New run
+          {t("details.runs_new")}
         </Link>
       </div>
       <div className="flex flex-col gap-3">
@@ -57,7 +61,15 @@ export function RunsTab({ mushafId, runs }: { mushafId: string; runs: Run[] | un
 }
 
 function RunCard({ run, mushafId }: { run: Run; mushafId: string }) {
+  const { t } = useTranslation();
   const meta = RUN_STATUS_META[run.status] ?? RUN_STATUS_META.error;
+  const statusLabel = t(
+    run.status === "completed"
+      ? "details.runStatus_completed"
+      : run.status === "aborted_line_detection"
+        ? "details.runStatus_aborted"
+        : "details.runStatus_error",
+  );
   const abortPage = runAbortPage(run);
   const rangeSize = run.page_range_end - run.page_range_start + 1;
   const reached = abortPage ? abortPage - run.page_range_start : rangeSize;
@@ -74,23 +86,25 @@ function RunCard({ run, mushafId }: { run: Run; mushafId: string }) {
           {runNumberLabel(run.run_number)}
         </span>
         <span className="text-[12px] font-medium text-text-secondary">
-          pages {run.page_range_start}–{run.page_range_end}
+          {t("details.runs_pages", { start: run.page_range_start, end: run.page_range_end })}
         </span>
         <span
           className={`inline-flex items-center gap-[5px] rounded-pill px-2 py-0.5 text-[10.5px] font-semibold ${meta.bg} ${meta.text}`}
         >
           <span className="h-[5px] w-[5px] rounded-full" style={{ background: meta.dot }} />
-          {meta.label}
+          {statusLabel}
         </span>
-        <span className="ml-auto text-[11px] font-medium text-text-muted">
+        <span className="ms-auto text-[11px] font-medium text-text-muted">
           {fmtDayTime(run.created_at)} ·{" "}
-          <b className="text-text-secondary">{run.pages_saved} saved</b>
+          <b className="text-text-secondary">
+            {t("details.runs_saved", { count: run.pages_saved })}
+          </b>
         </span>
       </div>
 
       <div className="p-3.5">
         <div className="mb-2 text-[9.5px] font-semibold uppercase tracking-[0.1em] text-text-muted">
-          Settings
+          {t("details.runs_settings")}
         </div>
         <div className="grid grid-cols-2 gap-x-6">
           {settingRows.map((row) => (
@@ -112,28 +126,34 @@ function RunCard({ run, mushafId }: { run: Run; mushafId: string }) {
           {aborted ? (
             <>
               <div className="mb-2 text-[9.5px] font-semibold uppercase tracking-[0.1em] text-text-muted">
-                Outcome
+                {t("details.runs_outcome")}
               </div>
               <div className="mb-[9px] flex items-center gap-2.5">
                 <div className="h-1.5 flex-1 overflow-hidden rounded-[3px] bg-bg-muted">
                   <div className="h-full bg-warning" style={{ width: `${pct}%` }} />
                 </div>
                 <span className="whitespace-nowrap font-mono text-[10.5px] font-semibold text-text-muted">
-                  reached p.{abortPage ?? "?"} / {run.page_range_end}
+                  {t("details.runs_reached", { page: abortPage ?? "?", end: run.page_range_end })}
                 </span>
               </div>
               <div className="text-[11.5px] leading-[1.6] text-text-secondary">
-                Line-count mismatch
-                {expected != null && detected != null ? (
-                  <>
-                    : template expects <b className="text-text-primary">{String(expected)}</b>,
-                    detector found <b className="text-text-primary">{String(detected)}</b>.
-                  </>
-                ) : (
-                  "."
-                )}{" "}
-                Pages {run.page_range_start}–{run.page_range_start + run.pages_saved - 1} committed
-                {abortPage ? `; ${abortPage}–${run.page_range_end} skipped.` : "."}
+                {expected != null && detected != null
+                  ? t("details.runs_mismatchDetail", {
+                      expected: String(expected),
+                      detected: String(detected),
+                    })
+                  : t("details.runs_mismatch")}{" "}
+                {abortPage
+                  ? t("details.runs_committedSkipped", {
+                      cstart: run.page_range_start,
+                      cend: run.page_range_start + run.pages_saved - 1,
+                      sstart: abortPage,
+                      send: run.page_range_end,
+                    })
+                  : t("details.runs_committed", {
+                      start: run.page_range_start,
+                      end: run.page_range_start + run.pages_saved - 1,
+                    })}
               </div>
               {run.abort_info && (
                 <div className="mt-2.5">
@@ -154,13 +174,13 @@ function RunCard({ run, mushafId }: { run: Run; mushafId: string }) {
                   />
                 </div>
                 <span className="font-mono text-[10.5px] font-semibold text-text-muted">
-                  {run.pages_saved} / {rangeSize}
+                  {t("details.runs_progress", { saved: run.pages_saved, total: rangeSize })}
                 </span>
               </div>
               <span className="text-[11.5px] text-text-secondary">
                 {run.status === "completed"
-                  ? "Completed — all pages in range persisted."
-                  : "Run failed — check the settings and try again."}
+                  ? t("details.runs_completedMsg")
+                  : t("details.runs_failedMsg")}
               </span>
             </div>
           )}
@@ -173,7 +193,7 @@ function RunCard({ run, mushafId }: { run: Run; mushafId: string }) {
             search={{ run: run.id }}
             className="text-[11px] font-bold text-orange hover:text-orange-hover"
           >
-            Re-run with these settings →
+            {t("details.runs_rerun")}
           </Link>
           {aborted && (
             <Link
@@ -182,7 +202,9 @@ function RunCard({ run, mushafId }: { run: Run; mushafId: string }) {
               search={{ run: run.id, from: abortPage ?? undefined }}
               className="text-[11px] font-bold text-text-secondary hover:text-text-primary"
             >
-              Resume{abortPage ? ` from p.${abortPage}` : ""} →
+              {abortPage
+                ? t("details.runs_resumeFrom", { page: abortPage })
+                : t("details.runs_resume")}
             </Link>
           )}
         </div>

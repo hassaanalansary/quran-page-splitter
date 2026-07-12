@@ -1,4 +1,5 @@
 import { createFileRoute, Outlet, useParams, useRouterState } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 
 import { MushafHeader } from "@/components/app/MushafHeader";
 import { useMushaf } from "@/lib/api";
@@ -14,6 +15,7 @@ const STEPS = [
 ] as const;
 
 function WorkspaceLayout() {
+  const { t } = useTranslation();
   const { mushafId } = useParams({ from: "/mushafs/$mushafId" });
   const { data: mushaf, isPending, isError, error } = useMushaf(mushafId);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
@@ -32,11 +34,11 @@ function WorkspaceLayout() {
 
       <div className="flex flex-1 overflow-hidden">
         {isPending ? (
-          <Centered>Loading mushaf…</Centered>
+          <Centered>{t("workspace.loadingMushaf")}</Centered>
         ) : isError ? (
           <Centered>
             <span className="text-error">
-              {error instanceof Error ? error.message : "Failed to load mushaf."}
+              {error instanceof Error ? error.message : t("workspace.loadFailed")}
             </span>
           </Centered>
         ) : (

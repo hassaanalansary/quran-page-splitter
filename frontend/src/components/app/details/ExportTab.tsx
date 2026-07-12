@@ -1,6 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
 import {
@@ -22,6 +23,7 @@ export function ExportTab({
   stats: MushafStats | undefined;
   summaries: PageSummary[] | undefined;
 }) {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
 
@@ -35,7 +37,7 @@ export function ExportTab({
   async function exportAll(onlyReviewed: boolean) {
     const targets = (onlyReviewed ? reviewedPages : processed).map((s) => s.page_number);
     if (targets.length === 0) {
-      toast.info(onlyReviewed ? "No reviewed pages to export." : "No processed pages to export.");
+      toast.info(onlyReviewed ? t("details.ex_noReviewed") : t("details.ex_noProcessed"));
       return;
     }
     setProgress({ done: 0, total: targets.length });
@@ -44,11 +46,9 @@ export function ExportTab({
         await exportLines(mushaf.id, pageNumber);
         setProgress({ done: index + 1, total: targets.length });
       }
-      toast.success(
-        `Exported line PNGs for ${targets.length} page${targets.length === 1 ? "" : "s"}.`,
-      );
+      toast.success(t("details.ex_exportedToast", { count: targets.length }));
     } catch (e) {
-      toast.error(e instanceof ApiError ? e.message : "Export failed.");
+      toast.error(e instanceof ApiError ? e.message : t("details.ex_exportFailed"));
     } finally {
       setProgress(null);
       queryClient.invalidateQueries({ queryKey: queryKeys.stats(mushaf.id) });
@@ -65,9 +65,11 @@ export function ExportTab({
             <span className="flex h-[26px] w-[26px] items-center justify-center rounded-[7px] bg-orange-tint text-[14px] text-orange">
               ⤓
             </span>
-            <span className="text-[12.5px] font-bold text-text-primary">Line images · PNG</span>
+            <span className="text-[12.5px] font-bold text-text-primary">
+              {t("details.ex_pngTitle")}
+            </span>
             <span
-              className={`ml-auto rounded-pill px-2 py-0.5 text-[10px] font-semibold ${
+              className={`ms-auto rounded-pill px-2 py-0.5 text-[10px] font-semibold ${
                 exported === 0
                   ? "bg-bg-muted text-text-secondary"
                   : exported >= linesCut
@@ -75,22 +77,26 @@ export function ExportTab({
                     : "bg-warning-bg text-[#8a4b0d]"
               }`}
             >
-              {exported === 0 ? "Not started" : exported >= linesCut ? "Complete" : "Partial"}
+              {exported === 0
+                ? t("details.ex_notStarted")
+                : exported >= linesCut
+                  ? t("details.ex_complete")
+                  : t("details.ex_partial")}
             </span>
           </div>
           <div className="mt-[15px] flex items-baseline gap-2">
             <span className="text-[27px] font-extrabold text-navy">{exported}</span>
             <span className="text-[12px] font-medium text-text-muted">
-              of {linesCut} lines exported
+              {t("details.ex_ofLines", { count: linesCut })}
             </span>
           </div>
           <div className="mt-2.5 h-1.5 overflow-hidden rounded-[3px] bg-bg-muted">
             <div className="h-full bg-success" style={{ width: `${pngPct}%` }} />
           </div>
           <div className="mt-3.5 flex flex-col gap-1.5">
-            <KvRow k="format" v="transparent PNG" />
-            <KvRow k="path" v="media/lines/…" />
-            <KvRow k="naming" v="{mushaf}_p{page}_l{line}.png" />
+            <KvRow k={t("details.kv_format")} v="transparent PNG" />
+            <KvRow k={t("details.kv_path")} v="media/lines/…" />
+            <KvRow k={t("details.kv_naming")} v="{mushaf}_p{page}_l{line}.png" />
           </div>
           <div className="mt-[15px] flex gap-2">
             <button
@@ -99,7 +105,9 @@ export function ExportTab({
               onClick={() => exportAll(false)}
               className="h-[34px] flex-1 cursor-pointer rounded-lg bg-navy text-[12px] font-bold text-white transition-colors hover:bg-navy-hover disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {progress ? `Exporting… ${progress.done}/${progress.total}` : "Export all lines"}
+              {progress
+                ? t("details.ex_exporting", { done: progress.done, total: progress.total })
+                : t("details.ex_exportAll")}
             </button>
             <button
               type="button"
@@ -107,7 +115,7 @@ export function ExportTab({
               onClick={() => exportAll(true)}
               className="h-[34px] cursor-pointer rounded-lg border border-border-strong bg-white px-3 text-[12px] font-semibold text-text-primary transition-colors hover:bg-bg-surface disabled:cursor-not-allowed disabled:opacity-50"
             >
-              Reviewed · {reviewedPages.length}
+              {t("details.ex_reviewedBtn", { count: reviewedPages.length })}
             </button>
           </div>
         </div>
@@ -119,29 +127,29 @@ export function ExportTab({
               {"{ }"}
             </span>
             <span className="text-[12.5px] font-bold text-text-primary">
-              Aya coordinates · JSON
+              {t("details.ex_jsonTitle")}
             </span>
             <span
-              className={`ml-auto rounded-pill px-2 py-0.5 text-[10px] font-semibold ${
+              className={`ms-auto rounded-pill px-2 py-0.5 text-[10px] font-semibold ${
                 ayat > 0 ? "bg-success-bg text-success" : "bg-bg-muted text-text-secondary"
               }`}
             >
-              {ayat > 0 ? "Ready" : "No data"}
+              {ayat > 0 ? t("details.ex_ready") : t("details.ex_noData")}
             </span>
           </div>
           <div className="mt-[15px] flex items-baseline gap-2">
             <span className="text-[27px] font-extrabold text-navy">{ayat}</span>
             <span className="text-[12px] font-medium text-text-muted">
-              ayat across {processed.length} pages
+              {t("details.ex_ayatAcross", { count: processed.length })}
             </span>
           </div>
           <div className="mt-2.5 h-1.5 overflow-hidden rounded-[3px] bg-bg-muted">
             <div className="h-full bg-success" style={{ width: ayat > 0 ? "100%" : "0%" }} />
           </div>
           <div className="mt-3.5 flex flex-col gap-1.5">
-            <KvRow k="schema" v="aya-bbox/v1" />
-            <KvRow k="per aya" v="{ sura, aya, rects[] }" />
-            <KvRow k="rect" v="{ x, y, w, h }" />
+            <KvRow k={t("details.kv_schema")} v="aya-bbox/v1" />
+            <KvRow k={t("details.kv_perAya")} v="{ sura, aya, rects[] }" />
+            <KvRow k={t("details.kv_rect")} v="{ x, y, w, h }" />
           </div>
           <div className="mt-[15px] flex gap-2">
             <a
@@ -149,7 +157,7 @@ export function ExportTab({
               download
               className="h-[34px] flex-1 rounded-lg border border-border-strong bg-white text-center text-[12px] font-bold leading-[34px] text-text-primary transition-colors hover:bg-bg-surface"
             >
-              Download JSON ↓
+              {t("details.ex_downloadJson")}
             </a>
           </div>
         </div>
@@ -163,20 +171,22 @@ export function ExportTab({
           </span>
           <div className="min-w-0">
             <div className="text-[12px] font-semibold text-text-primary">
-              Only {reviewedPages.length} of {processed.length} pages reviewed
+              {t("details.ex_onlyReviewed", {
+                reviewed: reviewedPages.length,
+                total: processed.length,
+              })}
             </div>
             <div className="mt-px text-[11px] text-text-secondary">
-              Final line-PNG export is best run after review is complete, so erase strokes and box
-              fixes are baked in.
+              {t("details.ex_reviewWarn")}
             </div>
           </div>
           <Link
             to="/mushafs/$mushafId/review"
             params={{ mushafId: mushaf.id }}
             search={{ page: processed.find((s) => !s.reviewed)?.page_number ?? 1 }}
-            className="ml-auto flex-none text-[11.5px] font-bold text-orange hover:text-orange-hover"
+            className="ms-auto flex-none text-[11.5px] font-bold text-orange hover:text-orange-hover"
           >
-            Go to Review →
+            {t("details.ex_goReview")}
           </Link>
         </div>
       )}

@@ -2,6 +2,6 @@
 import { apiGet } from "./http";
 import type { Qiraa } from "./types";
 
-export function listQiraat(signal?: AbortSignal): Promise<Qiraa[]> {
-  return apiGet<Qiraa[]>("/api/qiraat", signal);
+export function listQiraat(lang: string = "en", signal?: AbortSignal): Promise<Qiraa[]> {
+  return apiGet<Qiraa[]>(`/api/qiraat?lang=${encodeURIComponent(lang)}`, signal);
 }

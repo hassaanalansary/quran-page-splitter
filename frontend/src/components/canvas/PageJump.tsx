@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 
 type Props = {
   page: number;
@@ -10,6 +11,7 @@ type Props = {
 
 /** "Page N / total" indicator; click the number to type a page to jump to. */
 export function PageJump({ page, pageCount, onPageChange, label }: Props) {
+  const { t } = useTranslation();
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState("");
 
@@ -49,13 +51,13 @@ export function PageJump({ page, pageCount, onPageChange, label }: Props) {
             setEditing(true);
           }}
           className="font-semibold tabular-nums text-text-primary hover:text-orange"
-          title="Click to jump to a page"
+          title={t("canvas.jumpTitle")}
         >
-          Page {page}
+          {t("canvas.pageJump", { page })}
         </button>
       )}
       <span className="text-text-muted">/ {pageCount}</span>
-      {label && <span className="border-l border-border pl-2 text-text-secondary">{label}</span>}
+      {label && <span className="border-s border-border ps-2 text-text-secondary">{label}</span>}
     </div>
   );
 }

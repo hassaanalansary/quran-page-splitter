@@ -1,5 +1,8 @@
 // React Query hooks + shared query keys for the API.
 import { useQuery } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
+
+import { baseLanguage } from "@/i18n/config";
 
 import { getMushaf, getStats, listActivity, listMushafs, listTemplates } from "./mushafs";
 import { getPage, listPages } from "./pages";
@@ -15,8 +18,8 @@ export const queryKeys = {
   runs: (id: string) => ["mushaf", id, "runs"] as const,
   stats: (id: string) => ["mushaf", id, "stats"] as const,
   activity: (id: string) => ["mushaf", id, "activity"] as const,
-  qiraat: ["qiraat"] as const,
-  suras: (qiraa: string) => ["suras", qiraa] as const,
+  qiraat: (lang: string) => ["qiraat", lang] as const,
+  suras: (qiraa: string, lang: string) => ["suras", qiraa, lang] as const,
   page: (mushafId: string, pageNumber: number) => ["mushaf", mushafId, "page", pageNumber] as const,
 };
 
@@ -73,20 +76,24 @@ export function useActivity(id: string) {
   });
 }
 
-/** All qiraat (recitation schools) for the mushaf picker; effectively static. */
+/** All qiraat (recitation schools) for the mushaf picker; names localized per language. */
 export function useQiraat() {
+  const { i18n } = useTranslation();
+  const lang = baseLanguage(i18n.language);
   return useQuery({
-    queryKey: queryKeys.qiraat,
-    queryFn: ({ signal }) => listQiraat(signal),
+    queryKey: queryKeys.qiraat(lang),
+    queryFn: ({ signal }) => listQiraat(lang, signal),
     staleTime: Infinity,
   });
 }
 
 export function useSuras(qiraa: string | null | undefined) {
+  const { i18n } = useTranslation();
+  const lang = baseLanguage(i18n.language);
   const resolved = qiraa || DEFAULT_QIRAA;
   return useQuery({
-    queryKey: queryKeys.suras(resolved),
-    queryFn: ({ signal }) => listSuras(resolved, signal),
+    queryKey: queryKeys.suras(resolved, lang),
+    queryFn: ({ signal }) => listSuras(resolved, lang, signal),
     staleTime: Infinity,
   });
 }

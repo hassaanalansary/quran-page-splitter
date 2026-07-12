@@ -13,6 +13,7 @@ from django.db.models import Prefetch
 from ninja.errors import HttpError
 from PIL import Image, ImageDraw
 
+from api import i18n
 from api.models import ActivityTypeChoices, Line, Page, Segment
 from api.services import activity, coordinates, pdf
 from api.services import mushaf as mushaf_service
@@ -25,7 +26,7 @@ def export_lines(*, mushaf_id: uuid.UUID, page_number: int) -> dict:
     mushaf = mushaf_service.get_mushaf(mushaf_id)
     page = Page.objects.filter(mushaf=mushaf, page_number=page_number).first()
     if page is None:
-        raise HttpError(404, "Page has no data to export.")
+        raise HttpError(404, i18n.t("page_no_export"))
 
     pdf_index = pdf.logical_to_pdf_index(mushaf.first_quran_pdf_page, page_number, page.source_pdf_page)
     image = Image.open(io.BytesIO(pdf.render_page(mushaf.pdf_file.path, pdf_index)))

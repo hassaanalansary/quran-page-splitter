@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { Rect } from "@/lib/api/types";
 import { useSpacePan, type CanvasTool } from "@/hooks/use-space-pan";
 import { useCtrlWheelZoom } from "@/hooks/use-ctrl-wheel-zoom";
@@ -52,6 +53,7 @@ export function PageCanvas({
   tool = "select",
   mirrored = false,
 }: Props) {
+  const { t } = useTranslation();
   const { scrollRef, effectiveTool, handCursor, containerProps } = useSpacePan({ tool });
 
   const imgRef = useRef<HTMLImageElement>(null);
@@ -232,7 +234,7 @@ export function PageCanvas({
             <img
               ref={imgRef}
               src={imageUrl}
-              alt="Page"
+              alt={t("canvas.page")}
               draggable={false}
               onLoad={(e) => {
                 const el = e.currentTarget;
@@ -297,6 +299,7 @@ function RectOverlay({
   /** Read-only preview of the mirrored (alternate-margin) crop. */
   mirrored?: boolean;
 }) {
+  const { t } = useTranslation();
   const left = (rect.x / natural.w) * 100;
   const top = (rect.y / natural.h) * 100;
   const width = (rect.w / natural.w) * 100;
@@ -404,7 +407,7 @@ function RectOverlay({
             background: mirrored ? "var(--navy)" : "var(--orange)",
           }}
         >
-          {mirrored ? `⇄ ${label} · mirrored` : label}
+          {mirrored ? `⇄ ${label} · ${t("canvas.mirrored")}` : label}
         </div>
         {/* dimension tag */}
         <div

@@ -1,3 +1,5 @@
+import { useTranslation } from "react-i18next";
+
 import type { CanvasTool } from "@/hooks/use-space-pan";
 
 type Props = {
@@ -8,21 +10,22 @@ type Props = {
 
 /** Select / Hand tool switch with active-state indication. */
 export function ToolToggle({ value, onChange }: Props) {
+  const { t } = useTranslation();
   return (
     <div className="flex items-center gap-1">
       <ToolButton
         active={value === "select"}
         onClick={() => onChange("select")}
-        title="Select / crop tool (V)"
-        aria-label="Select tool"
+        title={t("canvas.selectToolTitle")}
+        aria-label={t("canvas.selectTool")}
       >
         <CursorIcon />
       </ToolButton>
       <ToolButton
         active={value === "hand"}
         onClick={() => onChange("hand")}
-        title="Hand tool — pan the canvas (H, or hold Space)"
-        aria-label="Hand tool"
+        title={t("canvas.handToolTitle")}
+        aria-label={t("canvas.handTool")}
       >
         <HandIcon />
       </ToolButton>

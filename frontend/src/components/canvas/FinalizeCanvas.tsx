@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { ChevronNav } from "@/components/canvas/ChevronNav";
 import { PageJump } from "@/components/canvas/PageJump";
@@ -83,6 +84,7 @@ export function FinalizeCanvas({
   canRedo,
   label,
 }: Props) {
+  const { t } = useTranslation();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const transparentRef = useRef<HTMLCanvasElement | null>(null); // page: white→transparent
   const whiteInkRef = useRef<HTMLCanvasElement | null>(null); // page: ink recolored white
@@ -222,7 +224,7 @@ export function FinalizeCanvas({
       ctx.fillStyle = bg === "dark" ? "#9a9a9a" : "#6b6860";
       ctx.font = "13px ui-monospace, monospace";
       ctx.fillText(
-        !imageUrl || lines.length === 0 ? "No lines to finalize." : "Rendering page…",
+        !imageUrl || lines.length === 0 ? t("canvas.fin_noLines") : t("canvas.fin_rendering"),
         16,
         28,
       );
@@ -330,7 +332,7 @@ export function FinalizeCanvas({
     if ((activeRef.current || edgeRef.current) && mouseRef.current) {
       drawLens(ctx, canvas, mouseRef.current, dpr, bg);
     }
-  }, [ready, imageUrl, bg, zoom, pan, lines, selected, hoverEdge, effectiveTool, brushSize]);
+  }, [ready, imageUrl, bg, zoom, pan, lines, selected, hoverEdge, effectiveTool, brushSize, t]);
 
   useEffect(() => render(), [render]);
 
@@ -502,27 +504,27 @@ export function FinalizeCanvas({
           value={effectiveTool}
           onChange={setTool}
           options={[
-            { v: "select", label: "Select" },
-            { v: "erase", label: "Erase" },
-            { v: "hand", label: "Hand" },
+            { v: "select", label: t("canvas.tool_select") },
+            { v: "erase", label: t("canvas.tool_erase") },
+            { v: "hand", label: t("canvas.tool_hand") },
           ]}
-          title="Select also resizes (drag a line edge). Hold Shift to erase, Space to pan."
+          title={t("canvas.tool_selectTitle")}
         />
         <Segmented<FinalizeBg>
           value={bg}
           onChange={setBg}
           options={[
-            { v: "white", label: "White" },
-            { v: "dark", label: "Dark" },
-            { v: "checker", label: "Grid" },
+            { v: "white", label: t("canvas.bg_white") },
+            { v: "dark", label: t("canvas.bg_dark") },
+            { v: "checker", label: t("canvas.bg_grid") },
           ]}
         />
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ms-auto flex items-center gap-2">
           <div className="flex items-center overflow-hidden rounded-sm border border-border-strong">
-            <ToolbarBtn onClick={onUndo} disabled={!canUndo} title="Undo (Ctrl+Z)">
+            <ToolbarBtn onClick={onUndo} disabled={!canUndo} title={t("canvas.undoTitle")}>
               ↶
             </ToolbarBtn>
-            <ToolbarBtn onClick={onRedo} disabled={!canRedo} title="Redo (Ctrl+Shift+Z)">
+            <ToolbarBtn onClick={onRedo} disabled={!canRedo} title={t("canvas.redoTitle")}>
               ↷
             </ToolbarBtn>
           </div>
@@ -534,10 +536,10 @@ export function FinalizeCanvas({
                 setZoom(1);
                 setPan({ x: 0, y: 0 });
               }}
-              className="ml-1 cursor-pointer text-navy hover:underline"
-              title="Reset zoom & pan"
+              className="ms-1 cursor-pointer text-navy hover:underline"
+              title={t("canvas.resetZoom")}
             >
-              fit
+              {t("canvas.fit")}
             </button>
           </div>
         </div>

@@ -16,7 +16,7 @@ from django.db.models import Count
 from ninja.errors import HttpError
 from PIL import Image
 
-from api import validators
+from api import i18n, validators
 from api.models import ActivityTypeChoices, Mushaf, Page, ProcessingRun, Template
 from api.services import activity, coordinates, pdf
 from core.aya_separator import AyaSeparatorConfig, AyaSeparatorProcessor
@@ -219,10 +219,7 @@ def _required_templates(mushaf: Mushaf) -> tuple[Template, Template]:
     try:
         return by_type["sura_header"], by_type["aya_separator"]
     except KeyError:
-        raise HttpError(
-            400,
-            "Both sura_header and aya_separator templates are required before processing.",
-        ) from None
+        raise HttpError(400, i18n.t("templates_required")) from None
 
 
 def _load_image(template: Template) -> Image.Image:
@@ -248,9 +245,9 @@ def run_log_file(mushaf: Mushaf, run_id: uuid.UUID) -> Path:
     """Validated filesystem path to a run's detailed log (404 if missing/foreign)."""
     log_rel = mushaf.processing_runs.filter(id=run_id).values_list("log_path", flat=True).first()
     if not log_rel:
-        raise HttpError(404, "No log for this run.")
+        raise HttpError(404, i18n.t("run_no_log"))
     log_dir = Path(settings.LOG_DIR).resolve()
     path = (log_dir / log_rel).resolve()
     if log_dir not in path.parents or not path.is_file():
-        raise HttpError(404, "Log file not found.")
+        raise HttpError(404, i18n.t("log_not_found"))
     return path

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import type { Rect } from "@/lib/api/types";
 
@@ -27,6 +28,7 @@ type Props = {
  * a (possibly transformed) filmstrip slot. Magnification is left to a preview pane.
  */
 export function CroppableImage({ imageUrl, rect, onRectChange, label, onNatural }: Props) {
+  const { t } = useTranslation();
   const imgRef = useRef<HTMLImageElement>(null);
   const [natural, setNatural] = useState<NaturalSize | null>(null);
   const [drag, setDrag] = useState<DragMode | null>(null);
@@ -139,7 +141,7 @@ export function CroppableImage({ imageUrl, rect, onRectChange, label, onNatural 
       <img
         ref={imgRef}
         src={imageUrl}
-        alt="Page"
+        alt={t("canvas.page")}
         draggable={false}
         onLoad={(e) => {
           const el = e.currentTarget;

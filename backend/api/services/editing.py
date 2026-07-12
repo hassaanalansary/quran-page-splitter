@@ -13,7 +13,7 @@ from django.db import transaction
 from django.db.models import Count, Q
 from ninja.errors import HttpError
 
-from api import validators
+from api import i18n, validators
 from api.models import ActivityTypeChoices, EraseStroke, Line, LineTypeChoices, Mushaf, Page, Segment
 from api.services import activity, coordinates
 from api.services import mushaf as mushaf_service
@@ -120,7 +120,7 @@ def save_page(*, mushaf_id: uuid.UUID, page_number: int, bbox: dict, lines: list
 def _write_edited_line(page: Page, line_data: dict) -> None:
     line_type = line_data["type"]
     if line_type not in LineTypeChoices.values:
-        raise HttpError(400, f"Invalid line type {line_type!r}.")
+        raise HttpError(400, i18n.t("invalid_line_type", line_type=line_type))
     line = Line.objects.create(
         page=page,
         line_number=line_data["line_number"],
@@ -157,7 +157,7 @@ def save_finalize(*, mushaf_id: uuid.UUID, page_number: int, line_edits: list[di
     mushaf = mushaf_service.get_mushaf(mushaf_id)
     page = Page.objects.filter(mushaf=mushaf, page_number=page_number).first()
     if page is None:
-        raise HttpError(404, "Page has no data to finalize.")
+        raise HttpError(404, i18n.t("page_no_finalize"))
     lines_by_number = {line.line_number: line for line in page.lines.all()}
     for edit in line_edits:
         line = lines_by_number.get(edit["line_number"])

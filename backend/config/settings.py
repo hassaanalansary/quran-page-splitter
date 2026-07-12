@@ -37,6 +37,10 @@ MIDDLEWARE = [
     "django.middleware.gzip.GZipMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
+    # Activates the request language from the Accept-Language header (sent by the
+    # SPA with the chosen UI language) so API error messages can be localized.
+    # Must sit after SessionMiddleware and before CommonMiddleware.
+    "django.middleware.locale.LocaleMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
@@ -93,6 +97,13 @@ CORS_ALLOW_ALL_ORIGINS = True
 
 
 LANGUAGE_CODE = "en-us"
+
+# Languages the API localizes error messages into (see api/i18n.py). Constrains
+# LocaleMiddleware's Accept-Language negotiation to these.
+LANGUAGES = [
+    ("en", "English"),
+    ("ar", "Arabic"),
+]
 
 TIME_ZONE = "UTC"
 

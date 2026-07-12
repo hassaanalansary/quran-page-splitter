@@ -1,16 +1,12 @@
 import { Link } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 
+import { LanguageSwitcher } from "@/components/app/LanguageSwitcher";
 import { coordinatesUrl, mushafStatus, useStats, useTemplates, type MushafDetail } from "@/lib/api";
 
 import { pipelineSteps, STATUS_META, STEP_ROUTES, type StepSlug } from "./details/helpers";
 
-const STEPS: { slug: StepSlug; label: string }[] = [
-  { slug: "setup", label: "Setup" },
-  { slug: "templates", label: "Templates" },
-  { slug: "process", label: "Process" },
-  { slug: "review", label: "Review" },
-  { slug: "finalize", label: "Finalize" },
-];
+const STEP_SLUGS: StepSlug[] = ["setup", "templates", "process", "review", "finalize"];
 
 /** Unified top bar for every mushaf page (workspace steps + the details hub):
  * breadcrumb → hub, status pill, a status-aware 5-step nav, and quick actions. */
@@ -25,6 +21,7 @@ export function MushafHeader({
   /** Continue CTA — shown on the details hub only. */
   cta?: { slug: StepSlug; sub: string; reviewPage?: number };
 }) {
+  const { t } = useTranslation();
   const { data: templates } = useTemplates(mushaf.id);
   const { data: stats } = useStats(mushaf.id);
   const templatesReady =
@@ -33,21 +30,22 @@ export function MushafHeader({
   const stepState = new Map(
     pipelineSteps(mushaf, templatesReady, stats, null).map((s) => [s.slug, s.state]),
   );
-  const status = STATUS_META[mushafStatus(mushaf)];
+  const statusKey = mushafStatus(mushaf);
+  const status = STATUS_META[statusKey];
 
   return (
     <header className="flex h-[60px] flex-shrink-0 items-center gap-3 border-b border-border bg-white px-5">
-      <Link to="/" className="flex items-center gap-2.5" title="All mushafs">
+      <Link to="/" className="flex items-center gap-2.5" title={t("header.allMushafs")}>
         <span className="mt-px h-2 w-2 rounded-[2px] bg-orange" />
         <span className="font-display text-[15px] font-bold leading-none text-navy">
-          Quran Page Splitter
+          {t("common.appName")}
         </span>
       </Link>
       <span className="text-text-muted">/</span>
       <Link
         to="/mushafs/$mushafId"
         params={{ mushafId: mushaf.id }}
-        title="Mushaf overview"
+        title={t("header.overview")}
         className={`max-w-[200px] truncate text-[13px] font-medium transition-colors hover:text-orange ${
           activeSlug === null ? "text-orange" : "text-text-primary"
         }`}
@@ -56,17 +54,17 @@ export function MushafHeader({
       </Link>
       <span className="inline-flex items-center gap-1.5 rounded-pill bg-bg-surface px-2 py-[3px] text-[10.5px] font-semibold text-text-secondary">
         <span className="h-1.5 w-1.5 rounded-full" style={{ background: status.dot }} />
-        {status.label}
+        {t(`status.${statusKey}`)}
       </span>
 
-      <nav className="ml-auto flex items-center gap-0.5">
-        {STEPS.map((s, i) => {
-          const active = s.slug === activeSlug;
-          const done = !active && stepState.get(s.slug) === "done";
+      <nav className="ms-auto flex items-center gap-0.5">
+        {STEP_SLUGS.map((slug, i) => {
+          const active = slug === activeSlug;
+          const done = !active && stepState.get(slug) === "done";
           return (
             <Link
-              key={s.slug}
-              to={STEP_ROUTES[s.slug]}
+              key={slug}
+              to={STEP_ROUTES[slug]}
               params={{ mushafId: mushaf.id }}
               className={`flex items-center gap-2 rounded-pill px-2.5 py-1.5 transition-colors hover:bg-bg-surface ${
                 active ? "bg-bg-surface" : ""
@@ -88,7 +86,7 @@ export function MushafHeader({
                   active ? "font-semibold text-orange" : "font-medium text-text-secondary"
                 }`}
               >
-                {s.label}
+                {t(`header.steps.${slug}`)}
               </span>
             </Link>
           );
@@ -102,7 +100,7 @@ export function MushafHeader({
           search={cta.slug === "review" && cta.reviewPage ? { page: cta.reviewPage } : undefined}
           className="flex h-12 flex-col p-6 cursor-pointer justify-center rounded-[7px] bg-orange px-3 text-white transition-colors hover:bg-orange-hover"
         >
-          <span className="text-[15px] font-bold leading-[1.1]">Continue →</span>
+          <span className="text-[15px] font-bold leading-[1.1]">{t("header.continue")}</span>
           <span className="mt-px text-[11px] leading-[1.1] opacity-80">{cta.sub}</span>
         </Link>
       )}
@@ -113,7 +111,7 @@ export function MushafHeader({
           rel="noreferrer"
           className="flex h-8 items-center rounded-[7px] border border-border-strong px-2.5 text-[11.5px] font-semibold text-text-secondary transition-colors hover:bg-bg-surface"
         >
-          PDF ↗
+          {t("header.openPdf")}
         </a>
       )}
       <a
@@ -121,8 +119,9 @@ export function MushafHeader({
         download
         className="flex h-8 items-center rounded-[7px] border border-border-strong px-2.5 text-[11.5px] font-semibold text-text-secondary transition-colors hover:bg-bg-surface"
       >
-        JSON ↓
+        {t("header.downloadJson")}
       </a>
+      <LanguageSwitcher />
     </header>
   );
 }

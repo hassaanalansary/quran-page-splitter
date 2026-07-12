@@ -1,5 +1,6 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { CroppableImage } from "@/components/canvas/CroppableImage";
 import { pageImageUrl } from "@/lib/api";
@@ -61,6 +62,7 @@ export function FilmstripViewer({
   renderLabel,
   crop,
 }: Props) {
+  const { t } = useTranslation();
   const prevPageRef = useRef(page);
   const [aspect, setAspect] = useState(DEFAULT_ASPECT);
   const [jumping, setJumping] = useState(false);
@@ -228,14 +230,14 @@ export function FilmstripViewer({
                 setJumping(true);
               }}
               className="text-[13px] font-semibold tabular-nums text-text-primary hover:text-orange"
-              title="Click to jump to a page"
+              title={t("canvas.jumpTitle")}
             >
-              Page {page}
+              {t("canvas.pageJump", { page })}
             </button>
           )}
           <span className="text-[12px] text-text-muted">/ {pageCount}</span>
           {renderLabel && (
-            <span className="border-l border-border pl-3 text-[12px] text-text-secondary">
+            <span className="border-s border-border ps-3 text-[12px] text-text-secondary">
               {renderLabel(page)}
             </span>
           )}
@@ -253,7 +255,7 @@ export function FilmstripViewer({
                 setJumpValue("");
                 setJumping(true);
               }}
-              title="Jump to page…"
+              title={t("canvas.jumpToPage")}
               className="px-1 text-[12px] text-text-muted hover:text-orange"
             >
               …
@@ -288,12 +290,13 @@ function ChevronButton({
   onClick: () => void;
   disabled?: boolean;
 }) {
+  const { t } = useTranslation();
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={disabled}
-      aria-label={side === "left" ? "Previous page" : "Next page"}
+      aria-label={side === "left" ? t("canvas.prevPage") : t("canvas.nextPage")}
       className={[
         "absolute top-1/2 z-10 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-white/90 text-text-secondary shadow-[var(--shadow-md)] backdrop-blur transition hover:text-orange disabled:cursor-not-allowed disabled:opacity-30",
         side === "left" ? "left-3" : "right-3",

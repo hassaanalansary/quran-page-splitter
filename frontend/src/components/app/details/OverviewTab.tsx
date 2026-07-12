@@ -1,4 +1,5 @@
 import { Link } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 
 import type { ActivityEvent, MushafDetail, MushafStats } from "@/lib/api";
 
@@ -21,6 +22,7 @@ export function OverviewTab({
   onShowRuns: () => void;
   onShowPages: () => void;
 }) {
+  const { t } = useTranslation();
   const pct =
     mushaf.logical_page_count > 0
       ? Math.round((mushaf.processed_page_count / mushaf.logical_page_count) * 100)
@@ -35,10 +37,12 @@ export function OverviewTab({
       {/* pipeline strip */}
       <div className="mb-2.5 flex items-baseline justify-between">
         <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-text-secondary">
-          Pipeline
+          {t("details.ov_pipeline")}
         </span>
         <span className="font-mono text-[10.5px] font-semibold text-text-muted">
-          {pct}% complete{abortPage ? ` · stopped p.${abortPage}` : ""}
+          {abortPage
+            ? t("details.ov_completeStopped", { pct, page: abortPage })
+            : t("details.ov_complete", { pct })}
         </span>
       </div>
       <div className="flex overflow-hidden rounded-[10px] border border-border bg-white">
@@ -57,20 +61,20 @@ export function OverviewTab({
         <div className="overflow-hidden rounded-[11px] border border-border bg-white">
           <div className="flex items-center border-b border-border px-3.5 py-[11px]">
             <span className="text-[11px] font-semibold tracking-[0.02em] text-text-primary">
-              Activity
+              {t("details.ov_activity")}
             </span>
             <button
               type="button"
               onClick={onShowRuns}
-              className="ml-auto cursor-pointer text-[10.5px] font-semibold text-orange hover:text-orange-hover"
+              className="ms-auto cursor-pointer text-[10.5px] font-semibold text-orange hover:text-orange-hover"
             >
-              Runs →
+              {t("details.ov_runsLink")}
             </button>
           </div>
           <div className="max-h-[236px] overflow-auto">
             {!activity || activity.length === 0 ? (
               <div className="px-3.5 py-6 text-center text-[11px] text-text-muted">
-                No activity recorded yet — events appear as you work through the pipeline.
+                {t("details.ov_noActivity")}
               </div>
             ) : (
               activity.map((event, i) => (
@@ -83,35 +87,35 @@ export function OverviewTab({
         <div className="flex flex-col rounded-[11px] border border-border bg-white">
           <div className="flex items-center border-b border-border px-3.5 py-[11px]">
             <span className="text-[11px] font-semibold tracking-[0.02em] text-text-primary">
-              Detected so far
+              {t("details.ov_detected")}
             </span>
             <button
               type="button"
               onClick={onShowPages}
-              className="ml-auto cursor-pointer text-[10.5px] font-semibold text-orange hover:text-orange-hover"
+              className="ms-auto cursor-pointer text-[10.5px] font-semibold text-orange hover:text-orange-hover"
             >
-              Pages →
+              {t("details.ov_pagesLink")}
             </button>
           </div>
           <div className="px-3.5 pb-1.5 pt-1">
-            <DetectedRow label="Ayat found" value={stats?.ayat_found} />
-            <DetectedRow label="Lines cut" value={stats?.lines_cut} />
-            <DetectedRow label="Segments" value={stats?.segments} />
-            <DetectedRow label="Sura headers" value={stats?.sura_headers} />
-            <DetectedRow label="Besmella lines" value={stats?.besmella_lines} />
-            <DetectedRow label="Avg lines / page" value={avgLines} last />
+            <DetectedRow label={t("details.ov_ayatFound")} value={stats?.ayat_found} />
+            <DetectedRow label={t("details.ov_linesCut")} value={stats?.lines_cut} />
+            <DetectedRow label={t("details.ov_segments")} value={stats?.segments} />
+            <DetectedRow label={t("details.ov_suraHeaders")} value={stats?.sura_headers} />
+            <DetectedRow label={t("details.ov_besmellaLines")} value={stats?.besmella_lines} />
+            <DetectedRow label={t("details.ov_avgLines")} value={avgLines} last />
           </div>
           {abortPage && (
             <div className="mx-3 mb-3 mt-auto flex items-start gap-2 rounded-lg border border-[color:var(--warning-border)] bg-warning-bg px-[11px] py-[9px]">
               <span className="text-[11px] leading-[1.4]">⚠</span>
               <div className="text-[10.5px] leading-[1.5] text-[#8a4b0d]">
-                Halted at p.{abortPage}.{" "}
+                {t("details.ov_halted", { page: abortPage })}{" "}
                 <Link
                   to="/mushafs/$mushafId/process"
                   params={{ mushafId: mushaf.id }}
                   className="font-bold underline"
                 >
-                  Resume →
+                  {t("details.ov_resume")}
                 </Link>
               </div>
             </div>

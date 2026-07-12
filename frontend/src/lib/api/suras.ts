@@ -4,6 +4,13 @@ import type { Sura } from "./types";
 
 export const DEFAULT_QIRAA = "hafs";
 
-export function listSuras(qiraa: string = DEFAULT_QIRAA, signal?: AbortSignal): Promise<Sura[]> {
-  return apiGet<Sura[]>(`/api/suras?qiraa=${encodeURIComponent(qiraa)}`, signal);
+export function listSuras(
+  qiraa: string = DEFAULT_QIRAA,
+  lang: string = "en",
+  signal?: AbortSignal,
+): Promise<Sura[]> {
+  return apiGet<Sura[]>(
+    `/api/suras?qiraa=${encodeURIComponent(qiraa)}&lang=${encodeURIComponent(lang)}`,
+    signal,
+  );
 }

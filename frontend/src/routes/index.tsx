@@ -2,9 +2,11 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
 import { CreateMushafDialog } from "@/components/app/CreateMushafDialog";
+import { LanguageSwitcher } from "@/components/app/LanguageSwitcher";
 import {
   ApiError,
   deleteMushaf,
@@ -18,24 +20,15 @@ import {
 
 export const Route = createFileRoute("/")({ component: HomePage });
 
-const STATUS: Record<MushafStatus, { label: string; dot: string; text: string; bg: string }> = {
-  empty: {
-    label: "Not processed",
-    dot: "var(--text-muted)",
-    text: "text-text-muted",
-    bg: "bg-bg-muted",
-  },
-  partial: { label: "Partial", dot: "var(--warning)", text: "text-[#92400E]", bg: "bg-warning-bg" },
-  processed: { label: "Processed", dot: "var(--navy-light)", text: "text-navy", bg: "bg-bg-muted" },
-  completed: {
-    label: "Completed",
-    dot: "var(--success)",
-    text: "text-success",
-    bg: "bg-success-bg",
-  },
+const STATUS_STYLE: Record<MushafStatus, { dot: string; text: string; bg: string }> = {
+  empty: { dot: "var(--text-muted)", text: "text-text-muted", bg: "bg-bg-muted" },
+  partial: { dot: "var(--warning)", text: "text-[#92400E]", bg: "bg-warning-bg" },
+  processed: { dot: "var(--navy-light)", text: "text-navy", bg: "bg-bg-muted" },
+  completed: { dot: "var(--success)", text: "text-success", bg: "bg-success-bg" },
 };
 
 function HomePage() {
+  const { t } = useTranslation();
   const { data: mushafs, isPending, isError, error } = useMushafs();
   const [createOpen, setCreateOpen] = useState(false);
 
@@ -45,23 +38,24 @@ function HomePage() {
         <div className="flex items-center gap-2.5">
           <span className="mt-px h-2 w-2 rounded-[2px] bg-orange" />
           <span className="font-display text-[15px] font-bold leading-none text-navy">
-            Quran Page Splitter
+            {t("common.appName")}
           </span>
+        </div>
+        <div className="ms-auto">
+          <LanguageSwitcher />
         </div>
       </header>
 
       <main className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-6xl px-8 py-9">
           <div className="mb-7">
-            <h1 className="font-display text-2xl font-bold text-navy">Mushafs</h1>
-            <p className="mt-1 text-sm text-text-secondary">
-              Each mushaf is a PDF processed into per-aya coordinates and transparent line images.
-            </p>
+            <h1 className="font-display text-2xl font-bold text-navy">{t("home.title")}</h1>
+            <p className="mt-1 text-sm text-text-secondary">{t("home.subtitle")}</p>
           </div>
 
           {isError ? (
             <div className="rounded-lg border border-error-border bg-error-bg px-4 py-3 text-sm text-error">
-              {error instanceof Error ? error.message : "Failed to load mushafs."}
+              {error instanceof Error ? error.message : t("home.loadFailed")}
             </div>
           ) : (
             <div className="grid grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-5">
@@ -82,17 +76,19 @@ function HomePage() {
 }
 
 function MushafCard({ mushaf }: { mushaf: Mushaf }) {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [imgFailed, setImgFailed] = useState(false);
-  const status = STATUS[mushafStatus(mushaf)];
+  const statusKey = mushafStatus(mushaf);
+  const status = STATUS_STYLE[statusKey];
 
   const remove = useMutation({
     mutationFn: () => deleteMushaf(mushaf.id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.mushafs });
-      toast.success(`Deleted “${mushaf.name}”.`);
+      toast.success(t("home.deleted", { name: mushaf.name }));
     },
-    onError: (e) => toast.error(e instanceof ApiError ? e.message : "Failed to delete."),
+    onError: (e) => toast.error(e instanceof ApiError ? e.message : t("home.deleteFailed")),
   });
 
   return (
@@ -103,7 +99,7 @@ function MushafCard({ mushaf }: { mushaf: Mushaf }) {
           {!imgFailed ? (
             <img
               src={mushaf.thumbnail_url ?? pageImageUrl(mushaf.id, 1, mushaf.updated_at)}
-              alt={`${mushaf.name} cover`}
+              alt={t("home.cover", { name: mushaf.name })}
               loading="lazy"
               draggable={false}
               onError={() => setImgFailed(true)}
@@ -111,14 +107,14 @@ function MushafCard({ mushaf }: { mushaf: Mushaf }) {
             />
           ) : (
             <div className="flex h-full items-center justify-center text-[11px] text-text-muted">
-              no preview
+              {t("home.noPreview")}
             </div>
           )}
           <span
-            className={`absolute left-2 top-2 flex items-center gap-1.5 rounded-pill px-2 py-0.5 text-[10px] font-semibold ${status.bg} ${status.text}`}
+            className={`absolute start-2 top-2 flex items-center gap-1.5 rounded-pill px-2 py-0.5 text-[10px] font-semibold ${status.bg} ${status.text}`}
           >
             <span className="h-1.5 w-1.5 rounded-full" style={{ background: status.dot }} />
-            {status.label}
+            {t(`status.${statusKey}`)}
           </span>
         </div>
 
@@ -127,7 +123,10 @@ function MushafCard({ mushaf }: { mushaf: Mushaf }) {
           <h3 className="truncate text-[13px] font-semibold text-text-primary">{mushaf.name}</h3>
           <div className="mt-1 flex items-center justify-between text-[11px] text-text-muted">
             <span>
-              {mushaf.processed_page_count}/{mushaf.logical_page_count} pages
+              {t("home.pages", {
+                done: mushaf.processed_page_count,
+                total: mushaf.logical_page_count,
+              })}
             </span>
             {mushaf.qiraa && <span className="capitalize">{mushaf.qiraa}</span>}
           </div>
@@ -136,14 +135,13 @@ function MushafCard({ mushaf }: { mushaf: Mushaf }) {
 
       <button
         type="button"
-        aria-label={`Delete ${mushaf.name}`}
-        title="Delete mushaf"
+        aria-label={t("home.deleteAria", { name: mushaf.name })}
+        title={t("home.deleteTitle")}
         onClick={() => {
-          if (window.confirm(`Delete “${mushaf.name}” and all its processed data?`))
-            remove.mutate();
+          if (window.confirm(t("home.deleteConfirm", { name: mushaf.name }))) remove.mutate();
         }}
         disabled={remove.isPending}
-        className="absolute right-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-md bg-white/80 text-text-secondary opacity-0 backdrop-blur transition hover:bg-error-bg hover:text-error group-hover:opacity-100 disabled:opacity-40"
+        className="absolute end-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-md bg-white/80 text-text-secondary opacity-0 backdrop-blur transition hover:bg-error-bg hover:text-error group-hover:opacity-100 disabled:opacity-40"
       >
         <Trash2 size={14} />
       </button>
@@ -152,6 +150,7 @@ function MushafCard({ mushaf }: { mushaf: Mushaf }) {
 }
 
 function AddCard({ onClick }: { onClick: () => void }) {
+  const { t } = useTranslation();
   return (
     <button
       type="button"
@@ -161,7 +160,7 @@ function AddCard({ onClick }: { onClick: () => void }) {
       <span className="flex h-12 w-12 items-center justify-center rounded-full border-2 border-current">
         <Plus size={22} />
       </span>
-      <span className="text-[13px] font-semibold">New mushaf</span>
+      <span className="text-[13px] font-semibold">{t("home.newMushaf")}</span>
     </button>
   );
 }

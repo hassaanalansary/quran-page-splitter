@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, useParams } from "@tanstack/react-router";
 import { Flag, FlagOff } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
 import { Aside, Field, Hint, PanelCard } from "@/components/app/Panel";
@@ -16,6 +17,7 @@ function clamp(n: number, lo: number, hi: number) {
 }
 
 function SetupPage() {
+  const { t, i18n } = useTranslation();
   const { mushafId } = useParams({ from: "/mushafs/$mushafId/setup" });
   const { data: mushaf } = useMushaf(mushafId);
   const queryClient = useQueryClient();
@@ -41,10 +43,13 @@ function SetupPage() {
       setPreview(1);
       setMarking(null);
       toast.success(
-        `Quran content set to PDF pages ${updated.first_quran_pdf_page}–${updated.last_quran_pdf_page}.`,
+        t("setup.savedToast", {
+          first: updated.first_quran_pdf_page,
+          last: updated.last_quran_pdf_page,
+        }),
       );
     },
-    onError: (e) => toast.error(e instanceof ApiError ? e.message : "Failed to save bounds."),
+    onError: (e) => toast.error(e instanceof ApiError ? e.message : t("setup.saveFailed")),
   });
 
   if (!mushaf) return null;
@@ -63,7 +68,7 @@ function SetupPage() {
     // Cool flourish: fly to the last page so the user immediately marks the end.
     setMarking("last");
     setPreview(logicalCount);
-    toast.info("First page set — now mark the last Quran page.");
+    toast.info(t("setup.firstSetToast"));
   }
 
   function markLast() {
@@ -72,7 +77,9 @@ function SetupPage() {
   }
 
   return (
-    <div className="flex flex-1 overflow-hidden">
+    <div
+      className={`flex ${i18n.language === "ar" ? "flex-row-reverse" : "flex-row"} flex-1 overflow-hidden`}
+    >
       <FilmstripViewer
         mushafId={mushafId}
         pageCount={logicalCount}
@@ -80,7 +87,10 @@ function SetupPage() {
         onPageChange={(n) => setPreview(clamp(n, 1, logicalCount))}
         version={mushaf.updated_at}
         renderLabel={(logical) =>
-          `PDF page ${mushaf.first_quran_pdf_page + logical - 1} of ${pdfPages}`
+          t("process.pdfPageLabel", {
+            pdf: mushaf.first_quran_pdf_page + logical - 1,
+            total: pdfPages,
+          })
         }
       />
 
@@ -88,41 +98,38 @@ function SetupPage() {
         footer={
           <div className="flex flex-col gap-2">
             <Button onClick={() => save.mutate()} disabled={!canSave}>
-              {save.isPending ? "Saving…" : "Save page range"}
+              {save.isPending ? t("common.saving") : t("setup.saveRange")}
             </Button>
             <Button asChild variant="outline">
               <Link to="/mushafs/$mushafId/templates" params={{ mushafId }}>
-                Continue to Templates →
+                {t("setup.continueTemplates")}
               </Link>
             </Button>
           </div>
         }
       >
-        <Hint>
-          Flip through the PDF with the filmstrip, then mark the <strong>first</strong> and{" "}
-          <strong>last</strong> pages that contain Quran text. Front/back matter is ignored.
-        </Hint>
+        <Hint>{t("setup.intro")}</Hint>
 
         {!processed && (
-          <PanelCard title="Mark from current page">
+          <PanelCard title={t("setup.markFromCurrent")}>
             <div className="text-[12px] text-text-secondary">
-              Currently viewing <strong className="text-text-primary">PDF page {physical}</strong>.
+              {t("setup.currentlyViewing", { page: physical })}
             </div>
             <Button
               variant={marking === "first" || marking === null ? "default" : "outline"}
               onClick={markFirst}
             >
-              <Flag size={14} /> Set as first Quran page
+              <Flag size={14} /> {t("setup.setFirst")}
             </Button>
             <Button variant={marking === "last" ? "default" : "outline"} onClick={markLast}>
-              <FlagOff size={14} /> Set as last Quran page
+              <FlagOff size={14} /> {t("setup.setLast")}
             </Button>
           </PanelCard>
         )}
 
-        <PanelCard title="Quran content range">
+        <PanelCard title={t("setup.rangeTitle")}>
           <div className="grid grid-cols-2 gap-2">
-            <Field label="First page (PDF)">
+            <Field label={t("setup.firstPage")}>
               <NumberInput
                 value={first}
                 min={1}
@@ -131,7 +138,7 @@ function SetupPage() {
                 disabled={processed}
               />
             </Field>
-            <Field label="Last page (PDF)">
+            <Field label={t("setup.lastPage")}>
               <NumberInput
                 value={last}
                 min={1}
@@ -144,11 +151,9 @@ function SetupPage() {
           <div className="flex items-center justify-between text-[12px] text-text-secondary">
             <span>
               {valid ? (
-                <>
-                  <strong className="text-text-primary">{last - first + 1}</strong> logical pages
-                </>
+                t("setup.logicalPages", { count: last - first + 1 })
               ) : (
-                <span className="text-error">Require 1 ≤ first ≤ last ≤ {pdfPages}</span>
+                <span className="text-error">{t("setup.rangeError", { max: pdfPages })}</span>
               )}
             </span>
             <button
@@ -160,16 +165,14 @@ function SetupPage() {
               }}
               className="font-medium text-orange hover:underline disabled:text-text-muted disabled:no-underline"
             >
-              Reset to full PDF
+              {t("setup.resetFull")}
             </button>
           </div>
         </PanelCard>
 
         {processed && (
           <Hint tone="warning">
-            Page bounds are locked because {mushaf.processed_page_count} page
-            {mushaf.processed_page_count === 1 ? "" : "s"} have been processed. Delete those pages
-            (or the mushaf) and reprocess to change the range.
+            {t("setup.lockedWarning", { count: mushaf.processed_page_count })}
           </Hint>
         )}
       </Aside>
