@@ -9,8 +9,5 @@ export function listSuras(
   lang: string = "en",
   signal?: AbortSignal,
 ): Promise<Sura[]> {
-  return apiGet<Sura[]>(
-    `/api/suras?qiraa=${encodeURIComponent(qiraa)}&lang=${encodeURIComponent(lang)}`,
-    signal,
-  );
+  return apiGet<Sura[]>(`/api/suras?qiraa=${encodeURIComponent(qiraa)}`, signal);
 }
