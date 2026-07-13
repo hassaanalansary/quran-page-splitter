@@ -79,16 +79,14 @@ class AyaSeparatorProcessor:
             line_gray = ctx.line_grey(line)
             if content_ratio < self.config.short_line_ratio:
                 # Use trimmed content region for separator detection
-                detect_gray = line_gray[cy : cy + ch, cx : cx + cw]
                 detect_offset_x = cx
                 detect_width = cw
             else:
-                detect_gray = line_gray
                 detect_offset_x = 0
                 detect_width = line.bbox.width
 
             # Detect separator positions
-            boxes = locate_x_matches(detect_gray, self.template)
+            boxes = locate_x_matches(line_gray, self.template)
 
             if not boxes:
                 # No separators — single segment
@@ -135,7 +133,7 @@ class AyaSeparatorProcessor:
                 line.segments.append(
                     SegmentResult(
                         bbox=BBox(
-                            left=line.bbox.left + detect_offset_x + cut,
+                            left=line.bbox.left + cut,
                             top=line.bbox.top,
                             right=line.bbox.left + detect_offset_x + end,
                             bottom=line.bbox.bottom,
