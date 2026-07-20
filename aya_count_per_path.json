@@ -1,0 +1,1256 @@
+[
+    {
+        "sura": 1,
+        "counts": {
+            "madani-first": 7,
+            "madani-last": 7,
+            "makki": 7,
+            "basri": 7,
+            "dimashqi": 7,
+            "kufi": 7
+        }
+    },
+    {
+        "sura": 2,
+        "counts": {
+            "madani-first": 285,
+            "madani-last": 285,
+            "makki": 285,
+            "basri": 287,
+            "dimashqi": 285,
+            "kufi": 286
+        }
+    },
+    {
+        "sura": 3,
+        "counts": {
+            "madani-first": 200,
+            "madani-last": 200,
+            "makki": 200,
+            "basri": 200,
+            "dimashqi": 200,
+            "kufi": 200
+        }
+    },
+    {
+        "sura": 4,
+        "counts": {
+            "madani-first": 175,
+            "madani-last": 175,
+            "makki": 175,
+            "basri": 175,
+            "dimashqi": 177,
+            "kufi": 176
+        }
+    },
+    {
+        "sura": 5,
+        "counts": {
+            "madani-first": 122,
+            "madani-last": 122,
+            "makki": 122,
+            "basri": 123,
+            "dimashqi": 122,
+            "kufi": 120
+        }
+    },
+    {
+        "sura": 6,
+        "counts": {
+            "madani-first": 167,
+            "madani-last": 167,
+            "makki": 167,
+            "basri": 166,
+            "dimashqi": 166,
+            "kufi": 165
+        }
+    },
+    {
+        "sura": 7,
+        "counts": {
+            "madani-first": 206,
+            "madani-last": 206,
+            "makki": 206,
+            "basri": 205,
+            "dimashqi": 205,
+            "kufi": 206
+        }
+    },
+    {
+        "sura": 8,
+        "counts": {
+            "madani-first": 76,
+            "madani-last": 76,
+            "makki": 76,
+            "basri": 76,
+            "dimashqi": 77,
+            "kufi": 75
+        }
+    },
+    {
+        "sura": 9,
+        "counts": {
+            "madani-first": 130,
+            "madani-last": 130,
+            "makki": 130,
+            "basri": 130,
+            "dimashqi": 130,
+            "kufi": 129
+        }
+    },
+    {
+        "sura": 10,
+        "counts": {
+            "madani-first": 109,
+            "madani-last": 109,
+            "makki": 109,
+            "basri": 109,
+            "dimashqi": 110,
+            "kufi": 109
+        }
+    },
+    {
+        "sura": 11,
+        "counts": {
+            "madani-first": 122,
+            "madani-last": 121,
+            "makki": 121,
+            "basri": 121,
+            "dimashqi": 122,
+            "kufi": 123
+        }
+    },
+    {
+        "sura": 12,
+        "counts": {
+            "madani-first": 111,
+            "madani-last": 111,
+            "makki": 111,
+            "basri": 111,
+            "dimashqi": 111,
+            "kufi": 111
+        }
+    },
+    {
+        "sura": 13,
+        "counts": {
+            "madani-first": 44,
+            "madani-last": 44,
+            "makki": 44,
+            "basri": 45,
+            "dimashqi": 47,
+            "kufi": 43
+        }
+    },
+    {
+        "sura": 14,
+        "counts": {
+            "madani-first": 54,
+            "madani-last": 54,
+            "makki": 54,
+            "basri": 51,
+            "dimashqi": 55,
+            "kufi": 52
+        }
+    },
+    {
+        "sura": 15,
+        "counts": {
+            "madani-first": 99,
+            "madani-last": 99,
+            "makki": 99,
+            "basri": 99,
+            "dimashqi": 99,
+            "kufi": 99
+        }
+    },
+    {
+        "sura": 16,
+        "counts": {
+            "madani-first": 128,
+            "madani-last": 128,
+            "makki": 128,
+            "basri": 128,
+            "dimashqi": 128,
+            "kufi": 128
+        }
+    },
+    {
+        "sura": 17,
+        "counts": {
+            "madani-first": 110,
+            "madani-last": 110,
+            "makki": 110,
+            "basri": 110,
+            "dimashqi": 110,
+            "kufi": 111
+        }
+    },
+    {
+        "sura": 18,
+        "counts": {
+            "madani-first": 105,
+            "madani-last": 105,
+            "makki": 105,
+            "basri": 111,
+            "dimashqi": 106,
+            "kufi": 110
+        }
+    },
+    {
+        "sura": 19,
+        "counts": {
+            "madani-first": 98,
+            "madani-last": 99,
+            "makki": 99,
+            "basri": 98,
+            "dimashqi": 98,
+            "kufi": 98
+        }
+    },
+    {
+        "sura": 20,
+        "counts": {
+            "madani-first": 134,
+            "madani-last": 134,
+            "makki": 134,
+            "basri": 132,
+            "dimashqi": 140,
+            "kufi": 135
+        }
+    },
+    {
+        "sura": 21,
+        "counts": {
+            "madani-first": 111,
+            "madani-last": 111,
+            "makki": 111,
+            "basri": 111,
+            "dimashqi": 111,
+            "kufi": 112
+        }
+    },
+    {
+        "sura": 22,
+        "counts": {
+            "madani-first": 76,
+            "madani-last": 76,
+            "makki": 77,
+            "basri": 75,
+            "dimashqi": 74,
+            "kufi": 78
+        }
+    },
+    {
+        "sura": 23,
+        "counts": {
+            "madani-first": 119,
+            "madani-last": 119,
+            "makki": 119,
+            "basri": 119,
+            "dimashqi": 119,
+            "kufi": 118
+        }
+    },
+    {
+        "sura": 24,
+        "counts": {
+            "madani-first": 62,
+            "madani-last": 62,
+            "makki": 62,
+            "basri": 64,
+            "dimashqi": 64,
+            "kufi": 64
+        }
+    },
+    {
+        "sura": 25,
+        "counts": {
+            "madani-first": 77,
+            "madani-last": 77,
+            "makki": 77,
+            "basri": 77,
+            "dimashqi": 77,
+            "kufi": 77
+        }
+    },
+    {
+        "sura": 26,
+        "counts": {
+            "madani-first": 227,
+            "madani-last": 226,
+            "makki": 226,
+            "basri": 226,
+            "dimashqi": 227,
+            "kufi": 227
+        }
+    },
+    {
+        "sura": 27,
+        "counts": {
+            "madani-first": 95,
+            "madani-last": 95,
+            "makki": 95,
+            "basri": 94,
+            "dimashqi": 94,
+            "kufi": 93
+        }
+    },
+    {
+        "sura": 28,
+        "counts": {
+            "madani-first": 88,
+            "madani-last": 88,
+            "makki": 88,
+            "basri": 88,
+            "dimashqi": 88,
+            "kufi": 88
+        }
+    },
+    {
+        "sura": 29,
+        "counts": {
+            "madani-first": 69,
+            "madani-last": 69,
+            "makki": 69,
+            "basri": 69,
+            "dimashqi": 69,
+            "kufi": 69
+        }
+    },
+    {
+        "sura": 30,
+        "counts": {
+            "madani-first": 60,
+            "madani-last": 59,
+            "makki": 59,
+            "basri": 60,
+            "dimashqi": 60,
+            "kufi": 60
+        }
+    },
+    {
+        "sura": 31,
+        "counts": {
+            "madani-first": 33,
+            "madani-last": 33,
+            "makki": 33,
+            "basri": 34,
+            "dimashqi": 34,
+            "kufi": 34
+        }
+    },
+    {
+        "sura": 32,
+        "counts": {
+            "madani-first": 30,
+            "madani-last": 30,
+            "makki": 30,
+            "basri": 29,
+            "dimashqi": 30,
+            "kufi": 30
+        }
+    },
+    {
+        "sura": 33,
+        "counts": {
+            "madani-first": 73,
+            "madani-last": 73,
+            "makki": 73,
+            "basri": 73,
+            "dimashqi": 73,
+            "kufi": 73
+        }
+    },
+    {
+        "sura": 34,
+        "counts": {
+            "madani-first": 54,
+            "madani-last": 54,
+            "makki": 54,
+            "basri": 54,
+            "dimashqi": 55,
+            "kufi": 54
+        }
+    },
+    {
+        "sura": 35,
+        "counts": {
+            "madani-first": 45,
+            "madani-last": 46,
+            "makki": 45,
+            "basri": 45,
+            "dimashqi": 46,
+            "kufi": 45
+        }
+    },
+    {
+        "sura": 36,
+        "counts": {
+            "madani-first": 82,
+            "madani-last": 82,
+            "makki": 82,
+            "basri": 82,
+            "dimashqi": 82,
+            "kufi": 83
+        }
+    },
+    {
+        "sura": 37,
+        "counts": {
+            "madani-first": 181,
+            "madani-last": 182,
+            "makki": 182,
+            "basri": 181,
+            "dimashqi": 182,
+            "kufi": 182
+        }
+    },
+    {
+        "sura": 38,
+        "counts": {
+            "madani-first": 86,
+            "madani-last": 86,
+            "makki": 86,
+            "basri": 85,
+            "dimashqi": 86,
+            "kufi": 88
+        }
+    },
+    {
+        "sura": 39,
+        "counts": {
+            "madani-first": 72,
+            "madani-last": 72,
+            "makki": 72,
+            "basri": 72,
+            "dimashqi": 73,
+            "kufi": 75
+        }
+    },
+    {
+        "sura": 40,
+        "counts": {
+            "madani-first": 84,
+            "madani-last": 84,
+            "makki": 84,
+            "basri": 82,
+            "dimashqi": 86,
+            "kufi": 85
+        }
+    },
+    {
+        "sura": 41,
+        "counts": {
+            "madani-first": 53,
+            "madani-last": 53,
+            "makki": 53,
+            "basri": 52,
+            "dimashqi": 52,
+            "kufi": 54
+        }
+    },
+    {
+        "sura": 42,
+        "counts": {
+            "madani-first": 50,
+            "madani-last": 50,
+            "makki": 50,
+            "basri": 50,
+            "dimashqi": 50,
+            "kufi": 53
+        }
+    },
+    {
+        "sura": 43,
+        "counts": {
+            "madani-first": 89,
+            "madani-last": 89,
+            "makki": 89,
+            "basri": 89,
+            "dimashqi": 88,
+            "kufi": 89
+        }
+    },
+    {
+        "sura": 44,
+        "counts": {
+            "madani-first": 56,
+            "madani-last": 56,
+            "makki": 56,
+            "basri": 57,
+            "dimashqi": 56,
+            "kufi": 59
+        }
+    },
+    {
+        "sura": 45,
+        "counts": {
+            "madani-first": 36,
+            "madani-last": 36,
+            "makki": 36,
+            "basri": 36,
+            "dimashqi": 36,
+            "kufi": 37
+        }
+    },
+    {
+        "sura": 46,
+        "counts": {
+            "madani-first": 34,
+            "madani-last": 34,
+            "makki": 34,
+            "basri": 34,
+            "dimashqi": 34,
+            "kufi": 35
+        }
+    },
+    {
+        "sura": 47,
+        "counts": {
+            "madani-first": 39,
+            "madani-last": 39,
+            "makki": 39,
+            "basri": 40,
+            "dimashqi": 39,
+            "kufi": 38
+        }
+    },
+    {
+        "sura": 48,
+        "counts": {
+            "madani-first": 29,
+            "madani-last": 29,
+            "makki": 29,
+            "basri": 29,
+            "dimashqi": 29,
+            "kufi": 29
+        }
+    },
+    {
+        "sura": 49,
+        "counts": {
+            "madani-first": 18,
+            "madani-last": 18,
+            "makki": 18,
+            "basri": 18,
+            "dimashqi": 18,
+            "kufi": 18
+        }
+    },
+    {
+        "sura": 50,
+        "counts": {
+            "madani-first": 45,
+            "madani-last": 45,
+            "makki": 45,
+            "basri": 45,
+            "dimashqi": 45,
+            "kufi": 45
+        }
+    },
+    {
+        "sura": 51,
+        "counts": {
+            "madani-first": 60,
+            "madani-last": 60,
+            "makki": 60,
+            "basri": 60,
+            "dimashqi": 60,
+            "kufi": 60
+        }
+    },
+    {
+        "sura": 52,
+        "counts": {
+            "madani-first": 47,
+            "madani-last": 47,
+            "makki": 47,
+            "basri": 48,
+            "dimashqi": 49,
+            "kufi": 49
+        }
+    },
+    {
+        "sura": 53,
+        "counts": {
+            "madani-first": 61,
+            "madani-last": 61,
+            "makki": 61,
+            "basri": 61,
+            "dimashqi": 61,
+            "kufi": 62
+        }
+    },
+    {
+        "sura": 54,
+        "counts": {
+            "madani-first": 55,
+            "madani-last": 55,
+            "makki": 55,
+            "basri": 55,
+            "dimashqi": 55,
+            "kufi": 55
+        }
+    },
+    {
+        "sura": 55,
+        "counts": {
+            "madani-first": 77,
+            "madani-last": 77,
+            "makki": 77,
+            "basri": 76,
+            "dimashqi": 78,
+            "kufi": 78
+        }
+    },
+    {
+        "sura": 56,
+        "counts": {
+            "madani-first": 99,
+            "madani-last": 99,
+            "makki": 99,
+            "basri": 97,
+            "dimashqi": 99,
+            "kufi": 96
+        }
+    },
+    {
+        "sura": 57,
+        "counts": {
+            "madani-first": 28,
+            "madani-last": 28,
+            "makki": 28,
+            "basri": 29,
+            "dimashqi": 28,
+            "kufi": 29
+        }
+    },
+    {
+        "sura": 58,
+        "counts": {
+            "madani-first": 22,
+            "madani-last": 21,
+            "makki": 21,
+            "basri": 22,
+            "dimashqi": 22,
+            "kufi": 22
+        }
+    },
+    {
+        "sura": 59,
+        "counts": {
+            "madani-first": 24,
+            "madani-last": 24,
+            "makki": 24,
+            "basri": 24,
+            "dimashqi": 24,
+            "kufi": 24
+        }
+    },
+    {
+        "sura": 60,
+        "counts": {
+            "madani-first": 13,
+            "madani-last": 13,
+            "makki": 13,
+            "basri": 13,
+            "dimashqi": 13,
+            "kufi": 13
+        }
+    },
+    {
+        "sura": 61,
+        "counts": {
+            "madani-first": 14,
+            "madani-last": 14,
+            "makki": 14,
+            "basri": 14,
+            "dimashqi": 14,
+            "kufi": 14
+        }
+    },
+    {
+        "sura": 62,
+        "counts": {
+            "madani-first": 11,
+            "madani-last": 11,
+            "makki": 11,
+            "basri": 11,
+            "dimashqi": 11,
+            "kufi": 11
+        }
+    },
+    {
+        "sura": 63,
+        "counts": {
+            "madani-first": 11,
+            "madani-last": 11,
+            "makki": 11,
+            "basri": 11,
+            "dimashqi": 11,
+            "kufi": 11
+        }
+    },
+    {
+        "sura": 64,
+        "counts": {
+            "madani-first": 18,
+            "madani-last": 18,
+            "makki": 18,
+            "basri": 18,
+            "dimashqi": 18,
+            "kufi": 18
+        }
+    },
+    {
+        "sura": 65,
+        "counts": {
+            "madani-first": 12,
+            "madani-last": 12,
+            "makki": 12,
+            "basri": 11,
+            "dimashqi": 12,
+            "kufi": 12
+        }
+    },
+    {
+        "sura": 66,
+        "counts": {
+            "madani-first": 12,
+            "madani-last": 12,
+            "makki": 12,
+            "basri": 12,
+            "dimashqi": 12,
+            "kufi": 12
+        }
+    },
+    {
+        "sura": 67,
+        "counts": {
+            "madani-first": 30,
+            "madani-last": 31,
+            "makki": 31,
+            "basri": 30,
+            "dimashqi": 30,
+            "kufi": 30
+        }
+    },
+    {
+        "sura": 68,
+        "counts": {
+            "madani-first": 52,
+            "madani-last": 52,
+            "makki": 52,
+            "basri": 52,
+            "dimashqi": 52,
+            "kufi": 52
+        }
+    },
+    {
+        "sura": 69,
+        "counts": {
+            "madani-first": 52,
+            "madani-last": 52,
+            "makki": 52,
+            "basri": 51,
+            "dimashqi": 51,
+            "kufi": 52
+        }
+    },
+    {
+        "sura": 70,
+        "counts": {
+            "madani-first": 44,
+            "madani-last": 44,
+            "makki": 44,
+            "basri": 44,
+            "dimashqi": 43,
+            "kufi": 44
+        }
+    },
+    {
+        "sura": 71,
+        "counts": {
+            "madani-first": 30,
+            "madani-last": 30,
+            "makki": 30,
+            "basri": 29,
+            "dimashqi": 29,
+            "kufi": 28
+        }
+    },
+    {
+        "sura": 72,
+        "counts": {
+            "madani-first": 28,
+            "madani-last": 28,
+            "makki": 28,
+            "basri": 28,
+            "dimashqi": 28,
+            "kufi": 28
+        }
+    },
+    {
+        "sura": 73,
+        "counts": {
+            "madani-first": 20,
+            "madani-last": 18,
+            "makki": 20,
+            "basri": 19,
+            "dimashqi": 20,
+            "kufi": 20
+        }
+    },
+    {
+        "sura": 74,
+        "counts": {
+            "madani-first": 56,
+            "madani-last": 55,
+            "makki": 55,
+            "basri": 56,
+            "dimashqi": 55,
+            "kufi": 56
+        }
+    },
+    {
+        "sura": 75,
+        "counts": {
+            "madani-first": 39,
+            "madani-last": 39,
+            "makki": 39,
+            "basri": 39,
+            "dimashqi": 39,
+            "kufi": 40
+        }
+    },
+    {
+        "sura": 76,
+        "counts": {
+            "madani-first": 31,
+            "madani-last": 31,
+            "makki": 31,
+            "basri": 31,
+            "dimashqi": 31,
+            "kufi": 31
+        }
+    },
+    {
+        "sura": 77,
+        "counts": {
+            "madani-first": 50,
+            "madani-last": 50,
+            "makki": 50,
+            "basri": 50,
+            "dimashqi": 50,
+            "kufi": 50
+        }
+    },
+    {
+        "sura": 78,
+        "counts": {
+            "madani-first": 40,
+            "madani-last": 40,
+            "makki": 40,
+            "basri": 41,
+            "dimashqi": 40,
+            "kufi": 40
+        }
+    },
+    {
+        "sura": 79,
+        "counts": {
+            "madani-first": 45,
+            "madani-last": 45,
+            "makki": 45,
+            "basri": 45,
+            "dimashqi": 45,
+            "kufi": 46
+        }
+    },
+    {
+        "sura": 80,
+        "counts": {
+            "madani-first": 41,
+            "madani-last": 42,
+            "makki": 42,
+            "basri": 41,
+            "dimashqi": 40,
+            "kufi": 42
+        }
+    },
+    {
+        "sura": 81,
+        "counts": {
+            "madani-first": 28,
+            "madani-last": 29,
+            "makki": 29,
+            "basri": 29,
+            "dimashqi": 29,
+            "kufi": 29
+        }
+    },
+    {
+        "sura": 82,
+        "counts": {
+            "madani-first": 19,
+            "madani-last": 19,
+            "makki": 19,
+            "basri": 19,
+            "dimashqi": 19,
+            "kufi": 19
+        }
+    },
+    {
+        "sura": 83,
+        "counts": {
+            "madani-first": 36,
+            "madani-last": 36,
+            "makki": 36,
+            "basri": 36,
+            "dimashqi": 36,
+            "kufi": 36
+        }
+    },
+    {
+        "sura": 84,
+        "counts": {
+            "madani-first": 25,
+            "madani-last": 25,
+            "makki": 25,
+            "basri": 23,
+            "dimashqi": 23,
+            "kufi": 25
+        }
+    },
+    {
+        "sura": 85,
+        "counts": {
+            "madani-first": 22,
+            "madani-last": 22,
+            "makki": 22,
+            "basri": 22,
+            "dimashqi": 22,
+            "kufi": 22
+        }
+    },
+    {
+        "sura": 86,
+        "counts": {
+            "madani-first": 16,
+            "madani-last": 17,
+            "makki": 17,
+            "basri": 17,
+            "dimashqi": 17,
+            "kufi": 17
+        }
+    },
+    {
+        "sura": 87,
+        "counts": {
+            "madani-first": 19,
+            "madani-last": 19,
+            "makki": 19,
+            "basri": 19,
+            "dimashqi": 19,
+            "kufi": 19
+        }
+    },
+    {
+        "sura": 88,
+        "counts": {
+            "madani-first": 26,
+            "madani-last": 26,
+            "makki": 26,
+            "basri": 26,
+            "dimashqi": 26,
+            "kufi": 26
+        }
+    },
+    {
+        "sura": 89,
+        "counts": {
+            "madani-first": 32,
+            "madani-last": 32,
+            "makki": 32,
+            "basri": 29,
+            "dimashqi": 30,
+            "kufi": 30
+        }
+    },
+    {
+        "sura": 90,
+        "counts": {
+            "madani-first": 20,
+            "madani-last": 20,
+            "makki": 20,
+            "basri": 20,
+            "dimashqi": 20,
+            "kufi": 20
+        }
+    },
+    {
+        "sura": 91,
+        "counts": {
+            "madani-first": 16,
+            "madani-last": 15,
+            "makki": 15,
+            "basri": 15,
+            "dimashqi": 15,
+            "kufi": 15
+        }
+    },
+    {
+        "sura": 92,
+        "counts": {
+            "madani-first": 21,
+            "madani-last": 21,
+            "makki": 21,
+            "basri": 21,
+            "dimashqi": 21,
+            "kufi": 21
+        }
+    },
+    {
+        "sura": 93,
+        "counts": {
+            "madani-first": 11,
+            "madani-last": 11,
+            "makki": 11,
+            "basri": 11,
+            "dimashqi": 11,
+            "kufi": 11
+        }
+    },
+    {
+        "sura": 94,
+        "counts": {
+            "madani-first": 8,
+            "madani-last": 8,
+            "makki": 8,
+            "basri": 8,
+            "dimashqi": 8,
+            "kufi": 8
+        }
+    },
+    {
+        "sura": 95,
+        "counts": {
+            "madani-first": 8,
+            "madani-last": 8,
+            "makki": 8,
+            "basri": 8,
+            "dimashqi": 8,
+            "kufi": 8
+        }
+    },
+    {
+        "sura": 96,
+        "counts": {
+            "madani-first": 20,
+            "madani-last": 20,
+            "makki": 20,
+            "basri": 19,
+            "dimashqi": 18,
+            "kufi": 19
+        }
+    },
+    {
+        "sura": 97,
+        "counts": {
+            "madani-first": 5,
+            "madani-last": 5,
+            "makki": 6,
+            "basri": 5,
+            "dimashqi": 6,
+            "kufi": 5
+        }
+    },
+    {
+        "sura": 98,
+        "counts": {
+            "madani-first": 8,
+            "madani-last": 8,
+            "makki": 8,
+            "basri": 9,
+            "dimashqi": 9,
+            "kufi": 8
+        }
+    },
+    {
+        "sura": 99,
+        "counts": {
+            "madani-first": 8,
+            "madani-last": 9,
+            "makki": 9,
+            "basri": 9,
+            "dimashqi": 9,
+            "kufi": 8
+        }
+    },
+    {
+        "sura": 100,
+        "counts": {
+            "madani-first": 11,
+            "madani-last": 11,
+            "makki": 11,
+            "basri": 11,
+            "dimashqi": 11,
+            "kufi": 11
+        }
+    },
+    {
+        "sura": 101,
+        "counts": {
+            "madani-first": 10,
+            "madani-last": 10,
+            "makki": 10,
+            "basri": 8,
+            "dimashqi": 8,
+            "kufi": 11
+        }
+    },
+    {
+        "sura": 102,
+        "counts": {
+            "madani-first": 8,
+            "madani-last": 8,
+            "makki": 8,
+            "basri": 8,
+            "dimashqi": 8,
+            "kufi": 8
+        }
+    },
+    {
+        "sura": 103,
+        "counts": {
+            "madani-first": 3,
+            "madani-last": 3,
+            "makki": 3,
+            "basri": 3,
+            "dimashqi": 3,
+            "kufi": 3
+        }
+    },
+    {
+        "sura": 104,
+        "counts": {
+            "madani-first": 9,
+            "madani-last": 9,
+            "makki": 9,
+            "basri": 9,
+            "dimashqi": 9,
+            "kufi": 9
+        }
+    },
+    {
+        "sura": 105,
+        "counts": {
+            "madani-first": 5,
+            "madani-last": 5,
+            "makki": 5,
+            "basri": 5,
+            "dimashqi": 5,
+            "kufi": 5
+        }
+    },
+    {
+        "sura": 106,
+        "counts": {
+            "madani-first": 5,
+            "madani-last": 5,
+            "makki": 5,
+            "basri": 4,
+            "dimashqi": 4,
+            "kufi": 4
+        }
+    },
+    {
+        "sura": 107,
+        "counts": {
+            "madani-first": 6,
+            "madani-last": 6,
+            "makki": 6,
+            "basri": 7,
+            "dimashqi": 6,
+            "kufi": 7
+        }
+    },
+    {
+        "sura": 108,
+        "counts": {
+            "madani-first": 3,
+            "madani-last": 3,
+            "makki": 3,
+            "basri": 3,
+            "dimashqi": 3,
+            "kufi": 3
+        }
+    },
+    {
+        "sura": 109,
+        "counts": {
+            "madani-first": 6,
+            "madani-last": 6,
+            "makki": 6,
+            "basri": 6,
+            "dimashqi": 6,
+            "kufi": 6
+        }
+    },
+    {
+        "sura": 110,
+        "counts": {
+            "madani-first": 3,
+            "madani-last": 3,
+            "makki": 3,
+            "basri": 3,
+            "dimashqi": 3,
+            "kufi": 3
+        }
+    },
+    {
+        "sura": 111,
+        "counts": {
+            "madani-first": 5,
+            "madani-last": 5,
+            "makki": 5,
+            "basri": 5,
+            "dimashqi": 5,
+            "kufi": 5
+        }
+    },
+    {
+        "sura": 112,
+        "counts": {
+            "madani-first": 4,
+            "madani-last": 4,
+            "makki": 5,
+            "basri": 4,
+            "dimashqi": 5,
+            "kufi": 4
+        }
+    },
+    {
+        "sura": 113,
+        "counts": {
+            "madani-first": 5,
+            "madani-last": 5,
+            "makki": 5,
+            "basri": 5,
+            "dimashqi": 5,
+            "kufi": 5
+        }
+    },
+    {
+        "sura": 114,
+        "counts": {
+            "madani-first": 6,
+            "madani-last": 6,
+            "makki": 7,
+            "basri": 6,
+            "dimashqi": 7,
+            "kufi": 6
+        }
+    }
+]
