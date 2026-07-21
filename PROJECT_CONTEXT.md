@@ -179,7 +179,6 @@ quran-page-splitter/
 ├── README.md                 User-facing intro, workflow, tuning guide
 ├── PROJECT_HANDOFF.md        Dated handoff notes (predates a few commits)
 ├── PROJECT_CONTEXT.md        ← this file
-├── aya_count_per_path.json   Per-counting-system aya counts (seeded → SuraAyaCount)
 ├── counting-systems.json     Reference doc of counting systems (NOT auto-consumed)
 ├── openapi.json              A generated OpenAPI dump (static snapshot, ~31 KB)
 ├── data/                     Sample scanned pages (e.g. almadinah-kabir-azraq/*.png)
@@ -351,13 +350,14 @@ Page images are **not** stored — rendered on demand at 300 DPI.
 
 ### Reference-data seeding (`services/suras.py::seed_reference_data`, idempotent)
 
-- Sura names/transliterations come from `core.quran_metadata.SURAS`.
-- Per-counting-system aya counts come from repo-root **`aya_count_per_path.json`**
-  (`[{sura, counts:{kufi, basri, …}}]`). Each JSON slug is joined to a
-  `CountingSystem` **by Arabic name** via `COUNTING_SYSTEM_BY_SLUG`
-  (`get_or_create` — bootstraps a fresh/test DB, never clobbers existing rows).
-- CountingSystem/Qiraa taxonomy is otherwise owned by the user. `counting-systems.json`
-  at the repo root is documentation, **not** consumed by the seeder.
+- Reads one committed snapshot, **`backend/api/data/reference_data.json`**, and upserts
+  **counting systems, qiraat, suras and per-counting-system aya counts** — every row by
+  its natural key (counting systems/qiraat by `name`, suras by `number`;
+  `update_or_create` bootstraps a fresh/test DB, never clobbers existing rows). This is
+  what gives a fresh DB its qiraat (the mushaf picker needs them).
+- Regenerate the snapshot from a filled DB with **`python manage.py export_reference_data`**,
+  then commit it. `counting-systems.json` at the repo root is documentation, **not**
+  consumed by the seeder.
 
 ---
 
@@ -830,8 +830,9 @@ These are load-bearing. Violating them silently breaks things.
 8. **Media URLs need a leading slash.** Use the `_media_url` helper (backend) /
    `mediaUrl` (frontend); raw `FieldFile.url` is relative and breaks in the SPA.
 9. **Every mutation emits an `ActivityEvent`** at its commit point.
-10. **`aya_count_per_path.json` joins to `CountingSystem` by Arabic name** — the stable
-    key across naming. `counting-systems.json` is documentation only.
+10. **`reference_data.json` (`backend/api/data/`) seeds every reference table** by natural
+    key (`name` / `number`); regenerate it via `manage.py export_reference_data`.
+    `counting-systems.json` is documentation only.
 11. **Ninja `response=` schemas re-validate output.** `review-data` and `bulk-save`
     deliberately hand-serialize with `JsonResponse` to skip that on the large payload.
 

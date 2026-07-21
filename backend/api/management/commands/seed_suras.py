@@ -1,6 +1,7 @@
-"""Seed reference data: qiraat, suras, and per-qiraa aya counts.
+"""Seed reference data: counting systems, qiraat, suras and per-system aya counts.
 
-Run after migrating: ``python manage.py seed_suras``. Idempotent.
+Run after migrating: ``python manage.py seed_suras``. Idempotent. Reads the
+committed ``reference_data.json`` (see the ``export_reference_data`` command).
 """
 
 from typing import Any
@@ -11,8 +12,8 @@ from api.services.suras import seed_reference_data
 
 
 class Command(BaseCommand):
-    help = "Seed reference data: qiraat, suras, and per-qiraa aya counts."
+    help = "Seed reference data: counting systems, qiraat, suras and per-system aya counts."
 
     def handle(self, *args: Any, **options: Any) -> None:
         seed_reference_data()
-        self.stdout.write(self.style.SUCCESS("Seeded reference data (qiraat, suras, aya counts)."))
+        self.stdout.write(self.style.SUCCESS("Seeded reference data (counting systems, qiraat, suras, aya counts)."))

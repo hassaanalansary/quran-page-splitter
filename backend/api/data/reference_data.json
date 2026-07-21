@@ -1,0 +1,4144 @@
+{
+  "counting_systems": [
+    {
+      "name": "Basran",
+      "name_arabic": "البصري"
+    },
+    {
+      "name": "Damascene",
+      "name_arabic": "الدمشقي"
+    },
+    {
+      "name": "First Madinan",
+      "name_arabic": "المدني الأول"
+    },
+    {
+      "name": "Kufi",
+      "name_arabic": "الكوفي"
+    },
+    {
+      "name": "Last Madinan",
+      "name_arabic": "المدني الأخير"
+    },
+    {
+      "name": "Makkan",
+      "name_arabic": "المكي"
+    }
+  ],
+  "qiraat": [
+    {
+      "name": "Abu-Al-Harith",
+      "name_arabic": "أبو الحارث",
+      "description": "Abu-Al-Harith an Kisai",
+      "counting_system": "Kufi"
+    },
+    {
+      "name": "Duri-Kisai",
+      "name_arabic": "الدوري الكسائي",
+      "description": "Duri an Kisai",
+      "counting_system": "Kufi"
+    },
+    {
+      "name": "Hafs",
+      "name_arabic": "حفص",
+      "description": "Hafs an Asim",
+      "counting_system": "Kufi"
+    },
+    {
+      "name": "Hisham",
+      "name_arabic": "هشام",
+      "description": "Hisham an Ibn-Amir",
+      "counting_system": "Damascene"
+    },
+    {
+      "name": "Ibn-Dhakwan",
+      "name_arabic": "ابن ذكوان",
+      "description": "Ibn-Dhakwan an Ibn-Amir",
+      "counting_system": "Damascene"
+    },
+    {
+      "name": "Ibn-Jammaz",
+      "name_arabic": "ابن جمّاز",
+      "description": "Ibn-Jammaz an Abu Ja'far",
+      "counting_system": "First Madinan"
+    },
+    {
+      "name": "Ibn-Wardan",
+      "name_arabic": "عيسى بن وردان",
+      "description": "Ibn-Wardan an Abu-Jafar",
+      "counting_system": "First Madinan"
+    },
+    {
+      "name": "Idris",
+      "name_arabic": "إدريس",
+      "description": "Idris an Khalaf al-Ashir",
+      "counting_system": "Kufi"
+    },
+    {
+      "name": "Ishaq",
+      "name_arabic": "إسحاق",
+      "description": "Ishaq an Khalaf al-Ashir",
+      "counting_system": "Kufi"
+    },
+    {
+      "name": "Khalaf",
+      "name_arabic": "خلف",
+      "description": "Khalaf an Hamza",
+      "counting_system": "Kufi"
+    },
+    {
+      "name": "Rawh",
+      "name_arabic": "روح",
+      "description": "Rawh an Ya'qub",
+      "counting_system": "Basran"
+    },
+    {
+      "name": "Ruways",
+      "name_arabic": "رويس",
+      "description": "Ruways an Ya'qub",
+      "counting_system": "Basran"
+    },
+    {
+      "name": "Shuba",
+      "name_arabic": "شعبة",
+      "description": "Shuba an Asim",
+      "counting_system": "Kufi"
+    },
+    {
+      "name": "bazzi",
+      "name_arabic": "البزي",
+      "description": "bazzi an ibn-kathir",
+      "counting_system": "Makkan"
+    },
+    {
+      "name": "duri",
+      "name_arabic": "الدوري",
+      "description": "duri an abu-amr",
+      "counting_system": "Basran"
+    },
+    {
+      "name": "khallad",
+      "name_arabic": "خلًاد",
+      "description": "khallad an Hamza",
+      "counting_system": "Kufi"
+    },
+    {
+      "name": "qalun",
+      "name_arabic": "قالون",
+      "description": "qalun an nafi",
+      "counting_system": "Last Madinan"
+    },
+    {
+      "name": "qunbul",
+      "name_arabic": "قنبل",
+      "description": "qunbul an ibn-kathir",
+      "counting_system": "Makkan"
+    },
+    {
+      "name": "susi",
+      "name_arabic": "السوسي",
+      "description": "susi an abu-amr",
+      "counting_system": "Basran"
+    },
+    {
+      "name": "warsh",
+      "name_arabic": "ورش",
+      "description": "warsh an nafi",
+      "counting_system": "Last Madinan"
+    }
+  ],
+  "suras": [
+    {
+      "number": 1,
+      "name_arabic": "الفاتحة",
+      "transliteration": "Al-Fatiha"
+    },
+    {
+      "number": 2,
+      "name_arabic": "البقرة",
+      "transliteration": "Al-Baqarah"
+    },
+    {
+      "number": 3,
+      "name_arabic": "آل عمران",
+      "transliteration": "Aal-E-Imran"
+    },
+    {
+      "number": 4,
+      "name_arabic": "النساء",
+      "transliteration": "An-Nisa"
+    },
+    {
+      "number": 5,
+      "name_arabic": "المائدة",
+      "transliteration": "Al-Ma'idah"
+    },
+    {
+      "number": 6,
+      "name_arabic": "الأنعام",
+      "transliteration": "Al-An'am"
+    },
+    {
+      "number": 7,
+      "name_arabic": "الأعراف",
+      "transliteration": "Al-A'raf"
+    },
+    {
+      "number": 8,
+      "name_arabic": "الأنفال",
+      "transliteration": "Al-Anfal"
+    },
+    {
+      "number": 9,
+      "name_arabic": "التوبة",
+      "transliteration": "At-Tawbah"
+    },
+    {
+      "number": 10,
+      "name_arabic": "يونس",
+      "transliteration": "Yunus"
+    },
+    {
+      "number": 11,
+      "name_arabic": "هود",
+      "transliteration": "Hud"
+    },
+    {
+      "number": 12,
+      "name_arabic": "يوسف",
+      "transliteration": "Yusuf"
+    },
+    {
+      "number": 13,
+      "name_arabic": "الرعد",
+      "transliteration": "Ar-Ra'd"
+    },
+    {
+      "number": 14,
+      "name_arabic": "إبراهيم",
+      "transliteration": "Ibrahim"
+    },
+    {
+      "number": 15,
+      "name_arabic": "الحجر",
+      "transliteration": "Al-Hijr"
+    },
+    {
+      "number": 16,
+      "name_arabic": "النحل",
+      "transliteration": "An-Nahl"
+    },
+    {
+      "number": 17,
+      "name_arabic": "الإسراء",
+      "transliteration": "Al-Isra"
+    },
+    {
+      "number": 18,
+      "name_arabic": "الكهف",
+      "transliteration": "Al-Kahf"
+    },
+    {
+      "number": 19,
+      "name_arabic": "مريم",
+      "transliteration": "Maryam"
+    },
+    {
+      "number": 20,
+      "name_arabic": "طه",
+      "transliteration": "Taha"
+    },
+    {
+      "number": 21,
+      "name_arabic": "الأنبياء",
+      "transliteration": "Al-Anbiya"
+    },
+    {
+      "number": 22,
+      "name_arabic": "الحج",
+      "transliteration": "Al-Hajj"
+    },
+    {
+      "number": 23,
+      "name_arabic": "المؤمنون",
+      "transliteration": "Al-Mu'minun"
+    },
+    {
+      "number": 24,
+      "name_arabic": "النور",
+      "transliteration": "An-Nur"
+    },
+    {
+      "number": 25,
+      "name_arabic": "الفرقان",
+      "transliteration": "Al-Furqan"
+    },
+    {
+      "number": 26,
+      "name_arabic": "الشعراء",
+      "transliteration": "Ash-Shu'ara"
+    },
+    {
+      "number": 27,
+      "name_arabic": "النمل",
+      "transliteration": "An-Naml"
+    },
+    {
+      "number": 28,
+      "name_arabic": "القصص",
+      "transliteration": "Al-Qasas"
+    },
+    {
+      "number": 29,
+      "name_arabic": "العنكبوت",
+      "transliteration": "Al-Ankabut"
+    },
+    {
+      "number": 30,
+      "name_arabic": "الروم",
+      "transliteration": "Ar-Rum"
+    },
+    {
+      "number": 31,
+      "name_arabic": "لقمان",
+      "transliteration": "Luqman"
+    },
+    {
+      "number": 32,
+      "name_arabic": "السجدة",
+      "transliteration": "As-Sajdah"
+    },
+    {
+      "number": 33,
+      "name_arabic": "الأحزاب",
+      "transliteration": "Al-Ahzab"
+    },
+    {
+      "number": 34,
+      "name_arabic": "سبأ",
+      "transliteration": "Saba"
+    },
+    {
+      "number": 35,
+      "name_arabic": "فاطر",
+      "transliteration": "Fatir"
+    },
+    {
+      "number": 36,
+      "name_arabic": "يس",
+      "transliteration": "Ya-Sin"
+    },
+    {
+      "number": 37,
+      "name_arabic": "الصافات",
+      "transliteration": "As-Saffat"
+    },
+    {
+      "number": 38,
+      "name_arabic": "ص",
+      "transliteration": "Sad"
+    },
+    {
+      "number": 39,
+      "name_arabic": "الزمر",
+      "transliteration": "Az-Zumar"
+    },
+    {
+      "number": 40,
+      "name_arabic": "غافر",
+      "transliteration": "Ghafir"
+    },
+    {
+      "number": 41,
+      "name_arabic": "فصلت",
+      "transliteration": "Fussilat"
+    },
+    {
+      "number": 42,
+      "name_arabic": "الشورى",
+      "transliteration": "Ash-Shura"
+    },
+    {
+      "number": 43,
+      "name_arabic": "الزخرف",
+      "transliteration": "Az-Zukhruf"
+    },
+    {
+      "number": 44,
+      "name_arabic": "الدخان",
+      "transliteration": "Ad-Dukhan"
+    },
+    {
+      "number": 45,
+      "name_arabic": "الجاثية",
+      "transliteration": "Al-Jathiyah"
+    },
+    {
+      "number": 46,
+      "name_arabic": "الأحقاف",
+      "transliteration": "Al-Ahqaf"
+    },
+    {
+      "number": 47,
+      "name_arabic": "محمد",
+      "transliteration": "Muhammad"
+    },
+    {
+      "number": 48,
+      "name_arabic": "الفتح",
+      "transliteration": "Al-Fath"
+    },
+    {
+      "number": 49,
+      "name_arabic": "الحجرات",
+      "transliteration": "Al-Hujurat"
+    },
+    {
+      "number": 50,
+      "name_arabic": "ق",
+      "transliteration": "Qaf"
+    },
+    {
+      "number": 51,
+      "name_arabic": "الذاريات",
+      "transliteration": "Adh-Dhariyat"
+    },
+    {
+      "number": 52,
+      "name_arabic": "الطور",
+      "transliteration": "At-Tur"
+    },
+    {
+      "number": 53,
+      "name_arabic": "النجم",
+      "transliteration": "An-Najm"
+    },
+    {
+      "number": 54,
+      "name_arabic": "القمر",
+      "transliteration": "Al-Qamar"
+    },
+    {
+      "number": 55,
+      "name_arabic": "الرحمن",
+      "transliteration": "Ar-Rahman"
+    },
+    {
+      "number": 56,
+      "name_arabic": "الواقعة",
+      "transliteration": "Al-Waqi'ah"
+    },
+    {
+      "number": 57,
+      "name_arabic": "الحديد",
+      "transliteration": "Al-Hadid"
+    },
+    {
+      "number": 58,
+      "name_arabic": "المجادلة",
+      "transliteration": "Al-Mujadila"
+    },
+    {
+      "number": 59,
+      "name_arabic": "الحشر",
+      "transliteration": "Al-Hashr"
+    },
+    {
+      "number": 60,
+      "name_arabic": "الممتحنة",
+      "transliteration": "Al-Mumtahanah"
+    },
+    {
+      "number": 61,
+      "name_arabic": "الصف",
+      "transliteration": "As-Saf"
+    },
+    {
+      "number": 62,
+      "name_arabic": "الجمعة",
+      "transliteration": "Al-Jumu'ah"
+    },
+    {
+      "number": 63,
+      "name_arabic": "المنافقون",
+      "transliteration": "Al-Munafiqun"
+    },
+    {
+      "number": 64,
+      "name_arabic": "التغابن",
+      "transliteration": "At-Taghabun"
+    },
+    {
+      "number": 65,
+      "name_arabic": "الطلاق",
+      "transliteration": "At-Talaq"
+    },
+    {
+      "number": 66,
+      "name_arabic": "التحريم",
+      "transliteration": "At-Tahrim"
+    },
+    {
+      "number": 67,
+      "name_arabic": "الملك",
+      "transliteration": "Al-Mulk"
+    },
+    {
+      "number": 68,
+      "name_arabic": "القلم",
+      "transliteration": "Al-Qalam"
+    },
+    {
+      "number": 69,
+      "name_arabic": "الحاقة",
+      "transliteration": "Al-Haqqah"
+    },
+    {
+      "number": 70,
+      "name_arabic": "المعارج",
+      "transliteration": "Al-Ma'arij"
+    },
+    {
+      "number": 71,
+      "name_arabic": "نوح",
+      "transliteration": "Nuh"
+    },
+    {
+      "number": 72,
+      "name_arabic": "الجن",
+      "transliteration": "Al-Jinn"
+    },
+    {
+      "number": 73,
+      "name_arabic": "المزمل",
+      "transliteration": "Al-Muzzammil"
+    },
+    {
+      "number": 74,
+      "name_arabic": "المدثر",
+      "transliteration": "Al-Muddathir"
+    },
+    {
+      "number": 75,
+      "name_arabic": "القيامة",
+      "transliteration": "Al-Qiyamah"
+    },
+    {
+      "number": 76,
+      "name_arabic": "الإنسان",
+      "transliteration": "Al-Insan"
+    },
+    {
+      "number": 77,
+      "name_arabic": "المرسلات",
+      "transliteration": "Al-Mursalat"
+    },
+    {
+      "number": 78,
+      "name_arabic": "النبأ",
+      "transliteration": "An-Naba"
+    },
+    {
+      "number": 79,
+      "name_arabic": "النازعات",
+      "transliteration": "An-Nazi'at"
+    },
+    {
+      "number": 80,
+      "name_arabic": "عبس",
+      "transliteration": "Abasa"
+    },
+    {
+      "number": 81,
+      "name_arabic": "التكوير",
+      "transliteration": "At-Takwir"
+    },
+    {
+      "number": 82,
+      "name_arabic": "الانفطار",
+      "transliteration": "Al-Infitar"
+    },
+    {
+      "number": 83,
+      "name_arabic": "المطففين",
+      "transliteration": "Al-Mutaffifin"
+    },
+    {
+      "number": 84,
+      "name_arabic": "الانشقاق",
+      "transliteration": "Al-Inshiqaq"
+    },
+    {
+      "number": 85,
+      "name_arabic": "البروج",
+      "transliteration": "Al-Buruj"
+    },
+    {
+      "number": 86,
+      "name_arabic": "الطارق",
+      "transliteration": "At-Tariq"
+    },
+    {
+      "number": 87,
+      "name_arabic": "الأعلى",
+      "transliteration": "Al-A'la"
+    },
+    {
+      "number": 88,
+      "name_arabic": "الغاشية",
+      "transliteration": "Al-Ghashiyah"
+    },
+    {
+      "number": 89,
+      "name_arabic": "الفجر",
+      "transliteration": "Al-Fajr"
+    },
+    {
+      "number": 90,
+      "name_arabic": "البلد",
+      "transliteration": "Al-Balad"
+    },
+    {
+      "number": 91,
+      "name_arabic": "الشمس",
+      "transliteration": "Ash-Shams"
+    },
+    {
+      "number": 92,
+      "name_arabic": "الليل",
+      "transliteration": "Al-Layl"
+    },
+    {
+      "number": 93,
+      "name_arabic": "الضحى",
+      "transliteration": "Ad-Dhuha"
+    },
+    {
+      "number": 94,
+      "name_arabic": "الشرح",
+      "transliteration": "Ash-Sharh"
+    },
+    {
+      "number": 95,
+      "name_arabic": "التين",
+      "transliteration": "At-Tin"
+    },
+    {
+      "number": 96,
+      "name_arabic": "العلق",
+      "transliteration": "Al-Alaq"
+    },
+    {
+      "number": 97,
+      "name_arabic": "القدر",
+      "transliteration": "Al-Qadr"
+    },
+    {
+      "number": 98,
+      "name_arabic": "البينة",
+      "transliteration": "Al-Bayyinah"
+    },
+    {
+      "number": 99,
+      "name_arabic": "الزلزلة",
+      "transliteration": "Az-Zalzalah"
+    },
+    {
+      "number": 100,
+      "name_arabic": "العاديات",
+      "transliteration": "Al-Adiyat"
+    },
+    {
+      "number": 101,
+      "name_arabic": "القارعة",
+      "transliteration": "Al-Qari'ah"
+    },
+    {
+      "number": 102,
+      "name_arabic": "التكاثر",
+      "transliteration": "At-Takathur"
+    },
+    {
+      "number": 103,
+      "name_arabic": "العصر",
+      "transliteration": "Al-Asr"
+    },
+    {
+      "number": 104,
+      "name_arabic": "الهمزة",
+      "transliteration": "Al-Humazah"
+    },
+    {
+      "number": 105,
+      "name_arabic": "الفيل",
+      "transliteration": "Al-Fil"
+    },
+    {
+      "number": 106,
+      "name_arabic": "قريش",
+      "transliteration": "Quraysh"
+    },
+    {
+      "number": 107,
+      "name_arabic": "الماعون",
+      "transliteration": "Al-Ma'un"
+    },
+    {
+      "number": 108,
+      "name_arabic": "الكوثر",
+      "transliteration": "Al-Kawthar"
+    },
+    {
+      "number": 109,
+      "name_arabic": "الكافرون",
+      "transliteration": "Al-Kafirun"
+    },
+    {
+      "number": 110,
+      "name_arabic": "النصر",
+      "transliteration": "An-Nasr"
+    },
+    {
+      "number": 111,
+      "name_arabic": "المسد",
+      "transliteration": "Al-Masad"
+    },
+    {
+      "number": 112,
+      "name_arabic": "الإخلاص",
+      "transliteration": "Al-Ikhlas"
+    },
+    {
+      "number": 113,
+      "name_arabic": "الفلق",
+      "transliteration": "Al-Falaq"
+    },
+    {
+      "number": 114,
+      "name_arabic": "الناس",
+      "transliteration": "An-Nas"
+    }
+  ],
+  "aya_counts": [
+    {
+      "sura": 1,
+      "counting_system": "Basran",
+      "count": 7
+    },
+    {
+      "sura": 1,
+      "counting_system": "Damascene",
+      "count": 7
+    },
+    {
+      "sura": 1,
+      "counting_system": "First Madinan",
+      "count": 7
+    },
+    {
+      "sura": 1,
+      "counting_system": "Kufi",
+      "count": 7
+    },
+    {
+      "sura": 1,
+      "counting_system": "Last Madinan",
+      "count": 7
+    },
+    {
+      "sura": 1,
+      "counting_system": "Makkan",
+      "count": 7
+    },
+    {
+      "sura": 2,
+      "counting_system": "Basran",
+      "count": 287
+    },
+    {
+      "sura": 2,
+      "counting_system": "Damascene",
+      "count": 285
+    },
+    {
+      "sura": 2,
+      "counting_system": "First Madinan",
+      "count": 285
+    },
+    {
+      "sura": 2,
+      "counting_system": "Kufi",
+      "count": 286
+    },
+    {
+      "sura": 2,
+      "counting_system": "Last Madinan",
+      "count": 285
+    },
+    {
+      "sura": 2,
+      "counting_system": "Makkan",
+      "count": 285
+    },
+    {
+      "sura": 3,
+      "counting_system": "Basran",
+      "count": 200
+    },
+    {
+      "sura": 3,
+      "counting_system": "Damascene",
+      "count": 200
+    },
+    {
+      "sura": 3,
+      "counting_system": "First Madinan",
+      "count": 200
+    },
+    {
+      "sura": 3,
+      "counting_system": "Kufi",
+      "count": 200
+    },
+    {
+      "sura": 3,
+      "counting_system": "Last Madinan",
+      "count": 200
+    },
+    {
+      "sura": 3,
+      "counting_system": "Makkan",
+      "count": 200
+    },
+    {
+      "sura": 4,
+      "counting_system": "Basran",
+      "count": 175
+    },
+    {
+      "sura": 4,
+      "counting_system": "Damascene",
+      "count": 177
+    },
+    {
+      "sura": 4,
+      "counting_system": "First Madinan",
+      "count": 175
+    },
+    {
+      "sura": 4,
+      "counting_system": "Kufi",
+      "count": 176
+    },
+    {
+      "sura": 4,
+      "counting_system": "Last Madinan",
+      "count": 175
+    },
+    {
+      "sura": 4,
+      "counting_system": "Makkan",
+      "count": 175
+    },
+    {
+      "sura": 5,
+      "counting_system": "Basran",
+      "count": 123
+    },
+    {
+      "sura": 5,
+      "counting_system": "Damascene",
+      "count": 122
+    },
+    {
+      "sura": 5,
+      "counting_system": "First Madinan",
+      "count": 122
+    },
+    {
+      "sura": 5,
+      "counting_system": "Kufi",
+      "count": 120
+    },
+    {
+      "sura": 5,
+      "counting_system": "Last Madinan",
+      "count": 122
+    },
+    {
+      "sura": 5,
+      "counting_system": "Makkan",
+      "count": 122
+    },
+    {
+      "sura": 6,
+      "counting_system": "Basran",
+      "count": 166
+    },
+    {
+      "sura": 6,
+      "counting_system": "Damascene",
+      "count": 166
+    },
+    {
+      "sura": 6,
+      "counting_system": "First Madinan",
+      "count": 167
+    },
+    {
+      "sura": 6,
+      "counting_system": "Kufi",
+      "count": 165
+    },
+    {
+      "sura": 6,
+      "counting_system": "Last Madinan",
+      "count": 167
+    },
+    {
+      "sura": 6,
+      "counting_system": "Makkan",
+      "count": 167
+    },
+    {
+      "sura": 7,
+      "counting_system": "Basran",
+      "count": 205
+    },
+    {
+      "sura": 7,
+      "counting_system": "Damascene",
+      "count": 205
+    },
+    {
+      "sura": 7,
+      "counting_system": "First Madinan",
+      "count": 206
+    },
+    {
+      "sura": 7,
+      "counting_system": "Kufi",
+      "count": 206
+    },
+    {
+      "sura": 7,
+      "counting_system": "Last Madinan",
+      "count": 206
+    },
+    {
+      "sura": 7,
+      "counting_system": "Makkan",
+      "count": 206
+    },
+    {
+      "sura": 8,
+      "counting_system": "Basran",
+      "count": 76
+    },
+    {
+      "sura": 8,
+      "counting_system": "Damascene",
+      "count": 77
+    },
+    {
+      "sura": 8,
+      "counting_system": "First Madinan",
+      "count": 76
+    },
+    {
+      "sura": 8,
+      "counting_system": "Kufi",
+      "count": 75
+    },
+    {
+      "sura": 8,
+      "counting_system": "Last Madinan",
+      "count": 76
+    },
+    {
+      "sura": 8,
+      "counting_system": "Makkan",
+      "count": 76
+    },
+    {
+      "sura": 9,
+      "counting_system": "Basran",
+      "count": 130
+    },
+    {
+      "sura": 9,
+      "counting_system": "Damascene",
+      "count": 130
+    },
+    {
+      "sura": 9,
+      "counting_system": "First Madinan",
+      "count": 130
+    },
+    {
+      "sura": 9,
+      "counting_system": "Kufi",
+      "count": 129
+    },
+    {
+      "sura": 9,
+      "counting_system": "Last Madinan",
+      "count": 130
+    },
+    {
+      "sura": 9,
+      "counting_system": "Makkan",
+      "count": 130
+    },
+    {
+      "sura": 10,
+      "counting_system": "Basran",
+      "count": 109
+    },
+    {
+      "sura": 10,
+      "counting_system": "Damascene",
+      "count": 110
+    },
+    {
+      "sura": 10,
+      "counting_system": "First Madinan",
+      "count": 109
+    },
+    {
+      "sura": 10,
+      "counting_system": "Kufi",
+      "count": 109
+    },
+    {
+      "sura": 10,
+      "counting_system": "Last Madinan",
+      "count": 109
+    },
+    {
+      "sura": 10,
+      "counting_system": "Makkan",
+      "count": 109
+    },
+    {
+      "sura": 11,
+      "counting_system": "Basran",
+      "count": 121
+    },
+    {
+      "sura": 11,
+      "counting_system": "Damascene",
+      "count": 122
+    },
+    {
+      "sura": 11,
+      "counting_system": "First Madinan",
+      "count": 122
+    },
+    {
+      "sura": 11,
+      "counting_system": "Kufi",
+      "count": 123
+    },
+    {
+      "sura": 11,
+      "counting_system": "Last Madinan",
+      "count": 121
+    },
+    {
+      "sura": 11,
+      "counting_system": "Makkan",
+      "count": 121
+    },
+    {
+      "sura": 12,
+      "counting_system": "Basran",
+      "count": 111
+    },
+    {
+      "sura": 12,
+      "counting_system": "Damascene",
+      "count": 111
+    },
+    {
+      "sura": 12,
+      "counting_system": "First Madinan",
+      "count": 111
+    },
+    {
+      "sura": 12,
+      "counting_system": "Kufi",
+      "count": 111
+    },
+    {
+      "sura": 12,
+      "counting_system": "Last Madinan",
+      "count": 111
+    },
+    {
+      "sura": 12,
+      "counting_system": "Makkan",
+      "count": 111
+    },
+    {
+      "sura": 13,
+      "counting_system": "Basran",
+      "count": 45
+    },
+    {
+      "sura": 13,
+      "counting_system": "Damascene",
+      "count": 47
+    },
+    {
+      "sura": 13,
+      "counting_system": "First Madinan",
+      "count": 44
+    },
+    {
+      "sura": 13,
+      "counting_system": "Kufi",
+      "count": 43
+    },
+    {
+      "sura": 13,
+      "counting_system": "Last Madinan",
+      "count": 44
+    },
+    {
+      "sura": 13,
+      "counting_system": "Makkan",
+      "count": 44
+    },
+    {
+      "sura": 14,
+      "counting_system": "Basran",
+      "count": 51
+    },
+    {
+      "sura": 14,
+      "counting_system": "Damascene",
+      "count": 55
+    },
+    {
+      "sura": 14,
+      "counting_system": "First Madinan",
+      "count": 54
+    },
+    {
+      "sura": 14,
+      "counting_system": "Kufi",
+      "count": 52
+    },
+    {
+      "sura": 14,
+      "counting_system": "Last Madinan",
+      "count": 54
+    },
+    {
+      "sura": 14,
+      "counting_system": "Makkan",
+      "count": 54
+    },
+    {
+      "sura": 15,
+      "counting_system": "Basran",
+      "count": 99
+    },
+    {
+      "sura": 15,
+      "counting_system": "Damascene",
+      "count": 99
+    },
+    {
+      "sura": 15,
+      "counting_system": "First Madinan",
+      "count": 99
+    },
+    {
+      "sura": 15,
+      "counting_system": "Kufi",
+      "count": 99
+    },
+    {
+      "sura": 15,
+      "counting_system": "Last Madinan",
+      "count": 99
+    },
+    {
+      "sura": 15,
+      "counting_system": "Makkan",
+      "count": 99
+    },
+    {
+      "sura": 16,
+      "counting_system": "Basran",
+      "count": 128
+    },
+    {
+      "sura": 16,
+      "counting_system": "Damascene",
+      "count": 128
+    },
+    {
+      "sura": 16,
+      "counting_system": "First Madinan",
+      "count": 128
+    },
+    {
+      "sura": 16,
+      "counting_system": "Kufi",
+      "count": 128
+    },
+    {
+      "sura": 16,
+      "counting_system": "Last Madinan",
+      "count": 128
+    },
+    {
+      "sura": 16,
+      "counting_system": "Makkan",
+      "count": 128
+    },
+    {
+      "sura": 17,
+      "counting_system": "Basran",
+      "count": 110
+    },
+    {
+      "sura": 17,
+      "counting_system": "Damascene",
+      "count": 110
+    },
+    {
+      "sura": 17,
+      "counting_system": "First Madinan",
+      "count": 110
+    },
+    {
+      "sura": 17,
+      "counting_system": "Kufi",
+      "count": 111
+    },
+    {
+      "sura": 17,
+      "counting_system": "Last Madinan",
+      "count": 110
+    },
+    {
+      "sura": 17,
+      "counting_system": "Makkan",
+      "count": 110
+    },
+    {
+      "sura": 18,
+      "counting_system": "Basran",
+      "count": 111
+    },
+    {
+      "sura": 18,
+      "counting_system": "Damascene",
+      "count": 106
+    },
+    {
+      "sura": 18,
+      "counting_system": "First Madinan",
+      "count": 105
+    },
+    {
+      "sura": 18,
+      "counting_system": "Kufi",
+      "count": 110
+    },
+    {
+      "sura": 18,
+      "counting_system": "Last Madinan",
+      "count": 105
+    },
+    {
+      "sura": 18,
+      "counting_system": "Makkan",
+      "count": 105
+    },
+    {
+      "sura": 19,
+      "counting_system": "Basran",
+      "count": 98
+    },
+    {
+      "sura": 19,
+      "counting_system": "Damascene",
+      "count": 98
+    },
+    {
+      "sura": 19,
+      "counting_system": "First Madinan",
+      "count": 98
+    },
+    {
+      "sura": 19,
+      "counting_system": "Kufi",
+      "count": 98
+    },
+    {
+      "sura": 19,
+      "counting_system": "Last Madinan",
+      "count": 99
+    },
+    {
+      "sura": 19,
+      "counting_system": "Makkan",
+      "count": 99
+    },
+    {
+      "sura": 20,
+      "counting_system": "Basran",
+      "count": 132
+    },
+    {
+      "sura": 20,
+      "counting_system": "Damascene",
+      "count": 140
+    },
+    {
+      "sura": 20,
+      "counting_system": "First Madinan",
+      "count": 134
+    },
+    {
+      "sura": 20,
+      "counting_system": "Kufi",
+      "count": 135
+    },
+    {
+      "sura": 20,
+      "counting_system": "Last Madinan",
+      "count": 134
+    },
+    {
+      "sura": 20,
+      "counting_system": "Makkan",
+      "count": 134
+    },
+    {
+      "sura": 21,
+      "counting_system": "Basran",
+      "count": 111
+    },
+    {
+      "sura": 21,
+      "counting_system": "Damascene",
+      "count": 111
+    },
+    {
+      "sura": 21,
+      "counting_system": "First Madinan",
+      "count": 111
+    },
+    {
+      "sura": 21,
+      "counting_system": "Kufi",
+      "count": 112
+    },
+    {
+      "sura": 21,
+      "counting_system": "Last Madinan",
+      "count": 111
+    },
+    {
+      "sura": 21,
+      "counting_system": "Makkan",
+      "count": 111
+    },
+    {
+      "sura": 22,
+      "counting_system": "Basran",
+      "count": 75
+    },
+    {
+      "sura": 22,
+      "counting_system": "Damascene",
+      "count": 74
+    },
+    {
+      "sura": 22,
+      "counting_system": "First Madinan",
+      "count": 76
+    },
+    {
+      "sura": 22,
+      "counting_system": "Kufi",
+      "count": 78
+    },
+    {
+      "sura": 22,
+      "counting_system": "Last Madinan",
+      "count": 76
+    },
+    {
+      "sura": 22,
+      "counting_system": "Makkan",
+      "count": 77
+    },
+    {
+      "sura": 23,
+      "counting_system": "Basran",
+      "count": 119
+    },
+    {
+      "sura": 23,
+      "counting_system": "Damascene",
+      "count": 119
+    },
+    {
+      "sura": 23,
+      "counting_system": "First Madinan",
+      "count": 119
+    },
+    {
+      "sura": 23,
+      "counting_system": "Kufi",
+      "count": 118
+    },
+    {
+      "sura": 23,
+      "counting_system": "Last Madinan",
+      "count": 119
+    },
+    {
+      "sura": 23,
+      "counting_system": "Makkan",
+      "count": 119
+    },
+    {
+      "sura": 24,
+      "counting_system": "Basran",
+      "count": 64
+    },
+    {
+      "sura": 24,
+      "counting_system": "Damascene",
+      "count": 64
+    },
+    {
+      "sura": 24,
+      "counting_system": "First Madinan",
+      "count": 62
+    },
+    {
+      "sura": 24,
+      "counting_system": "Kufi",
+      "count": 64
+    },
+    {
+      "sura": 24,
+      "counting_system": "Last Madinan",
+      "count": 62
+    },
+    {
+      "sura": 24,
+      "counting_system": "Makkan",
+      "count": 62
+    },
+    {
+      "sura": 25,
+      "counting_system": "Basran",
+      "count": 77
+    },
+    {
+      "sura": 25,
+      "counting_system": "Damascene",
+      "count": 77
+    },
+    {
+      "sura": 25,
+      "counting_system": "First Madinan",
+      "count": 77
+    },
+    {
+      "sura": 25,
+      "counting_system": "Kufi",
+      "count": 77
+    },
+    {
+      "sura": 25,
+      "counting_system": "Last Madinan",
+      "count": 77
+    },
+    {
+      "sura": 25,
+      "counting_system": "Makkan",
+      "count": 77
+    },
+    {
+      "sura": 26,
+      "counting_system": "Basran",
+      "count": 226
+    },
+    {
+      "sura": 26,
+      "counting_system": "Damascene",
+      "count": 227
+    },
+    {
+      "sura": 26,
+      "counting_system": "First Madinan",
+      "count": 227
+    },
+    {
+      "sura": 26,
+      "counting_system": "Kufi",
+      "count": 227
+    },
+    {
+      "sura": 26,
+      "counting_system": "Last Madinan",
+      "count": 226
+    },
+    {
+      "sura": 26,
+      "counting_system": "Makkan",
+      "count": 226
+    },
+    {
+      "sura": 27,
+      "counting_system": "Basran",
+      "count": 94
+    },
+    {
+      "sura": 27,
+      "counting_system": "Damascene",
+      "count": 94
+    },
+    {
+      "sura": 27,
+      "counting_system": "First Madinan",
+      "count": 95
+    },
+    {
+      "sura": 27,
+      "counting_system": "Kufi",
+      "count": 93
+    },
+    {
+      "sura": 27,
+      "counting_system": "Last Madinan",
+      "count": 95
+    },
+    {
+      "sura": 27,
+      "counting_system": "Makkan",
+      "count": 95
+    },
+    {
+      "sura": 28,
+      "counting_system": "Basran",
+      "count": 88
+    },
+    {
+      "sura": 28,
+      "counting_system": "Damascene",
+      "count": 88
+    },
+    {
+      "sura": 28,
+      "counting_system": "First Madinan",
+      "count": 88
+    },
+    {
+      "sura": 28,
+      "counting_system": "Kufi",
+      "count": 88
+    },
+    {
+      "sura": 28,
+      "counting_system": "Last Madinan",
+      "count": 88
+    },
+    {
+      "sura": 28,
+      "counting_system": "Makkan",
+      "count": 88
+    },
+    {
+      "sura": 29,
+      "counting_system": "Basran",
+      "count": 69
+    },
+    {
+      "sura": 29,
+      "counting_system": "Damascene",
+      "count": 69
+    },
+    {
+      "sura": 29,
+      "counting_system": "First Madinan",
+      "count": 69
+    },
+    {
+      "sura": 29,
+      "counting_system": "Kufi",
+      "count": 69
+    },
+    {
+      "sura": 29,
+      "counting_system": "Last Madinan",
+      "count": 69
+    },
+    {
+      "sura": 29,
+      "counting_system": "Makkan",
+      "count": 69
+    },
+    {
+      "sura": 30,
+      "counting_system": "Basran",
+      "count": 60
+    },
+    {
+      "sura": 30,
+      "counting_system": "Damascene",
+      "count": 60
+    },
+    {
+      "sura": 30,
+      "counting_system": "First Madinan",
+      "count": 60
+    },
+    {
+      "sura": 30,
+      "counting_system": "Kufi",
+      "count": 60
+    },
+    {
+      "sura": 30,
+      "counting_system": "Last Madinan",
+      "count": 59
+    },
+    {
+      "sura": 30,
+      "counting_system": "Makkan",
+      "count": 59
+    },
+    {
+      "sura": 31,
+      "counting_system": "Basran",
+      "count": 34
+    },
+    {
+      "sura": 31,
+      "counting_system": "Damascene",
+      "count": 34
+    },
+    {
+      "sura": 31,
+      "counting_system": "First Madinan",
+      "count": 33
+    },
+    {
+      "sura": 31,
+      "counting_system": "Kufi",
+      "count": 34
+    },
+    {
+      "sura": 31,
+      "counting_system": "Last Madinan",
+      "count": 33
+    },
+    {
+      "sura": 31,
+      "counting_system": "Makkan",
+      "count": 33
+    },
+    {
+      "sura": 32,
+      "counting_system": "Basran",
+      "count": 29
+    },
+    {
+      "sura": 32,
+      "counting_system": "Damascene",
+      "count": 30
+    },
+    {
+      "sura": 32,
+      "counting_system": "First Madinan",
+      "count": 30
+    },
+    {
+      "sura": 32,
+      "counting_system": "Kufi",
+      "count": 30
+    },
+    {
+      "sura": 32,
+      "counting_system": "Last Madinan",
+      "count": 30
+    },
+    {
+      "sura": 32,
+      "counting_system": "Makkan",
+      "count": 30
+    },
+    {
+      "sura": 33,
+      "counting_system": "Basran",
+      "count": 73
+    },
+    {
+      "sura": 33,
+      "counting_system": "Damascene",
+      "count": 73
+    },
+    {
+      "sura": 33,
+      "counting_system": "First Madinan",
+      "count": 73
+    },
+    {
+      "sura": 33,
+      "counting_system": "Kufi",
+      "count": 73
+    },
+    {
+      "sura": 33,
+      "counting_system": "Last Madinan",
+      "count": 73
+    },
+    {
+      "sura": 33,
+      "counting_system": "Makkan",
+      "count": 73
+    },
+    {
+      "sura": 34,
+      "counting_system": "Basran",
+      "count": 54
+    },
+    {
+      "sura": 34,
+      "counting_system": "Damascene",
+      "count": 55
+    },
+    {
+      "sura": 34,
+      "counting_system": "First Madinan",
+      "count": 54
+    },
+    {
+      "sura": 34,
+      "counting_system": "Kufi",
+      "count": 54
+    },
+    {
+      "sura": 34,
+      "counting_system": "Last Madinan",
+      "count": 54
+    },
+    {
+      "sura": 34,
+      "counting_system": "Makkan",
+      "count": 54
+    },
+    {
+      "sura": 35,
+      "counting_system": "Basran",
+      "count": 45
+    },
+    {
+      "sura": 35,
+      "counting_system": "Damascene",
+      "count": 46
+    },
+    {
+      "sura": 35,
+      "counting_system": "First Madinan",
+      "count": 45
+    },
+    {
+      "sura": 35,
+      "counting_system": "Kufi",
+      "count": 45
+    },
+    {
+      "sura": 35,
+      "counting_system": "Last Madinan",
+      "count": 46
+    },
+    {
+      "sura": 35,
+      "counting_system": "Makkan",
+      "count": 45
+    },
+    {
+      "sura": 36,
+      "counting_system": "Basran",
+      "count": 82
+    },
+    {
+      "sura": 36,
+      "counting_system": "Damascene",
+      "count": 82
+    },
+    {
+      "sura": 36,
+      "counting_system": "First Madinan",
+      "count": 82
+    },
+    {
+      "sura": 36,
+      "counting_system": "Kufi",
+      "count": 83
+    },
+    {
+      "sura": 36,
+      "counting_system": "Last Madinan",
+      "count": 82
+    },
+    {
+      "sura": 36,
+      "counting_system": "Makkan",
+      "count": 82
+    },
+    {
+      "sura": 37,
+      "counting_system": "Basran",
+      "count": 181
+    },
+    {
+      "sura": 37,
+      "counting_system": "Damascene",
+      "count": 182
+    },
+    {
+      "sura": 37,
+      "counting_system": "First Madinan",
+      "count": 181
+    },
+    {
+      "sura": 37,
+      "counting_system": "Kufi",
+      "count": 182
+    },
+    {
+      "sura": 37,
+      "counting_system": "Last Madinan",
+      "count": 182
+    },
+    {
+      "sura": 37,
+      "counting_system": "Makkan",
+      "count": 182
+    },
+    {
+      "sura": 38,
+      "counting_system": "Basran",
+      "count": 85
+    },
+    {
+      "sura": 38,
+      "counting_system": "Damascene",
+      "count": 86
+    },
+    {
+      "sura": 38,
+      "counting_system": "First Madinan",
+      "count": 86
+    },
+    {
+      "sura": 38,
+      "counting_system": "Kufi",
+      "count": 88
+    },
+    {
+      "sura": 38,
+      "counting_system": "Last Madinan",
+      "count": 86
+    },
+    {
+      "sura": 38,
+      "counting_system": "Makkan",
+      "count": 86
+    },
+    {
+      "sura": 39,
+      "counting_system": "Basran",
+      "count": 72
+    },
+    {
+      "sura": 39,
+      "counting_system": "Damascene",
+      "count": 73
+    },
+    {
+      "sura": 39,
+      "counting_system": "First Madinan",
+      "count": 72
+    },
+    {
+      "sura": 39,
+      "counting_system": "Kufi",
+      "count": 75
+    },
+    {
+      "sura": 39,
+      "counting_system": "Last Madinan",
+      "count": 72
+    },
+    {
+      "sura": 39,
+      "counting_system": "Makkan",
+      "count": 72
+    },
+    {
+      "sura": 40,
+      "counting_system": "Basran",
+      "count": 82
+    },
+    {
+      "sura": 40,
+      "counting_system": "Damascene",
+      "count": 86
+    },
+    {
+      "sura": 40,
+      "counting_system": "First Madinan",
+      "count": 84
+    },
+    {
+      "sura": 40,
+      "counting_system": "Kufi",
+      "count": 85
+    },
+    {
+      "sura": 40,
+      "counting_system": "Last Madinan",
+      "count": 84
+    },
+    {
+      "sura": 40,
+      "counting_system": "Makkan",
+      "count": 84
+    },
+    {
+      "sura": 41,
+      "counting_system": "Basran",
+      "count": 52
+    },
+    {
+      "sura": 41,
+      "counting_system": "Damascene",
+      "count": 52
+    },
+    {
+      "sura": 41,
+      "counting_system": "First Madinan",
+      "count": 53
+    },
+    {
+      "sura": 41,
+      "counting_system": "Kufi",
+      "count": 54
+    },
+    {
+      "sura": 41,
+      "counting_system": "Last Madinan",
+      "count": 53
+    },
+    {
+      "sura": 41,
+      "counting_system": "Makkan",
+      "count": 53
+    },
+    {
+      "sura": 42,
+      "counting_system": "Basran",
+      "count": 50
+    },
+    {
+      "sura": 42,
+      "counting_system": "Damascene",
+      "count": 50
+    },
+    {
+      "sura": 42,
+      "counting_system": "First Madinan",
+      "count": 50
+    },
+    {
+      "sura": 42,
+      "counting_system": "Kufi",
+      "count": 53
+    },
+    {
+      "sura": 42,
+      "counting_system": "Last Madinan",
+      "count": 50
+    },
+    {
+      "sura": 42,
+      "counting_system": "Makkan",
+      "count": 50
+    },
+    {
+      "sura": 43,
+      "counting_system": "Basran",
+      "count": 89
+    },
+    {
+      "sura": 43,
+      "counting_system": "Damascene",
+      "count": 88
+    },
+    {
+      "sura": 43,
+      "counting_system": "First Madinan",
+      "count": 89
+    },
+    {
+      "sura": 43,
+      "counting_system": "Kufi",
+      "count": 89
+    },
+    {
+      "sura": 43,
+      "counting_system": "Last Madinan",
+      "count": 89
+    },
+    {
+      "sura": 43,
+      "counting_system": "Makkan",
+      "count": 89
+    },
+    {
+      "sura": 44,
+      "counting_system": "Basran",
+      "count": 57
+    },
+    {
+      "sura": 44,
+      "counting_system": "Damascene",
+      "count": 56
+    },
+    {
+      "sura": 44,
+      "counting_system": "First Madinan",
+      "count": 56
+    },
+    {
+      "sura": 44,
+      "counting_system": "Kufi",
+      "count": 59
+    },
+    {
+      "sura": 44,
+      "counting_system": "Last Madinan",
+      "count": 56
+    },
+    {
+      "sura": 44,
+      "counting_system": "Makkan",
+      "count": 56
+    },
+    {
+      "sura": 45,
+      "counting_system": "Basran",
+      "count": 36
+    },
+    {
+      "sura": 45,
+      "counting_system": "Damascene",
+      "count": 36
+    },
+    {
+      "sura": 45,
+      "counting_system": "First Madinan",
+      "count": 36
+    },
+    {
+      "sura": 45,
+      "counting_system": "Kufi",
+      "count": 37
+    },
+    {
+      "sura": 45,
+      "counting_system": "Last Madinan",
+      "count": 36
+    },
+    {
+      "sura": 45,
+      "counting_system": "Makkan",
+      "count": 36
+    },
+    {
+      "sura": 46,
+      "counting_system": "Basran",
+      "count": 34
+    },
+    {
+      "sura": 46,
+      "counting_system": "Damascene",
+      "count": 34
+    },
+    {
+      "sura": 46,
+      "counting_system": "First Madinan",
+      "count": 34
+    },
+    {
+      "sura": 46,
+      "counting_system": "Kufi",
+      "count": 35
+    },
+    {
+      "sura": 46,
+      "counting_system": "Last Madinan",
+      "count": 34
+    },
+    {
+      "sura": 46,
+      "counting_system": "Makkan",
+      "count": 34
+    },
+    {
+      "sura": 47,
+      "counting_system": "Basran",
+      "count": 40
+    },
+    {
+      "sura": 47,
+      "counting_system": "Damascene",
+      "count": 39
+    },
+    {
+      "sura": 47,
+      "counting_system": "First Madinan",
+      "count": 39
+    },
+    {
+      "sura": 47,
+      "counting_system": "Kufi",
+      "count": 38
+    },
+    {
+      "sura": 47,
+      "counting_system": "Last Madinan",
+      "count": 39
+    },
+    {
+      "sura": 47,
+      "counting_system": "Makkan",
+      "count": 39
+    },
+    {
+      "sura": 48,
+      "counting_system": "Basran",
+      "count": 29
+    },
+    {
+      "sura": 48,
+      "counting_system": "Damascene",
+      "count": 29
+    },
+    {
+      "sura": 48,
+      "counting_system": "First Madinan",
+      "count": 29
+    },
+    {
+      "sura": 48,
+      "counting_system": "Kufi",
+      "count": 29
+    },
+    {
+      "sura": 48,
+      "counting_system": "Last Madinan",
+      "count": 29
+    },
+    {
+      "sura": 48,
+      "counting_system": "Makkan",
+      "count": 29
+    },
+    {
+      "sura": 49,
+      "counting_system": "Basran",
+      "count": 18
+    },
+    {
+      "sura": 49,
+      "counting_system": "Damascene",
+      "count": 18
+    },
+    {
+      "sura": 49,
+      "counting_system": "First Madinan",
+      "count": 18
+    },
+    {
+      "sura": 49,
+      "counting_system": "Kufi",
+      "count": 18
+    },
+    {
+      "sura": 49,
+      "counting_system": "Last Madinan",
+      "count": 18
+    },
+    {
+      "sura": 49,
+      "counting_system": "Makkan",
+      "count": 18
+    },
+    {
+      "sura": 50,
+      "counting_system": "Basran",
+      "count": 45
+    },
+    {
+      "sura": 50,
+      "counting_system": "Damascene",
+      "count": 45
+    },
+    {
+      "sura": 50,
+      "counting_system": "First Madinan",
+      "count": 45
+    },
+    {
+      "sura": 50,
+      "counting_system": "Kufi",
+      "count": 45
+    },
+    {
+      "sura": 50,
+      "counting_system": "Last Madinan",
+      "count": 45
+    },
+    {
+      "sura": 50,
+      "counting_system": "Makkan",
+      "count": 45
+    },
+    {
+      "sura": 51,
+      "counting_system": "Basran",
+      "count": 60
+    },
+    {
+      "sura": 51,
+      "counting_system": "Damascene",
+      "count": 60
+    },
+    {
+      "sura": 51,
+      "counting_system": "First Madinan",
+      "count": 60
+    },
+    {
+      "sura": 51,
+      "counting_system": "Kufi",
+      "count": 60
+    },
+    {
+      "sura": 51,
+      "counting_system": "Last Madinan",
+      "count": 60
+    },
+    {
+      "sura": 51,
+      "counting_system": "Makkan",
+      "count": 60
+    },
+    {
+      "sura": 52,
+      "counting_system": "Basran",
+      "count": 48
+    },
+    {
+      "sura": 52,
+      "counting_system": "Damascene",
+      "count": 49
+    },
+    {
+      "sura": 52,
+      "counting_system": "First Madinan",
+      "count": 47
+    },
+    {
+      "sura": 52,
+      "counting_system": "Kufi",
+      "count": 49
+    },
+    {
+      "sura": 52,
+      "counting_system": "Last Madinan",
+      "count": 47
+    },
+    {
+      "sura": 52,
+      "counting_system": "Makkan",
+      "count": 47
+    },
+    {
+      "sura": 53,
+      "counting_system": "Basran",
+      "count": 61
+    },
+    {
+      "sura": 53,
+      "counting_system": "Damascene",
+      "count": 61
+    },
+    {
+      "sura": 53,
+      "counting_system": "First Madinan",
+      "count": 61
+    },
+    {
+      "sura": 53,
+      "counting_system": "Kufi",
+      "count": 62
+    },
+    {
+      "sura": 53,
+      "counting_system": "Last Madinan",
+      "count": 61
+    },
+    {
+      "sura": 53,
+      "counting_system": "Makkan",
+      "count": 61
+    },
+    {
+      "sura": 54,
+      "counting_system": "Basran",
+      "count": 55
+    },
+    {
+      "sura": 54,
+      "counting_system": "Damascene",
+      "count": 55
+    },
+    {
+      "sura": 54,
+      "counting_system": "First Madinan",
+      "count": 55
+    },
+    {
+      "sura": 54,
+      "counting_system": "Kufi",
+      "count": 55
+    },
+    {
+      "sura": 54,
+      "counting_system": "Last Madinan",
+      "count": 55
+    },
+    {
+      "sura": 54,
+      "counting_system": "Makkan",
+      "count": 55
+    },
+    {
+      "sura": 55,
+      "counting_system": "Basran",
+      "count": 76
+    },
+    {
+      "sura": 55,
+      "counting_system": "Damascene",
+      "count": 78
+    },
+    {
+      "sura": 55,
+      "counting_system": "First Madinan",
+      "count": 77
+    },
+    {
+      "sura": 55,
+      "counting_system": "Kufi",
+      "count": 78
+    },
+    {
+      "sura": 55,
+      "counting_system": "Last Madinan",
+      "count": 77
+    },
+    {
+      "sura": 55,
+      "counting_system": "Makkan",
+      "count": 77
+    },
+    {
+      "sura": 56,
+      "counting_system": "Basran",
+      "count": 97
+    },
+    {
+      "sura": 56,
+      "counting_system": "Damascene",
+      "count": 99
+    },
+    {
+      "sura": 56,
+      "counting_system": "First Madinan",
+      "count": 99
+    },
+    {
+      "sura": 56,
+      "counting_system": "Kufi",
+      "count": 96
+    },
+    {
+      "sura": 56,
+      "counting_system": "Last Madinan",
+      "count": 99
+    },
+    {
+      "sura": 56,
+      "counting_system": "Makkan",
+      "count": 99
+    },
+    {
+      "sura": 57,
+      "counting_system": "Basran",
+      "count": 29
+    },
+    {
+      "sura": 57,
+      "counting_system": "Damascene",
+      "count": 28
+    },
+    {
+      "sura": 57,
+      "counting_system": "First Madinan",
+      "count": 28
+    },
+    {
+      "sura": 57,
+      "counting_system": "Kufi",
+      "count": 29
+    },
+    {
+      "sura": 57,
+      "counting_system": "Last Madinan",
+      "count": 28
+    },
+    {
+      "sura": 57,
+      "counting_system": "Makkan",
+      "count": 28
+    },
+    {
+      "sura": 58,
+      "counting_system": "Basran",
+      "count": 22
+    },
+    {
+      "sura": 58,
+      "counting_system": "Damascene",
+      "count": 22
+    },
+    {
+      "sura": 58,
+      "counting_system": "First Madinan",
+      "count": 22
+    },
+    {
+      "sura": 58,
+      "counting_system": "Kufi",
+      "count": 22
+    },
+    {
+      "sura": 58,
+      "counting_system": "Last Madinan",
+      "count": 21
+    },
+    {
+      "sura": 58,
+      "counting_system": "Makkan",
+      "count": 21
+    },
+    {
+      "sura": 59,
+      "counting_system": "Basran",
+      "count": 24
+    },
+    {
+      "sura": 59,
+      "counting_system": "Damascene",
+      "count": 24
+    },
+    {
+      "sura": 59,
+      "counting_system": "First Madinan",
+      "count": 24
+    },
+    {
+      "sura": 59,
+      "counting_system": "Kufi",
+      "count": 24
+    },
+    {
+      "sura": 59,
+      "counting_system": "Last Madinan",
+      "count": 24
+    },
+    {
+      "sura": 59,
+      "counting_system": "Makkan",
+      "count": 24
+    },
+    {
+      "sura": 60,
+      "counting_system": "Basran",
+      "count": 13
+    },
+    {
+      "sura": 60,
+      "counting_system": "Damascene",
+      "count": 13
+    },
+    {
+      "sura": 60,
+      "counting_system": "First Madinan",
+      "count": 13
+    },
+    {
+      "sura": 60,
+      "counting_system": "Kufi",
+      "count": 13
+    },
+    {
+      "sura": 60,
+      "counting_system": "Last Madinan",
+      "count": 13
+    },
+    {
+      "sura": 60,
+      "counting_system": "Makkan",
+      "count": 13
+    },
+    {
+      "sura": 61,
+      "counting_system": "Basran",
+      "count": 14
+    },
+    {
+      "sura": 61,
+      "counting_system": "Damascene",
+      "count": 14
+    },
+    {
+      "sura": 61,
+      "counting_system": "First Madinan",
+      "count": 14
+    },
+    {
+      "sura": 61,
+      "counting_system": "Kufi",
+      "count": 14
+    },
+    {
+      "sura": 61,
+      "counting_system": "Last Madinan",
+      "count": 14
+    },
+    {
+      "sura": 61,
+      "counting_system": "Makkan",
+      "count": 14
+    },
+    {
+      "sura": 62,
+      "counting_system": "Basran",
+      "count": 11
+    },
+    {
+      "sura": 62,
+      "counting_system": "Damascene",
+      "count": 11
+    },
+    {
+      "sura": 62,
+      "counting_system": "First Madinan",
+      "count": 11
+    },
+    {
+      "sura": 62,
+      "counting_system": "Kufi",
+      "count": 11
+    },
+    {
+      "sura": 62,
+      "counting_system": "Last Madinan",
+      "count": 11
+    },
+    {
+      "sura": 62,
+      "counting_system": "Makkan",
+      "count": 11
+    },
+    {
+      "sura": 63,
+      "counting_system": "Basran",
+      "count": 11
+    },
+    {
+      "sura": 63,
+      "counting_system": "Damascene",
+      "count": 11
+    },
+    {
+      "sura": 63,
+      "counting_system": "First Madinan",
+      "count": 11
+    },
+    {
+      "sura": 63,
+      "counting_system": "Kufi",
+      "count": 11
+    },
+    {
+      "sura": 63,
+      "counting_system": "Last Madinan",
+      "count": 11
+    },
+    {
+      "sura": 63,
+      "counting_system": "Makkan",
+      "count": 11
+    },
+    {
+      "sura": 64,
+      "counting_system": "Basran",
+      "count": 18
+    },
+    {
+      "sura": 64,
+      "counting_system": "Damascene",
+      "count": 18
+    },
+    {
+      "sura": 64,
+      "counting_system": "First Madinan",
+      "count": 18
+    },
+    {
+      "sura": 64,
+      "counting_system": "Kufi",
+      "count": 18
+    },
+    {
+      "sura": 64,
+      "counting_system": "Last Madinan",
+      "count": 18
+    },
+    {
+      "sura": 64,
+      "counting_system": "Makkan",
+      "count": 18
+    },
+    {
+      "sura": 65,
+      "counting_system": "Basran",
+      "count": 11
+    },
+    {
+      "sura": 65,
+      "counting_system": "Damascene",
+      "count": 12
+    },
+    {
+      "sura": 65,
+      "counting_system": "First Madinan",
+      "count": 12
+    },
+    {
+      "sura": 65,
+      "counting_system": "Kufi",
+      "count": 12
+    },
+    {
+      "sura": 65,
+      "counting_system": "Last Madinan",
+      "count": 12
+    },
+    {
+      "sura": 65,
+      "counting_system": "Makkan",
+      "count": 12
+    },
+    {
+      "sura": 66,
+      "counting_system": "Basran",
+      "count": 12
+    },
+    {
+      "sura": 66,
+      "counting_system": "Damascene",
+      "count": 12
+    },
+    {
+      "sura": 66,
+      "counting_system": "First Madinan",
+      "count": 12
+    },
+    {
+      "sura": 66,
+      "counting_system": "Kufi",
+      "count": 12
+    },
+    {
+      "sura": 66,
+      "counting_system": "Last Madinan",
+      "count": 12
+    },
+    {
+      "sura": 66,
+      "counting_system": "Makkan",
+      "count": 12
+    },
+    {
+      "sura": 67,
+      "counting_system": "Basran",
+      "count": 30
+    },
+    {
+      "sura": 67,
+      "counting_system": "Damascene",
+      "count": 30
+    },
+    {
+      "sura": 67,
+      "counting_system": "First Madinan",
+      "count": 30
+    },
+    {
+      "sura": 67,
+      "counting_system": "Kufi",
+      "count": 30
+    },
+    {
+      "sura": 67,
+      "counting_system": "Last Madinan",
+      "count": 31
+    },
+    {
+      "sura": 67,
+      "counting_system": "Makkan",
+      "count": 31
+    },
+    {
+      "sura": 68,
+      "counting_system": "Basran",
+      "count": 52
+    },
+    {
+      "sura": 68,
+      "counting_system": "Damascene",
+      "count": 52
+    },
+    {
+      "sura": 68,
+      "counting_system": "First Madinan",
+      "count": 52
+    },
+    {
+      "sura": 68,
+      "counting_system": "Kufi",
+      "count": 52
+    },
+    {
+      "sura": 68,
+      "counting_system": "Last Madinan",
+      "count": 52
+    },
+    {
+      "sura": 68,
+      "counting_system": "Makkan",
+      "count": 52
+    },
+    {
+      "sura": 69,
+      "counting_system": "Basran",
+      "count": 51
+    },
+    {
+      "sura": 69,
+      "counting_system": "Damascene",
+      "count": 51
+    },
+    {
+      "sura": 69,
+      "counting_system": "First Madinan",
+      "count": 52
+    },
+    {
+      "sura": 69,
+      "counting_system": "Kufi",
+      "count": 52
+    },
+    {
+      "sura": 69,
+      "counting_system": "Last Madinan",
+      "count": 52
+    },
+    {
+      "sura": 69,
+      "counting_system": "Makkan",
+      "count": 52
+    },
+    {
+      "sura": 70,
+      "counting_system": "Basran",
+      "count": 44
+    },
+    {
+      "sura": 70,
+      "counting_system": "Damascene",
+      "count": 43
+    },
+    {
+      "sura": 70,
+      "counting_system": "First Madinan",
+      "count": 44
+    },
+    {
+      "sura": 70,
+      "counting_system": "Kufi",
+      "count": 44
+    },
+    {
+      "sura": 70,
+      "counting_system": "Last Madinan",
+      "count": 44
+    },
+    {
+      "sura": 70,
+      "counting_system": "Makkan",
+      "count": 44
+    },
+    {
+      "sura": 71,
+      "counting_system": "Basran",
+      "count": 29
+    },
+    {
+      "sura": 71,
+      "counting_system": "Damascene",
+      "count": 29
+    },
+    {
+      "sura": 71,
+      "counting_system": "First Madinan",
+      "count": 30
+    },
+    {
+      "sura": 71,
+      "counting_system": "Kufi",
+      "count": 28
+    },
+    {
+      "sura": 71,
+      "counting_system": "Last Madinan",
+      "count": 30
+    },
+    {
+      "sura": 71,
+      "counting_system": "Makkan",
+      "count": 30
+    },
+    {
+      "sura": 72,
+      "counting_system": "Basran",
+      "count": 28
+    },
+    {
+      "sura": 72,
+      "counting_system": "Damascene",
+      "count": 28
+    },
+    {
+      "sura": 72,
+      "counting_system": "First Madinan",
+      "count": 28
+    },
+    {
+      "sura": 72,
+      "counting_system": "Kufi",
+      "count": 28
+    },
+    {
+      "sura": 72,
+      "counting_system": "Last Madinan",
+      "count": 28
+    },
+    {
+      "sura": 72,
+      "counting_system": "Makkan",
+      "count": 28
+    },
+    {
+      "sura": 73,
+      "counting_system": "Basran",
+      "count": 19
+    },
+    {
+      "sura": 73,
+      "counting_system": "Damascene",
+      "count": 20
+    },
+    {
+      "sura": 73,
+      "counting_system": "First Madinan",
+      "count": 20
+    },
+    {
+      "sura": 73,
+      "counting_system": "Kufi",
+      "count": 20
+    },
+    {
+      "sura": 73,
+      "counting_system": "Last Madinan",
+      "count": 18
+    },
+    {
+      "sura": 73,
+      "counting_system": "Makkan",
+      "count": 20
+    },
+    {
+      "sura": 74,
+      "counting_system": "Basran",
+      "count": 56
+    },
+    {
+      "sura": 74,
+      "counting_system": "Damascene",
+      "count": 55
+    },
+    {
+      "sura": 74,
+      "counting_system": "First Madinan",
+      "count": 56
+    },
+    {
+      "sura": 74,
+      "counting_system": "Kufi",
+      "count": 56
+    },
+    {
+      "sura": 74,
+      "counting_system": "Last Madinan",
+      "count": 55
+    },
+    {
+      "sura": 74,
+      "counting_system": "Makkan",
+      "count": 55
+    },
+    {
+      "sura": 75,
+      "counting_system": "Basran",
+      "count": 39
+    },
+    {
+      "sura": 75,
+      "counting_system": "Damascene",
+      "count": 39
+    },
+    {
+      "sura": 75,
+      "counting_system": "First Madinan",
+      "count": 39
+    },
+    {
+      "sura": 75,
+      "counting_system": "Kufi",
+      "count": 40
+    },
+    {
+      "sura": 75,
+      "counting_system": "Last Madinan",
+      "count": 39
+    },
+    {
+      "sura": 75,
+      "counting_system": "Makkan",
+      "count": 39
+    },
+    {
+      "sura": 76,
+      "counting_system": "Basran",
+      "count": 31
+    },
+    {
+      "sura": 76,
+      "counting_system": "Damascene",
+      "count": 31
+    },
+    {
+      "sura": 76,
+      "counting_system": "First Madinan",
+      "count": 31
+    },
+    {
+      "sura": 76,
+      "counting_system": "Kufi",
+      "count": 31
+    },
+    {
+      "sura": 76,
+      "counting_system": "Last Madinan",
+      "count": 31
+    },
+    {
+      "sura": 76,
+      "counting_system": "Makkan",
+      "count": 31
+    },
+    {
+      "sura": 77,
+      "counting_system": "Basran",
+      "count": 50
+    },
+    {
+      "sura": 77,
+      "counting_system": "Damascene",
+      "count": 50
+    },
+    {
+      "sura": 77,
+      "counting_system": "First Madinan",
+      "count": 50
+    },
+    {
+      "sura": 77,
+      "counting_system": "Kufi",
+      "count": 50
+    },
+    {
+      "sura": 77,
+      "counting_system": "Last Madinan",
+      "count": 50
+    },
+    {
+      "sura": 77,
+      "counting_system": "Makkan",
+      "count": 50
+    },
+    {
+      "sura": 78,
+      "counting_system": "Basran",
+      "count": 41
+    },
+    {
+      "sura": 78,
+      "counting_system": "Damascene",
+      "count": 40
+    },
+    {
+      "sura": 78,
+      "counting_system": "First Madinan",
+      "count": 40
+    },
+    {
+      "sura": 78,
+      "counting_system": "Kufi",
+      "count": 40
+    },
+    {
+      "sura": 78,
+      "counting_system": "Last Madinan",
+      "count": 40
+    },
+    {
+      "sura": 78,
+      "counting_system": "Makkan",
+      "count": 40
+    },
+    {
+      "sura": 79,
+      "counting_system": "Basran",
+      "count": 45
+    },
+    {
+      "sura": 79,
+      "counting_system": "Damascene",
+      "count": 45
+    },
+    {
+      "sura": 79,
+      "counting_system": "First Madinan",
+      "count": 45
+    },
+    {
+      "sura": 79,
+      "counting_system": "Kufi",
+      "count": 46
+    },
+    {
+      "sura": 79,
+      "counting_system": "Last Madinan",
+      "count": 45
+    },
+    {
+      "sura": 79,
+      "counting_system": "Makkan",
+      "count": 45
+    },
+    {
+      "sura": 80,
+      "counting_system": "Basran",
+      "count": 41
+    },
+    {
+      "sura": 80,
+      "counting_system": "Damascene",
+      "count": 40
+    },
+    {
+      "sura": 80,
+      "counting_system": "First Madinan",
+      "count": 41
+    },
+    {
+      "sura": 80,
+      "counting_system": "Kufi",
+      "count": 42
+    },
+    {
+      "sura": 80,
+      "counting_system": "Last Madinan",
+      "count": 42
+    },
+    {
+      "sura": 80,
+      "counting_system": "Makkan",
+      "count": 42
+    },
+    {
+      "sura": 81,
+      "counting_system": "Basran",
+      "count": 29
+    },
+    {
+      "sura": 81,
+      "counting_system": "Damascene",
+      "count": 29
+    },
+    {
+      "sura": 81,
+      "counting_system": "First Madinan",
+      "count": 28
+    },
+    {
+      "sura": 81,
+      "counting_system": "Kufi",
+      "count": 29
+    },
+    {
+      "sura": 81,
+      "counting_system": "Last Madinan",
+      "count": 29
+    },
+    {
+      "sura": 81,
+      "counting_system": "Makkan",
+      "count": 29
+    },
+    {
+      "sura": 82,
+      "counting_system": "Basran",
+      "count": 19
+    },
+    {
+      "sura": 82,
+      "counting_system": "Damascene",
+      "count": 19
+    },
+    {
+      "sura": 82,
+      "counting_system": "First Madinan",
+      "count": 19
+    },
+    {
+      "sura": 82,
+      "counting_system": "Kufi",
+      "count": 19
+    },
+    {
+      "sura": 82,
+      "counting_system": "Last Madinan",
+      "count": 19
+    },
+    {
+      "sura": 82,
+      "counting_system": "Makkan",
+      "count": 19
+    },
+    {
+      "sura": 83,
+      "counting_system": "Basran",
+      "count": 36
+    },
+    {
+      "sura": 83,
+      "counting_system": "Damascene",
+      "count": 36
+    },
+    {
+      "sura": 83,
+      "counting_system": "First Madinan",
+      "count": 36
+    },
+    {
+      "sura": 83,
+      "counting_system": "Kufi",
+      "count": 36
+    },
+    {
+      "sura": 83,
+      "counting_system": "Last Madinan",
+      "count": 36
+    },
+    {
+      "sura": 83,
+      "counting_system": "Makkan",
+      "count": 36
+    },
+    {
+      "sura": 84,
+      "counting_system": "Basran",
+      "count": 23
+    },
+    {
+      "sura": 84,
+      "counting_system": "Damascene",
+      "count": 23
+    },
+    {
+      "sura": 84,
+      "counting_system": "First Madinan",
+      "count": 25
+    },
+    {
+      "sura": 84,
+      "counting_system": "Kufi",
+      "count": 25
+    },
+    {
+      "sura": 84,
+      "counting_system": "Last Madinan",
+      "count": 25
+    },
+    {
+      "sura": 84,
+      "counting_system": "Makkan",
+      "count": 25
+    },
+    {
+      "sura": 85,
+      "counting_system": "Basran",
+      "count": 22
+    },
+    {
+      "sura": 85,
+      "counting_system": "Damascene",
+      "count": 22
+    },
+    {
+      "sura": 85,
+      "counting_system": "First Madinan",
+      "count": 22
+    },
+    {
+      "sura": 85,
+      "counting_system": "Kufi",
+      "count": 22
+    },
+    {
+      "sura": 85,
+      "counting_system": "Last Madinan",
+      "count": 22
+    },
+    {
+      "sura": 85,
+      "counting_system": "Makkan",
+      "count": 22
+    },
+    {
+      "sura": 86,
+      "counting_system": "Basran",
+      "count": 17
+    },
+    {
+      "sura": 86,
+      "counting_system": "Damascene",
+      "count": 17
+    },
+    {
+      "sura": 86,
+      "counting_system": "First Madinan",
+      "count": 16
+    },
+    {
+      "sura": 86,
+      "counting_system": "Kufi",
+      "count": 17
+    },
+    {
+      "sura": 86,
+      "counting_system": "Last Madinan",
+      "count": 17
+    },
+    {
+      "sura": 86,
+      "counting_system": "Makkan",
+      "count": 17
+    },
+    {
+      "sura": 87,
+      "counting_system": "Basran",
+      "count": 19
+    },
+    {
+      "sura": 87,
+      "counting_system": "Damascene",
+      "count": 19
+    },
+    {
+      "sura": 87,
+      "counting_system": "First Madinan",
+      "count": 19
+    },
+    {
+      "sura": 87,
+      "counting_system": "Kufi",
+      "count": 19
+    },
+    {
+      "sura": 87,
+      "counting_system": "Last Madinan",
+      "count": 19
+    },
+    {
+      "sura": 87,
+      "counting_system": "Makkan",
+      "count": 19
+    },
+    {
+      "sura": 88,
+      "counting_system": "Basran",
+      "count": 26
+    },
+    {
+      "sura": 88,
+      "counting_system": "Damascene",
+      "count": 26
+    },
+    {
+      "sura": 88,
+      "counting_system": "First Madinan",
+      "count": 26
+    },
+    {
+      "sura": 88,
+      "counting_system": "Kufi",
+      "count": 26
+    },
+    {
+      "sura": 88,
+      "counting_system": "Last Madinan",
+      "count": 26
+    },
+    {
+      "sura": 88,
+      "counting_system": "Makkan",
+      "count": 26
+    },
+    {
+      "sura": 89,
+      "counting_system": "Basran",
+      "count": 29
+    },
+    {
+      "sura": 89,
+      "counting_system": "Damascene",
+      "count": 30
+    },
+    {
+      "sura": 89,
+      "counting_system": "First Madinan",
+      "count": 32
+    },
+    {
+      "sura": 89,
+      "counting_system": "Kufi",
+      "count": 30
+    },
+    {
+      "sura": 89,
+      "counting_system": "Last Madinan",
+      "count": 32
+    },
+    {
+      "sura": 89,
+      "counting_system": "Makkan",
+      "count": 32
+    },
+    {
+      "sura": 90,
+      "counting_system": "Basran",
+      "count": 20
+    },
+    {
+      "sura": 90,
+      "counting_system": "Damascene",
+      "count": 20
+    },
+    {
+      "sura": 90,
+      "counting_system": "First Madinan",
+      "count": 20
+    },
+    {
+      "sura": 90,
+      "counting_system": "Kufi",
+      "count": 20
+    },
+    {
+      "sura": 90,
+      "counting_system": "Last Madinan",
+      "count": 20
+    },
+    {
+      "sura": 90,
+      "counting_system": "Makkan",
+      "count": 20
+    },
+    {
+      "sura": 91,
+      "counting_system": "Basran",
+      "count": 15
+    },
+    {
+      "sura": 91,
+      "counting_system": "Damascene",
+      "count": 15
+    },
+    {
+      "sura": 91,
+      "counting_system": "First Madinan",
+      "count": 16
+    },
+    {
+      "sura": 91,
+      "counting_system": "Kufi",
+      "count": 15
+    },
+    {
+      "sura": 91,
+      "counting_system": "Last Madinan",
+      "count": 15
+    },
+    {
+      "sura": 91,
+      "counting_system": "Makkan",
+      "count": 15
+    },
+    {
+      "sura": 92,
+      "counting_system": "Basran",
+      "count": 21
+    },
+    {
+      "sura": 92,
+      "counting_system": "Damascene",
+      "count": 21
+    },
+    {
+      "sura": 92,
+      "counting_system": "First Madinan",
+      "count": 21
+    },
+    {
+      "sura": 92,
+      "counting_system": "Kufi",
+      "count": 21
+    },
+    {
+      "sura": 92,
+      "counting_system": "Last Madinan",
+      "count": 21
+    },
+    {
+      "sura": 92,
+      "counting_system": "Makkan",
+      "count": 21
+    },
+    {
+      "sura": 93,
+      "counting_system": "Basran",
+      "count": 11
+    },
+    {
+      "sura": 93,
+      "counting_system": "Damascene",
+      "count": 11
+    },
+    {
+      "sura": 93,
+      "counting_system": "First Madinan",
+      "count": 11
+    },
+    {
+      "sura": 93,
+      "counting_system": "Kufi",
+      "count": 11
+    },
+    {
+      "sura": 93,
+      "counting_system": "Last Madinan",
+      "count": 11
+    },
+    {
+      "sura": 93,
+      "counting_system": "Makkan",
+      "count": 11
+    },
+    {
+      "sura": 94,
+      "counting_system": "Basran",
+      "count": 8
+    },
+    {
+      "sura": 94,
+      "counting_system": "Damascene",
+      "count": 8
+    },
+    {
+      "sura": 94,
+      "counting_system": "First Madinan",
+      "count": 8
+    },
+    {
+      "sura": 94,
+      "counting_system": "Kufi",
+      "count": 8
+    },
+    {
+      "sura": 94,
+      "counting_system": "Last Madinan",
+      "count": 8
+    },
+    {
+      "sura": 94,
+      "counting_system": "Makkan",
+      "count": 8
+    },
+    {
+      "sura": 95,
+      "counting_system": "Basran",
+      "count": 8
+    },
+    {
+      "sura": 95,
+      "counting_system": "Damascene",
+      "count": 8
+    },
+    {
+      "sura": 95,
+      "counting_system": "First Madinan",
+      "count": 8
+    },
+    {
+      "sura": 95,
+      "counting_system": "Kufi",
+      "count": 8
+    },
+    {
+      "sura": 95,
+      "counting_system": "Last Madinan",
+      "count": 8
+    },
+    {
+      "sura": 95,
+      "counting_system": "Makkan",
+      "count": 8
+    },
+    {
+      "sura": 96,
+      "counting_system": "Basran",
+      "count": 19
+    },
+    {
+      "sura": 96,
+      "counting_system": "Damascene",
+      "count": 18
+    },
+    {
+      "sura": 96,
+      "counting_system": "First Madinan",
+      "count": 20
+    },
+    {
+      "sura": 96,
+      "counting_system": "Kufi",
+      "count": 19
+    },
+    {
+      "sura": 96,
+      "counting_system": "Last Madinan",
+      "count": 20
+    },
+    {
+      "sura": 96,
+      "counting_system": "Makkan",
+      "count": 20
+    },
+    {
+      "sura": 97,
+      "counting_system": "Basran",
+      "count": 5
+    },
+    {
+      "sura": 97,
+      "counting_system": "Damascene",
+      "count": 6
+    },
+    {
+      "sura": 97,
+      "counting_system": "First Madinan",
+      "count": 5
+    },
+    {
+      "sura": 97,
+      "counting_system": "Kufi",
+      "count": 5
+    },
+    {
+      "sura": 97,
+      "counting_system": "Last Madinan",
+      "count": 5
+    },
+    {
+      "sura": 97,
+      "counting_system": "Makkan",
+      "count": 6
+    },
+    {
+      "sura": 98,
+      "counting_system": "Basran",
+      "count": 9
+    },
+    {
+      "sura": 98,
+      "counting_system": "Damascene",
+      "count": 9
+    },
+    {
+      "sura": 98,
+      "counting_system": "First Madinan",
+      "count": 8
+    },
+    {
+      "sura": 98,
+      "counting_system": "Kufi",
+      "count": 8
+    },
+    {
+      "sura": 98,
+      "counting_system": "Last Madinan",
+      "count": 8
+    },
+    {
+      "sura": 98,
+      "counting_system": "Makkan",
+      "count": 8
+    },
+    {
+      "sura": 99,
+      "counting_system": "Basran",
+      "count": 9
+    },
+    {
+      "sura": 99,
+      "counting_system": "Damascene",
+      "count": 9
+    },
+    {
+      "sura": 99,
+      "counting_system": "First Madinan",
+      "count": 8
+    },
+    {
+      "sura": 99,
+      "counting_system": "Kufi",
+      "count": 8
+    },
+    {
+      "sura": 99,
+      "counting_system": "Last Madinan",
+      "count": 9
+    },
+    {
+      "sura": 99,
+      "counting_system": "Makkan",
+      "count": 9
+    },
+    {
+      "sura": 100,
+      "counting_system": "Basran",
+      "count": 11
+    },
+    {
+      "sura": 100,
+      "counting_system": "Damascene",
+      "count": 11
+    },
+    {
+      "sura": 100,
+      "counting_system": "First Madinan",
+      "count": 11
+    },
+    {
+      "sura": 100,
+      "counting_system": "Kufi",
+      "count": 11
+    },
+    {
+      "sura": 100,
+      "counting_system": "Last Madinan",
+      "count": 11
+    },
+    {
+      "sura": 100,
+      "counting_system": "Makkan",
+      "count": 11
+    },
+    {
+      "sura": 101,
+      "counting_system": "Basran",
+      "count": 8
+    },
+    {
+      "sura": 101,
+      "counting_system": "Damascene",
+      "count": 8
+    },
+    {
+      "sura": 101,
+      "counting_system": "First Madinan",
+      "count": 10
+    },
+    {
+      "sura": 101,
+      "counting_system": "Kufi",
+      "count": 11
+    },
+    {
+      "sura": 101,
+      "counting_system": "Last Madinan",
+      "count": 10
+    },
+    {
+      "sura": 101,
+      "counting_system": "Makkan",
+      "count": 10
+    },
+    {
+      "sura": 102,
+      "counting_system": "Basran",
+      "count": 8
+    },
+    {
+      "sura": 102,
+      "counting_system": "Damascene",
+      "count": 8
+    },
+    {
+      "sura": 102,
+      "counting_system": "First Madinan",
+      "count": 8
+    },
+    {
+      "sura": 102,
+      "counting_system": "Kufi",
+      "count": 8
+    },
+    {
+      "sura": 102,
+      "counting_system": "Last Madinan",
+      "count": 8
+    },
+    {
+      "sura": 102,
+      "counting_system": "Makkan",
+      "count": 8
+    },
+    {
+      "sura": 103,
+      "counting_system": "Basran",
+      "count": 3
+    },
+    {
+      "sura": 103,
+      "counting_system": "Damascene",
+      "count": 3
+    },
+    {
+      "sura": 103,
+      "counting_system": "First Madinan",
+      "count": 3
+    },
+    {
+      "sura": 103,
+      "counting_system": "Kufi",
+      "count": 3
+    },
+    {
+      "sura": 103,
+      "counting_system": "Last Madinan",
+      "count": 3
+    },
+    {
+      "sura": 103,
+      "counting_system": "Makkan",
+      "count": 3
+    },
+    {
+      "sura": 104,
+      "counting_system": "Basran",
+      "count": 9
+    },
+    {
+      "sura": 104,
+      "counting_system": "Damascene",
+      "count": 9
+    },
+    {
+      "sura": 104,
+      "counting_system": "First Madinan",
+      "count": 9
+    },
+    {
+      "sura": 104,
+      "counting_system": "Kufi",
+      "count": 9
+    },
+    {
+      "sura": 104,
+      "counting_system": "Last Madinan",
+      "count": 9
+    },
+    {
+      "sura": 104,
+      "counting_system": "Makkan",
+      "count": 9
+    },
+    {
+      "sura": 105,
+      "counting_system": "Basran",
+      "count": 5
+    },
+    {
+      "sura": 105,
+      "counting_system": "Damascene",
+      "count": 5
+    },
+    {
+      "sura": 105,
+      "counting_system": "First Madinan",
+      "count": 5
+    },
+    {
+      "sura": 105,
+      "counting_system": "Kufi",
+      "count": 5
+    },
+    {
+      "sura": 105,
+      "counting_system": "Last Madinan",
+      "count": 5
+    },
+    {
+      "sura": 105,
+      "counting_system": "Makkan",
+      "count": 5
+    },
+    {
+      "sura": 106,
+      "counting_system": "Basran",
+      "count": 4
+    },
+    {
+      "sura": 106,
+      "counting_system": "Damascene",
+      "count": 4
+    },
+    {
+      "sura": 106,
+      "counting_system": "First Madinan",
+      "count": 5
+    },
+    {
+      "sura": 106,
+      "counting_system": "Kufi",
+      "count": 4
+    },
+    {
+      "sura": 106,
+      "counting_system": "Last Madinan",
+      "count": 5
+    },
+    {
+      "sura": 106,
+      "counting_system": "Makkan",
+      "count": 5
+    },
+    {
+      "sura": 107,
+      "counting_system": "Basran",
+      "count": 7
+    },
+    {
+      "sura": 107,
+      "counting_system": "Damascene",
+      "count": 6
+    },
+    {
+      "sura": 107,
+      "counting_system": "First Madinan",
+      "count": 6
+    },
+    {
+      "sura": 107,
+      "counting_system": "Kufi",
+      "count": 7
+    },
+    {
+      "sura": 107,
+      "counting_system": "Last Madinan",
+      "count": 6
+    },
+    {
+      "sura": 107,
+      "counting_system": "Makkan",
+      "count": 6
+    },
+    {
+      "sura": 108,
+      "counting_system": "Basran",
+      "count": 3
+    },
+    {
+      "sura": 108,
+      "counting_system": "Damascene",
+      "count": 3
+    },
+    {
+      "sura": 108,
+      "counting_system": "First Madinan",
+      "count": 3
+    },
+    {
+      "sura": 108,
+      "counting_system": "Kufi",
+      "count": 3
+    },
+    {
+      "sura": 108,
+      "counting_system": "Last Madinan",
+      "count": 3
+    },
+    {
+      "sura": 108,
+      "counting_system": "Makkan",
+      "count": 3
+    },
+    {
+      "sura": 109,
+      "counting_system": "Basran",
+      "count": 6
+    },
+    {
+      "sura": 109,
+      "counting_system": "Damascene",
+      "count": 6
+    },
+    {
+      "sura": 109,
+      "counting_system": "First Madinan",
+      "count": 6
+    },
+    {
+      "sura": 109,
+      "counting_system": "Kufi",
+      "count": 6
+    },
+    {
+      "sura": 109,
+      "counting_system": "Last Madinan",
+      "count": 6
+    },
+    {
+      "sura": 109,
+      "counting_system": "Makkan",
+      "count": 6
+    },
+    {
+      "sura": 110,
+      "counting_system": "Basran",
+      "count": 3
+    },
+    {
+      "sura": 110,
+      "counting_system": "Damascene",
+      "count": 3
+    },
+    {
+      "sura": 110,
+      "counting_system": "First Madinan",
+      "count": 3
+    },
+    {
+      "sura": 110,
+      "counting_system": "Kufi",
+      "count": 3
+    },
+    {
+      "sura": 110,
+      "counting_system": "Last Madinan",
+      "count": 3
+    },
+    {
+      "sura": 110,
+      "counting_system": "Makkan",
+      "count": 3
+    },
+    {
+      "sura": 111,
+      "counting_system": "Basran",
+      "count": 5
+    },
+    {
+      "sura": 111,
+      "counting_system": "Damascene",
+      "count": 5
+    },
+    {
+      "sura": 111,
+      "counting_system": "First Madinan",
+      "count": 5
+    },
+    {
+      "sura": 111,
+      "counting_system": "Kufi",
+      "count": 5
+    },
+    {
+      "sura": 111,
+      "counting_system": "Last Madinan",
+      "count": 5
+    },
+    {
+      "sura": 111,
+      "counting_system": "Makkan",
+      "count": 5
+    },
+    {
+      "sura": 112,
+      "counting_system": "Basran",
+      "count": 4
+    },
+    {
+      "sura": 112,
+      "counting_system": "Damascene",
+      "count": 5
+    },
+    {
+      "sura": 112,
+      "counting_system": "First Madinan",
+      "count": 4
+    },
+    {
+      "sura": 112,
+      "counting_system": "Kufi",
+      "count": 4
+    },
+    {
+      "sura": 112,
+      "counting_system": "Last Madinan",
+      "count": 4
+    },
+    {
+      "sura": 112,
+      "counting_system": "Makkan",
+      "count": 5
+    },
+    {
+      "sura": 113,
+      "counting_system": "Basran",
+      "count": 5
+    },
+    {
+      "sura": 113,
+      "counting_system": "Damascene",
+      "count": 5
+    },
+    {
+      "sura": 113,
+      "counting_system": "First Madinan",
+      "count": 5
+    },
+    {
+      "sura": 113,
+      "counting_system": "Kufi",
+      "count": 5
+    },
+    {
+      "sura": 113,
+      "counting_system": "Last Madinan",
+      "count": 5
+    },
+    {
+      "sura": 113,
+      "counting_system": "Makkan",
+      "count": 5
+    },
+    {
+      "sura": 114,
+      "counting_system": "Basran",
+      "count": 6
+    },
+    {
+      "sura": 114,
+      "counting_system": "Damascene",
+      "count": 7
+    },
+    {
+      "sura": 114,
+      "counting_system": "First Madinan",
+      "count": 6
+    },
+    {
+      "sura": 114,
+      "counting_system": "Kufi",
+      "count": 6
+    },
+    {
+      "sura": 114,
+      "counting_system": "Last Madinan",
+      "count": 6
+    },
+    {
+      "sura": 114,
+      "counting_system": "Makkan",
+      "count": 7
+    }
+  ]
+}

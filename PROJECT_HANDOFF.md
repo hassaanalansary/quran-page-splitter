@@ -60,7 +60,7 @@ backend/
     tests/    per-area + helpers.py (make_pdf_bytes, make_png_bytes, MediaTestCase, bare_mushaf)
   core/       pure engine: line_detector, aya_separator, page_processor, pipeline, builder,
               coordinate_exporter, sura_header, cut_review, template_matching, quran_metadata, image_utils, …
-  aya_count_per_path.json  (repo root: per-counting-system aya counts, seeded into SuraAyaCount)
+    data/     reference_data.json  (committed snapshot: counting systems, qiraat, suras, aya counts — seeded)
 frontend/
   src/routes/       index (home), mushafs.$mushafId (workspace layout + step nav),
                     mushafs.$mushafId.index (DETAILS landing page), .setup .templates .process .review .finalize
@@ -139,11 +139,13 @@ Green baseline (last verified 2026-07-05): **119 backend tests, ruff, mypy (clea
   `run_number`, `pages_saved`, `abort_page`), **first** review of a page since its
   last processing, line export. Feeds the details-page Activity panel.
 
-**Reference-data seeding** (`services/suras.py` → `seed_suras`): sura names from
-`core.quran_metadata`; per-counting-system aya counts from **`aya_count_per_path.json`**
-(repo root), mapping each JSON slug (kufi, basri, …) to a CountingSystem by **Arabic
-name** (get_or_create — bootstraps a fresh/test DB, never clobbers existing rows).
-CountingSystem/Qiraa taxonomy is otherwise owned by the user.
+**Reference-data seeding** (`services/suras.py` → `seed_suras`): upserts **counting
+systems, qiraat, suras and per-counting-system aya counts** from one committed snapshot,
+**`backend/api/data/reference_data.json`**, each row by its natural key (counting
+systems/qiraat by `name`, suras by `number`; `update_or_create` bootstraps a fresh/test
+DB, never clobbers existing rows). Regenerate it from a filled DB with
+**`python manage.py export_reference_data`**. This is what seeds the qiraat the mushaf
+picker needs.
 
 ---
 
@@ -291,7 +293,7 @@ and the ۝ glyph) — loaded in `index.html`, mapped in `styles.css` `@theme`.
 ## 7. Done & verified
 
 - Django serves the SPA single-origin + `/media`; home redesign; page `reviewed` flag.
-- Counting-system reference-model refactor (service/seed from `aya_count_per_path.json`;
+- Counting-system reference-model refactor (service/seed from `reference_data.json`;
   `/api/suras` correct: Hafs→Kufan 286, Warsh→Madani 285); `GET /api/counting-systems`
   + `GET /api/qiraat` (`lang=ar`) + qiraa filter on the mushaf list.
 - Cover thumbnails on the mushaf list (`thumbnail_url`; backfilled) + regenerate endpoint.

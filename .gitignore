@@ -78,3 +78,5 @@ db.sqlite3
 .ruff_cache/
 media/
 .env
+
+export_reference_data.py

@@ -233,8 +233,8 @@ class MushafDetailTests(MediaTestCase):
 
     def test_includes_counting_system_and_source(self):
         kufi = CountingSystem.objects.get(name_arabic="الكوفي")
-        Qiraa.objects.create(name="hafs", name_arabic="حفص", counting_system=kufi)
-        created = _create("Detail", qiraa="hafs")
+        # hafs + its Kufan counting system come from the seed now (seeded name is "Hafs").
+        created = _create("Detail", qiraa="Hafs")
         detail = mushaf_service.get_mushaf_detail(created["id"])
         self.assertEqual(detail["counting_system"]["name"], kufi.name)
         self.assertEqual(detail["counting_system"]["total_ayat"], 6236)  # canonical Kufan total
