@@ -161,6 +161,10 @@ export const en = {
     savedToast: "Quran content set to PDF pages {{first}}–{{last}}.",
     saveFailed: "Failed to save bounds.",
     firstSetToast: "First page set — now mark the last Quran page.",
+    lastSetToast: "Last Quran page set to PDF page {{page}}.",
+    chipFirst: "First",
+    chipLast: "Last",
+    chipSaved: "Saved",
   },
   templates: {
     name_sura_header: "Sura header",
@@ -193,6 +197,18 @@ export const en = {
     captureFailed: "Failed to capture crop from the page.",
     savedTemplateToast: "Saved {{label}} template.",
     saveFailed: "Failed to save template.",
+    selectToEdit: "Select a template card on the right to capture and edit it here.",
+    captureFirstToIgnore: "Capture the template first, then add an ignore region.",
+    addIgnoreRegion: "Add ignore region",
+    editIgnoreRegion: "Edit ignore region",
+    ignoreLabel: "ignore",
+    ignoreEditHint: "Drag the red box on the template to mark the area matching should skip.",
+    clearIgnore: "Clear ignore",
+    ignoreCleared: "Ignore region cleared.",
+    noIgnore: "No ignore region.",
+    ignoreDone: "Done",
+    ignoreSetToast: "Ignore region set — save the template to keep it.",
+    ignoreChip: "ignore",
   },
   review: {
     type_text: "Text",
@@ -547,6 +563,7 @@ export const en = {
   guide: {
     title: "How this works",
     replayTour: "Replay tour",
+    about: "Do these in order — the checklist ticks off as you go.",
     setup: {
       s1: "Flip through the PDF and mark the first page that holds Quran text.",
       s2: "Flip to the last Quran page and mark it — front/back matter is excluded.",
@@ -604,6 +621,9 @@ export const en = {
   },
   coach: {
     dismiss: "Dismiss hint",
+    show: "Show hint",
+    collapse: "Hide hint",
+    goal: "Show the current canvas hint",
     setup: "Flip pages with the filmstrip, then mark the first and last Quran page.",
     templates: "Drag a tight box on the page, then capture it in the middle panel.",
     process: "Drag the orange box around the text region on the page.",
@@ -631,22 +651,28 @@ export const en = {
       t1_title: "Pick a clear page",
       t1_body:
         "Find a page that clearly shows the element, then draw a tight box around it on the canvas.",
-      t2_title: "Capture it",
+      tools_title: "Canvas tools",
+      tools_body:
+        "Select (V) draws the box, Hand (H or hold Space) pans, and the zoom controls (or scroll) get you close. Precise cropping is easier zoomed in.",
+      t2_title: "Capture & ignore",
       t2_body:
-        "Fine-tune the crop here and capture it. You can also mask noise with an ignore region.",
-      t3_title: "Save both",
+        "Fine-tune the crop and capture it here. To mask noise, add an ignore region and drag the red box on the captured template itself.",
+      t3_title: "Select & save",
       t3_body:
-        "Each element has its own card. Save the sura header and the aya separator — both are matched on every page.",
+        "Each element has a card on the right — click one to work on it, then save. Both are matched on every page.",
     },
     process: {
       t1_title: "Set the bounds",
       t1_body:
-        "Draw the orange box around the text region. Line detection runs only inside it, so exclude margins and decoration.",
+        "Draw the orange box around the text region — drag it on the page, or use the X/Y/W/H inputs for pixel-precise edges. Detection runs only inside it, so exclude margins and decoration.",
       t2_title: "Page range",
       t2_body: "Choose which logical pages to process. Large mushafs run in batches automatically.",
       t3_title: "Starting position",
       t3_body:
         "Tell the engine which sura and aya the first page begins with — this seeds the numbering.",
+      settings_title: "Detection settings",
+      settings_body:
+        "Tune line/aya detection here — expected lines, match thresholds, headers. Hover each (i) for what it does; the defaults suit most mushafs.",
       t4_title: "Process",
       t4_body:
         "Run the detector. If a page's line count doesn't match, it stops so you can adjust and resume.",

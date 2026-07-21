@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 
 import type { Rect } from "@/lib/api/types";
 
-type NaturalSize = { w: number; h: number };
+type Size = { w: number; h: number };
 
 type HandleKey = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
 
@@ -18,22 +18,57 @@ type Props = {
   onRectChange: (r: Rect | null) => void;
   label: string;
   /** Reports the image's natural size once loaded (e.g. to size a filmstrip slot). */
-  onNatural?: (n: NaturalSize) => void;
+  onNatural?: (n: Size) => void;
+  /** Overlay colour — "red" for an ignore region, "orange" (default) for a crop. */
+  tone?: "orange" | "red";
 };
+
+/** Where an `object-contain` image of `natural` size actually sits inside an
+ * `elem`-sized box: the uniform scale plus the letterbox offsets. When the box
+ * matches the image aspect the offsets are 0. */
+function containFit(elem: Size, natural: Size) {
+  const scale = Math.min(elem.w / natural.w, elem.h / natural.h);
+  return { scale, offX: (elem.w - natural.w * scale) / 2, offY: (elem.h - natural.h * scale) / 2 };
+}
 
 /**
  * An image that fills its container with a single draggable/resizable crop
- * rectangle on top, expressed in natural image pixels. Pointer math uses the
- * image's live bounding rect, so it needs no layout measurement and works inside
- * a (possibly transformed) filmstrip slot. Magnification is left to a preview pane.
+ * rectangle on top, expressed in natural image pixels. Pointer math and the
+ * overlay both account for `object-contain` letterboxing, so the box stays glued
+ * to the visible image even when the container's aspect ratio differs from it.
  */
-export function CroppableImage({ imageUrl, rect, onRectChange, label, onNatural }: Props) {
+export function CroppableImage({
+  imageUrl,
+  rect,
+  onRectChange,
+  label,
+  onNatural,
+  tone = "orange",
+}: Props) {
   const { t } = useTranslation();
   const imgRef = useRef<HTMLImageElement>(null);
-  const [natural, setNatural] = useState<NaturalSize | null>(null);
+  const [natural, setNatural] = useState<Size | null>(null);
+  const [elem, setElem] = useState<Size | null>(null);
   const [drag, setDrag] = useState<DragMode | null>(null);
 
   useEffect(() => setNatural(null), [imageUrl]);
+
+  // Track the rendered element size so the overlay sits on the actual
+  // (letterboxed) image, not the element box.
+  useEffect(() => {
+    const el = imgRef.current;
+    if (!el) return;
+    const measure = () => {
+      const r = el.getBoundingClientRect();
+      setElem((prev) =>
+        prev && prev.w === r.width && prev.h === r.height ? prev : { w: r.width, h: r.height },
+      );
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   // Auto-place a centred rectangle when none exists yet.
   useEffect(() => {
@@ -50,10 +85,8 @@ export function CroppableImage({ imageUrl, rect, onRectChange, label, onNatural 
 
     const toImage = (e: PointerEvent) => {
       const r = img.getBoundingClientRect();
-      return {
-        x: ((e.clientX - r.left) / r.width) * natural.w,
-        y: ((e.clientY - r.top) / r.height) * natural.h,
-      };
+      const { scale, offX, offY } = containFit({ w: r.width, h: r.height }, natural);
+      return { x: (e.clientX - r.left - offX) / scale, y: (e.clientY - r.top - offY) / scale };
     };
     const clamp = (r: Rect): Rect => {
       const nx = Math.max(0, Math.min(natural.w - 1, r.x));
@@ -105,36 +138,37 @@ export function CroppableImage({ imageUrl, rect, onRectChange, label, onNatural 
     };
   }, [drag, natural, onRectChange]);
 
+  const pointerToImage = useCallback(
+    (e: React.PointerEvent): { x: number; y: number } | null => {
+      if (!natural || !imgRef.current) return null;
+      const r = imgRef.current.getBoundingClientRect();
+      const { scale, offX, offY } = containFit({ w: r.width, h: r.height }, natural);
+      return { x: (e.clientX - r.left - offX) / scale, y: (e.clientY - r.top - offY) / scale };
+    },
+    [natural],
+  );
+
   const startBody = useCallback(
     (e: React.PointerEvent) => {
-      if (!rect || !natural || !imgRef.current) return;
+      const p = pointerToImage(e);
+      if (!rect || !p) return;
       e.stopPropagation();
-      const r = imgRef.current.getBoundingClientRect();
-      setDrag({
-        kind: "move",
-        startRect: { ...rect },
-        startX: ((e.clientX - r.left) / r.width) * natural.w,
-        startY: ((e.clientY - r.top) / r.height) * natural.h,
-      });
+      setDrag({ kind: "move", startRect: { ...rect }, startX: p.x, startY: p.y });
     },
-    [rect, natural],
+    [rect, pointerToImage],
   );
 
   const startHandle = useCallback(
     (handle: HandleKey) => (e: React.PointerEvent) => {
-      if (!rect || !natural || !imgRef.current) return;
+      const p = pointerToImage(e);
+      if (!rect || !p) return;
       e.stopPropagation();
-      const r = imgRef.current.getBoundingClientRect();
-      setDrag({
-        kind: "resize",
-        handle,
-        startRect: { ...rect },
-        startX: ((e.clientX - r.left) / r.width) * natural.w,
-        startY: ((e.clientY - r.top) / r.height) * natural.h,
-      });
+      setDrag({ kind: "resize", handle, startRect: { ...rect }, startX: p.x, startY: p.y });
     },
-    [rect, natural],
+    [rect, pointerToImage],
   );
+
+  const fit = elem && natural ? containFit(elem, natural) : null;
 
   return (
     <div className="relative h-full w-full">
@@ -153,11 +187,13 @@ export function CroppableImage({ imageUrl, rect, onRectChange, label, onNatural 
         }}
         className="h-full w-full select-none object-contain"
       />
-      {rect && natural && (
+      {rect && elem && fit && (
         <RectOverlay
           rect={rect}
-          natural={natural}
+          elem={elem}
+          fit={fit}
           label={label}
+          color={tone === "red" ? "var(--error)" : "var(--orange)"}
           onBodyPointerDown={startBody}
           onHandlePointerDown={startHandle}
         />
@@ -168,21 +204,31 @@ export function CroppableImage({ imageUrl, rect, onRectChange, label, onNatural 
 
 function RectOverlay({
   rect,
-  natural,
+  elem,
+  fit,
   label,
+  color,
   onBodyPointerDown,
   onHandlePointerDown,
 }: {
   rect: Rect;
-  natural: NaturalSize;
+  elem: Size;
+  fit: { scale: number; offX: number; offY: number };
   label: string;
+  color: string;
   onBodyPointerDown: (e: React.PointerEvent) => void;
   onHandlePointerDown: (h: HandleKey) => (e: React.PointerEvent) => void;
 }) {
-  const left = (rect.x / natural.w) * 100;
-  const top = (rect.y / natural.h) * 100;
-  const width = (rect.w / natural.w) * 100;
-  const height = (rect.h / natural.h) * 100;
+  // Pixel geometry of the box on the letterboxed image, and its % of the element
+  // (for the dimming clip-path).
+  const left = fit.offX + rect.x * fit.scale;
+  const top = fit.offY + rect.y * fit.scale;
+  const width = rect.w * fit.scale;
+  const height = rect.h * fit.scale;
+  const lp = (left / elem.w) * 100;
+  const tp = (top / elem.h) * 100;
+  const wp = (width / elem.w) * 100;
+  const hp = (height / elem.h) * 100;
 
   const edges: { key: "n" | "s" | "e" | "w"; style: React.CSSProperties; cursor: string }[] = [
     { key: "n", style: { top: -3, left: "2%", right: "2%", height: 6 }, cursor: "ns-resize" },
@@ -203,18 +249,19 @@ function RectOverlay({
         className="pointer-events-none absolute inset-0"
         style={{
           background: "color-mix(in oklab, var(--navy) 10%, transparent)",
-          clipPath: `polygon(0% 0%, 0% 100%, ${left}% 100%, ${left}% ${top}%, ${left + width}% ${top}%, ${left + width}% ${top + height}%, ${left}% ${top + height}%, ${left}% 100%, 100% 100%, 100% 0%)`,
+          clipPath: `polygon(0% 0%, 0% 100%, ${lp}% 100%, ${lp}% ${tp}%, ${lp + wp}% ${tp}%, ${lp + wp}% ${tp + hp}%, ${lp}% ${tp + hp}%, ${lp}% 100%, 100% 100%, 100% 0%)`,
         }}
       />
       <div
         onPointerDown={onBodyPointerDown}
-        className="absolute rounded-[3px] border-2 border-orange"
+        className="absolute rounded-[3px] border-2"
         style={{
-          left: `${left}%`,
-          top: `${top}%`,
-          width: `${width}%`,
-          height: `${height}%`,
-          backgroundColor: "color-mix(in oklab, var(--orange) 4%, transparent)",
+          left,
+          top,
+          width,
+          height,
+          borderColor: color,
+          backgroundColor: `color-mix(in oklab, ${color} 4%, transparent)`,
           cursor: "move",
           touchAction: "none",
         }}
@@ -231,13 +278,19 @@ function RectOverlay({
           <div
             key={h.key}
             onPointerDown={onHandlePointerDown(h.key)}
-            className="absolute h-[12px] w-[12px] rounded-[3px] border-2 border-orange bg-white"
-            style={{ ...h.pos, cursor: h.cursor, touchAction: "none" }}
+            className="absolute h-[12px] w-[12px] rounded-[3px] border-2 bg-white"
+            style={{ ...h.pos, borderColor: color, cursor: h.cursor, touchAction: "none" }}
           />
         ))}
         <div
-          className="pointer-events-none absolute rounded-pill bg-orange px-2 py-[2px] text-[10px] font-semibold text-white"
-          style={{ top: -22, left: 0, letterSpacing: "0.04em", whiteSpace: "nowrap" }}
+          className="pointer-events-none absolute rounded-pill px-2 py-[2px] text-[10px] font-semibold text-white"
+          style={{
+            top: -22,
+            left: 0,
+            background: color,
+            letterSpacing: "0.04em",
+            whiteSpace: "nowrap",
+          }}
         >
           {label}
         </div>

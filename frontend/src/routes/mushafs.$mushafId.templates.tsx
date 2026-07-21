@@ -1,18 +1,18 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, useParams } from "@tanstack/react-router";
 import { Check } from "lucide-react";
-import { MouseEvent, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
 import { Aside, StatusLine } from "@/components/app/Panel";
-import { StepGuide } from "@/components/app/StepGuide";
-import { CanvasCoach } from "@/components/app/CanvasCoach";
+import { CanvasHelp } from "@/components/app/CanvasHelp";
 import { TourOverlay } from "@/components/app/tour/TourOverlay";
 import { useStepTour, type TourStep } from "@/components/app/tour/useStepTour";
+import { CroppableImage } from "@/components/canvas/CroppableImage";
 import { PageStage } from "@/components/canvas/PageStage";
 import { RectInputs } from "@/components/canvas/RectInputs";
-import { TemplatePreview } from "@/components/canvas/TemplatePreview";
+import { ImageWithRedBox, TemplatePreview } from "@/components/canvas/TemplatePreview";
 import { Button } from "@/components/ui/button";
 import {
   ApiError,
@@ -30,15 +30,7 @@ import { getTemplateDraft, setTemplateDraft } from "@/lib/templateDraft";
 
 export const Route = createFileRoute("/mushafs/$mushafId/templates")({ component: TemplatesPage });
 
-type Target = TemplateType | "sura_header_ignore" | "aya_separator_ignore";
-
 const TEMPLATE_TYPES: TemplateType[] = ["sura_header", "aya_separator"];
-
-function parentOf(t: Target): TemplateType | null {
-  if (t === "sura_header_ignore") return "sura_header";
-  if (t === "aya_separator_ignore") return "aya_separator";
-  return null;
-}
 
 function clamp(n: number, lo: number, hi: number) {
   return Math.max(lo, Math.min(hi, n));
@@ -50,86 +42,68 @@ function TemplatesPage() {
   const { data: serverTemplates } = useTemplates(mushafId);
   const queryClient = useQueryClient();
   const { t, i18n } = useTranslation();
-  const label = (target: Target) => t(`templates.label_${target}`);
+  const label = (type: TemplateType) => t(`templates.label_${type}`);
 
   const draft0 = useMemo(() => getTemplateDraft(mushafId), [mushafId]);
   const [preview, setPreview] = useState(1);
-  const [activeTarget, setActiveTarget] = useState<Target>("sura_header");
-  const [working, setWorking] = useState<Rect | null>(null);
+  const [activeType, setActiveType] = useState<TemplateType>("sura_header");
+  const [working, setWorking] = useState<Rect | null>(null); // template crop, page coords
   const [captures, setCaptures] = useState(draft0.captures);
-  const [ignores, setIgnores] = useState(draft0.ignores);
+  const [ignores, setIgnores] = useState(draft0.ignores); // relative to the template crop
   const [savedAt, setSavedAt] = useState(draft0.savedAt);
   const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);
+  const [editingIgnore, setEditingIgnore] = useState(false);
 
   // Persist the draft so leaving and returning within the app keeps captures.
   useEffect(() => {
     setTemplateDraft(mushafId, { captures, ignores, savedAt });
   }, [mushafId, captures, ignores, savedAt]);
 
+  // Seed the selected template's saved ignore region into local state so it shows
+  // on load, and survives a re-save even if the user doesn't touch it.
+  useEffect(() => {
+    if (!serverTemplates) return;
+    const srv = serverTemplates.find((s) => s.type === activeType);
+    if (srv && "x" in srv.ignore_rects) {
+      setIgnores((p) => (p[activeType] ? p : { ...p, [activeType]: srv.ignore_rects as Rect }));
+    }
+  }, [serverTemplates, activeType]);
+
   const server = (type: TemplateType): Template | undefined =>
-    serverTemplates?.find((t) => t.type === type);
-  const displayUrl = (type: TemplateType): string | null =>
+    serverTemplates?.find((s) => s.type === type);
+  const templateUrlOf = (type: TemplateType): string | null =>
     captures[type]?.url ?? server(type)?.image_url ?? null;
   const isSaved = (type: TemplateType): boolean =>
     captures[type] ? !!savedAt[type] : !!server(type);
+  const hasIgnore = (type: TemplateType): boolean => {
+    if (ignores[type]) return true;
+    const srv = server(type);
+    return !!srv && "x" in srv.ignore_rects;
+  };
 
-  function switchTarget(t: Target, e: MouseEvent<HTMLElement>) {
-    e.preventDefault();
-    e.stopPropagation();
-    setActiveTarget(t);
-    const parent = parentOf(t);
-    if (!parent) {
-      setWorking(captures[t as TemplateType]?.rect ?? null);
-      return;
-    }
-    const existing = ignores[parent];
-    if (existing) {
-      setWorking(existing);
-      return;
-    }
-    const pr = captures[parent]?.rect;
-    setWorking(
-      pr
-        ? {
-            x: Math.round(pr.x + pr.w * 0.35),
-            y: Math.round(pr.y + pr.h * 0.3),
-            w: Math.round(pr.w * 0.3),
-            h: Math.round(pr.h * 0.4),
-          }
-        : null,
-    );
+  // Card click selects a template to work on (never jumps into ignore mode). The
+  // ignore region is seeded from the saved template (its coords are already
+  // relative to the template crop) so revisiting shows it.
+  function selectType(type: TemplateType) {
+    setActiveType(type);
+    setWorking(captures[type]?.rect ?? null);
+    setEditingIgnore(false);
   }
 
-  async function apply() {
+  async function capture() {
     if (!working || !mushaf) return;
-    const parent = parentOf(activeTarget);
-    if (parent) {
-      const cap = captures[parent];
-      if (!cap?.rect) {
-        return toast.error(t("templates.recropIgnore", { label: label(parent) }));
-      }
-      const inside =
-        working.x >= cap.rect.x &&
-        working.y >= cap.rect.y &&
-        working.x + working.w <= cap.rect.x + cap.rect.w &&
-        working.y + working.h <= cap.rect.y + cap.rect.h;
-      if (!inside) return toast.error(t("templates.ignoreInside"));
-      setIgnores((p) => ({ ...p, [parent]: { ...working } }));
-      toast.success(t("templates.ignoreSet"));
-      return;
-    }
-
-    const type = activeTarget as TemplateType;
     try {
       const blob = await cropUrlToBlob(pageImageUrl(mushafId, preview, mushaf.updated_at), working);
       const url = URL.createObjectURL(blob);
       setCaptures((p) => {
-        if (p[type]?.url) URL.revokeObjectURL(p[type]!.url);
-        return { ...p, [type]: { blob, url, rect: { ...working } } };
+        if (p[activeType]?.url) URL.revokeObjectURL(p[activeType]!.url);
+        return { ...p, [activeType]: { blob, url, rect: { ...working } } };
       });
-      setIgnores((p) => ({ ...p, [type]: undefined }));
-      setSavedAt((p) => ({ ...p, [type]: false }));
-      toast.success(t("templates.captured", { label: label(type) }));
+      // Re-cropping invalidates the previous ignore (its coords are template-relative).
+      setIgnores((p) => ({ ...p, [activeType]: undefined }));
+      setEditingIgnore(false);
+      setSavedAt((p) => ({ ...p, [activeType]: false }));
+      toast.success(t("templates.captured", { label: label(activeType) }));
     } catch {
       toast.error(t("templates.captureFailed"));
     }
@@ -139,11 +113,8 @@ function TemplatesPage() {
     mutationFn: async (type: TemplateType) => {
       const cap = captures[type];
       if (!cap) throw new Error("Nothing to save.");
-      const ig = ignores[type];
-      const relIgnore: Rect | null = ig
-        ? { x: ig.x - cap.rect.x, y: ig.y - cap.rect.y, w: ig.w, h: ig.h }
-        : null;
-      await upsertTemplate(mushafId, type, { image: cap.blob, ignore: relIgnore });
+      // The ignore is already relative to the template crop.
+      await upsertTemplate(mushafId, type, { image: cap.blob, ignore: ignores[type] ?? null });
       return type;
     },
     onSuccess: (type) => {
@@ -161,6 +132,11 @@ function TemplatesPage() {
       body: t("tour.templates.t1_body"),
     },
     {
+      target: "tpl-canvas",
+      title: t("tour.templates.tools_title"),
+      body: t("tour.templates.tools_body"),
+    },
+    {
       target: "tpl-capture",
       title: t("tour.templates.t2_title"),
       body: t("tour.templates.t2_body"),
@@ -171,12 +147,15 @@ function TemplatesPage() {
       body: t("tour.templates.t3_body"),
     },
   ];
-  const tour = useStepTour("templates", tourSteps);
+  const tour = useStepTour(
+    "templates",
+    tourSteps,
+    !!serverTemplates && serverTemplates.length === 0,
+  );
 
   if (!mushaf) return null;
   const logicalCount = mushaf.logical_page_count;
   const pageUrl = pageImageUrl(mushafId, preview, mushaf.updated_at);
-  const activeParent = parentOf(activeTarget);
 
   const headerSaved = isSaved("sura_header");
   const sepSaved = isSaved("aya_separator");
@@ -195,39 +174,15 @@ function TemplatesPage() {
       <StatusLine>{t("stepStatus.templatesNone")}</StatusLine>
     );
 
-  let previewNode;
-  if (activeParent) {
-    const cap = captures[activeParent];
-    const srv = server(activeParent);
-    let ignoreRelative: Rect | null = null;
-    if (working && cap?.rect) {
-      ignoreRelative = {
-        x: working.x - cap.rect.x,
-        y: working.y - cap.rect.y,
-        w: working.w,
-        h: working.h,
-      };
-    } else if (srv && "x" in srv.ignore_rects) {
-      ignoreRelative = srv.ignore_rects as Rect;
-    }
-    previewNode = (
-      <TemplatePreview
-        mode="ignore"
-        pageUrl={pageUrl}
-        working={working}
-        parentLabel={label(activeParent)}
-        parentImageUrl={cap?.url ?? srv?.image_url ?? null}
-        ignoreRelative={ignoreRelative}
-      />
-    );
-  } else {
-    previewNode = <TemplatePreview mode="template" pageUrl={pageUrl} working={working} />;
-  }
+  const cap = captures[activeType];
+  const templateUrl = templateUrlOf(activeType);
+  const ignoreRect = ignores[activeType] ?? null;
 
   return (
     <div
       className={`flex ${i18n.language === "ar" ? "flex-row-reverse" : "flex-row"} flex-1 overflow-hidden`}
     >
+      {/* Left: crop the selected template on the page */}
       <div data-tour="tpl-canvas" className="relative flex flex-1 overflow-hidden">
         <PageStage
           imageUrl={pageUrl}
@@ -240,30 +195,64 @@ function TemplatesPage() {
               total: mushaf.pdf_page_count,
             })
           }
-          crop={{ label: label(activeTarget), rect: working, onRectChange: setWorking }}
+          crop={{ label: label(activeType), rect: working, onRectChange: setWorking }}
           onNatural={setNatural}
         />
-        <CanvasCoach storageKey="templates" text={t("coach.templates")} />
+        <CanvasHelp
+          guideItems={guideItems}
+          coachText={t("coach.templates")}
+          onReplayTour={tour.start}
+        />
       </div>
 
-      {/* Center: the active-cut workspace */}
+      {/* Center: handle the selected template fully — capture, ignore, save */}
       <div
         data-tour="tpl-capture"
         className="flex w-[400px] flex-shrink-0 flex-col gap-3 overflow-auto border-s border-border bg-white p-4"
       >
         <div className="text-[12px] font-semibold capitalize text-text-primary">
-          {label(activeTarget)}
+          {label(activeType)}
         </div>
-        {previewNode}
+
+        <TemplatePreview mode="template" pageUrl={pageUrl} working={working} />
         <RectInputs rect={working} onChange={setWorking} max={natural} />
-        <Button onClick={apply} disabled={!working || working.w < 2}>
-          {activeParent
-            ? t("templates.setIgnore")
-            : t("templates.capture", { label: label(activeTarget) })}
+        <Button onClick={capture} disabled={!working || working.w < 2}>
+          {cap ? t("templates.recrop") : t("templates.capture", { label: label(activeType) })}
+        </Button>
+
+        <IgnoreSection
+          templateUrl={templateUrl}
+          ignoreRect={ignoreRect}
+          editing={editingIgnore}
+          onEdit={() => setEditingIgnore(true)}
+          onDone={() => {
+            setEditingIgnore(false);
+            if (ignores[activeType]) toast.success(t("templates.ignoreSetToast"));
+          }}
+          onChange={(r) => setIgnores((p) => ({ ...p, [activeType]: r ?? undefined }))}
+          onClear={() => {
+            setIgnores((p) => ({ ...p, [activeType]: undefined }));
+            setEditingIgnore(false);
+            toast.success(t("templates.ignoreCleared"));
+          }}
+        />
+
+        <Button
+          className="mt-auto"
+          onClick={() => saveMutation.mutate(activeType)}
+          disabled={!cap || saveMutation.isPending}
+        >
+          {savedAt[activeType] ? (
+            <>
+              <Check size={14} /> {t("templates.savedBtn")}
+            </>
+          ) : (
+            t("templates.saveNamed", { label: label(activeType) })
+          )}
         </Button>
       </div>
 
-      {/* Right: per-target cards */}
+      {/* Right: selection cards */}
       <Aside
         status={status}
         footer={
@@ -274,25 +263,32 @@ function TemplatesPage() {
           </Button>
         }
       >
-        <StepGuide items={guideItems} storageKey="templates" onReplayTour={tour.start} />
-
-        <div data-tour="tpl-targets" className="flex flex-col gap-4">
+        <div data-tour="tpl-targets" className="flex flex-col gap-3">
           {TEMPLATE_TYPES.map((type) => {
             const name = t(`templates.name_${type}`);
             const hint = t(`templates.hint_${type}`);
-            const url = displayUrl(type);
-            const cap = captures[type];
-            const dirty = !!cap && !savedAt[type];
+            const url = templateUrlOf(type);
+            const dirty = !!captures[type] && !savedAt[type];
             const saved = isSaved(type);
-            const active = activeTarget === type || activeTarget === `${type}_ignore`;
+            const active = activeType === type;
             return (
-              <div
+              <button
                 key={type}
-                onClick={(e) => switchTarget(`${type}_ignore` as Target, e)}
-                className={`overflow-hidden rounded-xl border bg-white p-3 ${active ? "border-orange" : "border-border"}`}
+                type="button"
+                onClick={() => selectType(type)}
+                className={`overflow-hidden rounded-xl border bg-white p-3 text-start transition-colors ${
+                  active
+                    ? "border-orange ring-2 ring-orange/20"
+                    : "border-border hover:border-border-strong"
+                }`}
               >
                 <div className="mb-2 flex items-center gap-2">
                   <span className="flex-1 text-[13px] font-semibold text-text-primary">{name}</span>
+                  {hasIgnore(type) && (
+                    <span className="rounded-pill border border-error/40 bg-error-bg px-1.5 py-[1px] text-[10px] font-medium text-error">
+                      {t("templates.ignoreChip")}
+                    </span>
+                  )}
                   {dirty ? (
                     <span className="text-[11px] font-medium text-orange">
                       {t("templates.unsaved")}
@@ -306,54 +302,113 @@ function TemplatesPage() {
                   )}
                 </div>
                 <p className="mb-2 text-[11px] text-text-muted">{hint}</p>
-
-                <div className="flex gap-3">
-                  <div className="flex h-16 w-24 flex-shrink-0 items-center justify-center overflow-hidden rounded border border-border bg-bg-surface">
-                    {url ? (
-                      <img src={url} alt={name} className="max-h-full max-w-full object-contain" />
-                    ) : (
-                      <span className="text-[10px] text-text-muted">{t("templates.noCrop")}</span>
-                    )}
-                  </div>
-                  <div className="flex flex-1 flex-col gap-1.5">
-                    <Button
-                      size="sm"
-                      variant={active && !activeParent ? "default" : "outline"}
-                      onClick={(e) => switchTarget(type, e)}
-                    >
-                      {url ? t("templates.recrop") : t("templates.cropOnPage")}
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant={activeTarget === `${type}_ignore` ? "default" : "outline"}
-                      onClick={(e) => switchTarget(`${type}_ignore` as Target, e)}
-                      disabled={!cap?.rect}
-                    >
-                      {ignores[type] ? t("templates.editIgnore") : t("templates.addIgnore")}
-                    </Button>
-                  </div>
-                </div>
-
-                <Button
-                  className="mt-2 w-full"
-                  onClick={() => saveMutation.mutate(type)}
-                  disabled={!cap || saveMutation.isPending}
-                >
-                  {savedAt[type] ? (
-                    <>
-                      <Check size={14} /> {t("templates.savedBtn")}
-                    </>
+                <div className="flex h-16 w-full items-center justify-center overflow-hidden rounded border border-border bg-bg-surface">
+                  {url ? (
+                    <img src={url} alt={name} className="max-h-full max-w-full object-contain" />
                   ) : (
-                    t("templates.saveNamed", { label: label(type) })
+                    <span className="text-[10px] text-text-muted">{t("templates.noCrop")}</span>
                   )}
-                </Button>
-              </div>
+                </div>
+              </button>
             );
           })}
         </div>
       </Aside>
 
       <TourOverlay tour={tour} />
+    </div>
+  );
+}
+
+/** The in-workspace ignore-region editor: a red box dragged on the captured
+ * template itself (not the main page), so switching pages can't disturb it. */
+function IgnoreSection({
+  templateUrl,
+  ignoreRect,
+  editing,
+  onEdit,
+  onDone,
+  onChange,
+  onClear,
+}: {
+  templateUrl: string | null;
+  ignoreRect: Rect | null;
+  editing: boolean;
+  onEdit: () => void;
+  onDone: () => void;
+  onChange: (r: Rect | null) => void;
+  onClear: () => void;
+}) {
+  const { t } = useTranslation();
+  if (!templateUrl) {
+    return (
+      <p className="rounded-md border border-border bg-bg-surface px-3 py-2 text-[11px] text-text-muted">
+        {t("templates.captureFirstToIgnore")}
+      </p>
+    );
+  }
+  return (
+    <div className="flex flex-col gap-2 rounded-md border border-border bg-bg-surface p-3">
+      <div className="flex items-center justify-between gap-2">
+        <span className="flex items-center gap-1.5 text-[12px] font-semibold text-text-primary">
+          {t("templates.ignoreLabel")}
+          {ignoreRect && (
+            <span className="inline-flex items-center gap-1 rounded-pill border border-success/40 bg-success/10 px-1.5 py-[1px] text-[10px] font-medium text-success">
+              <Check size={10} strokeWidth={3} />
+              {Math.round(ignoreRect.w)}×{Math.round(ignoreRect.h)}
+            </span>
+          )}
+        </span>
+        <div className="flex gap-1.5">
+          {ignoreRect && (
+            <button
+              type="button"
+              onClick={onClear}
+              className="rounded-sm border border-border-strong bg-white px-2 py-[3px] text-[11px] font-medium text-text-secondary hover:bg-bg-surface"
+            >
+              {t("templates.clearIgnore")}
+            </button>
+          )}
+          {editing ? (
+            <button
+              type="button"
+              onClick={onDone}
+              className="rounded-sm bg-orange px-2.5 py-[3px] text-[11px] font-semibold text-white hover:bg-orange-hover"
+            >
+              {t("templates.ignoreDone")}
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onEdit}
+              className="rounded-sm border border-border-strong bg-white px-2 py-[3px] text-[11px] font-medium text-orange hover:bg-orange-tint"
+            >
+              {ignoreRect ? t("templates.editIgnoreRegion") : t("templates.addIgnoreRegion")}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {editing ? (
+        <>
+          <p className="text-[10.5px] leading-snug text-text-muted">
+            {t("templates.ignoreEditHint")}
+          </p>
+          <div className="raqam-canvas-grid h-[200px] overflow-hidden rounded-md border border-border">
+            <CroppableImage
+              imageUrl={templateUrl}
+              rect={ignoreRect}
+              onRectChange={onChange}
+              label={t("templates.ignoreLabel")}
+              tone="red"
+            />
+          </div>
+        </>
+      ) : ignoreRect ? (
+        <ImageWithRedBox imageUrl={templateUrl} red={ignoreRect} height={200} />
+      ) : (
+        <p className="text-[11px] text-text-muted">{t("templates.noIgnore")}</p>
+      )}
     </div>
   );
 }

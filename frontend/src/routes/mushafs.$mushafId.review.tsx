@@ -5,8 +5,7 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
 import { Aside, Field, Hint, StatusLine } from "@/components/app/Panel";
-import { StepGuide } from "@/components/app/StepGuide";
-import { CanvasCoach } from "@/components/app/CanvasCoach";
+import { CanvasHelp } from "@/components/app/CanvasHelp";
 import { TourOverlay } from "@/components/app/tour/TourOverlay";
 import { useStepTour, type TourStep } from "@/components/app/tour/useStepTour";
 import { ReviewEditCanvas } from "@/components/canvas/ReviewEditCanvas";
@@ -409,7 +408,7 @@ function ReviewPage() {
     { target: "review-lines", title: t("tour.review.t2_title"), body: t("tour.review.t2_body") },
     { target: "review-save", title: t("tour.review.t3_title"), body: t("tour.review.t3_body") },
   ];
-  const tour = useStepTour("review", tourSteps);
+  const tour = useStepTour("review", tourSteps, (mushaf?.reviewed_page_count ?? 1) === 0);
 
   if (!mushaf) return null;
 
@@ -490,7 +489,11 @@ function ReviewPage() {
           onNatural={setNatural}
           statusSlot={statusSlot}
         />
-        <CanvasCoach storageKey="review" text={t("coach.review")} />
+        <CanvasHelp
+          guideItems={guideItems}
+          coachText={t("coach.review")}
+          onReplayTour={tour.start}
+        />
       </div>
 
       <Aside
@@ -522,8 +525,6 @@ function ReviewPage() {
           <Hint>{t("review.loadingData")}</Hint>
         ) : (
           <>
-            <StepGuide items={guideItems} storageKey="review" onReplayTour={tour.start} />
-
             {currentDerived && (
               <div className="rounded-md border border-border bg-white px-2.5 py-1.5 text-[11.5px] text-text-secondary">
                 {t("review.enters", {

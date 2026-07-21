@@ -88,7 +88,7 @@ function Header({ title }: { title: string }) {
 }
 
 /** Draws an image fit-to-box with an optional red overlay rect (in image px). */
-function ImageWithRedBox({
+export function ImageWithRedBox({
   imageUrl,
   red,
   height,

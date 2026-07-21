@@ -21,16 +21,22 @@ export type TourController = {
 
 /** Drives a first-run coach-mark tour for one step. Auto-starts once per
  * `storageKey` (remembered in localStorage); `start()` replays it on demand. */
-export function useStepTour(storageKey: string, steps: TourStep[]): TourController {
+export function useStepTour(
+  storageKey: string,
+  steps: TourStep[],
+  autoStart = true,
+): TourController {
   const key = `tour:${storageKey}:done`;
   const [index, setIndex] = useState(-1);
 
-  // First visit: kick off after a short beat so the targets have laid out.
+  // First visit only, and only when the step is genuinely fresh (autoStart) —
+  // so opening an already-handled mushaf never triggers the tour. `start()`
+  // still replays it on demand regardless.
   useEffect(() => {
-    if (readFlag(key) || steps.length === 0) return;
+    if (!autoStart || readFlag(key) || steps.length === 0) return;
     const id = window.setTimeout(() => setIndex(0), 500);
     return () => window.clearTimeout(id);
-  }, [key, steps.length]);
+  }, [key, steps.length, autoStart]);
 
   const stop = useCallback(() => {
     writeFlag(key, true);

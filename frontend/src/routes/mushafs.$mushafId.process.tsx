@@ -6,8 +6,7 @@ import { toast } from "sonner";
 
 import { TemplatePreview } from "@/components/canvas/TemplatePreview";
 import { Aside, Field, Hint, Section, StatusLine } from "@/components/app/Panel";
-import { StepGuide } from "@/components/app/StepGuide";
-import { CanvasCoach } from "@/components/app/CanvasCoach";
+import { CanvasHelp } from "@/components/app/CanvasHelp";
 import { InfoTip } from "@/components/app/InfoTip";
 import { TourOverlay } from "@/components/app/tour/TourOverlay";
 import { useStepTour, type TourStep } from "@/components/app/tour/useStepTour";
@@ -135,9 +134,14 @@ function ProcessPage() {
     },
     { target: "process-range", title: t("tour.process.t2_title"), body: t("tour.process.t2_body") },
     { target: "process-start", title: t("tour.process.t3_title"), body: t("tour.process.t3_body") },
+    {
+      target: "process-settings",
+      title: t("tour.process.settings_title"),
+      body: t("tour.process.settings_body"),
+    },
     { target: "process-run", title: t("tour.process.t4_title"), body: t("tour.process.t4_body") },
   ];
-  const tour = useStepTour("process", tourSteps);
+  const tour = useStepTour("process", tourSteps, (mushaf?.processed_page_count ?? 1) === 0);
 
   if (!mushaf) return null;
 
@@ -238,7 +242,11 @@ function ProcessPage() {
           processed={pages?.processed}
           reviewed={pages?.reviewed}
         />
-        <CanvasCoach storageKey="process" text={t("coach.process")} />
+        <CanvasHelp
+          guideItems={guideItems}
+          coachText={t("coach.process")}
+          onReplayTour={tour.start}
+        />
       </div>
 
       <div className="flex w-[400px] flex-shrink-0 flex-col gap-3 overflow-auto border-s border-border bg-white p-4">
@@ -277,7 +285,8 @@ function ProcessPage() {
           </div>
         }
       >
-        <StepGuide items={guideItems} storageKey="process" onReplayTour={tour.start} />
+        {run?.abort && <AbortCard abort={run.abort} />}
+        {run?.error && <Hint tone="warning">{run.error}</Hint>}
 
         {loadedRun && (
           <Hint>
@@ -288,9 +297,11 @@ function ProcessPage() {
         )}
 
         <Section title={t("process.boundsTitle")}>
-          <p className="text-[12px] text-text-muted">{t("process.boundsHelp")}</p>
           <div className="flex items-center justify-between text-[12px]">
-            <span className="text-text-secondary">{t("process.region")}</span>
+            <span className="flex items-center gap-1 text-text-secondary">
+              {t("process.region")}
+              <InfoTip text={t("process.boundsHelp")} />
+            </span>
             <span className="font-mono text-text-primary">
               {bounds
                 ? `${Math.round(bounds.w)}×${Math.round(bounds.h)} @ ${Math.round(bounds.x)},${Math.round(bounds.y)}`
@@ -360,10 +371,9 @@ function ProcessPage() {
           </Section>
         </div>
 
-        <SettingsCard settings={settings} onChange={setSettings} />
-
-        {run?.abort && <AbortCard abort={run.abort} />}
-        {run?.error && <Hint tone="warning">{run.error}</Hint>}
+        <div data-tour="process-settings">
+          <SettingsCard settings={settings} onChange={setSettings} />
+        </div>
       </Aside>
 
       <TourOverlay tour={tour} />

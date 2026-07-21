@@ -5,8 +5,7 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
 import { Aside, Field, Hint, PanelCard, Section, StatusLine } from "@/components/app/Panel";
-import { StepGuide } from "@/components/app/StepGuide";
-import { CanvasCoach } from "@/components/app/CanvasCoach";
+import { CanvasHelp } from "@/components/app/CanvasHelp";
 import { TourOverlay } from "@/components/app/tour/TourOverlay";
 import { useStepTour, type TourStep } from "@/components/app/tour/useStepTour";
 import { FinalizeCanvas, type CanvasLine } from "@/components/canvas/FinalizeCanvas";
@@ -224,7 +223,11 @@ function FinalizePage() {
       body: t("tour.finalize.t3_body"),
     },
   ];
-  const tour = useStepTour("finalize", tourSteps);
+  const tour = useStepTour(
+    "finalize",
+    tourSteps,
+    (mushaf?.reviewed_page_count ?? 0) < (mushaf?.logical_page_count ?? 0),
+  );
 
   if (!mushaf) return null;
   const logicalCount = mushaf.logical_page_count;
@@ -311,7 +314,11 @@ function FinalizePage() {
           canUndo={historyRef.current.index > 0}
           canRedo={historyRef.current.index < historyRef.current.stack.length - 1}
         />
-        <CanvasCoach storageKey="finalize" text={t("coach.finalize")} />
+        <CanvasHelp
+          guideItems={guideItems}
+          coachText={t("coach.finalize")}
+          onReplayTour={tour.start}
+        />
       </div>
 
       <Aside
@@ -336,8 +343,6 @@ function FinalizePage() {
           </div>
         }
       >
-        <StepGuide items={guideItems} storageKey="finalize" onReplayTour={tour.start} />
-
         {!hasLines ? (
           <Hint tone="warning">{t("finalize.noLines", { page })}</Hint>
         ) : (
