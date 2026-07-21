@@ -544,4 +544,148 @@ export const en = {
     diag_expects: "expects {{count}} lines",
     diag_downloadLog: "Download detection log ↓",
   },
+  guide: {
+    title: "How this works",
+    replayTour: "Replay tour",
+    setup: {
+      s1: "Flip through the PDF and mark the first page that holds Quran text.",
+      s2: "Flip to the last Quran page and mark it — front/back matter is excluded.",
+      s3: "Save the page range.",
+    },
+    templates: {
+      s1: "On a clear page, draw a tight box around the sura-title band and capture it.",
+      s2: "Do the same for one aya separator (۝).",
+      s3: "Optionally mask noise inside a template with an ignore region.",
+      s4: "Save each template — they're matched against every page.",
+    },
+    process: {
+      s1: "Draw the text-region bounds (exclude margins and decoration).",
+      s2: "Choose the page range to process.",
+      s3: "Set the sura and aya the range starts at.",
+      s4: "Run processing — detection works inside the bounds.",
+    },
+    review: {
+      s1: "Check each line's box and type; drag a box or its handles to fix it.",
+      s2: "Double-click a text line to add an aya separator (۝).",
+      s3: "Anchor a sura header to reset numbering where a sura begins.",
+      s4: "Mark each page reviewed, then save your changes.",
+    },
+    finalize: {
+      s1: "Trim each line's top and bottom so only its own ink remains.",
+      s2: "Hold Shift to erase bleed from neighbouring lines.",
+      s3: "Save the cuts.",
+      s4: "Export the page to transparent line PNGs.",
+    },
+  },
+  tips: {
+    firstPage:
+      "Physical PDF page where the Quran text starts. Everything before it is treated as front matter.",
+    lastPage:
+      "Physical PDF page where the Quran text ends. Everything after it is treated as back matter.",
+    bounds: "The text region detection runs inside. Exclude page margins, borders and decoration.",
+    pageRange: "Which logical Quran pages to process now — you can work in batches.",
+    startSura: "The sura the first page of this range begins with. Seeds aya numbering.",
+    startAya: "The aya within the start sura that this range begins on.",
+    padding:
+      "Extra pixels kept above and below each line when cutting. Larger is safer but can catch neighbours.",
+    expectedLines:
+      "Line slots each page should have, including header and besmella rows. Detection stops on a mismatch.",
+    headerSlots: "How many line-heights a sura-header band spans (usually 2).",
+    headerThreshold:
+      "Sura-header match strictness (0–1). Higher rejects more false headers but may miss faint ones.",
+    maxHeaders: "Most sura headers to expect on a single page.",
+    ayaThreshold: "Aya-separator match strictness (0–1). Higher rejects more false separators.",
+    altMargins:
+      "Mirror the bounds on alternate pages, for mushafs whose text column shifts side to side.",
+    preferAccel: "Use GPU/OpenCL acceleration for template matching when available.",
+    brush: "Eraser diameter in pixels. Erasing only affects the selected line.",
+    lineBox:
+      "Y and H trim the line's top and bottom. X and W are locked to the shared page column.",
+  },
+  coach: {
+    dismiss: "Dismiss hint",
+    setup: "Flip pages with the filmstrip, then mark the first and last Quran page.",
+    templates: "Drag a tight box on the page, then capture it in the middle panel.",
+    process: "Drag the orange box around the text region on the page.",
+    review: "Double-click a text line to add a separator ۝ · drag a box or its handles to fix it.",
+    finalize: "Drag a line's top or bottom edge to trim it · hold Shift to erase.",
+  },
+  tour: {
+    next: "Next",
+    back: "Back",
+    done: "Got it",
+    skip: "Skip",
+    stepCount: "{{current}} / {{total}}",
+    setup: {
+      t1_title: "Browse the pages",
+      t1_body:
+        "Use this filmstrip to flip through the PDF. Neighbouring pages peek in on each side.",
+      t2_title: "Mark the range",
+      t2_body:
+        "When you're on the first (or last) Quran page, mark it with these buttons. Front and back matter are left out.",
+      t3_title: "Save",
+      t3_body:
+        "Save the range to unlock the rest of the pipeline. It locks once pages are processed.",
+    },
+    templates: {
+      t1_title: "Pick a clear page",
+      t1_body:
+        "Find a page that clearly shows the element, then draw a tight box around it on the canvas.",
+      t2_title: "Capture it",
+      t2_body:
+        "Fine-tune the crop here and capture it. You can also mask noise with an ignore region.",
+      t3_title: "Save both",
+      t3_body:
+        "Each element has its own card. Save the sura header and the aya separator — both are matched on every page.",
+    },
+    process: {
+      t1_title: "Set the bounds",
+      t1_body:
+        "Draw the orange box around the text region. Line detection runs only inside it, so exclude margins and decoration.",
+      t2_title: "Page range",
+      t2_body: "Choose which logical pages to process. Large mushafs run in batches automatically.",
+      t3_title: "Starting position",
+      t3_body:
+        "Tell the engine which sura and aya the first page begins with — this seeds the numbering.",
+      t4_title: "Process",
+      t4_body:
+        "Run the detector. If a page's line count doesn't match, it stops so you can adjust and resume.",
+    },
+    review: {
+      t1_title: "Edit on the page",
+      t1_body:
+        "Drag line boxes and their handles to fix them. Double-click a text line to add an aya separator (۝).",
+      t2_title: "Lines & numbering",
+      t2_body:
+        "The line list and editor live here. Anchor a sura header to reset numbering; it flows across the whole mushaf.",
+      t3_title: "Review & save",
+      t3_body:
+        "Mark each page reviewed as you go, then save your changes. Numbering warnings are flagged for you.",
+    },
+    finalize: {
+      t1_title: "One line at a time",
+      t1_body:
+        "Each line is shown exactly as it exports. Drag its top or bottom edge to trim; hold Shift to erase bleed.",
+      t2_title: "Tools",
+      t2_body: "Adjust the brush, undo strokes, and fine-tune the selected line's box here.",
+      t3_title: "Save & export",
+      t3_body:
+        "Save the cuts, then export the page to transparent line PNGs. Bulk export lives in the details Export tab.",
+    },
+  },
+  stepStatus: {
+    setupLocked: "Range locked — pages are already processed.",
+    setupUnsaved: "Save the page range to continue.",
+    setupSaved: "Range saved — continue to Templates.",
+    templatesDone: "Both templates saved — continue to Process.",
+    templatesPartial: "Save both templates before processing.",
+    templatesNone: "Capture the sura header and the aya separator.",
+    processNoBounds: "Draw the bounds box to enable processing.",
+    processReady: "Ready to process pages {{start}}–{{end}}.",
+    processDone: "Processing finished — continue to Review.",
+    reviewWarnings: "{{count}} numbering warning(s) to resolve.",
+    reviewUnsaved: "{{count}} unsaved change(s) — save when ready.",
+    reviewClean: "All changes saved.",
+    finalizeReady: "Trim and erase, then save or export the page.",
+  },
 };

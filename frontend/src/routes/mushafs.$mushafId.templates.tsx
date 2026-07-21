@@ -5,7 +5,11 @@ import { MouseEvent, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
-import { Aside, Hint } from "@/components/app/Panel";
+import { Aside, StatusLine } from "@/components/app/Panel";
+import { StepGuide } from "@/components/app/StepGuide";
+import { CanvasCoach } from "@/components/app/CanvasCoach";
+import { TourOverlay } from "@/components/app/tour/TourOverlay";
+import { useStepTour, type TourStep } from "@/components/app/tour/useStepTour";
 import { PageStage } from "@/components/canvas/PageStage";
 import { RectInputs } from "@/components/canvas/RectInputs";
 import { TemplatePreview } from "@/components/canvas/TemplatePreview";
@@ -150,10 +154,46 @@ function TemplatesPage() {
     onError: (e) => toast.error(e instanceof ApiError ? e.message : t("templates.saveFailed")),
   });
 
+  const tourSteps: TourStep[] = [
+    {
+      target: "tpl-canvas",
+      title: t("tour.templates.t1_title"),
+      body: t("tour.templates.t1_body"),
+    },
+    {
+      target: "tpl-capture",
+      title: t("tour.templates.t2_title"),
+      body: t("tour.templates.t2_body"),
+    },
+    {
+      target: "tpl-targets",
+      title: t("tour.templates.t3_title"),
+      body: t("tour.templates.t3_body"),
+    },
+  ];
+  const tour = useStepTour("templates", tourSteps);
+
   if (!mushaf) return null;
   const logicalCount = mushaf.logical_page_count;
   const pageUrl = pageImageUrl(mushafId, preview, mushaf.updated_at);
   const activeParent = parentOf(activeTarget);
+
+  const headerSaved = isSaved("sura_header");
+  const sepSaved = isSaved("aya_separator");
+  const guideItems = [
+    { label: t("guide.templates.s1"), done: headerSaved },
+    { label: t("guide.templates.s2"), done: sepSaved },
+    { label: t("guide.templates.s3") },
+    { label: t("guide.templates.s4"), done: headerSaved && sepSaved },
+  ];
+  const status =
+    headerSaved && sepSaved ? (
+      <StatusLine tone="success">{t("stepStatus.templatesDone")}</StatusLine>
+    ) : headerSaved || sepSaved ? (
+      <StatusLine>{t("stepStatus.templatesPartial")}</StatusLine>
+    ) : (
+      <StatusLine>{t("stepStatus.templatesNone")}</StatusLine>
+    );
 
   let previewNode;
   if (activeParent) {
@@ -188,23 +228,29 @@ function TemplatesPage() {
     <div
       className={`flex ${i18n.language === "ar" ? "flex-row-reverse" : "flex-row"} flex-1 overflow-hidden`}
     >
-      <PageStage
-        imageUrl={pageUrl}
-        page={preview}
-        pageCount={logicalCount}
-        onPageChange={(n) => setPreview(clamp(n, 1, logicalCount))}
-        renderLabel={(p) =>
-          t("process.pdfPageLabel", {
-            pdf: mushaf.first_quran_pdf_page + p - 1,
-            total: mushaf.pdf_page_count,
-          })
-        }
-        crop={{ label: label(activeTarget), rect: working, onRectChange: setWorking }}
-        onNatural={setNatural}
-      />
+      <div data-tour="tpl-canvas" className="relative flex flex-1 overflow-hidden">
+        <PageStage
+          imageUrl={pageUrl}
+          page={preview}
+          pageCount={logicalCount}
+          onPageChange={(n) => setPreview(clamp(n, 1, logicalCount))}
+          renderLabel={(p) =>
+            t("process.pdfPageLabel", {
+              pdf: mushaf.first_quran_pdf_page + p - 1,
+              total: mushaf.pdf_page_count,
+            })
+          }
+          crop={{ label: label(activeTarget), rect: working, onRectChange: setWorking }}
+          onNatural={setNatural}
+        />
+        <CanvasCoach storageKey="templates" text={t("coach.templates")} />
+      </div>
 
       {/* Center: the active-cut workspace */}
-      <div className="flex w-[400px] flex-shrink-0 flex-col gap-3 overflow-auto border-s border-border bg-white p-4">
+      <div
+        data-tour="tpl-capture"
+        className="flex w-[400px] flex-shrink-0 flex-col gap-3 overflow-auto border-s border-border bg-white p-4"
+      >
         <div className="text-[12px] font-semibold capitalize text-text-primary">
           {label(activeTarget)}
         </div>
@@ -219,6 +265,7 @@ function TemplatesPage() {
 
       {/* Right: per-target cards */}
       <Aside
+        status={status}
         footer={
           <Button asChild variant="outline">
             <Link to="/mushafs/$mushafId/process" params={{ mushafId }}>
@@ -227,82 +274,86 @@ function TemplatesPage() {
           </Button>
         }
       >
-        <Hint>{t("templates.intro")}</Hint>
+        <StepGuide items={guideItems} storageKey="templates" onReplayTour={tour.start} />
 
-        {TEMPLATE_TYPES.map((type) => {
-          const name = t(`templates.name_${type}`);
-          const hint = t(`templates.hint_${type}`);
-          const url = displayUrl(type);
-          const cap = captures[type];
-          const dirty = !!cap && !savedAt[type];
-          const saved = isSaved(type);
-          const active = activeTarget === type || activeTarget === `${type}_ignore`;
-          return (
-            <div
-              key={type}
-              onClick={(e) => switchTarget(`${type}_ignore` as Target, e)}
-              className={`overflow-hidden rounded-xl border bg-white p-3 ${active ? "border-orange" : "border-border"}`}
-            >
-              <div className="mb-2 flex items-center gap-2">
-                <span className="flex-1 text-[13px] font-semibold text-text-primary">{name}</span>
-                {dirty ? (
-                  <span className="text-[11px] font-medium text-orange">
-                    {t("templates.unsaved")}
-                  </span>
-                ) : saved ? (
-                  <span className="flex items-center gap-1 text-[11px] font-medium text-success">
-                    <Check size={12} /> {t("templates.saved")}
-                  </span>
-                ) : (
-                  <span className="text-[11px] text-text-muted">{t("templates.notSet")}</span>
-                )}
-              </div>
-              <p className="mb-2 text-[11px] text-text-muted">{hint}</p>
-
-              <div className="flex gap-3">
-                <div className="flex h-16 w-24 flex-shrink-0 items-center justify-center overflow-hidden rounded border border-border bg-bg-surface">
-                  {url ? (
-                    <img src={url} alt={name} className="max-h-full max-w-full object-contain" />
+        <div data-tour="tpl-targets" className="flex flex-col gap-4">
+          {TEMPLATE_TYPES.map((type) => {
+            const name = t(`templates.name_${type}`);
+            const hint = t(`templates.hint_${type}`);
+            const url = displayUrl(type);
+            const cap = captures[type];
+            const dirty = !!cap && !savedAt[type];
+            const saved = isSaved(type);
+            const active = activeTarget === type || activeTarget === `${type}_ignore`;
+            return (
+              <div
+                key={type}
+                onClick={(e) => switchTarget(`${type}_ignore` as Target, e)}
+                className={`overflow-hidden rounded-xl border bg-white p-3 ${active ? "border-orange" : "border-border"}`}
+              >
+                <div className="mb-2 flex items-center gap-2">
+                  <span className="flex-1 text-[13px] font-semibold text-text-primary">{name}</span>
+                  {dirty ? (
+                    <span className="text-[11px] font-medium text-orange">
+                      {t("templates.unsaved")}
+                    </span>
+                  ) : saved ? (
+                    <span className="flex items-center gap-1 text-[11px] font-medium text-success">
+                      <Check size={12} /> {t("templates.saved")}
+                    </span>
                   ) : (
-                    <span className="text-[10px] text-text-muted">{t("templates.noCrop")}</span>
+                    <span className="text-[11px] text-text-muted">{t("templates.notSet")}</span>
                   )}
                 </div>
-                <div className="flex flex-1 flex-col gap-1.5">
-                  <Button
-                    size="sm"
-                    variant={active && !activeParent ? "default" : "outline"}
-                    onClick={(e) => switchTarget(type, e)}
-                  >
-                    {url ? t("templates.recrop") : t("templates.cropOnPage")}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant={activeTarget === `${type}_ignore` ? "default" : "outline"}
-                    onClick={(e) => switchTarget(`${type}_ignore` as Target, e)}
-                    disabled={!cap?.rect}
-                  >
-                    {ignores[type] ? t("templates.editIgnore") : t("templates.addIgnore")}
-                  </Button>
-                </div>
-              </div>
+                <p className="mb-2 text-[11px] text-text-muted">{hint}</p>
 
-              <Button
-                className="mt-2 w-full"
-                onClick={() => saveMutation.mutate(type)}
-                disabled={!cap || saveMutation.isPending}
-              >
-                {savedAt[type] ? (
-                  <>
-                    <Check size={14} /> {t("templates.savedBtn")}
-                  </>
-                ) : (
-                  t("templates.saveNamed", { label: label(type) })
-                )}
-              </Button>
-            </div>
-          );
-        })}
+                <div className="flex gap-3">
+                  <div className="flex h-16 w-24 flex-shrink-0 items-center justify-center overflow-hidden rounded border border-border bg-bg-surface">
+                    {url ? (
+                      <img src={url} alt={name} className="max-h-full max-w-full object-contain" />
+                    ) : (
+                      <span className="text-[10px] text-text-muted">{t("templates.noCrop")}</span>
+                    )}
+                  </div>
+                  <div className="flex flex-1 flex-col gap-1.5">
+                    <Button
+                      size="sm"
+                      variant={active && !activeParent ? "default" : "outline"}
+                      onClick={(e) => switchTarget(type, e)}
+                    >
+                      {url ? t("templates.recrop") : t("templates.cropOnPage")}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={activeTarget === `${type}_ignore` ? "default" : "outline"}
+                      onClick={(e) => switchTarget(`${type}_ignore` as Target, e)}
+                      disabled={!cap?.rect}
+                    >
+                      {ignores[type] ? t("templates.editIgnore") : t("templates.addIgnore")}
+                    </Button>
+                  </div>
+                </div>
+
+                <Button
+                  className="mt-2 w-full"
+                  onClick={() => saveMutation.mutate(type)}
+                  disabled={!cap || saveMutation.isPending}
+                >
+                  {savedAt[type] ? (
+                    <>
+                      <Check size={14} /> {t("templates.savedBtn")}
+                    </>
+                  ) : (
+                    t("templates.saveNamed", { label: label(type) })
+                  )}
+                </Button>
+              </div>
+            );
+          })}
+        </div>
       </Aside>
+
+      <TourOverlay tour={tour} />
     </div>
   );
 }

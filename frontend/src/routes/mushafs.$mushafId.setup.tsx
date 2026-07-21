@@ -5,7 +5,11 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
-import { Aside, Field, Hint, PanelCard } from "@/components/app/Panel";
+import { Aside, Field, Hint, PanelCard, StatusLine } from "@/components/app/Panel";
+import { StepGuide } from "@/components/app/StepGuide";
+import { CanvasCoach } from "@/components/app/CanvasCoach";
+import { TourOverlay } from "@/components/app/tour/TourOverlay";
+import { useStepTour, type TourStep } from "@/components/app/tour/useStepTour";
 import { FilmstripViewer } from "@/components/canvas/FilmstripViewer";
 import { Button } from "@/components/ui/button";
 import { ApiError, queryKeys, updateMushaf, useMushaf } from "@/lib/api";
@@ -52,6 +56,13 @@ function SetupPage() {
     onError: (e) => toast.error(e instanceof ApiError ? e.message : t("setup.saveFailed")),
   });
 
+  const tourSteps: TourStep[] = [
+    { target: "setup-filmstrip", title: t("tour.setup.t1_title"), body: t("tour.setup.t1_body") },
+    { target: "setup-mark", title: t("tour.setup.t2_title"), body: t("tour.setup.t2_body") },
+    { target: "setup-save", title: t("tour.setup.t3_title"), body: t("tour.setup.t3_body") },
+  ];
+  const tour = useStepTour("setup", tourSteps);
+
   if (!mushaf) return null;
 
   const pdfPages = mushaf.pdf_page_count;
@@ -62,6 +73,24 @@ function SetupPage() {
   const valid = first >= 1 && first <= last && last <= pdfPages;
   const changed = first !== mushaf.first_quran_pdf_page || last !== mushaf.last_quran_pdf_page;
   const canSave = valid && changed && !processed && !save.isPending;
+
+  const guideItems = [
+    { label: t("guide.setup.s1"), done: processed || first !== 1 },
+    { label: t("guide.setup.s2"), done: processed || (valid && last !== pdfPages) },
+    {
+      label: t("guide.setup.s3"),
+      done: processed || (valid && !changed && !(first === 1 && last === pdfPages)),
+    },
+  ];
+  const status = processed ? (
+    <StatusLine tone="success">{t("stepStatus.setupLocked")}</StatusLine>
+  ) : !valid ? (
+    <StatusLine tone="warning">{t("setup.rangeError", { max: pdfPages })}</StatusLine>
+  ) : changed ? (
+    <StatusLine>{t("stepStatus.setupUnsaved")}</StatusLine>
+  ) : (
+    <StatusLine tone="success">{t("stepStatus.setupSaved")}</StatusLine>
+  );
 
   function markFirst() {
     setFirst(clamp(physical, 1, pdfPages));
@@ -80,23 +109,27 @@ function SetupPage() {
     <div
       className={`flex ${i18n.language === "ar" ? "flex-row-reverse" : "flex-row"} flex-1 overflow-hidden`}
     >
-      <FilmstripViewer
-        mushafId={mushafId}
-        pageCount={logicalCount}
-        page={preview}
-        onPageChange={(n) => setPreview(clamp(n, 1, logicalCount))}
-        version={mushaf.updated_at}
-        renderLabel={(logical) =>
-          t("process.pdfPageLabel", {
-            pdf: mushaf.first_quran_pdf_page + logical - 1,
-            total: pdfPages,
-          })
-        }
-      />
+      <div data-tour="setup-filmstrip" className="relative flex flex-1 overflow-hidden">
+        <FilmstripViewer
+          mushafId={mushafId}
+          pageCount={logicalCount}
+          page={preview}
+          onPageChange={(n) => setPreview(clamp(n, 1, logicalCount))}
+          version={mushaf.updated_at}
+          renderLabel={(logical) =>
+            t("process.pdfPageLabel", {
+              pdf: mushaf.first_quran_pdf_page + logical - 1,
+              total: pdfPages,
+            })
+          }
+        />
+        <CanvasCoach storageKey="setup" text={t("coach.setup")} />
+      </div>
 
       <Aside
+        status={status}
         footer={
-          <div className="flex flex-col gap-2">
+          <div data-tour="setup-save" className="flex flex-col gap-2">
             <Button onClick={() => save.mutate()} disabled={!canSave}>
               {save.isPending ? t("common.saving") : t("setup.saveRange")}
             </Button>
@@ -108,23 +141,25 @@ function SetupPage() {
           </div>
         }
       >
-        <Hint>{t("setup.intro")}</Hint>
+        <StepGuide items={guideItems} storageKey="setup" onReplayTour={tour.start} />
 
         {!processed && (
-          <PanelCard title={t("setup.markFromCurrent")}>
-            <div className="text-[12px] text-text-secondary">
-              {t("setup.currentlyViewing", { page: physical })}
-            </div>
-            <Button
-              variant={marking === "first" || marking === null ? "default" : "outline"}
-              onClick={markFirst}
-            >
-              <Flag size={14} /> {t("setup.setFirst")}
-            </Button>
-            <Button variant={marking === "last" ? "default" : "outline"} onClick={markLast}>
-              <FlagOff size={14} /> {t("setup.setLast")}
-            </Button>
-          </PanelCard>
+          <div data-tour="setup-mark">
+            <PanelCard title={t("setup.markFromCurrent")}>
+              <div className="text-[12px] text-text-secondary">
+                {t("setup.currentlyViewing", { page: physical })}
+              </div>
+              <Button
+                variant={marking === "first" || marking === null ? "default" : "outline"}
+                onClick={markFirst}
+              >
+                <Flag size={14} /> {t("setup.setFirst")}
+              </Button>
+              <Button variant={marking === "last" ? "default" : "outline"} onClick={markLast}>
+                <FlagOff size={14} /> {t("setup.setLast")}
+              </Button>
+            </PanelCard>
+          </div>
         )}
 
         <PanelCard title={t("setup.rangeTitle")}>
@@ -176,6 +211,8 @@ function SetupPage() {
           </Hint>
         )}
       </Aside>
+
+      <TourOverlay tour={tour} />
     </div>
   );
 }

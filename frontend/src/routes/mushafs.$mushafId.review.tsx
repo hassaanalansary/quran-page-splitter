@@ -4,7 +4,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
-import { Aside, Field, Hint } from "@/components/app/Panel";
+import { Aside, Field, Hint, StatusLine } from "@/components/app/Panel";
+import { StepGuide } from "@/components/app/StepGuide";
+import { CanvasCoach } from "@/components/app/CanvasCoach";
+import { TourOverlay } from "@/components/app/tour/TourOverlay";
+import { useStepTour, type TourStep } from "@/components/app/tour/useStepTour";
 import { ReviewEditCanvas } from "@/components/canvas/ReviewEditCanvas";
 import { RectInputs } from "@/components/canvas/RectInputs";
 import { Button } from "@/components/ui/button";
@@ -400,7 +404,30 @@ function ReviewPage() {
     if (target != null) goto(target);
   }
 
+  const tourSteps: TourStep[] = [
+    { target: "review-canvas", title: t("tour.review.t1_title"), body: t("tour.review.t1_body") },
+    { target: "review-lines", title: t("tour.review.t2_title"), body: t("tour.review.t2_body") },
+    { target: "review-save", title: t("tour.review.t3_title"), body: t("tour.review.t3_body") },
+  ];
+  const tour = useStepTour("review", tourSteps);
+
   if (!mushaf) return null;
+
+  const guideItems = [
+    { label: t("guide.review.s1"), done: !!currentEdit?.reviewed },
+    { label: t("guide.review.s2") },
+    { label: t("guide.review.s3") },
+    { label: t("guide.review.s4"), done: unsavedCount === 0 && !!currentEdit?.reviewed },
+  ];
+  const status = !store ? undefined : unsavedCount > 0 ? (
+    <StatusLine>{t("stepStatus.reviewUnsaved", { count: unsavedCount })}</StatusLine>
+  ) : derived && derived.totalWarnings > 0 ? (
+    <StatusLine tone="warning">
+      {t("stepStatus.reviewWarnings", { count: derived.totalWarnings })}
+    </StatusLine>
+  ) : (
+    <StatusLine tone="success">{t("stepStatus.reviewClean")}</StatusLine>
+  );
 
   const statusSlot = (
     <div className="flex items-center gap-2 text-[11.5px]">
@@ -446,26 +473,30 @@ function ReviewPage() {
     <div
       className={`flex ${i18n.language === "ar" ? "flex-row-reverse" : "flex-row"} flex-1 overflow-hidden`}
     >
-      <ReviewEditCanvas
-        imageUrl={pageImageUrl(mushafId, page)}
-        lines={currentDerived?.lines ?? []}
-        selectedUid={selectedUid}
-        onSelectLine={setSelectedUid}
-        onUpdateLineBbox={updateLineBbox}
-        onAddCut={addCut}
-        onMoveCut={moveCut}
-        page={page}
-        pageCount={logicalCount}
-        onPageChange={goto}
-        processed={railProcessed}
-        reviewed={railReviewed}
-        onNatural={setNatural}
-        statusSlot={statusSlot}
-      />
+      <div data-tour="review-canvas" className="relative flex flex-1 overflow-hidden">
+        <ReviewEditCanvas
+          imageUrl={pageImageUrl(mushafId, page)}
+          lines={currentDerived?.lines ?? []}
+          selectedUid={selectedUid}
+          onSelectLine={setSelectedUid}
+          onUpdateLineBbox={updateLineBbox}
+          onAddCut={addCut}
+          onMoveCut={moveCut}
+          page={page}
+          pageCount={logicalCount}
+          onPageChange={goto}
+          processed={railProcessed}
+          reviewed={railReviewed}
+          onNatural={setNatural}
+          statusSlot={statusSlot}
+        />
+        <CanvasCoach storageKey="review" text={t("coach.review")} />
+      </div>
 
       <Aside
+        status={status}
         footer={
-          <div className="flex flex-col gap-2">
+          <div data-tour="review-save" className="flex flex-col gap-2">
             <Button onClick={markReviewedAndNext} disabled={!store}>
               {t("review.markReviewedNext")}
             </Button>
@@ -491,7 +522,7 @@ function ReviewPage() {
           <Hint>{t("review.loadingData")}</Hint>
         ) : (
           <>
-            <Hint>{t("review.intro")}</Hint>
+            <StepGuide items={guideItems} storageKey="review" onReplayTour={tour.start} />
 
             {currentDerived && (
               <div className="rounded-md border border-border bg-white px-2.5 py-1.5 text-[11.5px] text-text-secondary">
@@ -512,12 +543,14 @@ function ReviewPage() {
               </div>
             )}
 
-            <LineList
-              lines={currentDerived?.lines ?? []}
-              selectedUid={selectedUid}
-              onSelect={setSelectedUid}
-              onAdd={(type) => addLineAfter(selectedUid, type)}
-            />
+            <div data-tour="review-lines">
+              <LineList
+                lines={currentDerived?.lines ?? []}
+                selectedUid={selectedUid}
+                onSelect={setSelectedUid}
+                onAdd={(type) => addLineAfter(selectedUid, type)}
+              />
+            </div>
 
             {selectedEdit && selectedDerived ? (
               <SelectedLineEditor
@@ -541,6 +574,8 @@ function ReviewPage() {
           </>
         )}
       </Aside>
+
+      <TourOverlay tour={tour} />
     </div>
   );
 }

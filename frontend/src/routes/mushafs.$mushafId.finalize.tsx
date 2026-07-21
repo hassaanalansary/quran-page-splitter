@@ -4,7 +4,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
-import { Aside, Field, Hint, PanelCard, Section } from "@/components/app/Panel";
+import { Aside, Field, Hint, PanelCard, Section, StatusLine } from "@/components/app/Panel";
+import { StepGuide } from "@/components/app/StepGuide";
+import { CanvasCoach } from "@/components/app/CanvasCoach";
+import { TourOverlay } from "@/components/app/tour/TourOverlay";
+import { useStepTour, type TourStep } from "@/components/app/tour/useStepTour";
 import { FinalizeCanvas, type CanvasLine } from "@/components/canvas/FinalizeCanvas";
 import { Button } from "@/components/ui/button";
 import {
@@ -203,10 +207,43 @@ function FinalizePage() {
     },
   });
 
+  const tourSteps: TourStep[] = [
+    {
+      target: "finalize-canvas",
+      title: t("tour.finalize.t1_title"),
+      body: t("tour.finalize.t1_body"),
+    },
+    {
+      target: "finalize-tools",
+      title: t("tour.finalize.t2_title"),
+      body: t("tour.finalize.t2_body"),
+    },
+    {
+      target: "finalize-export",
+      title: t("tour.finalize.t3_title"),
+      body: t("tour.finalize.t3_body"),
+    },
+  ];
+  const tour = useStepTour("finalize", tourSteps);
+
   if (!mushaf) return null;
   const logicalCount = mushaf.logical_page_count;
   const hasLines = model.length > 0;
   const sel = model.find((l) => l.line_number === selected) ?? null;
+
+  const guideItems = [
+    { label: t("guide.finalize.s1"), done: dirty },
+    { label: t("guide.finalize.s2"), done: model.some((l) => l.strokes.length > 0) },
+    { label: t("guide.finalize.s3"), done: hasLines && !dirty },
+    { label: t("guide.finalize.s4"), done: exported.size > 0 },
+  ];
+  const status = !hasLines ? (
+    <StatusLine tone="warning">{t("finalize.noLines", { page })}</StatusLine>
+  ) : dirty ? (
+    <StatusLine>{t("finalize.unsavedStatus")}</StatusLine>
+  ) : (
+    <StatusLine tone="success">{t("finalize.savedStatus")}</StatusLine>
+  );
 
   // live (no history) — used during an edge-drag
   const liveLine = (n: number, box: { y: number; h: number }) =>
@@ -249,60 +286,57 @@ function FinalizePage() {
     <div
       className={`flex ${i18n.language === "ar" ? "flex-row-reverse" : "flex-row"} flex-1 overflow-hidden`}
     >
-      <FinalizeCanvas
-        imageUrl={pageImageUrl(mushafId, page, mushaf.updated_at)}
-        lines={canvasLines}
-        selected={selected}
-        brushSize={brushSize}
-        page={page}
-        pageCount={logicalCount}
-        onPageChange={(n) => navigate({ search: { page: Math.max(1, Math.min(logicalCount, n)) } })}
-        processed={pages?.processed}
-        reviewed={pages?.reviewed}
-        label={t("finalize.pdfPage", { pdf: mushaf.first_quran_pdf_page + page - 1 })}
-        onSelectLine={setSelected}
-        onResizeLine={liveLine}
-        onResizeCommit={(n, box) => commitLine(n, (l) => ({ ...l, bbox: { ...l.bbox, ...box } }))}
-        onStroke={(n, stroke) => commitLine(n, (l) => ({ ...l, strokes: [...l.strokes, stroke] }))}
-        onUndo={undo}
-        onRedo={redo}
-        canUndo={historyRef.current.index > 0}
-        canRedo={historyRef.current.index < historyRef.current.stack.length - 1}
-      />
+      <div data-tour="finalize-canvas" className="relative flex flex-1 overflow-hidden">
+        <FinalizeCanvas
+          imageUrl={pageImageUrl(mushafId, page, mushaf.updated_at)}
+          lines={canvasLines}
+          selected={selected}
+          brushSize={brushSize}
+          page={page}
+          pageCount={logicalCount}
+          onPageChange={(n) =>
+            navigate({ search: { page: Math.max(1, Math.min(logicalCount, n)) } })
+          }
+          processed={pages?.processed}
+          reviewed={pages?.reviewed}
+          label={t("finalize.pdfPage", { pdf: mushaf.first_quran_pdf_page + page - 1 })}
+          onSelectLine={setSelected}
+          onResizeLine={liveLine}
+          onResizeCommit={(n, box) => commitLine(n, (l) => ({ ...l, bbox: { ...l.bbox, ...box } }))}
+          onStroke={(n, stroke) =>
+            commitLine(n, (l) => ({ ...l, strokes: [...l.strokes, stroke] }))
+          }
+          onUndo={undo}
+          onRedo={redo}
+          canUndo={historyRef.current.index > 0}
+          canRedo={historyRef.current.index < historyRef.current.stack.length - 1}
+        />
+        <CanvasCoach storageKey="finalize" text={t("coach.finalize")} />
+      </div>
 
       <Aside
+        status={status}
         footer={
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center gap-2 text-[11px]">
-              <span
-                className={`h-2 w-2 rounded-full ${dirty ? "bg-orange" : "bg-success"}`}
-                aria-hidden
-              />
-              <span className="text-text-secondary">
-                {dirty ? t("finalize.unsavedStatus") : t("finalize.savedStatus")}
-              </span>
-            </div>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                className="flex-1"
-                onClick={() => saveMutation.mutate()}
-                disabled={!dirty || busy}
-              >
-                {saveMutation.isPending ? t("common.saving") : t("finalize.saveCuts")}
-              </Button>
-              <Button
-                className="flex-1"
-                onClick={() => exportMutation.mutate()}
-                disabled={!hasLines || busy}
-              >
-                {exportMutation.isPending ? t("finalize.exporting") : t("finalize.exportPage")}
-              </Button>
-            </div>
+          <div data-tour="finalize-export" className="flex gap-2">
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() => saveMutation.mutate()}
+              disabled={!dirty || busy}
+            >
+              {saveMutation.isPending ? t("common.saving") : t("finalize.saveCuts")}
+            </Button>
+            <Button
+              className="flex-1"
+              onClick={() => exportMutation.mutate()}
+              disabled={!hasLines || busy}
+            >
+              {exportMutation.isPending ? t("finalize.exporting") : t("finalize.exportPage")}
+            </Button>
           </div>
         }
       >
-        <Hint>{t("finalize.intro")}</Hint>
+        <StepGuide items={guideItems} storageKey="finalize" onReplayTour={tour.start} />
 
         {!hasLines ? (
           <Hint tone="warning">{t("finalize.noLines", { page })}</Hint>
@@ -340,83 +374,90 @@ function FinalizePage() {
               </div>
             </PanelCard>
 
-            <Section title={t("finalize.eraser")}>
-              <Field label={t("finalize.brushSize", { size: brushSize })}>
-                <input
-                  type="range"
-                  min={2}
-                  max={120}
-                  value={brushSize}
-                  onChange={(e) => setBrushSize(Number(e.target.value))}
-                  className="w-full"
-                />
-              </Field>
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  className="h-8 flex-1 text-[11px]"
-                  disabled={!sel || sel.strokes.length === 0}
-                  onClick={() =>
-                    sel &&
-                    commitLine(sel.line_number, (l) => ({ ...l, strokes: l.strokes.slice(0, -1) }))
-                  }
-                >
-                  {t("finalize.undoStroke")}
-                </Button>
-                <Button
-                  variant="outline"
-                  className="h-8 flex-1 text-[11px]"
-                  disabled={!sel || sel.strokes.length === 0}
-                  onClick={() => sel && commitLine(sel.line_number, (l) => ({ ...l, strokes: [] }))}
-                >
-                  {t("finalize.clearLine")}
-                </Button>
-              </div>
-              <p className="text-[10.5px] leading-snug text-text-muted">
-                {sel
-                  ? t("finalize.strokeInfo", { line: sel.line_number, count: sel.strokes.length })
-                  : t("finalize.selectLineShort")}
-              </p>
-            </Section>
-
-            <Section title={t("finalize.lineBox")}>
-              {sel ? (
-                <>
-                  <div className="grid grid-cols-2 gap-2">
-                    <LockedNum label="X" value={sel.bbox.x} />
-                    <LockedNum label="W" value={sel.bbox.w} />
-                    <EditNum
-                      label="Y"
-                      value={sel.bbox.y}
-                      onChange={(v) =>
-                        liveLine(sel.line_number, { y: Math.max(0, v), h: sel.bbox.h })
-                      }
-                      onCommit={() => commit(model)}
-                    />
-                    <EditNum
-                      label="H"
-                      value={sel.bbox.h}
-                      onChange={(v) =>
-                        liveLine(sel.line_number, { y: sel.bbox.y, h: Math.max(1, v) })
-                      }
-                      onCommit={() => commit(model)}
-                    />
-                  </div>
+            <div data-tour="finalize-tools" className="flex flex-col gap-4">
+              <Section title={t("finalize.eraser")}>
+                <Field label={t("finalize.brushSize", { size: brushSize })} info={t("tips.brush")}>
+                  <input
+                    type="range"
+                    min={2}
+                    max={120}
+                    value={brushSize}
+                    onChange={(e) => setBrushSize(Number(e.target.value))}
+                    className="w-full"
+                  />
+                </Field>
+                <div className="flex gap-2">
                   <Button
                     variant="outline"
-                    className="h-8 w-full text-[11px]"
-                    onClick={() => revertLine(sel.line_number)}
+                    className="h-8 flex-1 text-[11px]"
+                    disabled={!sel || sel.strokes.length === 0}
+                    onClick={() =>
+                      sel &&
+                      commitLine(sel.line_number, (l) => ({
+                        ...l,
+                        strokes: l.strokes.slice(0, -1),
+                      }))
+                    }
                   >
-                    {t("finalize.revertLine")}
+                    {t("finalize.undoStroke")}
                   </Button>
-                  <p className="text-[10.5px] leading-snug text-text-muted">
-                    {t("finalize.lockNote")}
-                  </p>
-                </>
-              ) : (
-                <p className="text-[12px] text-text-muted">{t("finalize.selectLineBox")}</p>
-              )}
-            </Section>
+                  <Button
+                    variant="outline"
+                    className="h-8 flex-1 text-[11px]"
+                    disabled={!sel || sel.strokes.length === 0}
+                    onClick={() =>
+                      sel && commitLine(sel.line_number, (l) => ({ ...l, strokes: [] }))
+                    }
+                  >
+                    {t("finalize.clearLine")}
+                  </Button>
+                </div>
+                <p className="text-[10.5px] leading-snug text-text-muted">
+                  {sel
+                    ? t("finalize.strokeInfo", { line: sel.line_number, count: sel.strokes.length })
+                    : t("finalize.selectLineShort")}
+                </p>
+              </Section>
+
+              <Section title={t("finalize.lineBox")}>
+                {sel ? (
+                  <>
+                    <div className="grid grid-cols-2 gap-2">
+                      <LockedNum label="X" value={sel.bbox.x} />
+                      <LockedNum label="W" value={sel.bbox.w} />
+                      <EditNum
+                        label="Y"
+                        value={sel.bbox.y}
+                        onChange={(v) =>
+                          liveLine(sel.line_number, { y: Math.max(0, v), h: sel.bbox.h })
+                        }
+                        onCommit={() => commit(model)}
+                      />
+                      <EditNum
+                        label="H"
+                        value={sel.bbox.h}
+                        onChange={(v) =>
+                          liveLine(sel.line_number, { y: sel.bbox.y, h: Math.max(1, v) })
+                        }
+                        onCommit={() => commit(model)}
+                      />
+                    </div>
+                    <Button
+                      variant="outline"
+                      className="h-8 w-full text-[11px]"
+                      onClick={() => revertLine(sel.line_number)}
+                    >
+                      {t("finalize.revertLine")}
+                    </Button>
+                    <p className="text-[10.5px] leading-snug text-text-muted">
+                      {t("finalize.lockNote")}
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-[12px] text-text-muted">{t("finalize.selectLineBox")}</p>
+                )}
+              </Section>
+            </div>
 
             {result && (
               <PanelCard title={t("finalize.exportedTitle", { count: result.exported })}>
@@ -445,6 +486,8 @@ function FinalizePage() {
           </>
         )}
       </Aside>
+
+      <TourOverlay tour={tour} />
     </div>
   );
 }

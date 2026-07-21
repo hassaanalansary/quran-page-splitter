@@ -5,7 +5,12 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
 import { TemplatePreview } from "@/components/canvas/TemplatePreview";
-import { Aside, Field, Hint, Section } from "@/components/app/Panel";
+import { Aside, Field, Hint, Section, StatusLine } from "@/components/app/Panel";
+import { StepGuide } from "@/components/app/StepGuide";
+import { CanvasCoach } from "@/components/app/CanvasCoach";
+import { InfoTip } from "@/components/app/InfoTip";
+import { TourOverlay } from "@/components/app/tour/TourOverlay";
+import { useStepTour, type TourStep } from "@/components/app/tour/useStepTour";
 import { AbortDiagnostics } from "@/components/app/AbortDiagnostics";
 import { CropPreview } from "@/components/canvas/CropPreview";
 import { PageStage } from "@/components/canvas/PageStage";
@@ -122,6 +127,18 @@ function ProcessPage() {
     );
   }, [runId, runs, mushaf, resumeFrom, logicalCount, t]);
 
+  const tourSteps: TourStep[] = [
+    {
+      target: "process-bounds",
+      title: t("tour.process.t1_title"),
+      body: t("tour.process.t1_body"),
+    },
+    { target: "process-range", title: t("tour.process.t2_title"), body: t("tour.process.t2_body") },
+    { target: "process-start", title: t("tour.process.t3_title"), body: t("tour.process.t3_body") },
+    { target: "process-run", title: t("tour.process.t4_title"), body: t("tour.process.t4_body") },
+  ];
+  const tour = useStepTour("process", tourSteps);
+
   if (!mushaf) return null;
 
   const ayaMax = suras?.find((s) => s.number === startSura)?.aya_count ?? 286;
@@ -136,6 +153,26 @@ function ProcessPage() {
   // so anchoring the preview to `rangeStart` matches every chunk. See
   // core/line_detector.py (`should_swap`) and core/pipeline.py (`enumerate`, start=1).
   const flipPreview = settings.alternate_horizontal_margin && (preview - rangeStart) % 2 !== 0;
+
+  const guideItems = [
+    { label: t("guide.process.s1"), done: boundsOk },
+    { label: t("guide.process.s2"), done: rangeOk },
+    { label: t("guide.process.s3"), done: boundsOk && rangeOk },
+    { label: t("guide.process.s4"), done: !!run?.finished && !run.error },
+  ];
+  const status = run?.running ? (
+    <StatusLine>{t("process.processing")}</StatusLine>
+  ) : run?.finished && !run.error ? (
+    <StatusLine tone="success">{t("stepStatus.processDone")}</StatusLine>
+  ) : !boundsOk ? (
+    <StatusLine tone="warning">{t("stepStatus.processNoBounds")}</StatusLine>
+  ) : !rangeOk ? (
+    <StatusLine tone="warning">{t("process.rangeError", { max: logicalCount })}</StatusLine>
+  ) : (
+    <StatusLine tone="success">
+      {t("stepStatus.processReady", { start: rangeStart, end: rangeEnd })}
+    </StatusLine>
+  );
 
   async function runProcess() {
     if (!bounds) return;
@@ -179,45 +216,47 @@ function ProcessPage() {
     <div
       className={`flex ${i18n.language === "ar" ? "flex-row-reverse" : "flex-row"} flex-1 overflow-hidden`}
     >
-      <PageStage
-        imageUrl={pageImageUrl(mushafId, preview, mushaf.updated_at)}
-        page={preview}
-        pageCount={logicalCount}
-        onPageChange={(n) => setPreview(clamp(n, 1, logicalCount))}
-        renderLabel={(p) =>
-          t("process.pdfPageLabel", {
-            pdf: mushaf.first_quran_pdf_page + p - 1,
-            total: mushaf.pdf_page_count,
-          })
-        }
-        crop={{
-          label: t("process.boundsLabel"),
-          rect: bounds,
-          onRectChange: setBounds,
-          mirrored: flipPreview,
-        }}
-        onNatural={setNatural}
-        processed={pages?.processed}
-        reviewed={pages?.reviewed}
-      />
+      <div data-tour="process-bounds" className="relative flex flex-1 overflow-hidden">
+        <PageStage
+          imageUrl={pageImageUrl(mushafId, preview, mushaf.updated_at)}
+          page={preview}
+          pageCount={logicalCount}
+          onPageChange={(n) => setPreview(clamp(n, 1, logicalCount))}
+          renderLabel={(p) =>
+            t("process.pdfPageLabel", {
+              pdf: mushaf.first_quran_pdf_page + p - 1,
+              total: mushaf.pdf_page_count,
+            })
+          }
+          crop={{
+            label: t("process.boundsLabel"),
+            rect: bounds,
+            onRectChange: setBounds,
+            mirrored: flipPreview,
+          }}
+          onNatural={setNatural}
+          processed={pages?.processed}
+          reviewed={pages?.reviewed}
+        />
+        <CanvasCoach storageKey="process" text={t("coach.process")} />
+      </div>
 
-      <div className="flex w-[400px] flex-shrink-0 flex-col gap-3 overflow-auto border-l border-border bg-white p-4">
-        <div className="flex w-[400px] flex-shrink-0 flex-col gap-3 overflow-auto border-l border-border bg-white p-4">
-          <h3 className="text-[12px] font-semibold capitalize text-text-primary">
-            {t("process.boundsTitle")}
-          </h3>
-          <TemplatePreview
-            mode="bounds"
-            pageUrl={pageImageUrl(mushafId, preview, mushaf.updated_at)}
-            working={bounds}
-            mirrored={flipPreview}
-          />
-        </div>
+      <div className="flex w-[400px] flex-shrink-0 flex-col gap-3 overflow-auto border-s border-border bg-white p-4">
+        <h3 className="text-[12px] font-semibold capitalize text-text-primary">
+          {t("process.boundsTitle")}
+        </h3>
+        <TemplatePreview
+          mode="bounds"
+          pageUrl={pageImageUrl(mushafId, preview, mushaf.updated_at)}
+          working={bounds}
+          mirrored={flipPreview}
+        />
       </div>
 
       <Aside
+        status={status}
         footer={
-          <div className="flex flex-col gap-2">
+          <div data-tour="process-run" className="flex flex-col gap-2">
             {run && <ProgressFooter run={run} />}
             <Button onClick={runProcess} disabled={!canProcess}>
               {run?.running
@@ -238,7 +277,7 @@ function ProcessPage() {
           </div>
         }
       >
-        <Hint>{t("process.intro")}</Hint>
+        <StepGuide items={guideItems} storageKey="process" onReplayTour={tour.start} />
 
         {loadedRun && (
           <Hint>
@@ -267,61 +306,67 @@ function ProcessPage() {
           )}
         </Section>
 
-        <Section title={t("process.pageRange")}>
-          <div className="grid grid-cols-2 gap-2">
-            <Field label={t("process.startPage")}>
-              <NumInput value={rangeStart} min={1} max={logicalCount} onChange={setRangeStart} />
-            </Field>
-            <Field label={t("process.endPage")}>
-              <NumInput value={rangeEnd} min={1} max={logicalCount} onChange={setRangeEnd} />
-            </Field>
-          </div>
-          {!rangeOk && (
-            <span className="text-[12px] text-error">
-              {t("process.rangeError", { max: logicalCount })}
-            </span>
-          )}
-        </Section>
+        <div data-tour="process-range">
+          <Section title={t("process.pageRange")}>
+            <div className="grid grid-cols-2 gap-2">
+              <Field label={t("process.startPage")} info={t("tips.pageRange")}>
+                <NumInput value={rangeStart} min={1} max={logicalCount} onChange={setRangeStart} />
+              </Field>
+              <Field label={t("process.endPage")}>
+                <NumInput value={rangeEnd} min={1} max={logicalCount} onChange={setRangeEnd} />
+              </Field>
+            </div>
+            {!rangeOk && (
+              <span className="text-[12px] text-error">
+                {t("process.rangeError", { max: logicalCount })}
+              </span>
+            )}
+          </Section>
+        </div>
 
-        <Section title={t("process.startingPosition")}>
-          <Field label={t("process.startSura")}>
-            <select
-              value={startSura}
-              onChange={(e) => {
-                const n = Number(e.target.value);
-                setStartSura(n);
-                const max = suras?.find((s) => s.number === n)?.aya_count ?? 286;
-                setStartAya((a) => clamp(a, 1, max));
-              }}
-              className={selectClass}
-            >
-              {(suras ?? []).map((s) => (
-                <option key={s.number} value={s.number}>
-                  {s.number}. {s.name_arabic} — {s.transliteration}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label={t("process.startAya")}>
-            <select
-              value={startAya}
-              onChange={(e) => setStartAya(Number(e.target.value))}
-              className={selectClass}
-            >
-              {Array.from({ length: ayaMax }, (_, i) => i + 1).map((a) => (
-                <option key={a} value={a}>
-                  {a}
-                </option>
-              ))}
-            </select>
-          </Field>
-        </Section>
+        <div data-tour="process-start">
+          <Section title={t("process.startingPosition")}>
+            <Field label={t("process.startSura")} info={t("tips.startSura")}>
+              <select
+                value={startSura}
+                onChange={(e) => {
+                  const n = Number(e.target.value);
+                  setStartSura(n);
+                  const max = suras?.find((s) => s.number === n)?.aya_count ?? 286;
+                  setStartAya((a) => clamp(a, 1, max));
+                }}
+                className={selectClass}
+              >
+                {(suras ?? []).map((s) => (
+                  <option key={s.number} value={s.number}>
+                    {s.number}. {s.name_arabic} — {s.transliteration}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label={t("process.startAya")} info={t("tips.startAya")}>
+              <select
+                value={startAya}
+                onChange={(e) => setStartAya(Number(e.target.value))}
+                className={selectClass}
+              >
+                {Array.from({ length: ayaMax }, (_, i) => i + 1).map((a) => (
+                  <option key={a} value={a}>
+                    {a}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </Section>
+        </div>
 
         <SettingsCard settings={settings} onChange={setSettings} />
 
         {run?.abort && <AbortCard abort={run.abort} />}
         {run?.error && <Hint tone="warning">{run.error}</Hint>}
       </Aside>
+
+      <TourOverlay tour={tour} />
     </div>
   );
 }
@@ -371,10 +416,14 @@ function SettingsCard({
   const u = (patch: Partial<ProcessSettings>) => onChange({ ...settings, ...patch });
   return (
     <Section title={t("process.detectionSettings")} defaultOpen={false}>
-      <Row label={t("process.padding")} hint={t("process.paddingHint")}>
+      <Row label={t("process.padding")} hint={t("process.paddingHint")} info={t("tips.padding")}>
         <NumInput value={settings.padding} min={0} onChange={(v) => u({ padding: v })} compact />
       </Row>
-      <Row label={t("process.linesPerPage")} hint={t("process.linesPerPageHint")}>
+      <Row
+        label={t("process.linesPerPage")}
+        hint={t("process.linesPerPageHint")}
+        info={t("tips.expectedLines")}
+      >
         <NumInput
           value={settings.expected_lines}
           min={1}
@@ -382,7 +431,7 @@ function SettingsCard({
           compact
         />
       </Row>
-      <Row label={t("process.headerSlots")}>
+      <Row label={t("process.headerSlots")} info={t("tips.headerSlots")}>
         <NumInput
           value={settings.sura_header_slots}
           min={1}
@@ -390,7 +439,11 @@ function SettingsCard({
           compact
         />
       </Row>
-      <Row label={t("process.headerThreshold")} hint={t("process.headerThresholdHint")}>
+      <Row
+        label={t("process.headerThreshold")}
+        hint={t("process.headerThresholdHint")}
+        info={t("tips.headerThreshold")}
+      >
         <NumInput
           value={settings.sura_header_threshold}
           min={0}
@@ -400,7 +453,7 @@ function SettingsCard({
           compact
         />
       </Row>
-      <Row label={t("process.maxHeaders")}>
+      <Row label={t("process.maxHeaders")} info={t("tips.maxHeaders")}>
         <NumInput
           value={settings.max_sura_headers}
           min={1}
@@ -408,7 +461,11 @@ function SettingsCard({
           compact
         />
       </Row>
-      <Row label={t("process.ayaThreshold")} hint={t("process.ayaThresholdHint")}>
+      <Row
+        label={t("process.ayaThreshold")}
+        hint={t("process.ayaThresholdHint")}
+        info={t("tips.ayaThreshold")}
+      >
         <NumInput
           value={settings.match_threshold}
           min={0}
@@ -418,13 +475,22 @@ function SettingsCard({
           compact
         />
       </Row>
-      <Row label={t("process.altMargins")} hint={t("process.altMarginsHint")}>
+      <Row
+        label={t("process.altMargins")}
+        hint={t("process.altMarginsHint")}
+        info={t("tips.altMargins")}
+      >
         <Toggle
           value={settings.alternate_horizontal_margin}
           onChange={(v) => u({ alternate_horizontal_margin: v })}
         />
       </Row>
-      <Row label={t("process.preferAccel")} hint={t("process.preferAccelHint")} last>
+      <Row
+        label={t("process.preferAccel")}
+        hint={t("process.preferAccelHint")}
+        info={t("tips.preferAccel")}
+        last
+      >
         <Toggle
           value={settings.prefer_acceleration}
           onChange={(v) => u({ prefer_acceleration: v })}
@@ -437,11 +503,13 @@ function SettingsCard({
 function Row({
   label,
   hint,
+  info,
   children,
   last,
 }: {
   label: string;
   hint?: string;
+  info?: string;
   children: React.ReactNode;
   last?: boolean;
 }) {
@@ -450,7 +518,10 @@ function Row({
       className={`flex items-center justify-between gap-2 py-1 ${last ? "" : "border-b border-border"}`}
     >
       <div className="flex flex-col">
-        <span className="text-[13px] text-text-primary">{label}</span>
+        <span className="flex items-center gap-1 text-[13px] text-text-primary">
+          {label}
+          {info && <InfoTip text={info} />}
+        </span>
         {hint && <span className="text-[10.5px] text-text-muted">{hint}</span>}
       </div>
       {children}
