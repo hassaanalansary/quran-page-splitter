@@ -1,10 +1,18 @@
 # Quran Page Splitter — Project Handoff
 
+> **⚠ 2026-07 update — read `.claude` memory `django-refactor-state` first.** Since this
+> doc was written: reference-data **seed refactor** (`reference_data.json`, qiraat now
+> seeded — `a53db7c`), a large **frontend UX overhaul** (guide modals + coach on each
+> canvas, custom guided tour, pinned `StatusLine`, `InfoTip`s, letterbox-aware crop,
+> "variable area" rename, always-RTL page nav, zoom-to-pointer) committed page-by-page
+> (`39d2a43`→`34aa745`). **The "Frontend flow" / component sections below predate that
+> overhaul — trust `git log` + current code.** Backend architecture/API/data-model here
+> is still accurate.
+>
 > Definitive state-of-the-project reference. Backend **and** frontend are built —
 > the details landing page, the whole-mushaf **Review** editor, and the **Finalize**
-> line-cut editor. Branch: `refactor/django-backend`; **working tree clean,
-> everything committed** (§9). Green: 119 backend tests / mypy / ruff; frontend tsc /
-> eslint / build.
+> line-cut editor. Branch: `refactor/django-backend`. Green: backend 121 tests / mypy /
+> ruff; frontend tsc / eslint / build.
 
 ---
 
