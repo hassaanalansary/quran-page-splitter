@@ -6,6 +6,8 @@ type Props = {
   processed?: Set<number>;
   /** Processed pages that have also been reviewed (a different indicator). */
   reviewed?: Set<number>;
+  /** Whether the page numbers should be shown in right-to-left order. */
+  isRTL?: boolean;
 };
 
 /** Page numbers to show: first, …, current±3, …, last. */
@@ -26,9 +28,11 @@ function pagerItems(current: number, total: number): (number | "gap")[] {
  * When `processed`/`reviewed` sets are given, each page number carries a small
  * indicator bar (navy = processed, green = reviewed).
  */
-export function PageRail({ page, pageCount, onPageChange, processed, reviewed }: Props) {
+export function PageRail({ page, pageCount, onPageChange, processed, reviewed, isRTL }: Props) {
   return (
-    <div className="flex h-11 flex-shrink-0 items-center justify-center gap-1 overflow-x-auto border-t border-border bg-white px-3">
+    <div
+      className={`flex h-11 flex-shrink-0 items-center justify-center gap-1 overflow-x-auto border-t border-border bg-white px-3 ${!isRTL ? "flex-row-reverse" : "flex-row"}`}
+    >
       {pagerItems(page, pageCount).map((item, i) =>
         item === "gap" ? (
           <span key={`gap-${i}`} className="px-1 text-[12px] text-text-muted">

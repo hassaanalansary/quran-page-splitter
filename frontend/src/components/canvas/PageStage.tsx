@@ -55,13 +55,15 @@ export function PageStage({
   processed,
   reviewed,
 }: Props) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [zoom, setZoom] = useState<Zoom>(-1);
   const [tool, setTool] = useState<CanvasTool>("select");
   const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
   const spaceHeld = useSpaceHeld();
   const effectiveTool: CanvasTool = tool === "hand" || spaceHeld ? "hand" : "select";
   const cropping = !!crop;
+
+  const isRTL = i18n.dir() === "rtl";
 
   // Desktop shortcuts: V = select, H = hand, ←/→ = prev/next page.
   useEffect(() => {
@@ -87,7 +89,10 @@ export function PageStage({
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       {/* Toolbar */}
-      <div className="flex h-9 flex-shrink-0 items-center gap-2 border-b border-border bg-white px-3">
+      <div
+        data-tour="canvas-toolbar"
+        className="flex h-9 flex-shrink-0 items-center gap-2 border-b border-border bg-white px-3"
+      >
         <ToolToggle value={effectiveTool} onChange={setTool} />
         {toolbarExtras && (
           <>
@@ -95,7 +100,7 @@ export function PageStage({
             {toolbarExtras}
           </>
         )}
-        <div className="ml-auto">
+        <div className="ms-auto">
           <ZoomControl value={zoom} onChange={setZoom} />
         </div>
       </div>
@@ -150,6 +155,7 @@ export function PageStage({
         onPageChange={onPageChange}
         processed={processed}
         reviewed={reviewed}
+        isRTL={isRTL}
       />
     </div>
   );

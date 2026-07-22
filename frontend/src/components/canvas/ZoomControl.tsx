@@ -26,7 +26,7 @@ export function ZoomControl({ value, onChange }: Props) {
           type="button"
           onClick={() => onChange(o.v)}
           className={[
-            "px-[9px] text-[11.5px] font-medium transition-colors",
+            "px-[9px] text-[11.5px] font-medium transition-colors cursor-pointer",
             i < OPTIONS.length - 1 ? "border-e border-border" : "",
             value === o.v
               ? "bg-bg-muted text-text-primary"

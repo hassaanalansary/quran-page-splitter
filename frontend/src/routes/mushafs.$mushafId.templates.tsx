@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, useParams } from "@tanstack/react-router";
-import { Check } from "lucide-react";
+import { Check, TriangleAlert } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -132,7 +132,7 @@ function TemplatesPage() {
       body: t("tour.templates.t1_body"),
     },
     {
-      target: "tpl-canvas",
+      target: "canvas-toolbar",
       title: t("tour.templates.tools_title"),
       body: t("tour.templates.tools_body"),
     },
@@ -263,6 +263,10 @@ function TemplatesPage() {
           </Button>
         }
       >
+        <p className="flex gap-1.5 rounded-md border border-[color:var(--warning-border)] bg-warning-bg px-2.5 py-2 text-[11px] leading-snug text-[#92400E]">
+          <TriangleAlert size={13} className="mt-[1px] flex-none" />
+          <span>{t("templates.cropTip")}</span>
+        </p>
         <div data-tour="tpl-targets" className="flex flex-col gap-3">
           {TEMPLATE_TYPES.map((type) => {
             const name = t(`templates.name_${type}`);
@@ -276,30 +280,34 @@ function TemplatesPage() {
                 key={type}
                 type="button"
                 onClick={() => selectType(type)}
-                className={`overflow-hidden rounded-xl border bg-white p-3 text-start transition-colors ${
+                className={`overflow-hidden cursor-pointer rounded-xl border p-3 text-start transition-colors ${
                   active
-                    ? "border-orange ring-2 ring-orange/20"
-                    : "border-border hover:border-border-strong"
+                    ? "border-orange ring-2 ring-orange/30 bg-white"
+                    : saved
+                      ? "border-success/80 ring-1 ring-success/30 bg-success/5 hover:bg-success/10"
+                      : "border-border hover:border-border-strong"
                 }`}
               >
-                <div className="mb-2 flex items-center gap-2">
+                <div className="mb-2 flex items-start gap-2">
                   <span className="flex-1 text-[13px] font-semibold text-text-primary">{name}</span>
-                  {hasIgnore(type) && (
-                    <span className="rounded-pill border border-error/40 bg-error-bg px-1.5 py-[1px] text-[10px] font-medium text-error">
-                      {t("templates.ignoreChip")}
-                    </span>
-                  )}
-                  {dirty ? (
-                    <span className="text-[11px] font-medium text-orange">
-                      {t("templates.unsaved")}
-                    </span>
-                  ) : saved ? (
-                    <span className="flex items-center gap-1 text-[11px] font-medium text-success">
-                      <Check size={12} /> {t("templates.saved")}
-                    </span>
-                  ) : (
-                    <span className="text-[11px] text-text-muted">{t("templates.notSet")}</span>
-                  )}
+                  <span className="flex flex-col items-end gap-1">
+                    {dirty ? (
+                      <span className="text-[11px] font-medium text-orange">
+                        {t("templates.unsaved")}
+                      </span>
+                    ) : saved ? (
+                      <span className="px-1.5 py-[1px] text-[10px] border-success/40 bg-success-bg rounded-pill border flex items-center gap-1 text-[11px] font-medium text-success">
+                        <Check size={12} /> {t("templates.saved")}
+                      </span>
+                    ) : (
+                      <span className="text-[11px] text-text-muted">{t("templates.notSet")}</span>
+                    )}
+                    {hasIgnore(type) && (
+                      <span className="rounded-pill border border-error/40 bg-error-bg px-1.5 py-[1px] text-[10px] font-medium text-error">
+                        {t("templates.ignoreChip")}
+                      </span>
+                    )}
+                  </span>
                 </div>
                 <p className="mb-2 text-[11px] text-text-muted">{hint}</p>
                 <div className="flex h-16 w-full items-center justify-center overflow-hidden rounded border border-border bg-bg-surface">

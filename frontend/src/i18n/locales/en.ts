@@ -203,7 +203,7 @@ export const en = {
     captureFirstToIgnore: "Capture the template first, then add a variable area.",
     addIgnoreRegion: "Add variable area",
     editIgnoreRegion: "Edit variable area",
-    ignoreLabel: "variable",
+    ignoreLabel: "variable area",
     ignoreEditHint:
       "The part of the template that changes from one place to another — like the number inside an aya marker. Mark it so the template is still recognised everywhere, no matter what's inside that part.",
     clearIgnore: "Clear variable area",
@@ -211,7 +211,7 @@ export const en = {
     noIgnore: "No variable area.",
     ignoreDone: "Done",
     ignoreSetToast: "Variable area set — save the template to keep it.",
-    ignoreChip: "variable area set",
+    ignoreChip: "variable area",
     cropTip:
       "Zoom in to place the box precisely. Include the whole element with a little white space around it (trimmed automatically on processing), and keep out any nearby text or border decoration — a loose or dirty crop badly hurts detection.",
   },
@@ -659,9 +659,9 @@ export const en = {
       tools_title: "Canvas tools",
       tools_body:
         "Select (V) draws the box, Hand (H or hold Space) pans, and the zoom controls (or scroll) get you close. Precise cropping is easier zoomed in.",
-      t2_title: "Capture & mask",
+      t2_title: "Capture & mark",
       t2_body:
-        "Fine-tune the crop and capture it here. To mask varaible region, add a variable area and drag the red box on the captured template itself.",
+        "Fine-tune the crop and capture it here. To exclude the part that varies, add a variable area and drag the red box on the captured template itself.",
       t3_title: "Select & save",
       t3_body:
         "Each element has a card on the right — click one to work on it, then save. Both are matched on every page.",

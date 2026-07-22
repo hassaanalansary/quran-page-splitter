@@ -11,8 +11,9 @@ type Props = {
 export function ChevronNav({ page, pageCount, onPageChange }: Props) {
   return (
     <>
-      <Chevron side="left" disabled={page <= 1} onClick={() => onPageChange(page - 1)} />
-      <Chevron side="right" disabled={page >= pageCount} onClick={() => onPageChange(page + 1)} />
+      {/* RTL like a mushaf: the LEFT arrow advances to the next page, the right goes back. */}
+      <Chevron side="left" disabled={page >= pageCount} onClick={() => onPageChange(page + 1)} />
+      <Chevron side="right" disabled={page <= 1} onClick={() => onPageChange(page - 1)} />
     </>
   );
 }
@@ -32,7 +33,7 @@ function Chevron({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      aria-label={side === "left" ? t("canvas.prevPage") : t("canvas.nextPage")}
+      aria-label={side === "left" ? t("canvas.nextPage") : t("canvas.prevPage")}
       className={[
         "absolute top-1/2 z-10 flex h-10 w-10 -translate-y-1/2 items-center justify-center cursor-pointer rounded-full border border-border bg-white/90 text-text-secondary shadow-[var(--shadow-md)] backdrop-blur transition hover:text-orange disabled:cursor-not-allowed disabled:opacity-30",
         side === "left" ? "left-3" : "right-3",
