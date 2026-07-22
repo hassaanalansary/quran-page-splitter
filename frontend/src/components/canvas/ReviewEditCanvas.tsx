@@ -6,6 +6,7 @@ import { PageRail } from "@/components/canvas/PageRail";
 import { ToolToggle } from "@/components/canvas/ToolToggle";
 import { ZoomControl, type Zoom } from "@/components/canvas/ZoomControl";
 import { useCtrlWheelZoom } from "@/hooks/use-ctrl-wheel-zoom";
+import { useZoomToPointer } from "@/hooks/use-zoom-to-pointer";
 import { useSpacePan, type CanvasTool } from "@/hooks/use-space-pan";
 import type { LineType, Rect } from "@/lib/api/types";
 import type { DerivedLine } from "@/lib/review/recompute";
@@ -123,6 +124,7 @@ export function ReviewEditCanvas({
   }, [natural, box, zoom]);
 
   useCtrlWheelZoom({ ref: wrapRef, zoom: scale, onZoomChange: setZoom });
+  useZoomToPointer({ scrollRef: wrapRef, imgRef, scale, enabled: zoom !== -1 });
 
   const dispW = natural ? natural.w * scale : 0;
   const dispH = natural ? natural.h * scale : 0;

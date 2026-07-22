@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import type { Rect } from "@/lib/api/types";
 import { useSpacePan, type CanvasTool } from "@/hooks/use-space-pan";
 import { useCtrlWheelZoom } from "@/hooks/use-ctrl-wheel-zoom";
+import { useZoomToPointer } from "@/hooks/use-zoom-to-pointer";
 
 export type { CanvasTool };
 
@@ -98,6 +99,7 @@ export function PageCanvas({
 
   // Ctrl + wheel zoom
   useCtrlWheelZoom({ ref: scrollRef, zoom: scaleNow, onZoomChange });
+  useZoomToPointer({ scrollRef, imgRef, scale: scaleNow, enabled: zoom !== -1 });
 
   const scale = scaleNow;
   const displayW = natural ? natural.w * scale : 0;
