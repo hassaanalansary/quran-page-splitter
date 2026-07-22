@@ -1,7 +1,8 @@
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, TriangleAlert } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import { InfoTip } from "./InfoTip";
+import { t } from "i18next";
 
 /** Right-hand control column used by the setup / templates / process steps.
  * `status` is pinned above `footer` (outside the scroll area) so the current
@@ -115,14 +116,28 @@ export function Hint({
 /** A compact single-line next-action / blocker indicator for the pinned `status`
  * slot of {@link Aside} — a coloured dot plus a short message. */
 export function StatusLine({
-  tone = "info",
+  tone = "action",
   children,
 }: {
-  tone?: "info" | "warning" | "success";
+  tone?: "action" | "info" | "warning" | "success";
   children: ReactNode;
 }) {
-  const dot = tone === "warning" ? "bg-warning" : tone === "success" ? "bg-success" : "bg-orange";
-  const text = tone === "warning" ? "text-[#8a4b0d]" : "text-text-secondary";
+  const dot =
+    tone === "warning"
+      ? "bg-warning"
+      : tone === "success"
+        ? "bg-success"
+        : tone === "info"
+          ? "bg-info"
+          : "bg-orange";
+  const text =
+    tone === "warning"
+      ? "text-[#8a4b0d]"
+      : tone === "success"
+        ? "text-success"
+        : tone === "info"
+          ? "text-info"
+          : "text-orange";
   return (
     <div className={`flex items-center gap-2 text-[11.5px] ${text}`}>
       <span className={`h-1.5 w-1.5 flex-none rounded-full ${dot}`} aria-hidden />

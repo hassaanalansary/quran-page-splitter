@@ -56,6 +56,8 @@
   --color-text-secondary: var(--text-secondary);
   --color-text-muted: var(--text-muted);
   --color-border-strong: var(--border-strong);
+  --color-info: var(--info);
+  --color-info-bg: var(--info-bg);
   --color-success: var(--success);
   --color-success-bg: var(--success-bg);
   --color-warning: var(--warning);
@@ -83,6 +85,8 @@
   --orange-tint: oklch(0.65 0.17 41 / 0.06);
 
   /* Semantic */
+  --info: oklch(0.6 0.13 220);
+  --info-bg: oklch(0.94 0.06 220);
   --success: oklch(0.6 0.13 156);
   --success-bg: oklch(0.94 0.06 156);
   --success-border: oklch(0.6 0.13 156 / 0.3);

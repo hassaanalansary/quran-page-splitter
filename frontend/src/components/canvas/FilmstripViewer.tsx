@@ -62,12 +62,14 @@ export function FilmstripViewer({
   renderLabel,
   crop,
 }: Props) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const prevPageRef = useRef(page);
   const [aspect, setAspect] = useState(DEFAULT_ASPECT);
   const [jumping, setJumping] = useState(false);
   const [jumpValue, setJumpValue] = useState("");
   const [whoosh, setWhoosh] = useState({ pct: 0, anim: false });
+
+  const isRTL = i18n.dir() === "rtl";
 
   // Whoosh the new window in when jumping past the rendered window.
   useLayoutEffect(() => {
@@ -127,7 +129,8 @@ export function FilmstripViewer({
               top: 28,
               bottom: 28,
               aspectRatio: String(aspect),
-              transform: `translateX(calc(-50% + ${dp * 100}% + ${dp * GAP}px))`,
+              // RTL like a mushaf/Arabic book: higher page numbers sit to the LEFT.
+              transform: `translateX(calc(-50% + ${-dp * 100}% + ${-dp * GAP}px))`,
               transition: "transform 440ms cubic-bezier(0.22,0.61,0.36,1)",
               borderColor: isCurrent ? "var(--orange)" : "var(--border)",
               boxShadow: isCurrent ? "var(--shadow-page)" : "var(--shadow-sm)",
@@ -190,15 +193,16 @@ export function FilmstripViewer({
           })}
         </div>
 
+        {/* RTL: the left arrow advances (next page is to the left), the right goes back. */}
         <ChevronButton
           side="left"
-          disabled={page <= 1}
-          onClick={() => onPageChange(clamp(page - 1, 1, pageCount))}
+          disabled={page >= pageCount}
+          onClick={() => onPageChange(clamp(page + 1, 1, pageCount))}
         />
         <ChevronButton
           side="right"
-          disabled={page >= pageCount}
-          onClick={() => onPageChange(clamp(page + 1, 1, pageCount))}
+          disabled={page <= 1}
+          onClick={() => onPageChange(clamp(page - 1, 1, pageCount))}
         />
 
         {/* Footer overlay: page indicator + jump */}
@@ -245,7 +249,9 @@ export function FilmstripViewer({
       </div>
 
       {/* Compact pager rail */}
-      <div className="flex h-11 flex-shrink-0 items-center justify-center gap-1 border-t border-border bg-white px-3">
+      <div
+        className={`flex h-11 flex-shrink-0 items-center justify-center gap-1 border-t border-border bg-white px-3 ${isRTL ? "flex-row" : "flex-row-reverse"}`}
+      >
         {pagerItems(page, pageCount).map((item, i) =>
           item === "gap" ? (
             <button

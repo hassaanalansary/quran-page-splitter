@@ -1,12 +1,13 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, useParams } from "@tanstack/react-router";
 import { Check, Flag, FlagOff } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
 import { Aside, Field, Hint, PanelCard, StatusLine } from "@/components/app/Panel";
 import { CanvasHelp } from "@/components/app/CanvasHelp";
+import { InfoTip } from "@/components/app/InfoTip";
 import { TourOverlay } from "@/components/app/tour/TourOverlay";
 import { useStepTour, type TourStep } from "@/components/app/tour/useStepTour";
 import { FilmstripViewer } from "@/components/canvas/FilmstripViewer";
@@ -31,19 +32,22 @@ function SetupPage() {
   const [marking, setMarking] = useState<"first" | "last" | null>(null);
   const [markedFirst, setMarkedFirst] = useState(false);
   const [markedLast, setMarkedLast] = useState(false);
+  const [saved, setSaved] = useState(false);
 
+  // Initialise local state once per mushaf (NOT on our own save's cache update,
+  // which would clobber `saved`). Only a locked (already-processed) mushaf starts
+  // marked/saved; otherwise the user's clicks and a successful save set these.
+  const initedRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!mushaf) return;
+    if (!mushaf || initedRef.current === mushafId) return;
+    initedRef.current = mushafId;
     setFirst(mushaf.first_quran_pdf_page);
     setLast(mushaf.last_quran_pdf_page);
-    // Treat an existing non-default (or already-processed) range as "marked".
-    const preset =
-      mushaf.processed_page_count > 0 ||
-      mushaf.first_quran_pdf_page > 1 ||
-      mushaf.last_quran_pdf_page < mushaf.pdf_page_count;
-    setMarkedFirst(preset);
-    setMarkedLast(preset);
-  }, [mushaf?.first_quran_pdf_page, mushaf?.last_quran_pdf_page]);
+    const locked = mushaf.processed_page_count > 0;
+    setMarkedFirst(locked);
+    setMarkedLast(locked);
+    setSaved(locked);
+  }, [mushaf, mushafId]);
 
   const save = useMutation({
     mutationFn: () =>
@@ -53,6 +57,7 @@ function SetupPage() {
       queryClient.invalidateQueries({ queryKey: queryKeys.mushafs });
       setPreview(1);
       setMarking(null);
+      setSaved(true);
       toast.success(
         t("setup.savedToast", {
           first: updated.first_quran_pdf_page,
@@ -80,39 +85,45 @@ function SetupPage() {
   const valid = first >= 1 && first <= last && last <= pdfPages;
   const changed = first !== mushaf.first_quran_pdf_page || last !== mushaf.last_quran_pdf_page;
   const canSave = valid && changed && !processed && !save.isPending;
-  const savedDone = processed || (valid && !changed && (markedFirst || markedLast));
+  // A step counts as done when the user actually did it (marked a page / saved a
+  // valid range) — page 1 as first or the last PDF page as last is perfectly
+  // normal, so the numbers themselves say nothing.
+  const done1 = processed || (valid && markedFirst);
+  const done2 = processed || (valid && markedLast);
+  const done3 = processed || (valid && saved);
 
   const guideItems = [
-    { label: t("guide.setup.s1"), done: processed || first !== 1 },
-    { label: t("guide.setup.s2"), done: processed || (valid && last <= pdfPages) },
-    {
-      label: t("guide.setup.s3"),
-      done: processed || (valid && !changed && !(first === 1 && last === pdfPages)),
-    },
+    { label: t("guide.setup.s1"), done: done1 },
+    { label: t("guide.setup.s2"), done: done2 },
+    { label: t("guide.setup.s3"), done: done3 },
   ];
   const status = processed ? (
     <StatusLine tone="success">{t("stepStatus.setupLocked")}</StatusLine>
   ) : !valid ? (
     <StatusLine tone="warning">{t("setup.rangeError", { max: pdfPages })}</StatusLine>
-  ) : changed ? (
-    <StatusLine>{t("stepStatus.setupUnsaved")}</StatusLine>
-  ) : (
+  ) : done3 ? (
     <StatusLine tone="success">{t("stepStatus.setupSaved")}</StatusLine>
+  ) : !changed ? (
+    <StatusLine tone="info">{t("stepStatus.setupAlreadySaved")}</StatusLine>
+  ) : (
+    <StatusLine>{t("stepStatus.setupUnsaved")}</StatusLine>
   );
 
   function markFirst() {
     setFirst(clamp(physical, 1, pdfPages));
     setMarkedFirst(true);
+    setSaved(false);
     // Cool flourish: fly to the last page so the user immediately marks the end.
     setMarking("last");
     setPreview(logicalCount);
-    toast.info(t("setup.firstSetToast"));
+    toast.success(t("setup.firstSetToast"));
   }
 
   function markLast() {
     const p = clamp(physical, 1, pdfPages);
     setLast(p);
     setMarkedLast(true);
+    setSaved(false);
     setMarking(null);
     toast.success(t("setup.lastSetToast", { page: p }));
   }
@@ -164,22 +175,18 @@ function SetupPage() {
                 {t("setup.currentlyViewing", { page: physical })}
               </div>
               <div className="flex flex-wrap gap-1.5">
-                <ProgressChip
-                  label={t("setup.chipFirst")}
-                  value={`p.${first}`}
-                  done={markedFirst}
-                />
-                <ProgressChip label={t("setup.chipLast")} value={`p.${last}`} done={markedLast} />
-                <ProgressChip label={t("setup.chipSaved")} done={savedDone} />
+                <ProgressChip label={t("setup.chipFirst")} value={`p.${first}`} done={done1} />
+                <ProgressChip label={t("setup.chipLast")} value={`p.${last}`} done={done2} />
+                <ProgressChip label={t("setup.chipSaved")} done={done3} />
               </div>
               <Button
                 variant={marking === "first" || marking === null ? "default" : "outline"}
                 onClick={markFirst}
               >
-                {markedFirst ? <Check size={14} /> : <Flag size={14} />} {t("setup.setFirst")}
+                {done1 ? <Check size={14} /> : <Flag size={14} />} {t("setup.setFirst")}
               </Button>
               <Button variant={marking === "last" ? "default" : "outline"} onClick={markLast}>
-                {markedLast ? <Check size={14} /> : <FlagOff size={14} />} {t("setup.setLast")}
+                {done2 ? <Check size={14} /> : <FlagOff size={14} />} {t("setup.setLast")}
               </Button>
             </PanelCard>
           </div>
@@ -192,7 +199,10 @@ function SetupPage() {
                 value={first}
                 min={1}
                 max={pdfPages}
-                onChange={setFirst}
+                onChange={(v) => {
+                  setFirst(v);
+                  setSaved(false);
+                }}
                 disabled={processed}
               />
             </Field>
@@ -201,7 +211,10 @@ function SetupPage() {
                 value={last}
                 min={1}
                 max={pdfPages}
-                onChange={setLast}
+                onChange={(v) => {
+                  setLast(v);
+                  setSaved(false);
+                }}
                 disabled={processed}
               />
             </Field>
@@ -214,17 +227,21 @@ function SetupPage() {
                 <span className="text-error">{t("setup.rangeError", { max: pdfPages })}</span>
               )}
             </span>
-            <button
-              type="button"
-              disabled={processed}
-              onClick={() => {
-                setFirst(1);
-                setLast(pdfPages);
-              }}
-              className="font-medium text-orange hover:underline disabled:text-text-muted disabled:no-underline"
-            >
-              {t("setup.resetFull")}
-            </button>
+            <span className="flex items-center gap-1">
+              <button
+                type="button"
+                disabled={processed}
+                onClick={() => {
+                  setFirst(1);
+                  setLast(pdfPages);
+                  setSaved(false);
+                }}
+                className="font-medium text-orange hover:underline disabled:text-text-muted disabled:no-underline"
+              >
+                {t("setup.resetFull")}
+              </button>
+              <InfoTip text={t("setup.resetFullTip")} />
+            </span>
           </div>
         </PanelCard>
 
