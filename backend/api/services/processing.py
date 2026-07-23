@@ -157,7 +157,9 @@ def process(
             "page_range_end": page_range_end,
         }
         if isinstance(abort_at, dict) and abort_at.get("page_index") is not None:
-            event["abort_page"] = page_range_start + abort_at["page_index"]
+            # `page_index` is 1-based within the batch, and `page_numbers` starts at
+            # `page_range_start` — so the failing logical page is offset by one less.
+            event["abort_page"] = page_range_start + abort_at["page_index"] - 1
         activity.emit(mushaf, ActivityTypeChoices.RUN_FINISHED, event)
 
     return {

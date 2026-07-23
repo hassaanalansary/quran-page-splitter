@@ -136,6 +136,76 @@ export const en = {
     processFailed: "Processing failed.",
     loadedToast: "Loaded settings from run {{label}}.",
     loadedToastResume: "Loaded settings from run {{label}} · resuming from p.{{from}}.",
+    // Bounds lock
+    lockBounds: "Lock bounds",
+    unlockBounds: "Unlock bounds",
+    boundsLocked: "Locked",
+    lockHint:
+      "Locked bounds can't be dragged on the page or edited in the panel, so flipping through pages to check the box is safe.",
+    lockedToast: "Bounds locked. Alternate margins still mirror this same box on alternate pages.",
+    unlockedToast: "Bounds unlocked — the box can be dragged and edited again.",
+    // Center preview panel
+    previewShow: "Show bounds preview",
+    previewHide: "Hide bounds preview",
+    // First-run advisory
+    firstRunTitle: "First run on this mushaf — start with a short range",
+    firstRunBody:
+      "You've selected {{count}} pages. Detection is CPU-heavy and a long range can run for a very long time. On a mushaf's first run, process a small batch, check it in Review, and tune the detection settings if the cuts aren't right. A wrong setting then costs you minutes instead of the whole range.",
+    firstRunApply: "Use pages {{start}}–{{end}} instead",
+    firstRunShort: "Long first run — {{count}} pages.",
+    firstRunApplyShort: "Use {{start}}–{{end}}",
+    firstRunStatus: "First run — a shorter range is safer while you test the settings.",
+    // Pages 1–2 advisory
+    earlyPagesTitle: "Pages 1–2 can't be detected",
+    earlyPagesBody:
+      "Al-Fatiha (page 1) and the opening page of Al-Baqara (page 2) are laid out unlike the rest of the mushaf — framed, fewer lines, different spacing — so line detection can't read them. Start the range at page 3 and handle those two pages separately.",
+    earlyPagesShort: "Pages 1–2 can't be detected.",
+    earlyPagesApply: "Start at page {{page}}",
+    earlyPagesStatus: "Start at page 3 — pages 1–2 can't be detected.",
+    // Confirmation dialog
+    confirmTitle: "Start processing?",
+    confirmIntro:
+      "Processing is heavy and time-consuming, and it overwrites the coordinates of every page in the range. Double-check what is about to be sent:",
+    confirmPages: "Pages",
+    confirmPagesValue: "{{start}}–{{end}} · {{count}} pages",
+    confirmStartAt: "Starts at",
+    confirmStartAtValue: "{{sura}} · aya {{aya}}",
+    confirmBounds: "Bounds",
+    confirmSettings: "Detection settings",
+    confirmBatches: "Sent in {{count}} batch(es) of up to {{size}} pages.",
+    confirmSubmit: "Start processing",
+    on: "on",
+    off: "off",
+    // Abort / failure surfacing
+    abortStatus: "Stopped on page {{page}} — {{count}} pages saved.",
+    errorStatus: "Processing failed — open the details.",
+    abortDetails: "See what went wrong",
+    abortDialogTitle: "Detection stopped on page {{page}}",
+    abortLead:
+      "This page's line count didn't match what was expected, so the run stopped there. Pages before it are saved; nothing from page {{page}} onward was written.",
+    abortCounts: "Expected {{expected}} line slots · detected {{detected}}",
+    abortSavedCount: "{{count}} pages saved before the stop",
+    abortFixTitle: "What usually fixes this",
+    abortFix1:
+      "Bounds too wide — a frame, page number or decoration sits inside the box and reads as a line. Zoom in and tighten the bounds.",
+    abortFix2:
+      "Bounds too tight — the top or bottom line is clipped and got dropped. Give the box slightly more room.",
+    abortFix3:
+      "This page genuinely has a different line count (a sura ends mid-page, or a decorated opening page). Process it on its own with its own expected-lines value.",
+    abortFix4:
+      "Header slots wrong — a sura header spans 2 line-heights in some mushafs (e.g. Shamarli) and 1 in others. Compare the header thumbnails below against the setting.",
+    abortFix5:
+      "Header threshold too high — the header was missed, so its slots weren't counted. Lower it a little; too low and ordinary lines match as headers.",
+    abortFix6:
+      "Alternate margins — if the text column shifts side to side between pages, turn it on so the bounds mirror. If it's on and the mushaf doesn't shift, turn it off.",
+    abortResume: "Resume from page {{page}}",
+    abortResumeToast: "Start page set to {{page}} — adjust the settings, then process.",
+    errorDialogTitle: "Processing failed",
+    errorLead:
+      "The request didn't finish. Pages processed before the failure are saved; check the message below and try again.",
+    // Restored request
+    restored:
+      "Filled in from your last run on this mushaf ({{when}}). Adjust anything, then process.",
   },
   workspace: {
     loadingMushaf: "Loading mushaf…",
@@ -530,6 +600,7 @@ export const en = {
     cropPreviewEmpty: "Draw a region on the page to preview it here.",
     mirrored: "mirrored",
     mirroredReadonly: "mirrored (read-only)",
+    locked: "locked",
     draw: "Draw: {{label}}",
     tpl_cropPreview: "Crop preview",
     tpl_boundsPreview: "Bounds preview",
@@ -569,6 +640,8 @@ export const en = {
     title: "How this works",
     replayTour: "Replay tour",
     about: "Do these in order — the checklist ticks off as you go.",
+    aboutStatic:
+      "What this step involves, in order. It's a reference — nothing is ticked off here.",
     setup: {
       s1: "Flip through the PDF and mark the first page that holds Quran text.",
       s2: "Flip to the last Quran page and mark it — front/back matter is excluded.",
@@ -584,7 +657,8 @@ export const en = {
       s1: "Draw the text-region bounds (exclude margins and decoration).",
       s2: "Choose the page range to process.",
       s3: "Set the sura and aya the range starts at.",
-      s4: "Run processing — detection works inside the bounds.",
+      s4: "Go through the detection settings — expected lines, header slots, match thresholds.",
+      s5: "Run processing — detection works inside the bounds.",
     },
     review: {
       s1: "Check each line's box and type; drag a box or its handles to fix it.",
@@ -612,11 +686,12 @@ export const en = {
       "Extra pixels kept above and below each line when cutting. Larger is safer but can catch neighbours.",
     expectedLines:
       "Line slots each page should have, including header and besmella rows. Detection stops on a mismatch.",
-    headerSlots: "How many line-heights a sura-header band spans (usually 2).",
+    headerSlots:
+      "How many line-heights a sura-header band spans (usually 1 but for some is 2 e.g. Shamarli).",
     headerThreshold:
-      "Sura-header match strictness (0–1). Higher rejects more false headers but may miss faint ones.",
+      "Sura-header match strictness (0-1). Higher rejects more false headers but may miss faint ones.",
     maxHeaders: "Most sura headers to expect on a single page.",
-    ayaThreshold: "Aya-separator match strictness (0–1). Higher rejects more false separators.",
+    ayaThreshold: "Aya-separator match strictness (0-1). Higher rejects more false separators.",
     altMargins:
       "Mirror the bounds on alternate pages, for mushafs whose text column shifts side to side.",
     preferAccel: "Use GPU/OpenCL acceleration for template matching when available.",
@@ -631,7 +706,8 @@ export const en = {
     goal: "Show the current canvas hint",
     setup: "Flip pages with the filmstrip, then mark the first and last Quran page.",
     templates: "Drag a tight box on the page, then capture it in the middle panel.",
-    process: "Drag the orange box around the text region on the page.",
+    process:
+      "Make sure to zoom in for better precision, including any part of the border results in bad cuts or even errors.",
     review: "Double-click a text line to add a separator ۝ · drag a box or its handles to fix it.",
     finalize: "Drag a line's top or bottom edge to trim it · hold Shift to erase.",
   },

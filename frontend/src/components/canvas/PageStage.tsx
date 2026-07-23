@@ -27,6 +27,10 @@ type Props = {
      * read-only preview (alternate-margin pages). Editing stays on normal pages.
      */
     mirrored?: boolean;
+    /** Freeze the rect — visible, but not draggable or resizable. */
+    locked?: boolean;
+    /** When given, the rect's badge carries a lock toggle. */
+    onLockToggle?: () => void;
   };
   /** Reports the page image's natural size once loaded. */
   onNatural?: (n: { w: number; h: number }) => void;
@@ -119,6 +123,8 @@ export function PageStage({
           onNatural={onNatural}
           tool={tool}
           mirrored={cropping ? !!crop.mirrored : false}
+          locked={cropping ? !!crop.locked : false}
+          onToggleLock={cropping ? crop.onLockToggle : undefined}
         />
         <ChevronNav page={page} pageCount={pageCount} onPageChange={onPageChange} />
         <div className="absolute bottom-3 left-1/2 z-10 -translate-x-1/2 rounded-pill border border-border bg-white/90 px-3 py-1.5 shadow-[var(--shadow-sm)] backdrop-blur">
@@ -143,7 +149,13 @@ export function PageStage({
           >
             ●{" "}
             {crop.rect
-              ? `${Math.round(crop.rect.w)} × ${Math.round(crop.rect.h)} px${crop.mirrored ? ` · ${t("canvas.mirroredReadonly")}` : ""}`
+              ? `${Math.round(crop.rect.w)} × ${Math.round(crop.rect.h)} px${
+                  crop.mirrored
+                    ? ` · ${t("canvas.mirroredReadonly")}`
+                    : crop.locked
+                      ? ` · ${t("canvas.locked")}`
+                      : ""
+                }`
               : t("canvas.draw", { label: crop.label })}
           </span>
         )}

@@ -1,3 +1,4 @@
+import { Lock, LockOpen } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { Rect } from "@/lib/api/types";
@@ -27,6 +28,10 @@ type Props = {
    * engine crops this page. Editing happens on non-mirrored pages.
    */
   mirrored?: boolean;
+  /** Freezes the crop rect (no drag, no resize handles) while keeping it visible. */
+  locked?: boolean;
+  /** When given, the rect's badge carries a lock toggle. */
+  onToggleLock?: () => void;
 };
 
 type NaturalSize = { w: number; h: number };
@@ -53,6 +58,8 @@ export function PageCanvas({
   onNatural,
   tool = "select",
   mirrored = false,
+  locked = false,
+  onToggleLock,
 }: Props) {
   const { t } = useTranslation();
   const { scrollRef, effectiveTool, handCursor, containerProps } = useSpacePan({ tool });
@@ -84,7 +91,7 @@ export function PageCanvas({
 
   // Auto-initialize a centered rect when target is active and none exists.
   useEffect(() => {
-    if (!natural || !label || rect) return;
+    if (!natural || !label || rect || locked) return;
     const w = Math.round(natural.w * 0.4);
     const h = Math.round(natural.h * 0.25);
     onRectChange({
@@ -93,7 +100,7 @@ export function PageCanvas({
       w,
       h,
     });
-  }, [natural, label, rect, onRectChange]);
+  }, [natural, label, rect, locked, onRectChange]);
 
   const scaleNow = zoom === -1 ? fitScale : zoom;
 
@@ -262,10 +269,12 @@ export function PageCanvas({
                 }
                 natural={natural}
                 label={label}
-                onBodyPointerDown={mirrored ? undefined : startBodyDrag}
-                onHandlePointerDown={mirrored ? undefined : startHandleDrag}
+                onBodyPointerDown={mirrored || locked ? undefined : startBodyDrag}
+                onHandlePointerDown={mirrored || locked ? undefined : startHandleDrag}
                 dimming={drawing}
                 mirrored={mirrored}
+                locked={locked}
+                onToggleLock={mirrored ? undefined : onToggleLock}
               />
             )}
           </div>
@@ -287,8 +296,10 @@ function RectOverlay({
   label,
   onBodyPointerDown,
   onHandlePointerDown,
+  onToggleLock,
   dimming,
   mirrored = false,
+  locked = false,
 }: {
   rect: Rect;
   natural: NaturalSize;
@@ -300,8 +311,13 @@ function RectOverlay({
   dimming?: boolean;
   /** Read-only preview of the mirrored (alternate-margin) crop. */
   mirrored?: boolean;
+  /** Frozen by the user — same colours as usual, but no drag and no handles. */
+  locked?: boolean;
+  /** Adds a lock toggle to the badge; the badge stays click-through without it. */
+  onToggleLock?: () => void;
 }) {
   const { t } = useTranslation();
+  const frozen = mirrored || locked;
   const left = (rect.x / natural.w) * 100;
   const top = (rect.y / natural.h) * 100;
   const width = (rect.w / natural.w) * 100;
@@ -360,7 +376,7 @@ function RectOverlay({
 
       {/* main rect */}
       <div
-        onPointerDown={mirrored ? undefined : onBodyPointerDown}
+        onPointerDown={frozen ? undefined : onBodyPointerDown}
         className="absolute rounded-[3px] border-2"
         style={{
           left: `${left}%`,
@@ -368,17 +384,17 @@ function RectOverlay({
           width: `${width}%`,
           height: `${height}%`,
           borderColor: mirrored ? "var(--navy)" : "var(--orange)",
-          borderStyle: mirrored ? "dashed" : "solid",
+          borderStyle: frozen ? "dashed" : "solid",
           backgroundColor: mirrored
             ? "color-mix(in oklab, var(--navy) 6%, transparent)"
             : "color-mix(in oklab, var(--orange) 4%, transparent)",
-          cursor: mirrored ? "default" : "move",
-          pointerEvents: mirrored ? "none" : undefined,
+          cursor: frozen ? "default" : "move",
+          pointerEvents: frozen ? "none" : undefined,
           touchAction: "none",
         }}
       >
-        {/* resize handles — hidden on the read-only mirrored preview */}
-        {!mirrored && onHandlePointerDown && (
+        {/* resize handles — hidden while the rect is read-only (mirrored / locked) */}
+        {!frozen && onHandlePointerDown && (
           <>
             {edgeHandles.map((h) => (
               <div
@@ -398,9 +414,10 @@ function RectOverlay({
             ))}
           </>
         )}
-        {/* label badge */}
+        {/* label badge — carries the lock toggle, so freezing the box needs no
+            panel space and sits where the user is already looking */}
         <div
-          className="pointer-events-none absolute rounded-pill px-2 py-[2px] text-[10px] font-semibold text-white"
+          className="pointer-events-none absolute inline-flex items-center gap-1 rounded-pill py-[2px] ps-2 pe-2 text-[10px] font-semibold text-white"
           style={{
             top: "-22px",
             left: "0px",
@@ -409,7 +426,26 @@ function RectOverlay({
             background: mirrored ? "var(--navy)" : "var(--orange)",
           }}
         >
-          {mirrored ? `⇄ ${label} · ${t("canvas.mirrored")}` : label}
+          <span>
+            {mirrored
+              ? `⇄ ${label} · ${t("canvas.mirrored")}`
+              : locked
+                ? `${label} · ${t("canvas.locked")}`
+                : label}
+          </span>
+          {onToggleLock && (
+            <button
+              type="button"
+              aria-pressed={locked}
+              aria-label={locked ? t("process.unlockBounds") : t("process.lockBounds")}
+              title={`${locked ? t("process.unlockBounds") : t("process.lockBounds")} — ${t("process.lockHint")}`}
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={onToggleLock}
+              className="pointer-events-auto -me-1 flex h-[17px] w-[17px] cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-white/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
+            >
+              {locked ? <Lock size={10} strokeWidth={2.75} /> : <LockOpen size={10} />}
+            </button>
+          )}
         </div>
         {/* dimension tag */}
         <div

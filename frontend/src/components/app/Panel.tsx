@@ -119,25 +119,29 @@ export function StatusLine({
   tone = "action",
   children,
 }: {
-  tone?: "action" | "info" | "warning" | "success";
+  tone?: "action" | "info" | "warning" | "success" | "error";
   children: ReactNode;
 }) {
   const dot =
     tone === "warning"
       ? "bg-warning"
-      : tone === "success"
-        ? "bg-success"
-        : tone === "info"
-          ? "bg-info"
-          : "bg-orange";
+      : tone === "error"
+        ? "bg-error"
+        : tone === "success"
+          ? "bg-success"
+          : tone === "info"
+            ? "bg-info"
+            : "bg-orange";
   const text =
     tone === "warning"
       ? "text-[#8a4b0d]"
-      : tone === "success"
-        ? "text-success"
-        : tone === "info"
-          ? "text-info"
-          : "text-orange";
+      : tone === "error"
+        ? "text-error"
+        : tone === "success"
+          ? "text-success"
+          : tone === "info"
+            ? "text-info"
+            : "text-orange";
   return (
     <div className={`flex items-center gap-2 text-[11.5px] ${text}`}>
       <span className={`h-1.5 w-1.5 flex-none rounded-full ${dot}`} aria-hidden />

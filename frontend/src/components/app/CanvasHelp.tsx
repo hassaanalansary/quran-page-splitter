@@ -25,22 +25,34 @@ const ICON_BTN =
  */
 export function CanvasHelp({
   guideItems,
+  guideAbout,
   coachText,
   onReplayTour,
 }: {
   guideItems: GuideItem[];
+  /** Overrides the intro line — e.g. for steps whose list is plain instructions
+   * rather than a checklist that ticks off. */
+  guideAbout?: string;
   coachText: string;
   onReplayTour?: () => void;
 }) {
   return (
     <div className="absolute top-10 start-3 z-20 flex items-center gap-1.5">
-      <GuideDialog items={guideItems} onReplayTour={onReplayTour} />
+      <GuideDialog items={guideItems} about={guideAbout} onReplayTour={onReplayTour} />
       <Coach text={coachText} />
     </div>
   );
 }
 
-function GuideDialog({ items, onReplayTour }: { items: GuideItem[]; onReplayTour?: () => void }) {
+function GuideDialog({
+  items,
+  about,
+  onReplayTour,
+}: {
+  items: GuideItem[];
+  about?: string;
+  onReplayTour?: () => void;
+}) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   return (
@@ -63,7 +75,7 @@ function GuideDialog({ items, onReplayTour }: { items: GuideItem[]; onReplayTour
         <DialogHeader>
           <DialogTitle className="text-text-primary">{t("guide.title")}</DialogTitle>
         </DialogHeader>
-        <p className="text-[12.5px] text-text-secondary">{t("guide.about")}</p>
+        <p className="text-[12.5px] text-text-secondary">{about ?? t("guide.about")}</p>
         <ol className="flex flex-col gap-2">
           {items.map((item, i) => (
             <li key={i} className="flex items-start gap-2.5 text-[13px] leading-[1.5]">
