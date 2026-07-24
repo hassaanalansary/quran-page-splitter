@@ -10,6 +10,7 @@ import { useZoomToPointer } from "@/hooks/use-zoom-to-pointer";
 import { useSpacePan, type CanvasTool } from "@/hooks/use-space-pan";
 import type { LineType, Rect } from "@/lib/api/types";
 import type { DerivedLine } from "@/lib/review/recompute";
+import { Trash2 } from "lucide-react";
 
 type Handle = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
 
@@ -19,6 +20,14 @@ type Props = {
   lines: DerivedLine[];
   selectedUid: string | null;
   onSelectLine: (uid: string | null) => void;
+  /** The selected separator (line uid + cut index), or null. */
+  selectedCut: { uid: string; index: number } | null;
+  /** Select a separator (click or the start of a drag). */
+  onSelectCut: (uid: string, cutIndex: number) => void;
+  /** Delete a separator (its attached button, in canvas or panel). */
+  onRemoveCut: (uid: string, cutIndex: number) => void;
+  /** Localized title for the separator delete button (canvas has no i18n). */
+  removeSepTitle: string;
   /** Move/resize a line's bbox (image-natural px). Coalesce key `bbox:{uid}`. */
   onUpdateLineBbox: (uid: string, bbox: Rect) => void;
   /** Add a separator cut at x (double-click, text lines). */
@@ -54,6 +63,10 @@ export function ReviewEditCanvas({
   lines,
   selectedUid,
   onSelectLine,
+  selectedCut,
+  onSelectCut,
+  onRemoveCut,
+  removeSepTitle,
   onUpdateLineBbox,
   onAddCut,
   onMoveCut,
@@ -219,12 +232,16 @@ export function ReviewEditCanvas({
       else if (e.key === "h" || e.key === "H") setTool("hand");
       else if (e.key === "ArrowLeft") onPageChange(Math.max(1, page - 1));
       else if (e.key === "ArrowRight") onPageChange(Math.min(pageCount, page + 1));
+      // Delete/Backspace removes the selected separator (only a separator — never
+      // a whole line — so an accidental keypress can't wipe a line's geometry).
+      else if ((e.key === "Delete" || e.key === "Backspace") && selectedCut)
+        onRemoveCut(selectedCut.uid, selectedCut.index);
       else return;
       e.preventDefault();
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [page, pageCount, onPageChange]);
+  }, [page, pageCount, onPageChange, selectedCut, onRemoveCut]);
 
   function startLineDrag(e: React.PointerEvent, line: DerivedLine, handle?: Handle) {
     e.stopPropagation();
@@ -305,12 +322,15 @@ export function ReviewEditCanvas({
                     line={line}
                     natural={natural}
                     selected={line.uid === selectedUid}
+                    selectedCutIndex={selectedCut?.uid === line.uid ? selectedCut.index : null}
+                    removeSepTitle={removeSepTitle}
                     onStartDrag={startLineDrag}
                     onDoubleClick={onLineDoubleClick}
                     onStartSepDrag={(uid, cutIndex) => {
-                      onSelectLine(uid);
+                      onSelectCut(uid, cutIndex);
                       setDrag({ kind: "sep", uid, cutIndex });
                     }}
+                    onRemoveSep={onRemoveCut}
                   />
                 ))}
             </div>
@@ -423,16 +443,23 @@ function LineOverlay({
   line,
   natural,
   selected,
+  selectedCutIndex,
+  removeSepTitle,
   onStartDrag,
   onDoubleClick,
   onStartSepDrag,
+  onRemoveSep,
 }: {
   line: DerivedLine;
   natural: { w: number; h: number };
   selected: boolean;
+  /** Index of the selected separator on THIS line, or null. */
+  selectedCutIndex: number | null;
+  removeSepTitle: string;
   onStartDrag: (e: React.PointerEvent, line: DerivedLine, handle?: Handle) => void;
   onDoubleClick: (e: React.MouseEvent, line: DerivedLine) => void;
   onStartSepDrag: (uid: string, cutIndex: number) => void;
+  onRemoveSep: (uid: string, cutIndex: number) => void;
 }) {
   const c = TYPE_COLOR[line.type];
   const fill = `color-mix(in oklab, ${c} 12%, transparent)`;
@@ -477,7 +504,7 @@ function LineOverlay({
             }}
           >
             <span
-              className="rounded-pill px-[5px] text-[11px] font-bold leading-[1.4]"
+              className="rounded-pill px-[5px] text-[14px] font-bold leading-[1.4]"
               style={
                 seg.overflow
                   ? {
@@ -485,7 +512,7 @@ function LineOverlay({
                       color: "var(--error)",
                       border: "1px solid var(--error)",
                     }
-                  : { background: "white", color: "var(--navy)", border: "1px solid var(--border)" }
+                  : { background: "var(--navy)", color: "white", border: "1px solid var(--border)" }
               }
             >
               {seg.aya}
@@ -494,29 +521,62 @@ function LineOverlay({
           </div>
         ))}
 
-      {/* draggable separator bars (text lines) */}
+      {/* separator bars (text lines) — click to select, drag to move. The delete
+          button is a CHILD of its bar, so the bar is its positioning context: it
+          stays centred on the separator and rides along with it, no line-relative
+          maths of its own. */}
       {line.type === "text" &&
-        line.cuts.map((cx, ci) => (
-          <div
-            key={ci}
-            onPointerDown={(e) => {
-              e.stopPropagation();
-              onStartSepDrag(line.uid, ci);
-            }}
-            className="absolute -bottom-1 -top-1"
-            style={{
-              left: `${((cx - line.bbox.x) / line.bbox.w) * 100}%`,
-              width: "4px",
-              transform: "translateX(-3px)",
-              cursor: "ew-resize",
-              touchAction: "none",
-              background: "color-mix(in oklab, var(--navy) 80%, transparent)",
-              borderRadius: "2px",
-              boxShadow: "0 0 0 1px color-mix(in oklab, var(--navy) 40%, transparent)",
-              zIndex: 6,
-            }}
-          />
-        ))}
+        line.cuts.map((cx, ci) => {
+          const sepSelected = ci === selectedCutIndex;
+          const leftPct = ((cx - line.bbox.x) / line.bbox.w) * 100;
+          return (
+            <div
+              key={ci}
+              onPointerDown={(e) => {
+                e.stopPropagation();
+                onStartSepDrag(line.uid, ci);
+              }}
+              className="absolute -bottom-1 -top-1"
+              style={{
+                left: `${leftPct}%`,
+                width: sepSelected ? "6px" : "4px",
+                transform: "translateX(-3px)",
+                cursor: "ew-resize",
+                touchAction: "none",
+                background: sepSelected
+                  ? "var(--navy-light)"
+                  : "color-mix(in oklab, var(--navy) 80%, transparent)",
+                borderRadius: "2px",
+                boxShadow: sepSelected
+                  ? "0 0 0 2px color-mix(in oklab, var(--navy-light) 35%, transparent)"
+                  : "0 0 0 1px color-mix(in oklab, var(--navy) 40%, transparent)",
+                zIndex: sepSelected ? 8 : 6,
+              }}
+            >
+              {sepSelected && (
+                <button
+                  type="button"
+                  title={removeSepTitle}
+                  aria-label={removeSepTitle}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onRemoveSep(line.uid, ci);
+                  }}
+                  className="sep-del-pop group absolute bottom-full left-1/2 mb-1.5 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border border-white bg-error text-[11px] font-bold leading-none text-white shadow-md hover:bg-white hover:text-error hover:brightness-110"
+                >
+                  <Trash2 size={14} />
+                  {/* notch: a diamond poking out the bottom, pointing down at the
+                      separator, tinted to match the button (incl. hover invert) */}
+                  <span
+                    aria-hidden
+                    className="absolute left-1/2 top-full h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rotate-45 rounded-[2px] border-b border-r border-white bg-error group-hover:bg-white"
+                  />
+                </button>
+              )}
+            </div>
+          );
+        })}
 
       {/* resize handles (selected only) */}
       {selected &&

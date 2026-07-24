@@ -36,6 +36,17 @@ function clamp(n: number, lo: number, hi: number) {
   return Math.max(lo, Math.min(hi, n));
 }
 
+/** Rect equality at save precision (coords are rounded before upload). */
+function sameRect(a: Rect | null, b: Rect | null): boolean {
+  if (!a || !b) return a === b;
+  return (
+    Math.round(a.x) === Math.round(b.x) &&
+    Math.round(a.y) === Math.round(b.y) &&
+    Math.round(a.w) === Math.round(b.w) &&
+    Math.round(a.h) === Math.round(b.h)
+  );
+}
+
 function TemplatesPage() {
   const { mushafId } = useParams({ from: "/mushafs/$mushafId/templates" });
   const { data: mushaf } = useMushaf(mushafId);
@@ -59,31 +70,36 @@ function TemplatesPage() {
     setTemplateDraft(mushafId, { captures, ignores, savedAt });
   }, [mushafId, captures, ignores, savedAt]);
 
-  // Seed the selected template's saved ignore region into local state so it shows
-  // on load, and survives a re-save even if the user doesn't touch it.
-  useEffect(() => {
-    if (!serverTemplates) return;
-    const srv = serverTemplates.find((s) => s.type === activeType);
-    if (srv && "x" in srv.ignore_rects) {
-      setIgnores((p) => (p[activeType] ? p : { ...p, [activeType]: srv.ignore_rects as Rect }));
-    }
-  }, [serverTemplates, activeType]);
-
   const server = (type: TemplateType): Template | undefined =>
     serverTemplates?.find((s) => s.type === type);
   const templateUrlOf = (type: TemplateType): string | null =>
     captures[type]?.url ?? server(type)?.image_url ?? null;
-  const isSaved = (type: TemplateType): boolean =>
-    captures[type] ? !!savedAt[type] : !!server(type);
-  const hasIgnore = (type: TemplateType): boolean => {
-    if (ignores[type]) return true;
-    const srv = server(type);
-    return !!srv && "x" in srv.ignore_rects;
-  };
 
-  // Card click selects a template to work on (never jumps into ignore mode). The
-  // ignore region is seeded from the saved template (its coords are already
-  // relative to the template crop) so revisiting shows it.
+  /** The variable area as currently saved on the server. */
+  const serverIgnore = (type: TemplateType): Rect | null => {
+    const srv = server(type);
+    return srv && "x" in srv.ignore_rects ? (srv.ignore_rects as Rect) : null;
+  };
+  /** What the user is looking at: their edit if they made one, else what's saved.
+   * (`null` in local state means "cleared", which must not fall back.) */
+  const effectiveIgnore = (type: TemplateType): Rect | null => {
+    const local = ignores[type];
+    return local !== undefined ? local : serverIgnore(type);
+  };
+  const hasIgnore = (type: TemplateType): boolean => !!effectiveIgnore(type);
+
+  // What "unsaved" means: a capture that was never saved, or a variable area that
+  // no longer matches the saved one. Both drive the Save button and the card chip,
+  // so the two can never disagree.
+  const hasTemplate = (type: TemplateType): boolean => !!captures[type] || !!server(type);
+  const isDirty = (type: TemplateType): boolean =>
+    hasTemplate(type) &&
+    ((!!captures[type] && !savedAt[type]) || !sameRect(effectiveIgnore(type), serverIgnore(type)));
+  const isSaved = (type: TemplateType): boolean => hasTemplate(type) && !isDirty(type);
+
+  // Card click selects a template to work on (never jumps into ignore mode).
+  // Its variable area comes from `effectiveIgnore`, so a saved region shows up
+  // on revisit without being copied into local state.
   function selectType(type: TemplateType) {
     setActiveType(type);
     setWorking(captures[type]?.rect ?? null);
@@ -99,8 +115,9 @@ function TemplatesPage() {
         if (p[activeType]?.url) URL.revokeObjectURL(p[activeType]!.url);
         return { ...p, [activeType]: { blob, url, rect: { ...working } } };
       });
-      // Re-cropping invalidates the previous ignore (its coords are template-relative).
-      setIgnores((p) => ({ ...p, [activeType]: undefined }));
+      // Re-cropping invalidates the previous ignore (its coords are template-relative),
+      // so it is explicitly cleared rather than left to fall back to the saved one.
+      setIgnores((p) => ({ ...p, [activeType]: null }));
       setEditingIgnore(false);
       setSavedAt((p) => ({ ...p, [activeType]: false }));
       toast.success(t("templates.captured", { label: label(activeType) }));
@@ -112,13 +129,24 @@ function TemplatesPage() {
   const saveMutation = useMutation({
     mutationFn: async (type: TemplateType) => {
       const cap = captures[type];
-      if (!cap) throw new Error("Nothing to save.");
-      // The ignore is already relative to the template crop.
-      await upsertTemplate(mushafId, type, { image: cap.blob, ignore: ignores[type] ?? null });
-      return type;
+      if (!cap && !server(type)) throw new Error("Nothing to save.");
+      // Image-less saves are allowed for an already-stored template, so a
+      // variable-area change alone can be saved after a reload. The ignore rect
+      // is already relative to the template crop.
+      const template = await upsertTemplate(mushafId, type, {
+        image: cap?.blob ?? null,
+        ignore: effectiveIgnore(type),
+      });
+      return { type, template };
     },
-    onSuccess: (type) => {
+    onSuccess: ({ type, template }) => {
       setSavedAt((p) => ({ ...p, [type]: true }));
+      // Fold the server's answer in right away, so "unsaved" clears without
+      // waiting on the refetch.
+      queryClient.setQueryData<Template[]>(queryKeys.templates(mushafId), (old) => [
+        ...(old ?? []).filter((x) => x.type !== type),
+        template,
+      ]);
       queryClient.invalidateQueries({ queryKey: queryKeys.templates(mushafId) });
       toast.success(t("templates.savedTemplateToast", { label: label(type) }));
     },
@@ -176,7 +204,9 @@ function TemplatesPage() {
 
   const cap = captures[activeType];
   const templateUrl = templateUrlOf(activeType);
-  const ignoreRect = ignores[activeType] ?? null;
+  const ignoreRect = effectiveIgnore(activeType);
+  const activeDirty = isDirty(activeType);
+  const canSave = activeDirty && !saveMutation.isPending;
 
   return (
     <div
@@ -229,27 +259,40 @@ function TemplatesPage() {
             setEditingIgnore(false);
             if (ignores[activeType]) toast.success(t("templates.ignoreSetToast"));
           }}
-          onChange={(r) => setIgnores((p) => ({ ...p, [activeType]: r ?? undefined }))}
+          onChange={(r) => setIgnores((p) => ({ ...p, [activeType]: r ?? null }))}
           onClear={() => {
-            setIgnores((p) => ({ ...p, [activeType]: undefined }));
+            setIgnores((p) => ({ ...p, [activeType]: null }));
             setEditingIgnore(false);
             toast.success(t("templates.ignoreCleared"));
           }}
         />
 
-        <Button
-          className="mt-auto"
-          onClick={() => saveMutation.mutate(activeType)}
-          disabled={!cap || saveMutation.isPending}
-        >
-          {savedAt[activeType] ? (
-            <>
-              <Check size={14} /> {t("templates.savedBtn")}
-            </>
-          ) : (
-            t("templates.saveNamed", { label: label(activeType) })
+        <div className="mt-auto flex flex-col gap-1.5">
+          {hasTemplate(activeType) && (
+            <span
+              className={`flex items-center gap-1.5 text-[11.5px] ${
+                activeDirty ? "text-orange" : "text-success"
+              }`}
+            >
+              <span
+                className={`h-1.5 w-1.5 flex-none rounded-full ${activeDirty ? "bg-orange" : "bg-success"}`}
+                aria-hidden
+              />
+              {activeDirty ? t("templates.dirtyHint") : t("templates.cleanHint")}
+            </span>
           )}
-        </Button>
+          <Button onClick={() => saveMutation.mutate(activeType)} disabled={!canSave}>
+            {saveMutation.isPending ? (
+              t("common.saving")
+            ) : activeDirty ? (
+              t("templates.saveNamed", { label: label(activeType) })
+            ) : (
+              <>
+                <Check size={14} /> {t("templates.savedBtn")}
+              </>
+            )}
+          </Button>
+        </div>
       </div>
 
       {/* Right: selection cards */}
@@ -272,7 +315,7 @@ function TemplatesPage() {
             const name = t(`templates.name_${type}`);
             const hint = t(`templates.hint_${type}`);
             const url = templateUrlOf(type);
-            const dirty = !!captures[type] && !savedAt[type];
+            const dirty = isDirty(type);
             const saved = isSaved(type);
             const active = activeType === type;
             return (

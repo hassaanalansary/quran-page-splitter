@@ -7,7 +7,9 @@ export type Capture = { blob: Blob; url: string; rect: Rect };
 
 export type TemplateDraft = {
   captures: Partial<Record<TemplateType, Capture>>;
-  ignores: Partial<Record<TemplateType, Rect>>;
+  /** `undefined` = untouched (falls back to the saved template's region),
+   * `null` = explicitly cleared by the user, a Rect = edited. */
+  ignores: Partial<Record<TemplateType, Rect | null>>;
   savedAt: Partial<Record<TemplateType, boolean>>;
 };
 

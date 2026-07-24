@@ -67,11 +67,16 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+  const { t } = useTranslation();
 
   return (
     <QueryClientProvider client={queryClient}>
       <Outlet />
-      <Toaster position="top-right" richColors />
+      <Toaster
+        position="top-right"
+        richColors
+        toastOptions={{ closeButtonAriaLabel: t("common.closeToast") }}
+      />
     </QueryClientProvider>
   );
 }

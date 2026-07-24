@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, useBlocker, useNavigate, useParams } from "@tanstack/react-router";
+import { ChevronDown, ChevronUp, Plus, Trash, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -34,7 +35,6 @@ import {
   type ReviewStore,
 } from "@/lib/review/model";
 import {
-  cutIndexAt,
   pageSignature,
   recompute,
   suraSpanPages,
@@ -51,6 +51,14 @@ const HISTORY_LIMIT = 100;
 const COALESCE_MS = 500;
 
 const LINE_TYPE_VALUES: EditLineType[] = ["text", "sura_header", "besmella"];
+
+/** Per-type accent, matching the line-box colours on the canvas so the panel
+ * reads as the same object (orange = text, navy = sura header, green = besmella). */
+const TYPE_COLOR: Record<EditLineType, string> = {
+  text: "var(--orange)",
+  sura_header: "var(--navy)",
+  besmella: "var(--success)",
+};
 
 function ReviewPage() {
   const { mushafId } = useParams({ from: "/mushafs/$mushafId/review" });
@@ -77,6 +85,9 @@ function ReviewPage() {
   });
   const store = hist.stack[hist.index] ?? null;
   const [selectedUid, setSelectedUid] = useState<string | null>(null);
+  // The selected separator (a cut within a text line), independent of the line
+  // selection so its parent line's editor stays open while it's highlighted.
+  const [selectedCut, setSelectedCut] = useState<{ uid: string; index: number } | null>(null);
   const [saving, setSaving] = useState(false);
   const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);
   // Bumped when the saved baseline changes without the store changing (post-save).
@@ -86,6 +97,9 @@ function ReviewPage() {
   const baselineRef = useRef<Map<number, string>>(new Map());
   const baselineReviewedRef = useRef<Set<number>>(new Set());
   const builtForRef = useRef<string | null>(null);
+  // Page whose first line we've already auto-selected, so entering a page selects
+  // line 1 once (the navigator's "current line") without fighting later deselects.
+  const selInitRef = useRef<number | null>(null);
 
   // Build the store for ALL logical pages exactly ONCE per mushaf. Later
   // refetches (focus, invalidations) must NOT rebuild — that would wipe local
@@ -102,6 +116,8 @@ function ReviewPage() {
     coalesceRef.current = null;
     setHist({ stack: [next], index: 0 });
     setSelectedUid(null);
+    setSelectedCut(null);
+    selInitRef.current = null;
     setBaselineVersion((v) => v + 1);
   }, [reviewData, mushaf, mushafId]);
 
@@ -162,6 +178,28 @@ function ReviewPage() {
   const selectedDerived = currentDerived?.lines.find((l) => l.uid === selectedUid) ?? null;
   const suraName = (n: number) =>
     suras?.find((s) => s.number === n)?.transliteration ?? t("review.suraFallback", { n });
+
+  // Selection helpers: a line and a separator are selected independently, but
+  // picking one clears the incompatible parts (a line-select drops any cut; a
+  // cut-select pins its parent line so the editor stays open).
+  const selectLine = useCallback((uid: string | null) => {
+    setSelectedUid(uid);
+    setSelectedCut(null);
+  }, []);
+  const selectCut = useCallback((uid: string, index: number) => {
+    setSelectedUid(uid);
+    setSelectedCut({ uid, index });
+  }, []);
+
+  // Landing on a page selects its first line — the navigator's starting "current
+  // line" — once per page, so later manual deselection isn't undone.
+  useEffect(() => {
+    if (!currentEdit) return;
+    if (selInitRef.current === page) return;
+    selInitRef.current = page;
+    setSelectedUid(currentEdit.lines[0]?.uid ?? null);
+    setSelectedCut(null);
+  }, [currentEdit, page]);
 
   // Content-dirty pages (structure changed vs the last-saved baseline).
   const dirtyPages = useMemo(() => {
@@ -232,9 +270,13 @@ function ReviewPage() {
   );
 
   const updateLineBbox = (uid: string, bbox: Rect) => updateLine(uid, { bbox }, `bbox:${uid}`);
+  // Double-click adds a cut and selects it, so its delete button is right there.
   const addCut = (uid: string, x: number) => {
     const line = currentEdit?.lines.find((l) => l.uid === uid);
-    if (line) updateLine(uid, { cuts: [...line.cuts, Math.round(x)] });
+    if (!line) return;
+    const index = line.cuts.length;
+    updateLine(uid, { cuts: [...line.cuts, Math.round(x)] });
+    selectCut(uid, index);
   };
   const moveCut = (uid: string, i: number, x: number) => {
     const line = currentEdit?.lines.find((l) => l.uid === uid);
@@ -246,30 +288,20 @@ function ReviewPage() {
   const removeCut = (uid: string, i: number) => {
     const line = currentEdit?.lines.find((l) => l.uid === uid);
     if (line) updateLine(uid, { cuts: line.cuts.filter((_, idx) => idx !== i) });
-  };
-  const removeSegment = (uid: string, segIndex: number) => {
-    const el = currentEdit?.lines.find((l) => l.uid === uid);
-    const dl = currentDerived?.lines.find((l) => l.uid === uid);
-    if (!el || !dl) return;
-    if (dl.segments.length <= 1) {
-      updateLine(uid, { cuts: [] });
-      return;
-    }
-    const seg = dl.segments[segIndex];
-    // Merge: drop the cut on this segment's separator edge (its left, or — for
-    // the leftmost/open segment — its right).
-    const boundaryX = seg.has_separator ? seg.bbox.x : seg.bbox.x + seg.bbox.w;
-    const ci = cutIndexAt(el.bbox, el.cuts, boundaryX);
-    if (ci >= 0) updateLine(uid, { cuts: el.cuts.filter((_, idx) => idx !== ci) });
+    // Indices shift after a removal — drop the selection rather than mis-point it.
+    setSelectedCut(null);
   };
 
-  const setLineType = (uid: string, type: EditLineType) =>
+  const setLineType = (uid: string, type: EditLineType) => {
     updateLine(uid, {
       type,
       cuts: type === "text" ? (currentEdit?.lines.find((l) => l.uid === uid)?.cuts ?? []) : [],
       sura:
         type === "sura_header" ? currentEdit?.lines.find((l) => l.uid === uid)?.sura : undefined,
     });
+    // A non-text line has no separators; clear any selection pointing at one.
+    if (type !== "text" && selectedCut?.uid === uid) setSelectedCut(null);
+  };
 
   // Anchor the running sura at a header (propagates forward until the next anchor).
   const setSura = (uid: string, sura: number) => updateLine(uid, { sura });
@@ -277,6 +309,7 @@ function ReviewPage() {
   const deleteLine = (uid: string) => {
     mutatePage((p) => ({ ...p, lines: p.lines.filter((l) => l.uid !== uid) }));
     if (selectedUid === uid) setSelectedUid(null);
+    if (selectedCut?.uid === uid) setSelectedCut(null);
   };
 
   const addLineAfter = (uid: string | null, type: EditLineType) => {
@@ -300,7 +333,7 @@ function ReviewPage() {
       lines.splice(idx + 1, 0, { uid: newUid, type, bbox, cuts: [] });
       return { ...p, lines };
     });
-    setSelectedUid(newUid);
+    selectLine(newUid);
   };
 
   // ── persistence (fire-and-forget: never blocks navigation) ──────────────────
@@ -477,7 +510,11 @@ function ReviewPage() {
           imageUrl={pageImageUrl(mushafId, page)}
           lines={currentDerived?.lines ?? []}
           selectedUid={selectedUid}
-          onSelectLine={setSelectedUid}
+          onSelectLine={selectLine}
+          selectedCut={selectedCut}
+          onSelectCut={selectCut}
+          onRemoveCut={removeCut}
+          removeSepTitle={t("review.removeSeparator")}
           onUpdateLineBbox={updateLineBbox}
           onAddCut={addCut}
           onMoveCut={moveCut}
@@ -544,34 +581,37 @@ function ReviewPage() {
               </div>
             )}
 
-            <div data-tour="review-lines">
-              <LineList
+            <div data-tour="review-lines" className="flex flex-col gap-3">
+              <LineNavigator
                 lines={currentDerived?.lines ?? []}
                 selectedUid={selectedUid}
-                onSelect={setSelectedUid}
-                onAdd={(type) => addLineAfter(selectedUid, type)}
+                onSelect={selectLine}
+                onAdd={() => addLineAfter(selectedUid, "text")}
               />
-            </div>
 
-            {selectedEdit && selectedDerived ? (
-              <SelectedLineEditor
-                edit={selectedEdit}
-                derived={selectedDerived}
-                suras={suras ?? []}
-                onSetType={(t) => setLineType(selectedEdit.uid, t)}
-                onSetSura={(n) => setSura(selectedEdit.uid, n)}
-                onUpdateBbox={(b) => updateLineBbox(selectedEdit.uid, b)}
-                onDelete={() => deleteLine(selectedEdit.uid)}
-                onRemoveCut={(i) => removeCut(selectedEdit.uid, i)}
-                onRemoveSegment={(i) => removeSegment(selectedEdit.uid, i)}
-              />
-            ) : (
-              <p className="py-4 text-center text-[12px] text-text-muted">
-                {currentEdit && currentEdit.lines.length === 0
-                  ? t("review.blankPage")
-                  : t("review.selectLine")}
-              </p>
-            )}
+              {selectedEdit && selectedDerived ? (
+                <SelectedLineEditor
+                  edit={selectedEdit}
+                  derived={selectedDerived}
+                  suras={suras ?? []}
+                  selectedCutIndex={
+                    selectedCut?.uid === selectedEdit.uid ? selectedCut.index : null
+                  }
+                  onSetType={(t) => setLineType(selectedEdit.uid, t)}
+                  onSetSura={(n) => setSura(selectedEdit.uid, n)}
+                  onUpdateBbox={(b) => updateLineBbox(selectedEdit.uid, b)}
+                  onDelete={() => deleteLine(selectedEdit.uid)}
+                  onSelectCut={(i) => selectCut(selectedEdit.uid, i)}
+                  onRemoveCut={(i) => removeCut(selectedEdit.uid, i)}
+                />
+              ) : (
+                <p className="py-4 text-center text-[12px] text-text-muted">
+                  {currentEdit && currentEdit.lines.length === 0
+                    ? t("review.blankPage")
+                    : t("review.selectLine")}
+                </p>
+              )}
+            </div>
           </>
         )}
       </Aside>
@@ -583,7 +623,22 @@ function ReviewPage() {
 
 // ── sidebar sub-components ────────────────────────────────────────────────────
 
-function LineList({
+/** Short summary of a line for the navigator: the ayat it covers for a text
+ * line (no "segments" jargon), the sura for a header/besmella. */
+function useLineSummary() {
+  const { t } = useTranslation();
+  return (l: DerivedLine) => {
+    if (l.type !== "text") return t("review.suraSummary", { sura: l.sura });
+    if (!l.segments.length) return t("common.dash");
+    const from = l.segments[0].aya;
+    const to = l.segments[l.segments.length - 1].aya;
+    return from === to ? t("review.lineAya", { n: from }) : t("review.lineAyaRange", { from, to });
+  };
+}
+
+/** Compact line stepper: prev/next through the page's lines with the current
+ * one summarised, plus a single add-line button (type is set in the editor). */
+function LineNavigator({
   lines,
   selectedUid,
   onSelect,
@@ -592,65 +647,93 @@ function LineList({
   lines: DerivedLine[];
   selectedUid: string | null;
   onSelect: (uid: string) => void;
-  onAdd: (type: EditLineType) => void;
+  onAdd: () => void;
 }) {
   const { t } = useTranslation();
+  const summarize = useLineSummary();
+  const total = lines.length;
+  const idx = lines.findIndex((l) => l.uid === selectedUid);
+  // Before the auto-select effect runs, fall back to the first line for display.
+  const safeIdx = idx >= 0 ? idx : 0;
+  const current: DerivedLine | undefined = lines[safeIdx];
+  const color = current ? TYPE_COLOR[current.type] : "var(--orange)";
+
   return (
-    <div className="rounded-md border border-border bg-white">
-      <div className="flex items-center justify-between border-b border-border px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-text-muted">
-        <span>{t("review.linesTitle")}</span>
-        <span className="font-normal normal-case">
-          {t("review.linesTotal", { count: lines.length })}
+    <div className="overflow-hidden rounded-md border border-border bg-white">
+      <div className="flex items-center justify-between border-b border-border bg-orange-tint px-3 py-2">
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-orange">
+          {t("review.linesTitle")}
         </span>
+        <button
+          type="button"
+          onClick={onAdd}
+          className="flex cursor-pointer items-center gap-1 rounded-sm border-[1.5px] border-orange bg-white px-2 py-[3px] text-[11px] font-semibold text-orange hover:bg-orange hover:text-white"
+        >
+          <Plus size={12} /> {t("review.addLine")}
+        </button>
       </div>
-      <ul className="max-h-[240px] overflow-y-auto">
-        {lines.map((l) => {
-          const active = l.uid === selectedUid;
-          const summary =
-            l.type === "text"
-              ? l.segments.length
-                ? t("review.segSummaryAya", {
-                    count: l.segments.length,
-                    from: l.segments[0].aya,
-                    to: l.segments[l.segments.length - 1].aya,
-                  })
-                : t("review.segSummary", { count: l.segments.length })
-              : t("review.suraSummary", { sura: l.sura });
-          const hasWarn = l.boundaryWarning || l.segments.some((s) => s.overflow);
-          return (
-            <li key={l.uid}>
-              <button
-                type="button"
-                onClick={() => onSelect(l.uid)}
-                className={[
-                  "flex w-full items-center gap-2 border-b border-border px-3 py-[7px] text-start text-[12px]",
-                  active ? "bg-orange-tint" : "bg-white hover:bg-bg-surface",
-                ].join(" ")}
-              >
-                <span className="w-5 font-mono text-text-muted">{l.line_number}</span>
-                <TypeChip type={l.type} />
-                <span className="ms-auto truncate text-[11.5px] text-text-secondary">
-                  {summary}
-                </span>
-                {hasWarn && <span className="h-1.5 w-1.5 flex-none rounded-full bg-warning" />}
-              </button>
-            </li>
-          );
-        })}
-      </ul>
-      <div className="flex gap-1 border-t border-border bg-bg-surface px-3 py-2">
-        {LINE_TYPE_VALUES.map((value) => (
+
+      {total === 0 || !current ? (
+        <p className="px-3 py-3 text-[12px] text-text-muted">{t("review.noLines")}</p>
+      ) : (
+        <div className="flex items-stretch">
+          <NavArrow
+            dir="up"
+            title={t("review.prevLine")}
+            disabled={safeIdx <= 0}
+            onClick={() => onSelect(lines[safeIdx - 1].uid)}
+          />
           <button
-            key={value}
             type="button"
-            onClick={() => onAdd(value)}
-            className="flex-1 cursor-pointer rounded-sm border-[1.5px] border-border-strong bg-white px-2 py-[5px] text-[11px] font-medium text-text-secondary hover:bg-bg-surface"
+            onClick={() => onSelect(current.uid)}
+            className="flex flex-1 flex-col gap-1 border-x border-border px-3 py-2 text-start transition-colors cursor-pointer"
+            onMouseEnter={(e) =>
+              (e.currentTarget.style.background = `color-mix(in oklab, ${color} 8%, transparent)`)
+            }
+            onMouseLeave={(e) => (e.currentTarget.style.background = "")}
           >
-            + {t(`review.type_${value}`)}
+            <span className="flex items-center justify-between w-full gap-2">
+              <span className="font-mono text-[12px] font-semibold" style={{ color }}>
+                {t("review.linePosition", { n: current.line_number, total })}
+              </span>
+              <TypeChip type={current.type} />
+            </span>
+            <span className="truncate text-[11.5px] text-text-secondary">{summarize(current)}</span>
           </button>
-        ))}
-      </div>
+          <NavArrow
+            dir="down"
+            title={t("review.nextLine")}
+            disabled={safeIdx >= total - 1}
+            onClick={() => onSelect(lines[safeIdx + 1].uid)}
+          />
+        </div>
+      )}
     </div>
+  );
+}
+
+function NavArrow({
+  dir,
+  title,
+  disabled,
+  onClick,
+}: {
+  dir: "up" | "down";
+  title: string;
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      title={title}
+      aria-label={title}
+      disabled={disabled}
+      onClick={onClick}
+      className="flex w-10 flex-none cursor-pointer items-center justify-center transition-colors bg-bg-surface text-navy hover:bg-transparent disabled:cursor-not-allowed disabled:text-text-muted disabled:opacity-40 disabled:hover:bg-transparent"
+    >
+      {dir === "up" ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+    </button>
   );
 }
 
@@ -658,22 +741,25 @@ function SelectedLineEditor({
   edit,
   derived,
   suras,
+  selectedCutIndex,
   onSetType,
   onSetSura,
   onUpdateBbox,
   onDelete,
+  onSelectCut,
   onRemoveCut,
-  onRemoveSegment,
 }: {
   edit: EditLine;
   derived: DerivedLine;
   suras: Sura[];
+  /** Index of the separator selected on this line, or null. */
+  selectedCutIndex: number | null;
   onSetType: (t: EditLineType) => void;
   onSetSura: (n: number) => void;
   onUpdateBbox: (b: Rect) => void;
   onDelete: () => void;
+  onSelectCut: (i: number) => void;
   onRemoveCut: (i: number) => void;
-  onRemoveSegment: (i: number) => void;
 }) {
   const { t } = useTranslation();
   return (
@@ -735,46 +821,31 @@ function SelectedLineEditor({
       </div>
 
       {edit.type === "text" && (
-        <>
-          <ListCard
-            title={t("review.segmentsTitle")}
-            count={derived.segments.length}
-            empty={t("review.segmentsEmpty")}
-          >
-            {derived.segments.map((s, i) => (
-              <li key={`${i}_${s.bbox.x}`} className="flex items-center gap-2 text-[11.5px]">
-                <span className="w-4 text-text-muted">{i + 1}.</span>
-                <span className={`font-medium ${s.overflow ? "text-error" : "text-text-primary"}`}>
-                  {t("review.ayaN", { n: s.aya })}
-                  {!s.has_separator ? t("review.ayaCont") : ""}
-                  {s.overflow ? " ⚠" : ""}
-                </span>
-                <span className="ms-auto font-mono text-text-muted">
-                  {Math.round(s.bbox.x)}·{Math.round(s.bbox.w)}
-                </span>
-                <IconX title={t("review.removeSegment")} onClick={() => onRemoveSegment(i)} />
+        <ListCard
+          title={t("review.separatorsTitle")}
+          count={edit.cuts.length}
+          empty={t("review.separatorsEmpty")}
+        >
+          {edit.cuts.map((cx, i) => {
+            const sel = i === selectedCutIndex;
+            return (
+              <li key={i} className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => onSelectCut(i)}
+                  className={[
+                    "flex flex-1 items-center gap-2 rounded-sm px-1.5 py-[3px] text-start text-[11.5px]",
+                    sel ? "bg-orange-tint text-orange" : "hover:bg-bg-surface",
+                  ].join(" ")}
+                >
+                  <span className="w-4 text-text-muted">{i + 1}.</span>
+                  <span className="font-mono">{t("review.separatorX", { x: Math.round(cx) })}</span>
+                </button>
+                <IconX title={t("review.removeSeparator")} onClick={() => onRemoveCut(i)} />
               </li>
-            ))}
-          </ListCard>
-
-          <ListCard
-            title={t("review.separatorsTitle")}
-            count={edit.cuts.length}
-            empty={t("review.separatorsEmpty")}
-          >
-            {edit.cuts.map((cx, i) => (
-              <li key={i} className="flex items-center gap-2 text-[11.5px]">
-                <span className="w-4 text-text-muted">{i + 1}.</span>
-                <span className="font-mono">{t("review.separatorX", { x: Math.round(cx) })}</span>
-                <IconX
-                  title={t("review.removeSeparator")}
-                  onClick={() => onRemoveCut(i)}
-                  className="ms-auto"
-                />
-              </li>
-            ))}
-          </ListCard>
-        </>
+            );
+          })}
+        </ListCard>
       )}
     </div>
   );
@@ -820,24 +891,19 @@ function IconX({
       type="button"
       title={title}
       onClick={onClick}
-      className={`cursor-pointer rounded-sm border border-border-strong bg-white px-[5px] text-[10.5px] text-text-secondary hover:bg-bg-surface ${className ?? ""}`}
+      className={`cursor-pointer rounded-sm border bg-white p-[5px] text-[10.5px] text-error hover:bg-error-bg hover:brightness-95 ${className ?? ""}`}
     >
-      ✕
+      <Trash2 size={14} />
     </button>
   );
 }
 
 function TypeChip({ type }: { type: EditLineType }) {
   const { t } = useTranslation();
-  const colors: Record<EditLineType, string> = {
-    sura_header: "var(--navy)",
-    besmella: "var(--success)",
-    text: "var(--orange)",
-  };
   return (
     <span
       className="rounded-pill px-[6px] py-[1px] text-[9.5px] font-semibold uppercase tracking-wider text-white"
-      style={{ background: colors[type] }}
+      style={{ background: TYPE_COLOR[type] }}
     >
       {t(`review.chip_${type}`)}
     </span>
