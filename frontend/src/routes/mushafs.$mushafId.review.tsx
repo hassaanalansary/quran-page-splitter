@@ -445,11 +445,14 @@ function ReviewPage() {
 
   if (!mushaf) return null;
 
+  // Plain instructions, not a checklist — reviewing a page isn't a linear
+  // tick-list (you revisit lines, split, renumber), so nothing is "done" here.
   const guideItems = [
-    { label: t("guide.review.s1"), done: !!currentEdit?.reviewed },
+    { label: t("guide.review.s1") },
     { label: t("guide.review.s2") },
     { label: t("guide.review.s3") },
-    { label: t("guide.review.s4"), done: unsavedCount === 0 && !!currentEdit?.reviewed },
+    { label: t("guide.review.s4") },
+    { label: t("guide.review.s5") },
   ];
   const status = !store ? undefined : unsavedCount > 0 ? (
     <StatusLine>{t("stepStatus.reviewUnsaved", { count: unsavedCount })}</StatusLine>
@@ -528,6 +531,7 @@ function ReviewPage() {
         />
         <CanvasHelp
           guideItems={guideItems}
+          guideAbout={t("guide.aboutStatic")}
           coachText={t("coach.review")}
           onReplayTour={tour.start}
         />
@@ -603,6 +607,9 @@ function ReviewPage() {
                   onDelete={() => deleteLine(selectedEdit.uid)}
                   onSelectCut={(i) => selectCut(selectedEdit.uid, i)}
                   onRemoveCut={(i) => removeCut(selectedEdit.uid, i)}
+                  onAddCut={() =>
+                    addCut(selectedEdit.uid, selectedEdit.bbox.x + selectedEdit.bbox.w / 2)
+                  }
                 />
               ) : (
                 <p className="py-4 text-center text-[12px] text-text-muted">
@@ -748,6 +755,7 @@ function SelectedLineEditor({
   onDelete,
   onSelectCut,
   onRemoveCut,
+  onAddCut,
 }: {
   edit: EditLine;
   derived: DerivedLine;
@@ -760,6 +768,7 @@ function SelectedLineEditor({
   onDelete: () => void;
   onSelectCut: (i: number) => void;
   onRemoveCut: (i: number) => void;
+  onAddCut: () => void;
 }) {
   const { t } = useTranslation();
   return (
@@ -825,6 +834,15 @@ function SelectedLineEditor({
           title={t("review.separatorsTitle")}
           count={edit.cuts.length}
           empty={t("review.separatorsEmpty")}
+          footer={
+            <button
+              type="button"
+              onClick={onAddCut}
+              className="mt-1.5 flex w-full cursor-pointer items-center justify-center gap-1 rounded-sm border-[1.5px] border-dashed border-border-strong px-2 py-[4px] text-[11px] font-medium text-text-secondary transition-colors hover:border-orange hover:bg-orange-tint hover:text-orange"
+            >
+              <Plus size={12} /> {t("review.addSeparator")}
+            </button>
+          }
         >
           {edit.cuts.map((cx, i) => {
             const sel = i === selectedCutIndex;
@@ -856,11 +874,14 @@ function ListCard({
   count,
   empty,
   children,
+  footer,
 }: {
   title: string;
   count: number;
   empty: string;
   children: React.ReactNode;
+  /** Rendered at the very bottom of the card, regardless of count. */
+  footer?: React.ReactNode;
 }) {
   return (
     <div className="rounded-md border border-border bg-white p-2">
@@ -873,6 +894,7 @@ function ListCard({
       ) : (
         <ul className="flex flex-col gap-1">{children}</ul>
       )}
+      {footer}
     </div>
   );
 }

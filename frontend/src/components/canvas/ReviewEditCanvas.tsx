@@ -218,7 +218,9 @@ export function ReviewEditCanvas({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [drag, natural, onUpdateLineBbox, onMoveCut]);
 
-  // Desktop shortcuts: V = select, H = hand, ←/→ = prev/next page.
+  // Desktop shortcuts: V = select, H = hand, ↑/↓ = step lines, ←/→ = nudge the
+  // selected separator (Shift = coarse), Delete/Backspace = remove it. Note there
+  // is deliberately NO ←/→ page navigation — those keys belong to the separator.
   useEffect(() => {
     function isTyping(t: EventTarget | null) {
       const el = t as HTMLElement | null;
@@ -230,18 +232,55 @@ export function ReviewEditCanvas({
       if (e.ctrlKey || e.metaKey || e.altKey || isTyping(e.target)) return;
       if (e.key === "v" || e.key === "V") setTool("select");
       else if (e.key === "h" || e.key === "H") setTool("hand");
-      else if (e.key === "ArrowLeft") onPageChange(Math.max(1, page - 1));
-      else if (e.key === "ArrowRight") onPageChange(Math.min(pageCount, page + 1));
-      // Delete/Backspace removes the selected separator (only a separator — never
-      // a whole line — so an accidental keypress can't wipe a line's geometry).
-      else if ((e.key === "Delete" || e.key === "Backspace") && selectedCut)
+      else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+        // Step through the page's lines, mirroring the panel navigator.
+        const idx = lines.findIndex((l) => l.uid === selectedUid);
+        if (e.key === "ArrowUp") {
+          if (idx <= 0) return;
+          onSelectLine(lines[idx - 1].uid);
+        } else {
+          const next = idx < 0 ? 0 : idx + 1;
+          if (next >= lines.length) return;
+          onSelectLine(lines[next].uid);
+        }
+      } else if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+        // Nudge the selected separator; without one, these keys do nothing.
+        if (!selectedCut) return;
+        const line = lines.find((l) => l.uid === selectedCut.uid);
+        const cx = line?.cuts[selectedCut.index];
+        if (cx == null) return;
+        const step = (e.shiftKey ? 10 : 1) * (e.key === "ArrowLeft" ? -1 : 1);
+        onMoveCut(selectedCut.uid, selectedCut.index, Math.round(cx) + step);
+      } else if ((e.key === "Delete" || e.key === "Backspace") && selectedCut) {
+        // Only ever a separator — never a whole line's geometry.
         onRemoveCut(selectedCut.uid, selectedCut.index);
-      else return;
+      } else return;
       e.preventDefault();
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [page, pageCount, onPageChange, selectedCut, onRemoveCut]);
+  }, [lines, selectedUid, onSelectLine, selectedCut, onMoveCut, onRemoveCut]);
+
+  // Bring the selected line into view when the selection changes (stepping with
+  // the navigator or ↑/↓ while zoomed in). Only scrolls when it's off-screen, and
+  // not on box drags — it keys on the selection/page, not the line's geometry.
+  useEffect(() => {
+    if (!selectedUid || !natural) return;
+    const container = wrapRef.current;
+    if (!container) return;
+    const el = container.querySelector<HTMLElement>(`[data-line-uid="${selectedUid}"]`);
+    if (!el) return;
+    const c = container.getBoundingClientRect();
+    const r = el.getBoundingClientRect();
+    const m = 40; // breathing room around the box
+    let dy = 0;
+    if (r.top < c.top + m) dy = r.top - c.top - m;
+    else if (r.bottom > c.bottom - m) dy = r.bottom - c.bottom + m;
+    let dx = 0;
+    if (r.left < c.left + m) dx = r.left - c.left - m;
+    else if (r.right > c.right - m) dx = r.right - c.right + m;
+    if (dx || dy) container.scrollBy({ top: dy, left: dx, behavior: "smooth" });
+  }, [selectedUid, natural, page, wrapRef]);
 
   function startLineDrag(e: React.PointerEvent, line: DerivedLine, handle?: Handle) {
     e.stopPropagation();
@@ -465,6 +504,7 @@ function LineOverlay({
   const fill = `color-mix(in oklab, ${c} 12%, transparent)`;
   return (
     <div
+      data-line-uid={line.uid}
       onPointerDown={(e) => onStartDrag(e, line)}
       onClick={(e) => e.stopPropagation()}
       onDoubleClick={(e) => onDoubleClick(e, line)}

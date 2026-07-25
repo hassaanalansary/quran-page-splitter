@@ -333,6 +333,7 @@ export const en = {
     separatorsTitle: "Separators",
     separatorsEmpty: "Double-click inside the line to add one.",
     separatorX: "x = {{x}} px",
+    addSeparator: "Add separator",
     removeSeparator: "Remove separator",
     blankPage: "Blank page — use “Add line” to build it manually.",
     selectLine: "Select a line on the page, or step through them above.",
@@ -663,10 +664,11 @@ export const en = {
       s5: "Run processing — detection works inside the bounds.",
     },
     review: {
-      s1: "Check each line's box and type; drag a box or its handles to fix it.",
-      s2: "Double-click a text line to add an aya separator (۝).",
-      s3: "Anchor a sura header to reset numbering where a sura begins.",
-      s4: "Mark each page reviewed, then save your changes.",
+      s1: "Step through the page's lines with the ▲▼ navigator (or ↑/↓), or click a line on the page — the selected one opens in the editor below.",
+      s2: "Fix a line: drag its box or handles on the page, or set its type and bounding box in the editor.",
+      s3: "Add an aya separator (۝) by double-clicking a text line, or the button in the panel. Select a separator to nudge it with ←/→, drag it, or delete it (its button or Delete).",
+      s4: "On a sura header, set the sura it begins — numbering flows from there across the whole mushaf.",
+      s5: "Mark each page reviewed, then save your changes.",
     },
     finalize: {
       s1: "Trim each line's top and bottom so only its own ink remains.",
@@ -710,7 +712,8 @@ export const en = {
     templates: "Drag a tight box on the page, then capture it in the middle panel.",
     process:
       "Make sure to zoom in for better precision, including any part of the border results in bad cuts or even errors.",
-    review: "Double-click a text line to add a separator ۝ · drag a box or its handles to fix it.",
+    review:
+      "Step lines with ▲▼ · double-click a text line to add a separator ۝ · click a separator, then Delete removes it.",
     finalize: "Drag a line's top or bottom edge to trim it · hold Shift to erase.",
   },
   tour: {
@@ -763,13 +766,13 @@ export const en = {
     review: {
       t1_title: "Edit on the page",
       t1_body:
-        "Drag line boxes and their handles to fix them. Double-click a text line to add an aya separator (۝).",
+        "Drag a line's box or handles to fix it. Double-click a text line to add an aya separator (۝); click a separator to select it, then nudge it with ←/→, drag it, or press Delete to remove it.",
       t2_title: "Lines & numbering",
       t2_body:
-        "Step through the page's lines here and edit the selected one. Anchor a sura header to reset numbering; it flows across the whole mushaf.",
+        "Step through the page's lines with ▲▼ or ↑/↓ (or click one on the page). The selected line opens below to set its type, box and separators — and to anchor a sura header, which resets numbering across the whole mushaf.",
       t3_title: "Review & save",
       t3_body:
-        "Mark each page reviewed as you go, then save your changes. Numbering warnings are flagged for you.",
+        "Mark each page reviewed as you go, then save your changes. Numbering warnings are flagged — the ⚠ jumps to the next one.",
     },
     finalize: {
       t1_title: "One line at a time",
