@@ -529,9 +529,12 @@ stay decoupled from models.
 - **`export.py`** — `export_lines` renders the page, crops each line to the page
   **column** (`coordinates.page_column`), makes white→transparent, punches erase
   strokes out of the alpha, saves to `media/lines/`, records `line_png`, emits
-  `lines_exported`. `coordinates_json` assembles the downloadable **`aya-bbox/v1`**
-  document (one entry per aya per page in reading order; an aya's rects are its
-  segments' boxes with x/w from the segment and y/h from its line).
+  `lines_exported`. **`lines_zip`** bundles those already-stored PNGs into a
+  `SpooledTemporaryFile` zip (`ZIP_STORED` — PNGs are already compressed) that the
+  view streams back as an attachment; it renders nothing and skips any line whose
+  media file went missing. `coordinates_json` assembles the downloadable
+  **`aya-bbox/v1`** document (one entry per aya per page in reading order; an aya's
+  rects are its segments' boxes with x/w from the segment and y/h from its line).
 
 - **`activity.py`** — `emit` (write one event) + `list_events` (newest-first, limit
   clamped 1..200).
@@ -609,12 +612,15 @@ Media URLs use a leading-slash absolute path helper (`_media_url`) because
 | PUT | `/api/mushafs/{id}/templates/{type}` | multipart; **`image` optional** (omit to update only the ignore region); `ignore_x/y/w/h` all-or-nothing → `TemplateOut` |
 | GET | `/api/mushafs/{id}/pages/{n}/image` | `image/png` — logical page `n`, rendered on demand |
 | GET | `/api/mushafs/{id}/pages` | extended summaries `[{page_number, reviewed, source_pdf_page, lines, ayat, segments, has_header, suras[]}]` |
-| GET / POST | `/api/mushafs/{id}/pages/{n}` | `PageDataOut` (empty lines if unprocessed) / save one page (server renumbers forward; first save emits `review_saved`) |
+| GET / POST | `/api/mushafs/{id}/pages/{n}` | `PageDataOut` (empty lines if unprocessed; each line carries its `erase_strokes` + `line_png` url when exported — both output-only) / save one page (server renumbers forward; first save emits `review_saved`) |
 | GET | `/api/mushafs/{id}/review-data` | whole-document slim payload `{start, pages:[ReviewPage]}` — hand-serialized `JsonResponse` (skips Pydantic re-validation for speed) |
 | POST | `/api/mushafs/{id}/pages/bulk` | `{pages:[{page_number,bbox,lines}], reviewed_pages:[int]}` → one transaction; **verbatim numbering**; returns fresh review-data |
 | POST | `/api/mushafs/{id}/pages/{n}/finalize` | cut layer `{lines:[{line_number, bbox_override?, erase_strokes[]}]}` → Y/H-only override + strokes → `PageDataOut` |
 | POST | `/api/mushafs/{id}/pages/{n}/export-lines` | write transparent line PNGs (cropped to the column, white→transparent, strokes punched) → `ExportOut` |
-| POST | `/api/mushafs/{id}/process` | run the CV pipeline over a page range; **synchronous**, chunked by the client (50 pages/call); may abort on a line-count mismatch |
+| GET | `/api/mushafs/{id}/lines.zip?page=N` | the exported line PNGs as a **zip attachment** (`page-0007/line-03.png` entries), whole mushaf or one page; 404 when nothing is exported yet |
+| POST | `/api/mushafs/{id}/process` | **202** — start the CV pipeline over a page range as a **background job**, returned immediately; 409 if one is already running for this mushaf |
+| GET | `/api/mushafs/{id}/process/job` | `{job\|null}` — poll the current/most recent run (state, phase, current page, pages saved) |
+| POST | `/api/mushafs/{id}/process/cancel` | stop the running job at the next page boundary (404 if none) |
 
 `MushafOut = {id, name, qiraa, pdf_page_count, first_quran_pdf_page,
 last_quran_pdf_page, logical_page_count, processed_page_count, reviewed_page_count,
@@ -692,8 +698,8 @@ counting, processed/reviewed progress, stat trio, template thumbnails, record kv
 per-page coverage map), and **5 tabs**: `Overview` (clickable pipeline strip +
 Activity feed + abort-warning with Resume), `Pages` (filter/sort table, sura names,
 Open → Review), `Runs` (settings kv, outcome, `abort_info`, Resume/Re-run), `Export`
-("Export all lines" loops `export-lines` with progress; JSON download; completeness
-warning), `Settings` (name/qiraa PATCH, bounds locked-once-processed, thumbnail
+("Export all lines" loops `export-lines` with progress; then a **zip download** of
+every exported PNG; JSON download; completeness warning), `Settings` (name/qiraa PATCH, bounds locked-once-processed, thumbnail
 regenerate, danger zone). Derivations live in `details/helpers.ts` (`pipelineSteps`,
 `continueTarget`, `runAbortPage`, activity formatting).
 
@@ -718,12 +724,15 @@ ignore rects are stored **relative to the crop**. Fetched templates rehydrate vi
 `PageStage` (draw the crop `bounds`) + a center bounds preview + a settings panel
 (Bounds, Page range, Starting position with sura/aya selects, collapsible Detection
 settings: padding, expected lines, header slots/threshold, max headers, aya
-threshold, **alternate margins**, **prefer acceleration**). Loops the pipeline in
-**50-page chunks**, threading each chunk's `end_sura`/`end_aya` into the next start.
-On abort it shows `AbortDiagnostics` (the per-line debug PNGs + a link to the run
-log). Optional `?run=<id>` pre-fills from a stored run; `?from=<page>` overrides the
-start (Resume). The **alternate-margin flip is previewed** exactly as the engine
-applies it (parity anchored to `rangeStart`; chunk size 50 is even so parity holds).
+threshold, **alternate margins**, **prefer acceleration**). Starting a run **hands it to
+a background job on the server** (`POST /process` → 202) and polls `GET /process/job`
+once a second, showing the live phase and page and a **Stop** button; the whole range is
+a single pipeline run, so the sura/aya carry-over is just the tracker. On abort it shows
+`AbortDiagnostics` (the per-line debug PNGs + a link to the run log); a cancel gets the
+same card in neutral tones. Optional `?run=<id>` pre-fills from a stored run;
+`?from=<page>` overrides the start (Resume). The **alternate-margin flip is previewed**
+exactly as the engine applies it (parity anchored to `rangeStart`, which is now literally
+the batch start — it used to depend on the client's chunk size being even).
 
 ### Step 4 — Review (`.review?page=N`)
 
@@ -734,7 +743,12 @@ holding **ALL logical pages 1..N** — blank/unprocessable pages are editable (m
 processing; saving a manual page creates its `Page` row). **The client owns
 numbering** (islands + header sura anchors + separator-derived aya; see [§9](#9-the-numbering-model-the-subtle-part)).
 Undo/redo (Ctrl+Z/Y), free page nav, dirty + reviewed-pending tracking, `useBlocker`
-guard. Right `Aside`: line list (+ add Text/Sura/Besmella) and a selected-line editor
+guard. **`AyaPreviewDialog`** plays the page back the way a downstream app would —
+the page image with one aya lit at a time (tint via `mix-blend-mode: multiply`, so the
+ink stays readable), auto-advancing (3 speeds) or stepped with ←/→. It reads the
+**live derived** ayat through `recompute.ayaGroups` (one entry per aya with every rect
+it spans — the same grouping `coordinates_json` does server-side), so it previews the
+unsaved edits, which is the fastest check that the separators landed right. Right `Aside`: line list (+ add Text/Sura/Besmella) and a selected-line editor
 (type, sura dropdown for headers, bbox via `RectInputs`, segment/separator
 merge/remove, delete). Per-qiraa overflow/boundary warnings with a jump-to-next-warning
 button. "Mark reviewed → next" marks the page **and its ending sura's span** reviewed
@@ -745,13 +759,27 @@ button. "Mark reviewed → next" marks the page **and its ending sura's span** r
 The **`FinalizeCanvas`** line-cut editor. Each line is composited **independently**
 from its own source crop (near-white → transparent + its own erase strokes) and
 **stacked**, so it renders exactly as it exports and erasing one line never touches
-another. Tools: **Select** (drag a line's top/bottom edge to trim Y/H — X/W are the
-shared page column), **Erase** (hold Shift; brush + undo/clear), **Hand** (hold
-Space); White/Dark(white-ink)/Grid backgrounds; a drag-time magnifier; Ctrl+Z/Y. The
-route owns the editable model + dirty/`useBlocker` guard. **Save cuts** (`finalizePage`,
-Y/H-only, whole page) and **Save & export page** (`exportLines` → thumbnails). Bulk
-export lives in the details Export tab. Manual front pages (no crop box) get a derived
-column server-side so they render + export at uniform width.
+another. Tools: **Select** (hover highlights the whole line — pointer cursor —, drag
+its top/bottom edge to trim Y/H; X/W are the shared page column), **Erase** (hold
+Shift; brush + undo/clear), **Hand** (hold Space); White/Dark(white-ink)/Grid
+backgrounds; a drag-time magnifier; Ctrl+Z/Y. Ctrl+wheel zoom is **anchored to the
+pointer**: the stack's own transform is inverted (`zoomAt`), including the constant
+`GAP` run above the cursor, since this canvas paints its own layout rather than
+scrolling an `<img>` like `use-zoom-to-pointer`. The right panel is a
+**`LineNavigator`** (shared with Review) plus **line padding** — one number that
+grows every line on the page by N px top and bottom, applied as a *delta* over the
+current boxes so per-line trims survive (clamped to the page image). The route owns
+the editable model + dirty/`useBlocker` guard. **Save cuts** (`finalizePage`, Y/H-only,
+whole page), **Save & export page** (`exportLines` → thumbnails), and **download the
+page's PNGs as a zip** (`lines.zip?page=N`) — how the images leave `media/` for the
+downstream app. Bulk export + the whole-mushaf zip live in the details Export tab.
+The **exported-images panel** lists whatever the server holds for the page (from
+`line_png`, so earlier sessions show up on load, not just this one's export) and opens
+each in **`ExportedLineDialog`** — full size, ↑/↓ between lines, on a white / dark /
+checker background (dark recolours the ink white, as the canvas does). A re-export
+reuses the filename, so thumbnails carry a `?v=` stamp to dodge the browser cache.
+Manual front pages (no crop box) get a derived column server-side so they render +
+export at uniform width.
 
 ### Canvas component library (`components/canvas/`, all reusable)
 
@@ -795,12 +823,12 @@ npx eslint .       # lint
 npm run format     # prettier
 ```
 
-### Test coverage (backend, 120 tests / 13 files)
+### Test coverage (backend, 152 tests / 15 files)
 
-`test_mushaf` (28), `test_pages` (20), `test_views` (16), `test_validators` (10),
-`test_finalize` (6), `test_pdf` (6), `test_suras` (6), `test_activity` (5),
-`test_coordinates` (5), `test_export` (5), `test_processing` (5), `test_qiraat` (5),
-`test_renumber` (3). Helpers (`tests/helpers.py`): `make_pdf_bytes`, `make_png_bytes`,
+`test_mushaf` (28), `test_pages` (20), `test_process_jobs` (19), `test_views` (16),
+`test_validators` (10), `test_export` (9), `test_pipeline_control` (8), `test_suras` (7),
+`test_finalize` (6), `test_pdf` (6), `test_activity` (5), `test_coordinates` (5),
+`test_processing` (5), `test_qiraat` (5), `test_renumber` (3). Helpers (`tests/helpers.py`): `make_pdf_bytes`, `make_png_bytes`,
 `MediaTestCase`, `bare_mushaf`. (No automated frontend test suite; the user does live
 runtime testing — Claude runs static checks only.)
 
@@ -853,8 +881,10 @@ These are load-bearing. Violating them silently breaks things.
   per-run logging + `log_path`, unified header, mirrored alternate-margin preview) and
   says 119 tests; the current count is **120**.
 - **Threshold default drift** across layers (see [§7.3](#73-config-dataclasses-configpy-and-the-factory-builderpy)) — request values win, but the mismatch is a footgun.
-- **Processing is synchronous.** A full mushaf is processed by the client looping
-  50-page chunks. No background/async queue yet.
+- **Processing runs in a background thread, tracked in memory** (`api/services/jobs.py`).
+  No queue/broker: job state lives in one server process, so it assumes a single worker
+  and is forgotten on restart (the `ProcessingRun` row survives and is settled as
+  `interrupted` by the next run). Cancellation is cooperative — checked between pages.
 - **Manual pages carry a 1×1 placeholder bbox**, so their finalize/export column is
   **derived** from the union of line boxes. Fine; could be frozen in `bulk_save` if desired.
 - **Activity feed starts empty** for mushafs created before the event table existed
@@ -902,7 +932,7 @@ bulk_save), `export.py` (line PNGs + aya-bbox JSON), `pdf.py` (render/hash/index
 
 **Frontend — `src/lib/`:** `api/types.ts` (contract mirror) · `api/http.ts` ·
 `api/queries.ts` (React Query) · `api/{mushafs,pages,processing,suras,qiraat,index}.ts` ·
-`review/model.ts` (edit store) · `review/recompute.ts` (client numbering) · `image.ts` ·
+`review/model.ts` (edit store) · `review/recompute.ts` (client numbering + `ayaGroups`) · `image.ts` ·
 `templateDraft.ts` · `utils.ts`.
 
 **Frontend — `src/routes/`:** `__root.tsx` · `index.tsx` (home) ·
@@ -910,8 +940,9 @@ bulk_save), `export.py` (line PNGs + aya-bbox JSON), `pdf.py` (render/hash/index
 `.setup` · `.templates` · `.process` · `.review` · `.finalize`.
 
 **Frontend — `src/components/`:** `app/` (`MushafHeader`, `Panel`, `CreateMushafDialog`,
-`AbortDiagnostics`, `details/*` + `helpers.ts`) · `canvas/*` (the reusable canvas
-library) · `ui/*` (shadcn) · `hooks/*`.
+`AbortDiagnostics`, `LineNavigator` (Review + Finalize line stepper), `AyaPreviewDialog`
+(Review's aya player), `ExportedLineDialog` (Finalize's PNG viewer), `details/*` +
+`helpers.ts`) · `canvas/*` (the reusable canvas library) · `ui/*` (shadcn) · `hooks/*`.
 
 ---
 
