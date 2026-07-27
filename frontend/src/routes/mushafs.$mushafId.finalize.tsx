@@ -6,6 +6,8 @@ import { toast } from "sonner";
 
 import { Aside, Field, Hint, PanelCard, Section, StatusLine } from "@/components/app/Panel";
 import { CanvasHelp } from "@/components/app/CanvasHelp";
+import { ExportedLineDialog, type ExportedLine } from "@/components/app/ExportedLineDialog";
+import { LineNavigator } from "@/components/app/LineNavigator";
 import { TourOverlay } from "@/components/app/tour/TourOverlay";
 import { useStepTour, type TourStep } from "@/components/app/tour/useStepTour";
 import { FinalizeCanvas, type CanvasLine } from "@/components/canvas/FinalizeCanvas";
@@ -15,13 +17,13 @@ import {
   ApiError,
   exportLines,
   finalizePage,
+  linesZipUrl,
   pageImageUrl,
   queryKeys,
   useMushaf,
   usePage,
   useProcessedPages,
   type EraseStroke,
-  type ExportResult,
   type FinalizeLine,
   type LineType,
   type PageData,
@@ -39,6 +41,11 @@ type EditLine = {
   bbox: Rect;
   strokes: EraseStroke[];
 };
+
+/** Ceiling for the page-wide padding field (px above and below each line). */
+const PAD_MAX = 200;
+const PAD_STEP = 2;
+const PAD_MIN = -200;
 
 /** Build the editable model. X/W are forced to the page crop box so every line
  * shares the same width and left edge; only Y/H stay per-line. */
@@ -85,9 +92,14 @@ function FinalizePage() {
   const [baseline, setBaseline] = useState<Map<number, string>>(new Map());
   const [selected, setSelected] = useState<number | null>(null);
   const [brushSize, setBrushSize] = useState(16);
-  const [exported, setExported] = useState<Set<number>>(new Set());
-  const [result, setResult] = useState<ExportResult | null>(null);
   const [builtFor, setBuiltFor] = useState<number | null>(null);
+  // Exported PNGs keep their filename when re-exported, so the browser would
+  // serve the previous cut — this stamp busts that cache.
+  const [pngVersion, setPngVersion] = useState(0);
+  const [viewing, setViewing] = useState<number | null>(null);
+  // Padding added to every line of this page since it was loaded (see `padded`).
+  const [pad, setPad] = useState(0);
+  const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);
 
   // ── undo/redo history (one entry per committed edit) ─────────────────────────
   const historyRef = useRef<{ stack: EditLine[][]; index: number }>({ stack: [], index: -1 });
@@ -130,10 +142,21 @@ function FinalizePage() {
     forceHist();
     setBaseline(new Map(next.map((l) => [l.line_number, lineSig(l)] as const)));
     setSelected(next[0]?.line_number ?? null);
-    setExported(new Set());
-    setResult(null);
+    setPad(0);
+    setPngVersion(0);
+    setViewing(null);
     setBuiltFor(page);
   }, [pageData, page, builtFor]);
+
+  // The page's exported PNGs, from the server — so lines exported in an earlier
+  // session show up as soon as the page opens, not only after a fresh export.
+  const exportedLines: ExportedLine[] = useMemo(() => {
+    const stamp = pngVersion ? `?v=${pngVersion}` : "";
+    return (pageData?.lines ?? [])
+      .filter((l) => l.line_png)
+      .map((l) => ({ line_number: l.line_number, src: `${mediaSrc(l.line_png!)}${stamp}` }));
+  }, [pageData, pngVersion]);
+  const exported = useMemo(() => new Set(exportedLines.map((l) => l.line_number)), [exportedLines]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -185,9 +208,22 @@ function FinalizePage() {
       return { fresh, res };
     },
     onSuccess: ({ fresh, res }) => {
-      if (fresh) markSaved(fresh);
-      setResult(res);
-      setExported(new Set(res.lines.map((l) => l.line_number)));
+      if (fresh) markSaved(fresh); // writes the saved page into the cache first
+      // Fold the fresh PNG paths into the cached page so the panel below is
+      // simply "what the server has", whether or not this session exported it.
+      const urls = new Map(res.lines.map((l) => [l.line_number, l.line_png]));
+      queryClient.setQueryData<PageData>(queryKeys.page(mushafId, page), (prev) =>
+        prev
+          ? {
+              ...prev,
+              lines: prev.lines.map((l) => ({
+                ...l,
+                line_png: urls.get(l.line_number) ?? l.line_png,
+              })),
+            }
+          : prev,
+      );
+      setPngVersion(Date.now());
       queryClient.invalidateQueries({ queryKey: queryKeys.stats(mushafId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.mushafs });
       toast.success(t("finalize.exportedToast", { count: res.exported }));
@@ -234,11 +270,14 @@ function FinalizePage() {
   const hasLines = model.length > 0;
   const sel = model.find((l) => l.line_number === selected) ?? null;
 
+  // Plain instructions, not a checklist: trimming is a per-line judgement call
+  // you keep coming back to, so nothing here is ever really "done".
   const guideItems = [
-    { label: t("guide.finalize.s1"), done: dirty },
-    { label: t("guide.finalize.s2"), done: model.some((l) => l.strokes.length > 0) },
-    { label: t("guide.finalize.s3"), done: hasLines && !dirty },
-    { label: t("guide.finalize.s4"), done: exported.size > 0 },
+    { label: t("guide.finalize.s1") },
+    { label: t("guide.finalize.s2") },
+    { label: t("guide.finalize.s3") },
+    { label: t("guide.finalize.s4") },
+    { label: t("guide.finalize.s5") },
   ];
   const status = !hasLines ? (
     <StatusLine tone="warning">{t("finalize.noLines", { page })}</StatusLine>
@@ -253,6 +292,32 @@ function FinalizePage() {
     setModel((m) =>
       m.map((l) => (l.line_number === n ? { ...l, bbox: { ...l.bbox, ...box } } : l)),
     );
+
+  /** Grow (negative: shrink) every line by `delta` px on its top AND bottom
+   * edge. Applied as a delta over the current boxes, so per-line trims made in
+   * between survive; a line pinned at the page edge still grows downward. */
+  const padded = (m: EditLine[], delta: number): EditLine[] =>
+    m.map((l) => {
+      const y = Math.max(0, l.bbox.y - delta);
+      const grewTop = l.bbox.y - y;
+      const maxH = natural ? natural.h - y : Number.MAX_SAFE_INTEGER;
+      const h = Math.min(maxH, Math.max(1, l.bbox.h + grewTop + delta));
+      return { ...l, bbox: { ...l.bbox, y, h } };
+    });
+  // typing in the field: preview only (history lands on blur, like Y/H)
+  const livePadding = (next: number) => {
+    const delta = next - pad;
+    if (!delta) return;
+    setPad(next);
+    setModel((m) => padded(m, delta));
+  };
+  // −/+ buttons: one discrete step, one history entry
+  const stepPadding = (next: number) => {
+    const delta = next - pad;
+    if (!delta) return;
+    setPad(next);
+    commit(padded(model, delta));
+  };
   // discrete (pushes history)
   const commitLine = (n: number, fn: (l: EditLine) => EditLine) =>
     commit(model.map((l) => (l.line_number === n ? fn(l) : l)));
@@ -313,9 +378,11 @@ function FinalizePage() {
           onRedo={redo}
           canUndo={historyRef.current.index > 0}
           canRedo={historyRef.current.index < historyRef.current.stack.length - 1}
+          onNatural={setNatural}
         />
         <CanvasHelp
           guideItems={guideItems}
+          guideAbout={t("guide.aboutStatic")}
           coachText={t("coach.finalize")}
           onReplayTour={tour.start}
         />
@@ -324,22 +391,37 @@ function FinalizePage() {
       <Aside
         status={status}
         footer={
-          <div data-tour="finalize-export" className="flex gap-2">
-            <Button
-              variant="outline"
-              className="flex-1"
-              onClick={() => saveMutation.mutate()}
-              disabled={!dirty || busy}
-            >
-              {saveMutation.isPending ? t("common.saving") : t("finalize.saveCuts")}
-            </Button>
-            <Button
-              className="flex-1"
-              onClick={() => exportMutation.mutate()}
-              disabled={!hasLines || busy}
-            >
-              {exportMutation.isPending ? t("finalize.exporting") : t("finalize.exportPage")}
-            </Button>
+          <div data-tour="finalize-export" className="flex flex-col gap-2">
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => saveMutation.mutate()}
+                disabled={!dirty || busy}
+              >
+                {saveMutation.isPending ? t("common.saving") : t("finalize.saveCuts")}
+              </Button>
+              <Button
+                className="flex-1"
+                onClick={() => exportMutation.mutate()}
+                disabled={!hasLines || busy}
+              >
+                {exportMutation.isPending ? t("finalize.exporting") : t("finalize.exportPage")}
+              </Button>
+            </div>
+            {/* The PNGs live under media/ until they're pulled out — this is how
+                they leave the tool, saved wherever the browser asks. */}
+            {exported.size > 0 ? (
+              <Button asChild variant="outline" className="w-full">
+                <a href={linesZipUrl(mushafId, page)} download>
+                  {t("finalize.downloadZip", { count: exported.size })}
+                </a>
+              </Button>
+            ) : (
+              <Button variant="outline" className="w-full" disabled title={t("finalize.zipHint")}>
+                {t("finalize.downloadZipEmpty")}
+              </Button>
+            )}
           </div>
         }
       >
@@ -347,39 +429,72 @@ function FinalizePage() {
           <Hint tone="warning">{t("finalize.noLines", { page })}</Hint>
         ) : (
           <>
-            <PanelCard title={t("finalize.linesTitle", { count: model.length })}>
-              <div className="-m-1 flex max-h-[220px] flex-col overflow-y-auto">
-                {canvasLines.map((l) => (
-                  <button
-                    key={l.line_number}
-                    type="button"
-                    onClick={() => setSelected(l.line_number)}
-                    className={`flex items-center gap-2 rounded px-2 py-[6px] text-start text-[12px] transition-colors ${
-                      selected === l.line_number ? "bg-orange-tint" : "hover:bg-bg-surface"
-                    }`}
-                  >
-                    <span className="w-5 font-mono text-text-muted">{l.line_number}</span>
-                    <span className="text-text-secondary">
-                      {t(`review.chip_${l.type as LineType}`)}
-                    </span>
-                    <span className="ms-auto flex items-center gap-1">
-                      {l.edited && (
-                        <span className="rounded-pill bg-orange px-1.5 text-[9px] font-bold text-white">
-                          {t("finalize.edited")}
-                        </span>
-                      )}
-                      {exported.has(l.line_number) && (
-                        <span className="rounded-pill bg-navy px-1.5 text-[9px] font-bold text-white">
-                          {t("finalize.png")}
-                        </span>
-                      )}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </PanelCard>
+            <LineNavigator
+              title={t("finalize.linesTitle", { count: model.length })}
+              lines={canvasLines.map((l) => ({
+                key: String(l.line_number),
+                line_number: l.line_number,
+                type: l.type,
+                summary: t("finalize.lineSummary", {
+                  h: Math.round(l.bbox.h),
+                  count: l.strokes.length,
+                }),
+                badges: (
+                  <>
+                    {l.edited && (
+                      <span className="rounded-pill bg-orange px-1.5 text-[9px] font-bold text-white">
+                        {t("finalize.edited")}
+                      </span>
+                    )}
+                    {exported.has(l.line_number) && (
+                      <span className="rounded-pill bg-navy px-1.5 text-[9px] font-bold text-white">
+                        {t("finalize.png")}
+                      </span>
+                    )}
+                  </>
+                ),
+              }))}
+              selectedKey={selected != null ? String(selected) : null}
+              onSelect={(key) => setSelected(Number(key))}
+              emptyText={t("finalize.noLines", { page })}
+            />
 
             <div data-tour="finalize-tools" className="flex flex-col gap-4">
+              <Section title={t("finalize.paddingTitle")}>
+                <Field label={t("finalize.paddingLabel")} info={t("tips.linePadding")}>
+                  <div className="flex items-center justify-center gap-2 mt-2">
+                    <PadStep
+                      label="−"
+                      title={t("finalize.paddingLess")}
+                      disabled={pad <= PAD_MIN}
+                      onClick={() => stepPadding(Math.max(PAD_MIN, pad - PAD_STEP))}
+                    />
+                    <input
+                      type="number"
+                      min={PAD_MIN}
+                      max={PAD_MAX}
+                      value={pad}
+                      onChange={(e) =>
+                        livePadding(
+                          Math.max(
+                            PAD_MIN,
+                            Math.min(PAD_MAX, Math.round(Number(e.target.value) || 0)),
+                          ),
+                        )
+                      }
+                      onBlur={() => commit(model)}
+                      className="h-8 w-32 rounded border-[1.5px] border-border-strong px-2 text-center text-[12px] tabular-nums outline-none [appearance:textfield] focus:border-orange [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                    />
+                    <PadStep
+                      label="+"
+                      title={t("finalize.paddingMore")}
+                      disabled={pad >= PAD_MAX}
+                      onClick={() => stepPadding(Math.min(PAD_MAX, pad + PAD_STEP))}
+                    />
+                  </div>
+                </Field>
+              </Section>
+
               <Section title={t("finalize.eraser")}>
                 <Field label={t("finalize.brushSize", { size: brushSize })} info={t("tips.brush")}>
                   <input
@@ -428,8 +543,6 @@ function FinalizePage() {
                 {sel ? (
                   <>
                     <div className="grid grid-cols-2 gap-2">
-                      <LockedNum label="X" value={sel.bbox.x} />
-                      <LockedNum label="W" value={sel.bbox.w} />
                       <EditNum
                         label="Y"
                         value={sel.bbox.y}
@@ -464,26 +577,29 @@ function FinalizePage() {
               </Section>
             </div>
 
-            {result && (
-              <PanelCard title={t("finalize.exportedTitle", { count: result.exported })}>
+            {exportedLines.length > 0 && (
+              <PanelCard title={t("finalize.exportedTitle", { count: exportedLines.length })}>
+                <p className="-mt-1 text-[10.5px] leading-snug text-text-muted">
+                  {t("finalize.exportedNote")}
+                </p>
                 <div className="flex flex-col gap-2">
-                  {result.lines.map((l) => (
-                    <a
+                  {exportedLines.map((l) => (
+                    <button
                       key={l.line_number}
-                      href={mediaSrc(l.line_png)}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="flex items-center gap-2 rounded border border-border p-1.5 hover:border-border-strong"
+                      type="button"
+                      onClick={() => setViewing(l.line_number)}
+                      title={t("finalize.viewerOpen", { n: l.line_number })}
+                      className="flex cursor-pointer items-center gap-2 rounded border border-border p-1.5 transition-colors hover:border-orange hover:bg-orange-tint"
                     >
                       <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded bg-bg-muted text-[10px] font-semibold text-text-secondary">
                         {l.line_number}
                       </span>
                       <img
-                        src={mediaSrc(l.line_png)}
+                        src={l.src}
                         alt={t("finalize.lineAlt", { n: l.line_number })}
-                        className="max-h-8 flex-1 bg-[repeating-conic-gradient(#eee_0_25%,transparent_0_50%)] bg-[length:10px_10px] object-contain"
+                        className="max-h-8 min-w-0 flex-1 bg-[repeating-conic-gradient(#eee_0_25%,transparent_0_50%)] bg-[length:10px_10px] object-contain"
                       />
-                    </a>
+                    </button>
                   ))}
                 </div>
               </PanelCard>
@@ -492,22 +608,35 @@ function FinalizePage() {
         )}
       </Aside>
 
+      <ExportedLineDialog lines={exportedLines} current={viewing} onCurrentChange={setViewing} />
+
       <TourOverlay tour={tour} />
     </div>
   );
 }
 
-function LockedNum({ label, value }: { label: string; value: number }) {
+function PadStep({
+  label,
+  title,
+  disabled,
+  onClick,
+}: {
+  label: string;
+  title: string;
+  disabled: boolean;
+  onClick: () => void;
+}) {
   return (
-    <label className="flex items-center gap-1.5">
-      <span className="w-3 text-[11px] font-semibold text-text-muted">{label}</span>
-      <input
-        type="number"
-        value={Math.round(value)}
-        disabled
-        className="h-8 w-full rounded border-[1.5px] border-border bg-bg-surface px-2 text-right text-[12px] tabular-nums text-text-muted"
-      />
-    </label>
+    <button
+      type="button"
+      title={title}
+      aria-label={title}
+      disabled={disabled}
+      onClick={onClick}
+      className="h-8 w-8 flex-none cursor-pointer rounded border-[1.5px] border-border-strong bg-white text-[14px] font-semibold text-text-secondary transition-colors hover:bg-bg-surface disabled:cursor-not-allowed disabled:opacity-40"
+    >
+      {label}
+    </button>
   );
 }
 
@@ -530,7 +659,7 @@ function EditNum({
         value={Math.round(value)}
         onChange={(e) => onChange(Math.round(Number(e.target.value) || 0))}
         onBlur={onCommit}
-        className="h-8 w-full rounded border-[1.5px] border-border-strong px-2 text-right text-[12px] tabular-nums outline-none focus:border-orange"
+        className="h-8 w-full rounded border-[1.5px] border-border-strong px-2 text-right text-[12px] tabular-nums outline-none [appearance:textfield] focus:border-orange [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
       />
     </label>
   );

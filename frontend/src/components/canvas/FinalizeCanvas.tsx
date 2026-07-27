@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { ChevronNav } from "@/components/canvas/ChevronNav";
 import { PageJump } from "@/components/canvas/PageJump";
 import { PageRail } from "@/components/canvas/PageRail";
-import type { EraseStroke, Rect } from "@/lib/api/types";
+import type { EraseStroke, LineType, Rect } from "@/lib/api/types";
 
 export type FinalizeTool = "select" | "erase" | "hand";
 export type FinalizeBg = "white" | "dark" | "checker";
@@ -12,7 +12,7 @@ export type FinalizeBg = "white" | "dark" | "checker";
 /** One line as the canvas needs it: its crop box (x/w = page column) + strokes. */
 export type CanvasLine = {
   line_number: number;
-  type: string;
+  type: LineType;
   bbox: Rect;
   strokes: EraseStroke[];
   edited?: boolean;
@@ -42,6 +42,8 @@ type Props = {
   canUndo: boolean;
   canRedo: boolean;
   label?: string;
+  /** Natural size of the rendered page, once loaded (for clamping edits). */
+  onNatural?: (n: { w: number; h: number }) => void;
 };
 
 const PAD = 20;
@@ -83,6 +85,7 @@ export function FinalizeCanvas({
   canUndo,
   canRedo,
   label,
+  onNatural,
 }: Props) {
   const { t } = useTranslation();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -91,10 +94,14 @@ export function FinalizeCanvas({
   const scratchRef = useRef<HTMLCanvasElement | null>(null); // reused per-line offscreen
   const rectsRef = useRef<LineRect[]>([]);
   const [ready, setReady] = useState(false);
+  const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);
 
   const [tool, setTool] = useState<FinalizeTool>("select");
   const [bg, setBg] = useState<FinalizeBg>("dark");
   const [zoom, setZoom] = useState(1);
+  // Mirrors `zoom` for the wheel handler, which is bound once and must read the
+  // live value without nesting a setState inside another updater.
+  const zoomRef = useRef(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [spaceHeld, setSpaceHeld] = useState(false);
   const [shiftHeld, setShiftHeld] = useState(false);
@@ -114,6 +121,7 @@ export function FinalizeCanvas({
   const [hoverEdge, setHoverEdge] = useState<{ lineNumber: number; edge: "top" | "bottom" } | null>(
     null,
   );
+  const [hoverLine, setHoverLine] = useState<number | null>(null);
 
   const effectiveTool: FinalizeTool = spaceHeld ? "hand" : shiftHeld ? "erase" : tool;
 
@@ -159,16 +167,26 @@ export function FinalizeCanvas({
       }
       transparentRef.current = transparent;
       whiteInkRef.current = white;
+      setNatural({ w, h });
       setReady(true);
     };
     img.onerror = () => setReady(false);
     img.src = imageUrl;
   }, [imageUrl]);
 
+  // Report the page size out (own effect, so an inline `onNatural` prop can't
+  // re-trigger the loader above).
   useEffect(() => {
+    if (natural) onNatural?.(natural);
+  }, [natural, onNatural]);
+
+  const resetView = useCallback(() => {
+    zoomRef.current = 1;
     setZoom(1);
     setPan({ x: 0, y: 0 });
-  }, [imageUrl]);
+  }, []);
+
+  useEffect(() => resetView(), [imageUrl, resetView]);
 
   // ── momentary tool keys: Space → hand, Shift → erase ─────────────────────────
   useEffect(() => {
@@ -265,6 +283,14 @@ export function FinalizeCanvas({
         bbox: b,
       });
 
+      const isHover = line.line_number === hoverLine;
+      // Hover tint goes UNDER the crop: the line is transparent where the paper
+      // was, so the whole band lights up without washing out the ink.
+      if (isHover) {
+        ctx.fillStyle = "rgba(255,141,106,0.14)";
+        ctx.fillRect(dx, dy, dispW, dispH);
+      }
+
       if (sctx && b.w > 0 && b.h > 0) {
         scratch.width = b.w;
         scratch.height = b.h;
@@ -296,9 +322,9 @@ export function FinalizeCanvas({
         ctx.fill();
       }
 
-      if (isSel) {
-        ctx.strokeStyle = "rgba(255,141,106,0.9)";
-        ctx.lineWidth = 1.5;
+      if (isSel || isHover) {
+        ctx.strokeStyle = isSel ? "rgba(255,141,106,0.9)" : "rgba(255,141,106,0.5)";
+        ctx.lineWidth = isSel ? 1.5 : 1;
         ctx.strokeRect(dx - 0.5, dy - 0.5, dispW + 1, dispH + 1);
       }
       const hov = hoverEdge?.lineNumber === line.line_number ? hoverEdge.edge : null;
@@ -332,7 +358,20 @@ export function FinalizeCanvas({
     if ((activeRef.current || edgeRef.current) && mouseRef.current) {
       drawLens(ctx, canvas, mouseRef.current, dpr, bg);
     }
-  }, [ready, imageUrl, bg, zoom, pan, lines, selected, hoverEdge, effectiveTool, brushSize, t]);
+  }, [
+    ready,
+    imageUrl,
+    bg,
+    zoom,
+    pan,
+    lines,
+    selected,
+    hoverEdge,
+    hoverLine,
+    effectiveTool,
+    brushSize,
+    t,
+  ]);
 
   useEffect(() => render(), [render]);
 
@@ -344,6 +383,35 @@ export function FinalizeCanvas({
     return () => ro.disconnect();
   }, [render]);
 
+  /** Number of inter-line GAPs above `cy` — the part of the stack's y-mapping
+   * that is constant in screen px (see `zoomAt`). */
+  const gapsAbove = useCallback((cy: number) => {
+    const rects = rectsRef.current;
+    let above = 0;
+    for (let i = 0; i < rects.length; i++) if (rects[i].dy <= cy) above = i;
+    return above;
+  }, []);
+
+  /** Zoom to `next`, keeping the point at canvas coords (cx, cy) under the
+   * pointer. The stack maps a page point to
+   *   x = cssW/2 + pan.x + scale·(…)      y = PAD + pan.y + scale·(…) + GAP·n
+   * so the anchor is measured from the canvas centre / top pad, and the GAP
+   * run — fixed screen spacing, not scaled — is taken out first. */
+  const zoomAt = useCallback(
+    (next: number, cx: number, cy: number) => {
+      const c = canvasRef.current;
+      const prev = zoomRef.current;
+      if (!c || next === prev) return;
+      const ratio = next / prev;
+      const ax = cx - c.clientWidth / 2;
+      const ay = cy - PAD - GAP * gapsAbove(cy);
+      zoomRef.current = next;
+      setZoom(next);
+      setPan((p) => ({ x: ax * (1 - ratio) + p.x * ratio, y: ay * (1 - ratio) + p.y * ratio }));
+    },
+    [gapsAbove],
+  );
+
   // wheel: scroll vertically; Ctrl/Cmd + wheel zooms around the cursor
   useEffect(() => {
     const c = canvasRef.current;
@@ -352,20 +420,15 @@ export function FinalizeCanvas({
       e.preventDefault();
       if (e.ctrlKey || e.metaKey) {
         const rect = c.getBoundingClientRect();
-        const cy = e.clientY - rect.top;
-        setZoom((prev) => {
-          const next = Math.max(0.1, Math.min(16, prev * Math.exp(-e.deltaY * 0.0015)));
-          const ratio = next / prev;
-          setPan((p) => ({ x: p.x * ratio, y: (cy - PAD) * (1 - ratio) + p.y * ratio }));
-          return Number(next.toFixed(3));
-        });
+        const raw = Math.max(0.1, Math.min(16, zoomRef.current * Math.exp(-e.deltaY * 0.0015)));
+        zoomAt(Number(raw.toFixed(3)), e.clientX - rect.left, e.clientY - rect.top);
       } else {
         setPan((p) => ({ x: p.x - e.deltaX, y: p.y - e.deltaY }));
       }
     };
     c.addEventListener("wheel", onWheel, { passive: false });
     return () => c.removeEventListener("wheel", onWheel);
-  }, []);
+  }, [zoomAt]);
 
   // ── pointer helpers ────────────────────────────────────────────────────────
   const lineAt = useCallback((cx: number, cy: number): LineRect | null => {
@@ -473,8 +536,13 @@ export function FinalizeCanvas({
       setHoverEdge((prev) =>
         prev?.lineNumber === next?.lineNumber && prev?.edge === next?.edge ? prev : next,
       );
-    } else if (hoverEdge) {
-      setHoverEdge(null);
+      // The whole line is clickable, so the whole line lights up — not just the
+      // few px of its edge (that's the resize affordance, above).
+      const over = lineAt(x, y)?.line_number ?? null;
+      setHoverLine((prev) => (prev === over ? prev : over));
+    } else {
+      if (hoverEdge) setHoverEdge(null);
+      if (hoverLine !== null) setHoverLine(null);
     }
     if (effectiveTool === "erase") render();
   };
@@ -493,8 +561,9 @@ export function FinalizeCanvas({
   const cursor = useMemo(() => {
     if (effectiveTool === "hand") return panRef.current ? "grabbing" : "grab";
     if (effectiveTool === "erase") return "none";
-    return hoverEdge ? "ns-resize" : "default";
-  }, [effectiveTool, hoverEdge]);
+    if (hoverEdge) return "ns-resize";
+    return hoverLine !== null ? "pointer" : "default";
+  }, [effectiveTool, hoverEdge, hoverLine]);
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
@@ -532,10 +601,7 @@ export function FinalizeCanvas({
             <span>{Math.round(zoom * 100)}%</span>
             <button
               type="button"
-              onClick={() => {
-                setZoom(1);
-                setPan({ x: 0, y: 0 });
-              }}
+              onClick={resetView}
               className="ms-1 cursor-pointer text-navy hover:underline"
               title={t("canvas.resetZoom")}
             >
@@ -556,6 +622,7 @@ export function FinalizeCanvas({
           onPointerLeave={() => {
             mouseRef.current = null;
             setHoverEdge(null);
+            setHoverLine(null);
             render();
           }}
           className="h-full w-full"
