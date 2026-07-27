@@ -129,9 +129,12 @@ Green baseline (last verified 2026-07-05): **119 backend tests, ruff, mypy (clea
   `ignore_rects`(JSON `{x,y,w,h}` relative to the template crop, or `{}`). Unique
   `(mushaf, type)`.
 - **ProcessingRun**: `mushaf`(FK), `settings`(JSON, incl. bounds), `page_range_start/end`,
-  `status`(`completed`|`aborted_line_detection`|`error`), `abort_info` (JSON string,
-  engine abort detail: `page_index` is 0-based into the batch → aborted logical page
-  = `page_range_start + page_index`).
+  `status`(`running`|`completed`|`aborted_line_detection`|`cancelled`|`error`|`interrupted`),
+  `abort_info` (JSON string, engine abort detail: `page_index` is 1-based into the batch →
+  aborted logical page = `page_range_start + page_index - 1`).
+  The row is created **up front** as `running` and settled at the end, so each page can be
+  persisted as it lands; a row left `running` by a crash is marked `interrupted` by the next
+  run on that mushaf (`services/processing._settle_stale_runs`).
 - **Page**: `mushaf`(FK), `page_number`(logical), `source_pdf_page`(null),
   `last_run`(FK null), `bbox_x/y/w/h`, `reviewed`(bool — set True on review-save,
   reset False on (re)process). A Page row exists **iff** the page has data.
@@ -185,7 +188,9 @@ Base `/api` (Ninja). Interactive docs `/api/docs`. UUIDs are strings.
 | POST | `/api/mushafs/{id}/pages/bulk` | `{pages:[{page_number,bbox,lines}], reviewed_pages:[int]}` → one transaction: rewrites pages (**creates** rows for manual pages; does NOT flip reviewed), flags `reviewed_pages`; **stores sura/aya VERBATIM — no `renumber_from` (the client owns numbering)**; range `review_saved` payload `{page_start,page_end,count}`; returns fresh `review-data` |
 | POST | `/api/mushafs/{id}/pages/{n}/finalize` | cut layer `{lines:[{line_number, bbox_override?, erase_strokes[]}]}` → persists erase strokes + a **Y/H-only** line bbox override (X/W untouched = content extent from segments); returns `PageDataOut` |
 | POST | `/api/mushafs/{id}/pages/{n}/export-lines` | writes transparent line PNGs, each cropped to the page **column** (`coordinates.page_column`: the real crop box, else the union of line boxes for manual pages) → white→transparent → erase strokes punched out |
-| POST | `/api/mushafs/{id}/process` | run the CV pipeline over a page range; synchronous, chunked (frontend loops 50 pages/call); may abort at a line-count mismatch |
+| POST | `/api/mushafs/{id}/process` | **202** — start the CV pipeline over a page range in a background job and return it at once (`JobOut`). 409 if this mushaf already has a run in flight; 400 for a bad range / missing templates (checked synchronously, since nothing can be rejected once the job is registered) |
+| GET | `/api/mushafs/{id}/process/job` | `{job: JobOut\|null}` — the mushaf's current or most recent run. The client's poll; keyed by mushaf, so a reload finds a run in flight |
+| POST | `/api/mushafs/{id}/process/cancel` | ask the running job to stop at the next page boundary (404 if none). Returns immediately; pages already written stay written |
 
 `MushafOut = {id, name, qiraa, pdf_page_count, first_quran_pdf_page,
 last_quran_pdf_page, logical_page_count, processed_page_count,
@@ -244,8 +249,10 @@ hub renders `MushafHeader` itself.
   captured parent template with a **red box** + validation.
 - **Process** (`.process`): `PageStage` (crop `bounds`) | panel of collapsible
   `Section`s (Bounds w/ `CropPreview`+`RectInputs`, Page range, Starting position with
-  the sura/aya selects, Detection settings). Loops the pipeline in 50-page chunks;
-  handles the abort case.
+  the sura/aya selects, Detection settings). **Starts a background job and polls it**
+  (`useProcessJob`, 1 s while running) — no client-side chunking: the whole range is one
+  pipeline run. Live phase/page readout, a **Stop** button, and one outcome surface for
+  completed / aborted / cancelled / failed, each with Resume from `stopped_on_page`.
 - **Review** (`.review`, takes `?page=N`): a **whole-mushaf editing session** built on
   **`ReviewEditCanvas`** (interactive: drag/resize line boxes with 8 handles, double-click a
   text line to add an aya separator, drag the red separator bars; ToolToggle/ZoomControl/

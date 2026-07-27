@@ -160,7 +160,7 @@ export type ProcessRequest = ProcessSettings & {
   bounds: Rect;
 };
 
-/** One entry of `ProcessResult.results` (engine page dict; shape kept loose). */
+/** One engine page dict (shape kept loose). */
 export type ProcessPageResult = {
   page_number: number;
   [key: string]: unknown;
@@ -195,18 +195,64 @@ export type AbortInfo = {
   debug_images: string[];
 };
 
-export type ProcessResult = {
-  run_id: string;
-  status: "completed" | "aborted_line_detection" | "error" | string;
-  pages_processed: number;
-  start_sura: number;
-  start_aya: number;
-  end_sura: number;
-  end_aya: number;
-  results: ProcessPageResult[];
+/** Terminal states a run settles in; anything else means it is still working. */
+export type ProcessJobState =
+  | "running"
+  | "completed"
+  | "aborted_line_detection"
+  | "cancelled"
+  | "error";
+
+/** What the run is doing right now — drives the progress label. */
+export type ProcessJobPhase = "starting" | "rendering" | "detecting" | "saving" | "finished";
+
+/** Live state of a processing run (POST /process, GET /process/job).
+ *
+ * The backend owns the run; the client only starts it, polls this, and may ask
+ * it to stop. Keyed by mushaf server-side, so a reload finds a run in flight. */
+export type ProcessJob = {
+  id: string;
+  mushaf_id: string;
+  state: ProcessJobState;
+  phase: ProcessJobPhase;
+  page_range_start: number;
+  page_range_end: number;
+  /** Pages in the requested range. */
+  total: number;
+  /** Pages already written to the database — durable, survives a cancel. */
+  pages_saved: number;
+  current_page: number | null;
+  /** A cancel has been asked for but the run hasn't settled yet. */
+  cancel_requested: boolean;
+  started_at: string;
+  ended_at: string | null;
+  run_id: string | null;
+  log_url: string | null;
+  /** Page to resume from: the one detection failed on, or the one a cancel
+   * stopped before. */
+  stopped_on_page: number | null;
   abort_info: AbortInfo | null;
-  log_url?: string | null;
+  error: string | null;
+  end_sura: number | null;
+  end_aya: number | null;
 };
+
+export const PROCESS_JOB_DONE: readonly ProcessJobState[] = [
+  "completed",
+  "aborted_line_detection",
+  "cancelled",
+  "error",
+];
+
+/** Has this run come to rest? Deliberately NOT a type predicate: a settled job
+ * is still a job, so narrowing on it would resolve the other branch to `never`. */
+export function isJobSettled(job: ProcessJob | null | undefined): boolean {
+  return !!job && PROCESS_JOB_DONE.includes(job.state);
+}
+
+export function isJobRunning(job: ProcessJob | null | undefined): boolean {
+  return !!job && !isJobSettled(job);
+}
 
 /** One stored processing run (GET /api/mushafs/{id}/runs, newest first). */
 export type Run = {

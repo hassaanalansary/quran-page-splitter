@@ -23,8 +23,6 @@ type Props = {
   startAya: number;
   bounds: Rect;
   settings: ProcessSettings;
-  /** Pages per request, so the user knows the run is split up. */
-  chunkSize: number;
   /** Show the first-run advisory here too — this is the point of no return. */
   firstRun?: boolean;
   /** Range still covers page 1 or 2, which line detection can't read. */
@@ -43,13 +41,11 @@ export function ProcessConfirmDialog({
   startAya,
   bounds,
   settings,
-  chunkSize,
   firstRun,
   earlyPages,
 }: Props) {
   const { t } = useTranslation();
   const count = rangeEnd - rangeStart + 1;
-  const batches = Math.max(1, Math.ceil(count / chunkSize));
   const onOff = (v: boolean) => (v ? t("process.on") : t("process.off"));
 
   return (
@@ -99,9 +95,7 @@ export function ProcessConfirmDialog({
             </dl>
           </div>
 
-          <p className="text-[11.5px] text-text-muted">
-            {t("process.confirmBatches", { count: batches, size: chunkSize })}
-          </p>
+          <p className="text-[11.5px] text-text-muted">{t("process.confirmCancellable")}</p>
 
           {earlyPages && (
             <Callout title={t("process.earlyPagesTitle")} body={t("process.earlyPagesBody")} />

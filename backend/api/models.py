@@ -15,9 +15,15 @@ class LineTypeChoices(models.TextChoices):
 
 
 class RunStatusChoices(models.TextChoices):
+    # Set when the run row is created and kept until the run settles. A row left
+    # in this state belongs to a run whose process died; the next run on the same
+    # mushaf settles it as INTERRUPTED (see services/processing._settle_stale_runs).
+    RUNNING = "running", "Running"
     COMPLETED = "completed", "Completed"
     ABORTED_LINE_DETECTION = "aborted_line_detection", "Aborted Line Detection"
+    CANCELLED = "cancelled", "Cancelled"
     ERROR = "error", "Error"
+    INTERRUPTED = "interrupted", "Interrupted"
 
 
 class ActivityTypeChoices(models.TextChoices):

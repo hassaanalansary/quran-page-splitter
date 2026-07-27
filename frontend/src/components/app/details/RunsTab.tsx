@@ -10,6 +10,7 @@ import {
   runAbortPage,
   runNumberLabel,
   runSettingsRows,
+  runStatusKey,
 } from "./helpers";
 
 export function RunsTab({ mushafId, runs }: { mushafId: string; runs: Run[] | undefined }) {
@@ -63,17 +64,13 @@ export function RunsTab({ mushafId, runs }: { mushafId: string; runs: Run[] | un
 function RunCard({ run, mushafId }: { run: Run; mushafId: string }) {
   const { t } = useTranslation();
   const meta = RUN_STATUS_META[run.status] ?? RUN_STATUS_META.error;
-  const statusLabel = t(
-    run.status === "completed"
-      ? "details.runStatus_completed"
-      : run.status === "aborted_line_detection"
-        ? "details.runStatus_aborted"
-        : "details.runStatus_error",
-  );
+  const statusLabel = t(runStatusKey(run.status));
   const abortPage = runAbortPage(run);
   const rangeSize = run.page_range_end - run.page_range_start + 1;
-  const reached = abortPage ? abortPage - run.page_range_start : rangeSize;
-  const pct = rangeSize > 0 ? Math.round((reached / rangeSize) * 100) : 0;
+  // How far it got = what it actually persisted. Works for every status: a run
+  // that stopped (aborted, cancelled, still running) saved exactly the pages
+  // before the one it stopped on, so this never claims a full bar for a partial run.
+  const pct = rangeSize > 0 ? Math.round((run.pages_saved / rangeSize) * 100) : 0;
   const aborted = run.status === "aborted_line_detection";
   const expected = run.abort_info?.["expected_lines"];
   const detected = run.abort_info?.["detected_lines"];
@@ -165,13 +162,7 @@ function RunCard({ run, mushafId }: { run: Run; mushafId: string }) {
             <div className="flex items-center gap-3.5">
               <div className="flex flex-1 items-center gap-2">
                 <div className="h-1.5 max-w-[180px] flex-1 overflow-hidden rounded-[3px] bg-bg-muted">
-                  <div
-                    className="h-full"
-                    style={{
-                      width: `${pct}%`,
-                      background: run.status === "completed" ? "var(--success)" : "var(--error)",
-                    }}
-                  />
+                  <div className="h-full" style={{ width: `${pct}%`, background: meta.dot }} />
                 </div>
                 <span className="font-mono text-[10.5px] font-semibold text-text-muted">
                   {t("details.runs_progress", { saved: run.pages_saved, total: rangeSize })}
@@ -180,7 +171,11 @@ function RunCard({ run, mushafId }: { run: Run; mushafId: string }) {
               <span className="text-[11.5px] text-text-secondary">
                 {run.status === "completed"
                   ? t("details.runs_completedMsg")
-                  : t("details.runs_failedMsg")}
+                  : run.status === "cancelled"
+                    ? t("details.runs_cancelledMsg")
+                    : run.status === "running"
+                      ? t("details.runs_runningMsg")
+                      : t("details.runs_failedMsg")}
               </span>
             </div>
           )}

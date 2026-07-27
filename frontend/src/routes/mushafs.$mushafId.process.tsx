@@ -1,6 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, useParams } from "@tanstack/react-router";
-import { Eye, EyeOff, TriangleAlert } from "lucide-react";
+import type { TFunction } from "i18next";
+import { Eye, EyeOff, OctagonX, TriangleAlert } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -12,6 +13,7 @@ import { InfoTip } from "@/components/app/InfoTip";
 import { TourOverlay } from "@/components/app/tour/TourOverlay";
 import { useStepTour, type TourStep } from "@/components/app/tour/useStepTour";
 import { ProcessAbortDialog } from "@/components/app/ProcessAbortDialog";
+import { ProcessCancelDialog } from "@/components/app/ProcessCancelDialog";
 import { ProcessConfirmDialog } from "@/components/app/ProcessConfirmDialog";
 import { CropPreview } from "@/components/canvas/CropPreview";
 import { PageStage } from "@/components/canvas/PageStage";
@@ -20,15 +22,18 @@ import { Button } from "@/components/ui/button";
 import {
   ApiError,
   DEFAULT_PROCESS_SETTINGS,
+  cancelProcess,
+  isJobSettled,
   pageImageUrl,
-  processMushaf,
   queryKeys,
+  startProcess,
   useMushaf,
   useProcessedPages,
+  useProcessJob,
   useRuns,
   useSuras,
+  type ProcessJob,
   type ProcessRequest,
-  type ProcessResult,
   type ProcessSettings,
   type Rect,
 } from "@/lib/api";
@@ -51,7 +56,6 @@ export const Route = createFileRoute("/mushafs/$mushafId/process")({
   },
 });
 
-const CHUNK_SIZE = 50;
 /** Above this many pages, a mushaf's very first run gets a "test small" advisory. */
 const FIRST_RUN_SAFE_PAGES = 10;
 /** Al-Fatiha and the opening page of Al-Baqara are laid out unlike the rest of
@@ -87,18 +91,6 @@ function settingsFrom(s: Record<string, unknown>): ProcessSettings {
   };
 }
 
-type RunState = {
-  running: boolean;
-  /** Logical pages actually written — an aborted chunk saves only what precedes it. */
-  done: number;
-  total: number;
-  finished: boolean;
-  abort: ProcessResult | null;
-  /** Logical page detection stopped on. */
-  abortPage: number | null;
-  error: string | null;
-};
-
 function ProcessPage() {
   const { mushafId } = useParams({ from: "/mushafs/$mushafId/process" });
   const { run: runId, from: resumeFrom } = Route.useSearch();
@@ -106,6 +98,9 @@ function ProcessPage() {
   const { data: suras } = useSuras(mushaf?.qiraa);
   const { data: pages } = useProcessedPages(mushafId);
   const { data: runs } = useRuns(mushafId);
+  // The run lives on the server, so this is the single source of truth for it —
+  // a reload, a second tab, or coming back later all pick it up from here.
+  const { data: job } = useProcessJob(mushafId);
   const queryClient = useQueryClient();
   const { t, i18n } = useTranslation();
 
@@ -119,15 +114,25 @@ function ProcessPage() {
   const [startSura, setStartSura] = useState(1);
   const [startAya, setStartAya] = useState(1);
   const [settings, setSettings] = useState<ProcessSettings>(DEFAULT_PROCESS_SETTINGS);
-  const [run, setRun] = useState<RunState | null>(null);
   const [loadedRun, setLoadedRun] = useState<{ label: string; from?: number } | null>(null);
   const [boundsLocked, setBoundsLocked] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(() => readFlag(PREVIEW_PREF_KEY));
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [starting, setStarting] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+  /** Set once the user starts a run here, so an outcome from an earlier visit
+   * (the server keeps the last job) doesn't pop its dialog open on arrival. */
+  const [ownRun, setOwnRun] = useState(false);
+  /** The settled job whose outcome has been taken in. State, not a ref: the
+   * outcome card renders off it, and a ref would leave it a frame behind. */
+  const [announcedJobId, setAnnouncedJobId] = useState<string | null>(null);
   const appliedRunRef = useRef<string | null>(null);
   const initedRef = useRef(false);
   const outcomeRef = useRef<HTMLDivElement>(null);
+  /** Last job id seen actually working — see the settle effect. */
+  const watchingRef = useRef<string | null>(null);
 
   // Pre-fill the form from a stored run when arriving via `?run=<id>` (Runs tab
   // → "Re-run with these settings"). Applied once per run id so later manual
@@ -185,13 +190,74 @@ function ProcessPage() {
     );
   }, [mushaf, mushafId, runId, logicalCount, i18n.language, t]);
 
+  // Split the polled job into the two shapes the page actually renders. Doing it
+  // with plain ternaries (rather than a type guard) keeps both properly typed.
+  const activeJob = job && !isJobSettled(job) ? job : null;
+  const running = activeJob !== null;
+
+  // React to a run *settling*, exactly once. The job outlives the page — the
+  // server keeps the last one — so an outcome is only announced when this page
+  // actually watched the run (started it, or saw it working). Landing here long
+  // after a run stopped shows the outcome card, but throws no dialog or toast.
+  useEffect(() => {
+    if (!job) return;
+    if (!isJobSettled(job)) {
+      watchingRef.current = job.id;
+      return;
+    }
+    if (announcedJobId === job.id) return;
+    const watched = watchingRef.current === job.id || ownRun;
+    setAnnouncedJobId(job.id);
+    setCancelling(false);
+    if (!watched) return;
+
+    queryClient.invalidateQueries({ queryKey: queryKeys.mushaf(mushafId) });
+    queryClient.invalidateQueries({ queryKey: queryKeys.mushafs });
+    queryClient.invalidateQueries({ queryKey: queryKeys.processedPages(mushafId) });
+    queryClient.invalidateQueries({ queryKey: queryKeys.runs(mushafId) });
+
+    const ended_at = new Date().toISOString();
+    const pages_saved = job.pages_saved;
+    if (job.state === "completed") {
+      writeLastProcessOutcome(mushafId, { status: "completed", pages_saved, ended_at });
+      toast.success(
+        t("process.processedToast", { start: job.page_range_start, end: job.page_range_end }),
+      );
+    } else if (job.state === "cancelled") {
+      writeLastProcessOutcome(mushafId, {
+        status: "cancelled",
+        pages_saved,
+        abort_page: job.stopped_on_page ?? undefined,
+        ended_at,
+      });
+      toast.info(t("process.cancelledToast", { count: pages_saved }));
+    } else if (job.state === "aborted_line_detection") {
+      writeLastProcessOutcome(mushafId, {
+        status: "aborted",
+        pages_saved,
+        abort_page: job.stopped_on_page ?? undefined,
+        ended_at,
+      });
+      setDetailsOpen(true);
+    } else {
+      writeLastProcessOutcome(mushafId, {
+        status: "error",
+        pages_saved,
+        message: job.error ?? undefined,
+        ended_at,
+      });
+      setDetailsOpen(true);
+      toast.error(job.error ?? t("process.processFailed"));
+    }
+  }, [job, announcedJobId, ownRun, mushafId, queryClient, t]);
+
   // A run that stops is easy to miss: the panel card sits above a long settings
   // list, so scroll it back into view when one appears.
   useEffect(() => {
-    if (run?.abort || run?.error) {
+    if (announcedJobId) {
       outcomeRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
     }
-  }, [run?.abort, run?.error]);
+  }, [announcedJobId]);
 
   const tourSteps: TourStep[] = [
     {
@@ -216,13 +282,22 @@ function ProcessPage() {
   const ayaMax = startSuraRow?.aya_count ?? 286;
   const boundsOk = !!bounds && bounds.w >= 10 && bounds.h >= 10;
   const rangeOk = rangeStart >= 1 && rangeStart <= rangeEnd && rangeEnd <= logicalCount;
-  const canProcess = boundsOk && rangeOk && !run?.running;
+  const canProcess = boundsOk && rangeOk && !running && !starting;
   const pageCount = rangeEnd - rangeStart + 1;
+
+  // A settled job is only surfaced once its outcome has been taken in (the
+  // settle effect announces it), so nothing flashes on first paint.
+  const settledJob = job && isJobSettled(job) && announcedJobId === job.id ? job : null;
+  const aborted = settledJob?.state === "aborted_line_detection";
+  const cancelled = settledJob?.state === "cancelled";
+  const failed = settledJob?.state === "error";
+  const completed = settledJob?.state === "completed";
+  const stopped = aborted || cancelled || failed;
 
   // "First time on this mushaf" — nothing processed and no run on record. A long
   // range then means a long wait before the user finds out the settings were off.
   const everProcessed = mushaf.processed_page_count > 0 || (runs?.length ?? 0) > 0;
-  const firstRun = !everProcessed && !run;
+  const firstRun = !everProcessed && !job;
   // Pages 1–2 are undetectable, so that warning outranks the long-range one.
   const earlyPages = rangeStart < FIRST_DETECTABLE_PAGE && logicalCount >= FIRST_DETECTABLE_PAGE;
   const firstRunRisky = firstRun && rangeOk && pageCount > FIRST_RUN_SAFE_PAGES;
@@ -245,9 +320,10 @@ function ProcessPage() {
   // Preview the alternate-margin flip exactly as the engine applies it: the
   // engine anchors the mirror to the first page of the batch (page_index starts
   // at 1) and swaps every other page from there — so a page flips when its
-  // offset from the start page is odd. Chunking by 50 (even) preserves parity,
-  // so anchoring the preview to `rangeStart` matches every chunk. See
-  // core/line_detector.py (`should_swap`) and core/pipeline.py (`enumerate`, start=1).
+  // offset from the start page is odd. The whole range is now a single batch, so
+  // `rangeStart` IS that anchor. (It used to be sliced into 50-page requests,
+  // which only agreed with this because 50 is even.) See core/line_detector.py
+  // (`should_swap`) and core/pipeline.py (`enumerate`, start=1).
   const flipPreview = settings.alternate_horizontal_margin && (preview - rangeStart) % 2 !== 0;
 
   // Plain instructions, not a checklist: this step is one long form, and ticking
@@ -259,15 +335,27 @@ function ProcessPage() {
     { label: t("guide.process.s4") },
     { label: t("guide.process.s5") },
   ];
-  const status = run?.running ? (
-    <StatusLine>{t("process.processing")}</StatusLine>
-  ) : run?.abort ? (
-    <StatusLine tone="error">
-      {t("process.abortStatus", { page: run.abortPage ?? "?", count: run.done })}
+  const status = activeJob ? (
+    <StatusLine>
+      {activeJob.cancel_requested ? t("process.cancelling") : phaseLabel(t, activeJob)}
     </StatusLine>
-  ) : run?.error ? (
+  ) : aborted ? (
+    <StatusLine tone="error">
+      {t("process.abortStatus", {
+        page: settledJob?.stopped_on_page ?? "?",
+        count: settledJob?.pages_saved ?? 0,
+      })}
+    </StatusLine>
+  ) : cancelled ? (
+    <StatusLine tone="warning">
+      {t("process.cancelStatus", {
+        page: settledJob?.stopped_on_page ?? "?",
+        count: settledJob?.pages_saved ?? 0,
+      })}
+    </StatusLine>
+  ) : failed ? (
     <StatusLine tone="error">{t("process.errorStatus")}</StatusLine>
-  ) : run?.finished ? (
+  ) : completed ? (
     <StatusLine tone="success">{t("stepStatus.processDone")}</StatusLine>
   ) : !boundsOk ? (
     <StatusLine tone="warning">{t("stepStatus.processNoBounds")}</StatusLine>
@@ -283,18 +371,10 @@ function ProcessPage() {
     </StatusLine>
   );
 
-  async function runProcess() {
+  /** Hand the run to the server and let the poll take over from here. */
+  async function startRun() {
     if (!bounds) return;
-    const total = rangeEnd - rangeStart + 1;
-    setRun({
-      running: true,
-      done: 0,
-      total,
-      finished: false,
-      abort: null,
-      abortPage: null,
-      error: null,
-    });
+    setStarting(true);
 
     // Mirror the whole request before it leaves — one snapshot, overwritten each
     // run, so coming back to this mushaf refills the form exactly as sent.
@@ -313,75 +393,48 @@ function ProcessPage() {
       request,
     });
 
-    let curSura = startSura;
-    let curAya = startAya;
-    let saved = 0;
     try {
-      for (let from = rangeStart; from <= rangeEnd; from += CHUNK_SIZE) {
-        const to = Math.min(from + CHUNK_SIZE - 1, rangeEnd);
-        const out = await processMushaf(mushafId, {
-          ...settings,
-          page_range_start: from,
-          page_range_end: to,
-          start_sura: curSura,
-          start_aya: curAya,
-          bounds,
-        });
-        if (out.status !== "completed") {
-          // `page_index` is 1-based within the chunk, and the failing page itself
-          // writes nothing — everything before it in the chunk was saved.
-          const index = out.abort_info?.page_index ?? 1;
-          const page = from + index - 1;
-          saved += index - 1;
-          setRun((r) =>
-            r
-              ? { ...r, running: false, done: saved, finished: true, abort: out, abortPage: page }
-              : r,
-          );
-          writeLastProcessOutcome(mushafId, {
-            status: "aborted",
-            pages_saved: saved,
-            abort_page: page,
-            ended_at: new Date().toISOString(),
-          });
-          setDetailsOpen(true);
-          return;
-        }
-        saved = to - rangeStart + 1;
-        setRun((r) => (r ? { ...r, done: saved } : r));
-        curSura = out.end_sura;
-        curAya = out.end_aya;
-      }
-      setRun((r) => (r ? { ...r, running: false, finished: true } : r));
-      writeLastProcessOutcome(mushafId, {
-        status: "completed",
-        pages_saved: saved,
-        ended_at: new Date().toISOString(),
-      });
-      toast.success(t("process.processedToast", { start: rangeStart, end: rangeEnd }));
+      const started = await startProcess(mushafId, request);
+      setOwnRun(true);
+      setDetailsOpen(false);
+      // Seed the cache with the job the POST returned so progress shows at once
+      // instead of after the first poll.
+      queryClient.setQueryData(queryKeys.processJob(mushafId), started);
     } catch (e) {
-      const message = e instanceof ApiError ? e.message : t("process.processFailed");
-      setRun((r) => (r ? { ...r, running: false, done: saved, error: message } : r));
-      writeLastProcessOutcome(mushafId, {
-        status: "error",
-        pages_saved: saved,
-        message,
-        ended_at: new Date().toISOString(),
-      });
-      setDetailsOpen(true);
-      toast.error(message);
+      // Only the *start* can fail here (bad range, missing templates, one already
+      // running). Anything that goes wrong later surfaces through the job.
+      toast.error(e instanceof ApiError ? e.message : t("process.processFailed"));
+      // A 409 means a run this page hasn't seen yet is already going — fetch it
+      // so the user gets the progress instead of just the rejection.
+      queryClient.invalidateQueries({ queryKey: queryKeys.processJob(mushafId) });
     } finally {
-      queryClient.invalidateQueries({ queryKey: queryKeys.mushaf(mushafId) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.mushafs });
-      queryClient.invalidateQueries({ queryKey: queryKeys.processedPages(mushafId) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.runs(mushafId) });
+      setStarting(false);
     }
   }
 
-  /** Pick up where an aborted run stopped: same settings, new start page. */
-  function resumeFromAbort() {
-    if (run?.abortPage == null) return;
-    const page = clamp(run.abortPage, 1, logicalCount);
+  /** Ask the server to stop. It settles at the next page boundary; everything
+   * already written stays written. Confirmed first — see ProcessCancelDialog. */
+  async function cancelRun() {
+    setCancelConfirmOpen(false);
+    setCancelling(true);
+    try {
+      const updated = await cancelProcess(mushafId);
+      queryClient.setQueryData(queryKeys.processJob(mushafId), updated);
+      toast.info(t("process.cancelRequestedToast"));
+    } catch (e) {
+      setCancelling(false);
+      // A 404 means it finished on its own between the click and the request.
+      if (!(e instanceof ApiError && e.status === 404)) {
+        toast.error(e instanceof ApiError ? e.message : t("process.cancelFailed"));
+      }
+      queryClient.invalidateQueries({ queryKey: queryKeys.processJob(mushafId) });
+    }
+  }
+
+  /** Pick up where a stopped run left off: same settings, new start page. */
+  function resumeFromStop() {
+    if (job?.stopped_on_page == null) return;
+    const page = clamp(job.stopped_on_page, 1, logicalCount);
     setRangeStart(page);
     setDetailsOpen(false);
     toast.success(t("process.abortResumeToast", { page }));
@@ -465,18 +518,32 @@ function ProcessPage() {
         status={status}
         footer={
           <div data-tour="process-run" className="flex flex-col gap-2">
-            {run && <ProgressFooter run={run} />}
-            <Button onClick={() => setConfirmOpen(true)} disabled={!canProcess}>
-              {run?.running
-                ? t("process.processing")
-                : t("process.processButton", { start: rangeStart, end: rangeEnd })}
-            </Button>
-            {(run?.abort || run?.error) && (
+            {job && <ProgressFooter job={job} running={running} />}
+            {activeJob ? (
+              <Button
+                variant="outline"
+                onClick={() => setCancelConfirmOpen(true)}
+                disabled={cancelling || activeJob.cancel_requested}
+                className="border-error-border text-error hover:bg-error-bg"
+              >
+                <OctagonX size={14} />
+                {cancelling || activeJob.cancel_requested
+                  ? t("process.cancelling")
+                  : t("process.cancelButton")}
+              </Button>
+            ) : (
+              <Button onClick={() => setConfirmOpen(true)} disabled={!canProcess}>
+                {starting
+                  ? t("process.starting")
+                  : t("process.processButton", { start: rangeStart, end: rangeEnd })}
+              </Button>
+            )}
+            {(aborted || failed) && (
               <Button variant="outline" onClick={() => setDetailsOpen(true)}>
                 {t("process.abortDetails")}
               </Button>
             )}
-            {run?.finished && !run.error && !run.abort && (
+            {completed && (
               <Button asChild variant="outline">
                 <Link
                   to="/mushafs/$mushafId/review"
@@ -490,13 +557,15 @@ function ProcessPage() {
           </div>
         }
       >
-        {(run?.abort || run?.error) && (
+        {settledJob && stopped && (
           <div ref={outcomeRef} className="scroll-mt-2">
             <OutcomeCard
-              abortPage={run.abortPage}
-              pagesSaved={run.done}
-              error={run.error}
-              onDetails={() => setDetailsOpen(true)}
+              kind={cancelled ? "cancelled" : failed ? "error" : "abort"}
+              stoppedOn={settledJob.stopped_on_page}
+              pagesSaved={settledJob.pages_saved}
+              error={settledJob.error}
+              onDetails={failed || aborted ? () => setDetailsOpen(true) : undefined}
+              onResume={settledJob.stopped_on_page != null ? resumeFromStop : undefined}
             />
           </div>
         )}
@@ -615,7 +684,7 @@ function ProcessPage() {
           onOpenChange={setConfirmOpen}
           onConfirm={() => {
             setConfirmOpen(false);
-            void runProcess();
+            void startRun();
           }}
           rangeStart={rangeStart}
           rangeEnd={rangeEnd}
@@ -627,23 +696,31 @@ function ProcessPage() {
           startAya={startAya}
           bounds={bounds}
           settings={settings}
-          chunkSize={CHUNK_SIZE}
           firstRun={firstRunRisky}
           earlyPages={earlyPages}
         />
       )}
 
-      {(run?.abort || run?.error) && (
+      {activeJob && (
+        <ProcessCancelDialog
+          open={cancelConfirmOpen}
+          onOpenChange={setCancelConfirmOpen}
+          onConfirm={() => void cancelRun()}
+          job={activeJob}
+        />
+      )}
+
+      {settledJob && (aborted || failed) && (
         <ProcessAbortDialog
           open={detailsOpen}
           onOpenChange={setDetailsOpen}
-          kind={run.abort ? "abort" : "error"}
-          info={run.abort?.abort_info}
-          page={run.abortPage}
-          pagesSaved={run.done}
-          logUrl={run.abort?.log_url}
-          errorMessage={run.error}
-          onResume={run.abortPage != null ? resumeFromAbort : undefined}
+          kind={aborted ? "abort" : "error"}
+          info={settledJob.abort_info}
+          page={settledJob.stopped_on_page}
+          pagesSaved={settledJob.pages_saved}
+          logUrl={settledJob.log_url}
+          errorMessage={settledJob.error}
+          onResume={settledJob.stopped_on_page != null ? resumeFromStop : undefined}
         />
       )}
 
@@ -655,55 +732,106 @@ function ProcessPage() {
 const selectClass =
   "h-9 w-full cursor-pointer rounded-md border-[1.5px] border-border-strong bg-white px-2.5 text-[13px] text-text-primary outline-none focus:border-orange focus:shadow-[0_0_0_3px_var(--orange-glow)]";
 
-function ProgressFooter({ run }: { run: RunState }) {
+/** What the run is doing right now, named after the page it is on — the phase
+ * changes several times per page, so this is also the "it hasn't hung" signal. */
+function phaseLabel(t: TFunction, job: ProcessJob): string {
+  const page = job.current_page;
+  if (page == null) return t("process.processing");
+  switch (job.phase) {
+    case "rendering":
+      return t("process.phaseRendering", { page });
+    case "detecting":
+      return t("process.phaseDetecting", { page });
+    case "saving":
+      return t("process.phaseSaving", { page });
+    default:
+      return t("process.processing");
+  }
+}
+
+function ProgressFooter({ job, running }: { job: ProcessJob; running: boolean }) {
   const { t } = useTranslation();
-  const pct = run.total > 0 ? Math.round((run.done / run.total) * 100) : 0;
+  const pct = job.total > 0 ? Math.round((job.pages_saved / job.total) * 100) : 0;
+  const bad = job.state === "aborted_line_detection" || job.state === "error";
+  const tone = bad ? "bg-error" : job.state === "cancelled" ? "bg-text-muted" : "bg-orange";
   return (
     <div className="flex flex-col gap-1">
       <div className="h-1.5 w-full overflow-hidden rounded-full bg-bg-muted">
-        <div
-          className={`h-full rounded-full ${run.abort || run.error ? "bg-error" : "bg-orange"}`}
-          style={{ width: `${pct}%` }}
-        />
+        <div className={`h-full rounded-full ${tone}`} style={{ width: `${pct}%` }} />
       </div>
       <span className="text-[11.5px] text-text-muted">
-        {run.running
-          ? t("process.progressActive", { done: run.done, total: run.total })
-          : t("process.progress", { done: run.done, total: run.total })}
+        {running
+          ? t("process.progressActive", { done: job.pages_saved, total: job.total })
+          : t("process.progress", { done: job.pages_saved, total: job.total })}
       </span>
     </div>
   );
 }
 
 /** Panel-side summary of a stopped run. The evidence itself lives in the dialog —
- * this card only has to be impossible to miss and one click away from it. */
+ * this card only has to be impossible to miss and one click away from it.
+ *
+ * A cancel is not a failure: same anatomy, neutral colours, and it leads with
+ * what was kept rather than what broke. */
 function OutcomeCard({
-  abortPage,
+  kind,
+  stoppedOn,
   pagesSaved,
   error,
   onDetails,
+  onResume,
 }: {
-  abortPage: number | null;
+  kind: "abort" | "cancelled" | "error";
+  stoppedOn: number | null;
   pagesSaved: number;
   error: string | null;
-  onDetails: () => void;
+  onDetails?: () => void;
+  onResume?: () => void;
 }) {
   const { t } = useTranslation();
+  const neutral = kind === "cancelled";
+  const shell = neutral
+    ? "border-border-strong bg-bg-surface text-text-secondary"
+    : "border-error-border bg-error-bg text-error";
+  const title =
+    kind === "error"
+      ? t("process.errorDialogTitle")
+      : kind === "cancelled"
+        ? t("process.cancelledTitle")
+        : t("process.abortTitle");
+  const lead =
+    kind === "error"
+      ? error
+      : kind === "cancelled"
+        ? t("process.cancelledLead", { page: stoppedOn ?? "?" })
+        : t("process.abortLead", { page: stoppedOn ?? "?" });
+
   return (
-    <div className="rounded-md border border-error-border bg-error-bg px-3 py-2.5 text-[12px] text-error">
+    <div className={`rounded-md border px-3 py-2.5 text-[12px] ${shell}`}>
       <div className="flex items-center gap-1.5 font-semibold">
-        <TriangleAlert size={14} className="flex-shrink-0" />
-        {error ? t("process.errorDialogTitle") : t("process.abortTitle")}
+        {neutral ? (
+          <OctagonX size={14} className="flex-shrink-0" />
+        ) : (
+          <TriangleAlert size={14} className="flex-shrink-0" />
+        )}
+        {title}
       </div>
-      <div className="mb-2.5 mt-1 leading-[1.55]">
-        {error ?? t("process.abortLead", { page: abortPage ?? "?" })}
-      </div>
+      <div className="mb-2.5 mt-1 leading-[1.55]">{lead}</div>
       <div className="mb-2.5 font-mono text-[11px]">
         {t("process.abortSavedCount", { count: pagesSaved })}
       </div>
-      <Button size="sm" variant="outline" onClick={onDetails}>
-        {t("process.abortDetails")}
-      </Button>
+      <div className="flex flex-wrap gap-2">
+        {onDetails && (
+          <Button size="sm" variant="outline" onClick={onDetails}>
+            {t("process.abortDetails")}
+          </Button>
+        )}
+        {onResume && stoppedOn != null && (
+          <Button size="sm" variant="outline" onClick={onResume}>
+            {t("process.abortResume", { page: stoppedOn })}
+          </Button>
+        )}
+      </div>
     </div>
   );
 }

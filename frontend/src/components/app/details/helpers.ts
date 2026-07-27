@@ -55,10 +55,13 @@ export function runNumberLabel(n: number): string {
 }
 
 // ── Runs ─────────────────────────────────────────────────────────────────────
-/** Logical page a run aborted on (from the stored engine abort detail), or null. */
+/** Logical page a run aborted on (from the stored engine abort detail), or null.
+ *
+ * `page_index` is 1-BASED within the batch (core/pipeline.py enumerates from 1),
+ * so the first page of the range is index 1 — hence the -1. */
 export function runAbortPage(run: Run): number | null {
   const index = run.abort_info?.["page_index"];
-  return typeof index === "number" ? run.page_range_start + index : null;
+  return typeof index === "number" ? run.page_range_start + index - 1 : null;
 }
 
 export const RUN_STATUS_META: Record<
@@ -77,8 +80,41 @@ export const RUN_STATUS_META: Record<
     bg: "bg-warning-bg",
     text: "text-[#8a4b0d]",
   },
+  running: { label: "Running", dot: "var(--orange)", bg: "bg-bg-surface", text: "text-orange" },
+  cancelled: {
+    label: "Stopped",
+    dot: "var(--text-muted)",
+    bg: "bg-bg-surface",
+    text: "text-text-secondary",
+  },
+  // A row left `running` by a crash or a server restart, settled after the fact.
+  interrupted: {
+    label: "Interrupted",
+    dot: "var(--text-muted)",
+    bg: "bg-bg-surface",
+    text: "text-text-secondary",
+  },
   error: { label: "Error", dot: "var(--error)", bg: "bg-error-bg", text: "text-error" },
 };
+
+/** i18n key for a run's status chip (unknown statuses read as an error).
+ * Returns literal types, not `string`, so `t()` keeps its key checking. */
+export function runStatusKey(status: string) {
+  switch (status) {
+    case "completed":
+      return "details.runStatus_completed" as const;
+    case "aborted_line_detection":
+      return "details.runStatus_aborted" as const;
+    case "running":
+      return "details.runStatus_running" as const;
+    case "cancelled":
+      return "details.runStatus_cancelled" as const;
+    case "interrupted":
+      return "details.runStatus_interrupted" as const;
+    default:
+      return "details.runStatus_error" as const;
+  }
+}
 
 const fmtBool = (v: unknown): string =>
   v ? i18n.t("details.bool_on") : i18n.t("details.bool_off");
@@ -157,6 +193,13 @@ export function activityMeta(event: ActivityEvent): { dot: string; text: string 
           text: p.abort_page
             ? i18n.t("details.act_runAbortedAt", { num, page: p.abort_page })
             : i18n.t("details.act_runAborted", { num }),
+        };
+      }
+      if (p.status === "cancelled") {
+        return {
+          dot: "var(--text-muted)",
+          // `saved`, not `count` — i18next treats `count` as a plural selector.
+          text: i18n.t("details.act_runCancelled", { num, saved: Number(p.pages_saved ?? 0) }),
         };
       }
       return { dot: "var(--error)", text: i18n.t("details.act_runFailed", { num }) };

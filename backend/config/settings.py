@@ -95,6 +95,12 @@ AUTH_PASSWORD_VALIDATORS = [
 
 CORS_ALLOW_ALL_ORIGINS = True
 
+# Run processing jobs on the request thread instead of a worker thread. Off in
+# real use (the point of a job is that the request returns immediately); tests
+# turn it on so a POST settles before it returns, keeping them deterministic and
+# free of cross-thread DB visibility problems. See api/services/jobs.py.
+PROCESS_JOBS_INLINE = False
+
 
 LANGUAGE_CODE = "en-us"
 

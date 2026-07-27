@@ -1,15 +1,27 @@
 """Processing: assemble the engine pipeline from stored templates + request
 settings, run it, and persist the resulting coordinates as Page/Line/Segment rows.
 
-This is the only place the ORM and the pure ``core`` engine meet. The pipeline
-runs outside the DB transaction; only the persistence step is transactional.
+This is the only place the ORM and the pure ``core`` engine meet.
+
+The run is *steerable*: callers pass ``should_cancel`` to stop it between pages
+and ``on_progress`` to watch it advance (see services/jobs.py, which binds both
+to a background job). Two consequences shape the code below:
+
+* Pages are rendered **lazily**, one at a time, from a single open PDF handle —
+  so a cancel never pays for work it is about to throw away, and a 600-page run
+  never holds 600 rendered pages in memory.
+* The ``ProcessingRun`` row is created **up front** (status ``running``) so each
+  page can be persisted in its own transaction the moment it lands. A cancelled
+  or crashed run therefore keeps everything it got through.
 """
 
 import json
 import uuid
+from collections.abc import Callable, Iterator
 from datetime import datetime
 from pathlib import Path
 
+import fitz  # PyMuPDF
 from django.conf import settings
 from django.db import transaction
 from django.db.models import Count
@@ -17,12 +29,18 @@ from ninja.errors import HttpError
 from PIL import Image
 
 from api import i18n, validators
-from api.models import ActivityTypeChoices, Mushaf, Page, ProcessingRun, Template
+from api.models import ActivityTypeChoices, Mushaf, Page, ProcessingRun, RunStatusChoices, Template
 from api.services import activity, coordinates, pdf
 from core.aya_separator import AyaSeparatorConfig, AyaSeparatorProcessor
 from core.builder import build_pipeline, init_configs
 from core.config import ExportConfig
+from core.pipeline import PageOutcome, setup_file_logging, teardown_file_logging
 from core.sura_header import IgnoreRect, SuraHeaderLocator
+
+#: ``on_progress(phase, current_page, pages_saved)`` — ``phase`` is one of
+#: ``rendering`` / ``detecting`` / ``saving``, ``current_page`` is a LOGICAL page
+#: number, ``pages_saved`` counts pages already written to the DB by this run.
+ProgressHook = Callable[[str, int | None, int], None]
 
 
 def process(
@@ -41,10 +59,12 @@ def process(
     match_threshold: float,
     alternate_horizontal_margin: bool,
     prefer_acceleration: bool,
+    should_cancel: Callable[[], bool] | None = None,
+    on_progress: ProgressHook | None = None,
+    on_run_started: Callable[[uuid.UUID, str], None] | None = None,
 ) -> dict:
     """Render + detect a logical page range, persist rows, and log a run."""
-    validators.validate_page_range(mushaf, page_range_start, page_range_end)
-    sura_template, aya_template = _required_templates(mushaf)
+    sura_template, aya_template = preflight(mushaf, page_range_start, page_range_end)
 
     crop_cfg, det_cfg, proc_cfg = init_configs(
         bounds["x"],
@@ -80,19 +100,10 @@ def process(
     )
 
     page_numbers = list(range(page_range_start, page_range_end + 1))
+    filenames = [f"{n}.png" for n in page_numbers]
     overrides = dict(
         Page.objects.filter(mushaf=mushaf, page_number__in=page_numbers).values_list("page_number", "source_pdf_page")
     )
-    images_data = [
-        (
-            pdf.render_page(
-                mushaf.pdf_file.path,
-                pdf.logical_to_pdf_index(mushaf.first_quran_pdf_page, n, overrides.get(n)),
-            ),
-            f"{n}.png",
-        )
-        for n in page_numbers
-    ]
 
     token = datetime.now().strftime("%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:6]
     log_rel = f"runs/{token}.log"
@@ -102,22 +113,6 @@ def process(
     # shown in the abort diagnostics (see ``_media_url``).
     results_dir = Path(settings.MEDIA_ROOT) / "run_debug" / token
     results_dir.mkdir(parents=True, exist_ok=True)
-
-    pipeline = build_pipeline(
-        crop_cfg=crop_cfg,
-        det_cfg=det_cfg,
-        proc_cfg=proc_cfg,
-        export_cfg=export_cfg,
-        aya_processor=aya_processor,
-        results_dir=results_dir,
-        sura_header_locator=sura_header_locator,
-    )
-    output = pipeline.run(images_data, log_path=str(log_path))
-
-    abort_at = output.get("abort_at")
-    if isinstance(abort_at, dict):
-        debug_paths = abort_at.pop("line_debug_outputs", None) or []
-        abort_at["debug_images"] = [_media_url(p) for p in debug_paths]
 
     settings_used = {
         "padding": padding,
@@ -132,48 +127,156 @@ def process(
         "start_aya": start_aya,
         "bounds": bounds,
     }
-    coord_pages = output.get("coordinates", {}).get("pages", [])
+
+    _settle_stale_runs(mushaf)
+    run = ProcessingRun.objects.create(
+        mushaf=mushaf,
+        settings=settings_used,
+        page_range_start=page_range_start,
+        page_range_end=page_range_end,
+        status=RunStatusChoices.RUNNING,
+        log_path=log_rel,
+    )
+    log_url = f"/api/mushafs/{mushaf.id}/runs/{run.id}/log"
+    if on_run_started is not None:
+        on_run_started(run.id, log_url)
+
+    pipeline = build_pipeline(
+        crop_cfg=crop_cfg,
+        det_cfg=det_cfg,
+        proc_cfg=proc_cfg,
+        export_cfg=export_cfg,
+        aya_processor=aya_processor,
+        results_dir=results_dir,
+        sura_header_locator=sura_header_locator,
+    )
+
+    saved = 0
+
+    def report(phase: str, current_page: int | None) -> None:
+        if on_progress is not None:
+            on_progress(phase, current_page, saved)
+
+    def persist(outcome: PageOutcome) -> None:
+        """Write one finished page immediately, so progress survives a stop."""
+        nonlocal saved
+        if outcome.coordinates is None:
+            return
+        page_number = page_range_start + outcome.page_index - 1
+        with transaction.atomic():
+            coordinates.write_coords_to_page(
+                mushaf=mushaf, page_number=page_number, run=run, coord_page=outcome.coordinates
+            )
+        saved += 1
+        report("saving", page_number)
+
+    handler = setup_file_logging(str(log_path))
+    try:
+        with pdf.open_document(mushaf.pdf_file.path) as doc:
+            images = _render_pages(doc, mushaf.first_quran_pdf_page, page_numbers, overrides, report)
+            output = pipeline.run(
+                images,
+                filenames=filenames,
+                should_cancel=should_cancel,
+                on_page_start=lambda index, _name: report("detecting", page_range_start + index - 1),
+                on_page_done=persist,
+            )
+    except Exception:
+        ProcessingRun.objects.filter(id=run.id).update(status=RunStatusChoices.ERROR)
+        raise
+    finally:
+        teardown_file_logging(handler)
+
+    abort_at = output.get("abort_at")
+    if isinstance(abort_at, dict):
+        debug_paths = abort_at.pop("line_debug_outputs", None) or []
+        abort_at["debug_images"] = [_media_url(p) for p in debug_paths]
+    cancel_at = output.get("cancel_at")
+
+    #: The logical page the run came to rest on — the one that failed detection,
+    #: or the first one a cancel prevented. Both are 1-based within the batch.
+    stopped_on: int | None = None
+    for detail in (abort_at, cancel_at):
+        if isinstance(detail, dict) and detail.get("page_index") is not None:
+            stopped_on = page_range_start + detail["page_index"] - 1
 
     with transaction.atomic():
-        run = ProcessingRun.objects.create(
-            mushaf=mushaf,
-            settings=settings_used,
-            page_range_start=page_range_start,
-            page_range_end=page_range_end,
+        ProcessingRun.objects.filter(id=run.id).update(
             status=output["status"],
             abort_info=json.dumps(abort_at) if abort_at else "",
-            log_path=log_rel,
         )
-        pages_saved = 0
-        for page_number, coord_page in zip(page_numbers, coord_pages, strict=False):
-            coordinates.write_coords_to_page(mushaf=mushaf, page_number=page_number, run=run, coord_page=coord_page)
-            pages_saved += 1
         event = {
             "run_id": str(run.id),
             "run_number": ProcessingRun.objects.filter(mushaf=mushaf).count(),
             "status": output["status"],
-            "pages_saved": pages_saved,
+            "pages_saved": saved,
             "page_range_start": page_range_start,
             "page_range_end": page_range_end,
         }
-        if isinstance(abort_at, dict) and abort_at.get("page_index") is not None:
-            # `page_index` is 1-based within the batch, and `page_numbers` starts at
-            # `page_range_start` — so the failing logical page is offset by one less.
-            event["abort_page"] = page_range_start + abort_at["page_index"] - 1
+        if stopped_on is not None:
+            event["abort_page"] = stopped_on
         activity.emit(mushaf, ActivityTypeChoices.RUN_FINISHED, event)
 
     return {
         "run_id": run.id,
         "status": output["status"],
         "pages_processed": output["pages_processed"],
+        "pages_saved": saved,
+        "stopped_on_page": stopped_on,
         "start_sura": output["start_sura"],
         "start_aya": output["start_aya"],
         "end_sura": output["end_sura"],
         "end_aya": output["end_aya"],
         "results": output["results"],
         "abort_info": abort_at,
-        "log_url": f"/api/mushafs/{mushaf.id}/runs/{run.id}/log",
+        "cancel_info": cancel_at,
+        "log_url": log_url,
     }
+
+
+def preflight(mushaf: Mushaf, page_range_start: int, page_range_end: int) -> tuple[Template, Template]:
+    """Everything that must be checked while the caller can still be told.
+
+    Once processing moves to a background job the HTTP response is already sent,
+    so a bad range or a missing template would surface as a *failed run* instead
+    of a rejected request. Callers therefore run these cheap DB-only checks
+    up front (see views/processing.process); ``process`` repeats them so a direct
+    call is never left unguarded.
+    """
+    validators.validate_page_range(mushaf, page_range_start, page_range_end)
+    return _required_templates(mushaf)
+
+
+def _render_pages(
+    doc: fitz.Document,
+    first_quran_pdf_page: int,
+    page_numbers: list[int],
+    overrides: dict[int, int | None],
+    report: Callable[[str, int | None], None],
+) -> Iterator[tuple[bytes, str]]:
+    """Yield ``(png_bytes, filename)`` one page at a time, rendering on demand.
+
+    Laziness is what makes a cancel cheap: the pipeline pulls the next page only
+    after deciding to process it, so a stop never pays for a render (~0.3 s and
+    several MB at 300 dpi) it would discard.
+    """
+    for n in page_numbers:
+        report("rendering", n)
+        pdf_index = pdf.logical_to_pdf_index(first_quran_pdf_page, n, overrides.get(n))
+        yield pdf.render_page_from(doc, pdf_index), f"{n}.png"
+
+
+def _settle_stale_runs(mushaf: Mushaf) -> int:
+    """Close out ``running`` rows left behind by a crash or a server restart.
+
+    Nothing can finish them — the in-memory job that owned them is gone — so the
+    next run on the same mushaf marks them ``interrupted``. Safe to call before
+    starting: services/jobs.py refuses to start a second run for a mushaf that
+    already has a live one, so this never touches a run still in flight.
+    """
+    return ProcessingRun.objects.filter(mushaf=mushaf, status=RunStatusChoices.RUNNING).update(
+        status=RunStatusChoices.INTERRUPTED
+    )
 
 
 def list_runs(mushaf: Mushaf) -> list[dict]:

@@ -126,10 +126,35 @@ export const en = {
     preferAccel: "Prefer acceleration",
     preferAccelHint: "Use OpenCL when available",
     processing: "Processing…",
+    starting: "Starting…",
     processButton: "Process pages {{start}}–{{end}}",
     continueReview: "Continue to Review",
     progress: "{{done}} / {{total}} pages processed",
     progressActive: "{{done}} / {{total}} pages processed…",
+    // Live phase, page by page
+    phaseRendering: "Reading page {{page}}…",
+    phaseDetecting: "Detecting lines on page {{page}}…",
+    phaseSaving: "Saving page {{page}}…",
+    // Cancelling a run
+    cancelButton: "Stop processing",
+    cancelling: "Stopping…",
+    cancelConfirmTitle: "Stop processing?",
+    cancelConfirmIntro:
+      "It will finish the page it is on, then stop. Nothing already saved is lost.",
+    cancelConfirmSaved: "Pages saved so far",
+    cancelConfirmRemaining: "Pages not yet done",
+    cancelConfirmResume: "Would resume from page",
+    cancelConfirmBody:
+      "The pages above are already written and stay exactly as they are. To carry on later, come back here and process from page {{page}} — the settings are kept.",
+    cancelConfirmKeep: "Keep processing",
+    cancelConfirmStop: "Stop it",
+    cancelRequestedToast: "Stopping after the current page. Pages already done stay saved.",
+    cancelFailed: "Couldn't stop the run.",
+    cancelledToast: "Processing stopped — {{count}} pages saved.",
+    cancelStatus: "Stopped at page {{page}} — {{count}} pages saved.",
+    cancelledTitle: "You stopped this run",
+    cancelledLead:
+      "It stopped before page {{page}}, so nothing from that page onward was written. Everything before it is saved — adjust the settings and resume whenever you like.",
     abortTitle: "Stopped on a line-count mismatch",
     abortBody:
       "Pages saved before the stop: {{count}}. Adjust the bounds or the expected line count, then reprocess from where it stopped.",
@@ -173,7 +198,8 @@ export const en = {
     confirmStartAtValue: "{{sura}} · aya {{aya}}",
     confirmBounds: "Bounds",
     confirmSettings: "Detection settings",
-    confirmBatches: "Sent in {{count}} batch(es) of up to {{size}} pages.",
+    confirmCancellable:
+      "The run happens on the server, so you can leave this page — and you can stop it at any time, keeping every page it finished.",
     confirmSubmit: "Start processing",
     on: "on",
     off: "off",
@@ -450,12 +476,16 @@ export const en = {
     act_runAborted: "Run {{num}} aborted — line mismatch",
     act_runAbortedAt: "Run {{num}} aborted — line mismatch at p.{{page}}",
     act_runFailed: "Run {{num}} failed",
+    act_runCancelled: "Run {{num}} stopped — {{saved}} pages saved",
     act_reviewRange: "Review saved — pages {{start}}–{{end}} ({{shown}})",
     act_reviewPage: "Review saved — page {{page}}",
     act_linesExported: "Line PNGs exported — page {{page}} ({{lines}} lines)",
     // Run status
     runStatus_completed: "Completed",
     runStatus_aborted: "Aborted · line mismatch",
+    runStatus_running: "Running",
+    runStatus_cancelled: "Stopped",
+    runStatus_interrupted: "Interrupted",
     runStatus_error: "Error",
     // Run settings rows
     row_range: "range",
@@ -491,6 +521,8 @@ export const en = {
     runs_progress: "{{saved}} / {{total}}",
     runs_completedMsg: "Completed — all pages in range persisted.",
     runs_failedMsg: "Run failed — check the settings and try again.",
+    runs_cancelledMsg: "Stopped by you — the pages it finished are saved.",
+    runs_runningMsg: "Running now…",
     runs_rerun: "Re-run with these settings →",
     runs_resume: "Resume →",
     runs_resumeFrom: "Resume from p.{{page}} →",
@@ -752,7 +784,8 @@ export const en = {
       t1_body:
         "Draw the orange box around the text region — drag it on the page, or use the X/Y/W/H inputs for pixel-precise edges. Detection runs only inside it, so exclude margins and decoration.",
       t2_title: "Page range",
-      t2_body: "Choose which logical pages to process. Large mushafs run in batches automatically.",
+      t2_body:
+        "Choose which logical pages to process. The run happens on the server — you can watch it page by page and stop it whenever you want.",
       t3_title: "Starting position",
       t3_body:
         "Tell the engine which sura and aya the first page begins with — this seeds the numbering.",

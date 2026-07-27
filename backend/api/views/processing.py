@@ -1,4 +1,8 @@
-"""Processing endpoint: run detection over a page range and persist the results."""
+"""Processing endpoints: start a detection run in the background, watch it, stop it.
+
+The run itself is owned by a job (see services/jobs.py), not by an HTTP request —
+``POST /process`` returns as soon as the job is registered.
+"""
 
 import uuid
 from datetime import datetime
@@ -8,6 +12,7 @@ from ninja import Router, Schema
 from pydantic import Field
 
 from api.common import RectSchema
+from api.services import jobs as jobs_service
 from api.services import mushaf as mushaf_service
 from api.services import processing as processing_service
 
@@ -30,17 +35,40 @@ class ProcessIn(Schema):
     prefer_acceleration: bool = True
 
 
-class ProcessOut(Schema):
-    run_id: uuid.UUID
-    status: str
-    pages_processed: int
-    start_sura: int
-    start_aya: int
-    end_sura: int
-    end_aya: int
-    results: list[dict]
-    abort_info: dict | None = None
+class JobOut(Schema):
+    """Live state of a processing run — the single shape the client polls."""
+
+    id: uuid.UUID
+    mushaf_id: uuid.UUID
+    #: ``running`` while working; then ``completed`` / ``aborted_line_detection``
+    #: / ``cancelled`` / ``error``.
+    state: str
+    #: ``starting`` / ``rendering`` / ``detecting`` / ``saving`` / ``finished``.
+    phase: str
+    page_range_start: int
+    page_range_end: int
+    total: int
+    #: Logical pages already written to the DB — survives a cancel.
+    pages_saved: int
+    current_page: int | None = None
+    cancel_requested: bool = False
+    started_at: datetime
+    ended_at: datetime | None = None
+    run_id: uuid.UUID | None = None
     log_url: str | None = None
+    #: Where to resume from: the page detection failed on, or the page a cancel
+    #: stopped before.
+    stopped_on_page: int | None = None
+    abort_info: dict | None = None
+    error: str | None = None
+    end_sura: int | None = None
+    end_aya: int | None = None
+
+
+class JobStatusOut(Schema):
+    """Wrapper so "no run on record" is a normal 200, not a 404."""
+
+    job: JobOut | None = None
 
 
 class RunOut(Schema):
@@ -56,11 +84,44 @@ class RunOut(Schema):
     log_url: str | None = None
 
 
-@router.post("/{mushaf_id}/process", response=ProcessOut)
-def process(request: HttpRequest, mushaf_id: uuid.UUID, data: ProcessIn) -> dict:
-    """Process a logical page range and persist Page/Line/Segment rows."""
+@router.post("/{mushaf_id}/process", response={202: JobOut})
+def process(request: HttpRequest, mushaf_id: uuid.UUID, data: ProcessIn) -> tuple[int, dict]:
+    """Start detection over a logical page range; returns at once with the job.
+
+    409 if this mushaf already has a run in flight — one at a time, since two
+    runs would fight over the same Page rows.
+    """
     mushaf = mushaf_service.get_mushaf(mushaf_id)
-    return processing_service.process(mushaf, **data.model_dump())
+    params = data.model_dump()
+    # Busy first, then payload: "a run is already going" is the more useful answer
+    # even when the new request is also malformed. Both must be settled here —
+    # once the job is registered the response has gone and nothing can be rejected.
+    jobs_service.ensure_idle(mushaf.id)
+    processing_service.preflight(mushaf, params["page_range_start"], params["page_range_end"])
+    job = jobs_service.start(mushaf, params)
+    return 202, job.to_dict()
+
+
+@router.get("/{mushaf_id}/process/job", response=JobStatusOut)
+def process_job(request: HttpRequest, mushaf_id: uuid.UUID) -> dict:
+    """The mushaf's current or most recent run — the client's polling endpoint.
+
+    Answers after a page reload too: the job is keyed by mushaf, not by a handle
+    the browser had to keep.
+    """
+    job = jobs_service.latest_for(mushaf_id)
+    return {"job": job.to_dict() if job else None}
+
+
+@router.post("/{mushaf_id}/process/cancel", response=JobOut)
+def cancel_process(request: HttpRequest, mushaf_id: uuid.UUID) -> dict:
+    """Ask the running job to stop; 404 when nothing is running.
+
+    Returns immediately — the run stops at the next page boundary, so poll
+    ``/process/job`` for the settled outcome. Pages already written stay written.
+    """
+    job = jobs_service.request_cancel(mushaf_id)
+    return job.to_dict()
 
 
 @router.get("/{mushaf_id}/runs", response=list[RunOut])

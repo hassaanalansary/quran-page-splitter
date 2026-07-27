@@ -6,9 +6,10 @@ import { baseLanguage } from "@/i18n/config";
 
 import { getMushaf, getStats, listActivity, listMushafs, listTemplates } from "./mushafs";
 import { getPage, listPages } from "./pages";
-import { listRuns } from "./processing";
+import { getProcessJob, listRuns } from "./processing";
 import { listQiraat } from "./qiraat";
 import { DEFAULT_QIRAA, listSuras } from "./suras";
+import { isJobRunning, type ProcessJob } from "./types";
 
 export const queryKeys = {
   mushafs: ["mushafs"] as const,
@@ -16,6 +17,7 @@ export const queryKeys = {
   templates: (id: string) => ["mushaf", id, "templates"] as const,
   processedPages: (id: string) => ["mushaf", id, "processed-pages"] as const,
   runs: (id: string) => ["mushaf", id, "runs"] as const,
+  processJob: (id: string) => ["mushaf", id, "process-job"] as const,
   stats: (id: string) => ["mushaf", id, "stats"] as const,
   activity: (id: string) => ["mushaf", id, "activity"] as const,
   qiraat: (lang: string) => ["qiraat", lang] as const,
@@ -63,6 +65,25 @@ export function usePageSummaries(id: string) {
 
 export function useRuns(id: string) {
   return useQuery({ queryKey: queryKeys.runs(id), queryFn: ({ signal }) => listRuns(id, signal) });
+}
+
+/** The mushaf's processing run, polled while it is working.
+ *
+ * Fetching on mount is what makes a run survive a page reload or a second tab:
+ * the server, not this component, holds the state. Polling stops the moment the
+ * job settles, so an idle Process page makes exactly one request. */
+export function useProcessJob(id: string, intervalMs = 1000) {
+  // The type argument is required, not decoration: `refetchInterval` reads
+  // `query.state.data`, which makes inferring the data type from `queryFn`
+  // circular — without it TanStack resolves `data` to `never`.
+  return useQuery<ProcessJob | null>({
+    queryKey: queryKeys.processJob(id),
+    queryFn: ({ signal }) => getProcessJob(id, signal),
+    refetchInterval: (query) => (isJobRunning(query.state.data) ? intervalMs : false),
+    // A poll is the point — never serve it from cache.
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+  });
 }
 
 export function useStats(id: string) {

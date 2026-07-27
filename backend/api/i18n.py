@@ -59,6 +59,14 @@ MESSAGES: dict[str, dict[str, str]] = {
         "en": "No log for this run.",
         "ar": "لا يوجد سجل لهذا التشغيل.",
     },
+    "process_already_running": {
+        "en": "This mushaf is already being processed. Wait for it to finish, or cancel it first.",
+        "ar": "تجري معالجة هذا المصحف بالفعل. انتظر حتى تنتهي، أو ألغِها أولًا.",
+    },
+    "no_active_process": {
+        "en": "No processing run is in progress for this mushaf.",
+        "ar": "لا توجد عملية معالجة جارية لهذا المصحف.",
+    },
     "log_not_found": {
         "en": "Log file not found.",
         "ar": "ملف السجل غير موجود.",

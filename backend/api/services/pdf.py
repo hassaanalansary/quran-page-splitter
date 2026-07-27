@@ -5,6 +5,8 @@ on demand from the stored PDF (nothing is cached in the database).
 """
 
 import hashlib
+from collections.abc import Iterator
+from contextlib import contextmanager
 
 import fitz  # PyMuPDF
 
@@ -22,13 +24,33 @@ def page_count(data: bytes) -> int:
         return int(doc.page_count)
 
 
-def render_page(pdf_path: str, pdf_index: int, dpi: int = DEFAULT_DPI) -> bytes:
-    """Render one PDF page (1-based physical index) to PNG bytes."""
+@contextmanager
+def open_document(pdf_path: str) -> Iterator[fitz.Document]:
+    """Open a PDF once for a whole batch of renders.
+
+    Opening per page costs a full parse of the document each time, which adds up
+    over a several-hundred-page run — callers that render many pages should hold
+    one handle and feed it to ``render_page_from``.
+    """
+    doc = fitz.open(pdf_path)
+    try:
+        yield doc
+    finally:
+        doc.close()
+
+
+def render_page_from(doc: fitz.Document, pdf_index: int, dpi: int = DEFAULT_DPI) -> bytes:
+    """Render one page (1-based physical index) of an already-open document."""
     zoom = dpi / 72.0  # PDF default resolution is 72 dpi
     matrix = fitz.Matrix(zoom, zoom)
-    with fitz.open(pdf_path) as doc:
-        pixmap = doc.load_page(pdf_index - 1).get_pixmap(matrix=matrix)
-        return bytes(pixmap.tobytes("png"))
+    pixmap = doc.load_page(pdf_index - 1).get_pixmap(matrix=matrix)
+    return bytes(pixmap.tobytes("png"))
+
+
+def render_page(pdf_path: str, pdf_index: int, dpi: int = DEFAULT_DPI) -> bytes:
+    """Render one PDF page (1-based physical index) to PNG bytes."""
+    with open_document(pdf_path) as doc:
+        return render_page_from(doc, pdf_index, dpi)
 
 
 def logical_to_pdf_index(first_quran_pdf_page: int, page_number: int, source_pdf_page: int | None = None) -> int:

@@ -9,10 +9,10 @@ import type { ProcessRequest } from "@/lib/api/types";
 const KEY = "qps.lastProcessRequest";
 
 export type LastRunOutcome = {
-  status: "completed" | "aborted" | "error";
+  status: "completed" | "aborted" | "cancelled" | "error";
   /** Logical pages actually written before the run settled. */
   pages_saved: number;
-  /** Logical page detection stopped on (aborted runs only). */
+  /** Logical page the run stopped on (aborted or cancelled runs). */
   abort_page?: number;
   message?: string;
   ended_at: string;
@@ -23,8 +23,7 @@ export type LastProcessRequest = {
   mushaf_name?: string;
   /** ISO timestamp of when the request was sent. */
   sent_at: string;
-  /** The whole payload the Process step submits, with the range as the user
-   * chose it (the engine is fed in chunks, but this is the requested range). */
+  /** The whole payload the Process step submits. */
   request: ProcessRequest;
   outcome?: LastRunOutcome;
 };
