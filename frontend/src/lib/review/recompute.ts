@@ -163,6 +163,36 @@ export function recompute(store: ReviewStore, suras?: Sura[]): Derived {
   return { pages, end: { sura, aya: Math.max(1, aya - 1) }, totalWarnings };
 }
 
+/** One aya of a page with every rect it occupies — the shape the downstream
+ * app consumes (mirrors `services/export.py::coordinates_json`). */
+export type AyaGroup = {
+  key: string;
+  sura: number;
+  aya: number;
+  rects: Rect[];
+};
+
+/** Group a derived page's segments into ayat, in reading order. An aya that
+ * spans several lines (or segments) collects all of their boxes. */
+export function ayaGroups(page: DerivedPage | null | undefined): AyaGroup[] {
+  if (!page) return [];
+  const ordered: AyaGroup[] = [];
+  const byKey = new Map<string, AyaGroup>();
+  for (const line of page.lines) {
+    for (const segment of line.segments) {
+      const key = `${segment.sura}:${segment.aya}`;
+      let group = byKey.get(key);
+      if (!group) {
+        group = { key, sura: segment.sura, aya: segment.aya, rects: [] };
+        byKey.set(key, group);
+        ordered.push(group);
+      }
+      group.rects.push(segment.bbox);
+    }
+  }
+  return ordered;
+}
+
 /** API payload for one page (bulk save). Numbering comes from `derived`. */
 export function toApiPage(page: EditPage, derived: DerivedPage) {
   return {

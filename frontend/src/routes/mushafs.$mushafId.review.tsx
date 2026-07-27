@@ -1,12 +1,14 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, useBlocker, useNavigate, useParams } from "@tanstack/react-router";
-import { ChevronDown, ChevronUp, Plus, Trash, Trash2 } from "lucide-react";
+import { Play, Plus, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
 import { Aside, Field, Hint, StatusLine } from "@/components/app/Panel";
+import { AyaPreviewDialog } from "@/components/app/AyaPreviewDialog";
 import { CanvasHelp } from "@/components/app/CanvasHelp";
+import { LineNavigator } from "@/components/app/LineNavigator";
 import { TourOverlay } from "@/components/app/tour/TourOverlay";
 import { useStepTour, type TourStep } from "@/components/app/tour/useStepTour";
 import { ReviewEditCanvas } from "@/components/canvas/ReviewEditCanvas";
@@ -35,6 +37,7 @@ import {
   type ReviewStore,
 } from "@/lib/review/model";
 import {
+  ayaGroups,
   pageSignature,
   recompute,
   suraSpanPages,
@@ -51,14 +54,6 @@ const HISTORY_LIMIT = 100;
 const COALESCE_MS = 500;
 
 const LINE_TYPE_VALUES: EditLineType[] = ["text", "sura_header", "besmella"];
-
-/** Per-type accent, matching the line-box colours on the canvas so the panel
- * reads as the same object (orange = text, navy = sura header, green = besmella). */
-const TYPE_COLOR: Record<EditLineType, string> = {
-  text: "var(--orange)",
-  sura_header: "var(--navy)",
-  besmella: "var(--success)",
-};
 
 function ReviewPage() {
   const { mushafId } = useParams({ from: "/mushafs/$mushafId/review" });
@@ -90,6 +85,7 @@ function ReviewPage() {
   const [selectedCut, setSelectedCut] = useState<{ uid: string; index: number } | null>(null);
   const [saving, setSaving] = useState(false);
   const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
   // Bumped when the saved baseline changes without the store changing (post-save).
   const [baselineVersion, setBaselineVersion] = useState(0);
 
@@ -176,6 +172,10 @@ function ReviewPage() {
   const currentDerived = derived?.pages.find((p) => p.page_number === page) ?? null;
   const selectedEdit = currentEdit?.lines.find((l) => l.uid === selectedUid) ?? null;
   const selectedDerived = currentDerived?.lines.find((l) => l.uid === selectedUid) ?? null;
+  const summarizeLine = useLineSummary();
+  // The page's ayat as the downstream app sees them — one entry per aya, with
+  // every rect it spans. Feeds the preview player.
+  const previewAyat = useMemo(() => ayaGroups(currentDerived), [currentDerived]);
   const suraName = (n: number) =>
     suras?.find((s) => s.number === n)?.transliteration ?? t("review.suraFallback", { n });
 
@@ -585,12 +585,30 @@ function ReviewPage() {
               </div>
             )}
 
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={() => setPreviewOpen(true)}
+              disabled={previewAyat.length === 0}
+              title={t("review.previewHint")}
+            >
+              <Play size={13} /> {t("review.previewButton", { count: previewAyat.length })}
+            </Button>
+
             <div data-tour="review-lines" className="flex flex-col gap-3">
               <LineNavigator
-                lines={currentDerived?.lines ?? []}
-                selectedUid={selectedUid}
+                title={t("review.linesTitle")}
+                lines={(currentDerived?.lines ?? []).map((l) => ({
+                  key: l.uid,
+                  line_number: l.line_number,
+                  type: l.type,
+                  summary: summarizeLine(l),
+                }))}
+                selectedKey={selectedUid}
                 onSelect={selectLine}
                 onAdd={() => addLineAfter(selectedUid, "text")}
+                addLabel={t("review.addLine")}
+                emptyText={t("review.noLines")}
               />
 
               {selectedEdit && selectedDerived ? (
@@ -623,6 +641,16 @@ function ReviewPage() {
         )}
       </Aside>
 
+      <AyaPreviewDialog
+        open={previewOpen}
+        onOpenChange={setPreviewOpen}
+        imageUrl={pageImageUrl(mushafId, page)}
+        natural={natural}
+        ayat={previewAyat}
+        title={t("review.previewTitle", { page })}
+        suraName={suraName}
+      />
+
       <TourOverlay tour={tour} />
     </div>
   );
@@ -641,107 +669,6 @@ function useLineSummary() {
     const to = l.segments[l.segments.length - 1].aya;
     return from === to ? t("review.lineAya", { n: from }) : t("review.lineAyaRange", { from, to });
   };
-}
-
-/** Compact line stepper: prev/next through the page's lines with the current
- * one summarised, plus a single add-line button (type is set in the editor). */
-function LineNavigator({
-  lines,
-  selectedUid,
-  onSelect,
-  onAdd,
-}: {
-  lines: DerivedLine[];
-  selectedUid: string | null;
-  onSelect: (uid: string) => void;
-  onAdd: () => void;
-}) {
-  const { t } = useTranslation();
-  const summarize = useLineSummary();
-  const total = lines.length;
-  const idx = lines.findIndex((l) => l.uid === selectedUid);
-  // Before the auto-select effect runs, fall back to the first line for display.
-  const safeIdx = idx >= 0 ? idx : 0;
-  const current: DerivedLine | undefined = lines[safeIdx];
-  const color = current ? TYPE_COLOR[current.type] : "var(--orange)";
-
-  return (
-    <div className="overflow-hidden rounded-md border border-border bg-white">
-      <div className="flex items-center justify-between border-b border-border bg-orange-tint px-3 py-2">
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-orange">
-          {t("review.linesTitle")}
-        </span>
-        <button
-          type="button"
-          onClick={onAdd}
-          className="flex cursor-pointer items-center gap-1 rounded-sm border-[1.5px] border-orange bg-white px-2 py-[3px] text-[11px] font-semibold text-orange hover:bg-orange hover:text-white"
-        >
-          <Plus size={12} /> {t("review.addLine")}
-        </button>
-      </div>
-
-      {total === 0 || !current ? (
-        <p className="px-3 py-3 text-[12px] text-text-muted">{t("review.noLines")}</p>
-      ) : (
-        <div className="flex items-stretch">
-          <NavArrow
-            dir="up"
-            title={t("review.prevLine")}
-            disabled={safeIdx <= 0}
-            onClick={() => onSelect(lines[safeIdx - 1].uid)}
-          />
-          <button
-            type="button"
-            onClick={() => onSelect(current.uid)}
-            className="flex flex-1 flex-col gap-1 border-x border-border px-3 py-2 text-start transition-colors cursor-pointer"
-            onMouseEnter={(e) =>
-              (e.currentTarget.style.background = `color-mix(in oklab, ${color} 8%, transparent)`)
-            }
-            onMouseLeave={(e) => (e.currentTarget.style.background = "")}
-          >
-            <span className="flex items-center justify-between w-full gap-2">
-              <span className="font-mono text-[12px] font-semibold" style={{ color }}>
-                {t("review.linePosition", { n: current.line_number, total })}
-              </span>
-              <TypeChip type={current.type} />
-            </span>
-            <span className="truncate text-[11.5px] text-text-secondary">{summarize(current)}</span>
-          </button>
-          <NavArrow
-            dir="down"
-            title={t("review.nextLine")}
-            disabled={safeIdx >= total - 1}
-            onClick={() => onSelect(lines[safeIdx + 1].uid)}
-          />
-        </div>
-      )}
-    </div>
-  );
-}
-
-function NavArrow({
-  dir,
-  title,
-  disabled,
-  onClick,
-}: {
-  dir: "up" | "down";
-  title: string;
-  disabled: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      title={title}
-      aria-label={title}
-      disabled={disabled}
-      onClick={onClick}
-      className="flex w-10 flex-none cursor-pointer items-center justify-center transition-colors bg-bg-surface text-navy hover:bg-transparent disabled:cursor-not-allowed disabled:text-text-muted disabled:opacity-40 disabled:hover:bg-transparent"
-    >
-      {dir === "up" ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-    </button>
-  );
 }
 
 function SelectedLineEditor({
@@ -917,17 +844,5 @@ function IconX({
     >
       <Trash2 size={14} />
     </button>
-  );
-}
-
-function TypeChip({ type }: { type: EditLineType }) {
-  const { t } = useTranslation();
-  return (
-    <span
-      className="rounded-pill px-[6px] py-[1px] text-[9.5px] font-semibold uppercase tracking-wider text-white"
-      style={{ background: TYPE_COLOR[type] }}
-    >
-      {t(`review.chip_${type}`)}
-    </span>
   );
 }
