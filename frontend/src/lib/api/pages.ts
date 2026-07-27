@@ -1,5 +1,5 @@
 // Per-page review, finalize, and line-PNG export.
-import { apiGet, apiJson } from "./http";
+import { API_BASE, apiGet, apiJson } from "./http";
 import type {
   BulkSaveInput,
   ExportResult,
@@ -34,6 +34,13 @@ export function finalizePage(
 
 export function exportLines(id: string, pageNumber: number): Promise<ExportResult> {
   return apiJson<ExportResult>("POST", `/api/mushafs/${id}/pages/${pageNumber}/export-lines`, {});
+}
+
+/** Download URL for the exported line PNGs as a zip — one page, or all of them.
+ * Entries are `page-0007/line-03.png`. */
+export function linesZipUrl(id: string, pageNumber?: number): string {
+  const query = pageNumber != null ? `?page=${pageNumber}` : "";
+  return `${API_BASE}/api/mushafs/${id}/lines.zip${query}`;
 }
 
 export function getReviewData(id: string, signal?: AbortSignal): Promise<ReviewData> {

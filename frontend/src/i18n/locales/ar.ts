@@ -605,6 +605,7 @@ export const ar: typeof en = {
     kv_perAya: "لكل آية",
     kv_rect: "المستطيل",
     ex_downloadJson: "تنزيل JSON ↓",
+    ex_downloadZip: "تنزيل كل الصور ↓ zip",
     ex_onlyReviewed: "تمت مراجعة {{reviewed}} من {{total}} صفحة فقط",
     ex_reviewWarn:
       "يُفضَّل تشغيل تصدير صور الأسطر النهائي بعد اكتمال المراجعة، لتُدمَج مسحات المحو وتصحيحات المربعات.",

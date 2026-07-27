@@ -608,6 +608,7 @@ export const en = {
     kv_perAya: "per aya",
     kv_rect: "rect",
     ex_downloadJson: "Download JSON ↓",
+    ex_downloadZip: "Download all PNGs ↓ zip",
     ex_onlyReviewed: "Only {{reviewed}} of {{total}} pages reviewed",
     ex_reviewWarn:
       "Final line-PNG export is best run after review is complete, so erase strokes and box fixes are baked in.",

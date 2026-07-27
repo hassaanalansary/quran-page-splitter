@@ -8,6 +8,7 @@ import {
   ApiError,
   coordinatesUrl,
   exportLines,
+  linesZipUrl,
   queryKeys,
   type MushafDetail,
   type MushafStats,
@@ -118,6 +119,16 @@ export function ExportTab({
               {t("details.ex_reviewedBtn", { count: reviewedPages.length })}
             </button>
           </div>
+          {/* Pull the PNGs out of media/ in one go, saved wherever the browser asks. */}
+          {exported > 0 && (
+            <a
+              href={linesZipUrl(mushaf.id)}
+              download
+              className="mt-2 block h-[34px] rounded-lg border border-border-strong bg-white text-center text-[12px] font-semibold leading-[32px] text-text-primary transition-colors hover:bg-bg-surface"
+            >
+              {t("details.ex_downloadZip")}
+            </a>
+          )}
         </div>
 
         {/* Aya coordinates · JSON */}

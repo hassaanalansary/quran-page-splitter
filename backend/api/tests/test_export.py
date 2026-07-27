@@ -1,5 +1,7 @@
 """Tests for export.export_lines (transparent line PNGs) + the coordinates document."""
 
+import zipfile
+
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from ninja.errors import HttpError
@@ -62,6 +64,32 @@ class ExportLinesTests(MediaTestCase):
     def test_missing_page_rejected(self):
         with self.assertRaises(HttpError):
             export.export_lines(mushaf_id=self.mushaf.id, page_number=5)
+
+    def test_exported_png_url_on_page_data(self):
+        export.export_lines(mushaf_id=self.mushaf.id, page_number=1)
+        data = coordinates.page_to_dict(self.page)
+        self.assertTrue(data["lines"][0]["line_png"].startswith("/media/lines/"))
+
+    def test_zip_bundles_exported_lines(self):
+        export.export_lines(mushaf_id=self.mushaf.id, page_number=1)
+        filename, buffer = export.lines_zip(mushaf_id=self.mushaf.id)
+        self.assertEqual(filename, "Export-lines.zip")
+        with zipfile.ZipFile(buffer) as archive:
+            self.assertEqual(archive.namelist(), ["page-0001/line-01.png"])
+            self.assertTrue(archive.read("page-0001/line-01.png").startswith(b"\x89PNG"))
+        buffer.close()
+
+    def test_zip_of_one_page_skips_the_others(self):
+        export.export_lines(mushaf_id=self.mushaf.id, page_number=1)
+        filename, buffer = export.lines_zip(mushaf_id=self.mushaf.id, page_number=1)
+        self.assertEqual(filename, "Export-p0001-lines.zip")
+        buffer.close()
+        with self.assertRaises(HttpError):
+            export.lines_zip(mushaf_id=self.mushaf.id, page_number=2)
+
+    def test_zip_without_any_export_rejected(self):
+        with self.assertRaises(HttpError):
+            export.lines_zip(mushaf_id=self.mushaf.id)
 
 
 class CoordinatesJsonTests(TestCase):

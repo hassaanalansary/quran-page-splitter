@@ -33,8 +33,10 @@ class LineSchema(Schema):
     bbox_h: int
     segments: list[SegmentSchema] = Field(default_factory=list)
     # Cut-layer state (output-only; ignored on the review-save path). Populated
-    # by ``page_to_dict`` so the Finalize editor can round-trip saved erases.
+    # by ``page_to_dict`` so the Finalize editor can round-trip saved erases,
+    # and knows which lines already have an exported PNG.
     erase_strokes: list[EraseStrokeSchema] = Field(default_factory=list)
+    line_png: str | None = None
 
 
 class PageDataOut(Schema):

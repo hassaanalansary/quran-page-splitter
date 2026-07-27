@@ -6,6 +6,7 @@ Three responsibilities:
   * ``renumber_from``        — recompute sura/aya forward across consecutive pages
 """
 
+from django.conf import settings
 from django.db.models import Prefetch, QuerySet
 
 from api.models import Line, LineTypeChoices, Mushaf, Page, ProcessingRun, Segment
@@ -150,7 +151,16 @@ def _line_to_dict(line: Line) -> dict:
             {"brush_size": stroke.brush_size, "points": stroke.points}
             for stroke in line.erase_strokes.all()
         ],
+        "line_png": _line_png_url(line),
     }
+
+
+def _line_png_url(line: Line) -> str | None:
+    """Leading-slash media URL of the exported PNG, or None if never exported."""
+    name = line.line_png.name
+    if not name:
+        return None
+    return "/" + (settings.MEDIA_URL + name).lstrip("/")
 
 
 # ---------------------------------------------------------------------------

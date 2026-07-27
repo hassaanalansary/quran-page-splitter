@@ -111,6 +111,8 @@ export type Line = {
   segments: Segment[];
   /** Cut-layer erase strokes (from GET pages/{n}); absent on the review-save path. */
   erase_strokes?: EraseStroke[];
+  /** Media URL of the exported PNG, or null when this line was never exported. */
+  line_png?: string | null;
 };
 
 export type PageData = {

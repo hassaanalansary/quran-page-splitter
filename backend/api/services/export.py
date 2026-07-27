@@ -3,10 +3,16 @@
 Each line is cropped from the freshly rendered page, its white background is
 made transparent, eraser strokes are punched out of the alpha channel, and the
 PNG is saved to ``media/lines/`` with its path recorded on the line.
+
+``lines_zip`` bundles those stored PNGs into a downloadable archive — the way
+the images leave the tool and land wherever the user wants them.
 """
 
 import io
+import shutil
 import uuid
+import zipfile
+from tempfile import SpooledTemporaryFile
 
 from django.core.files.base import ContentFile
 from django.db.models import Prefetch
@@ -19,6 +25,9 @@ from api.services import activity, coordinates, pdf
 from api.services import mushaf as mushaf_service
 from core.cut_review import _apply_eraser_stroke
 from core.image_utils import make_transparent
+
+#: Keep small archives in RAM; larger ones spill to a temp file on disk.
+_ZIP_SPOOL_BYTES = 16 * 1024 * 1024
 
 
 def export_lines(*, mushaf_id: uuid.UUID, page_number: int) -> dict:
@@ -44,6 +53,49 @@ def export_lines(*, mushaf_id: uuid.UUID, page_number: int) -> dict:
 
     activity.emit(mushaf, ActivityTypeChoices.LINES_EXPORTED, {"page_number": page_number, "exported": len(exported)})
     return {"page_number": page_number, "exported": len(exported), "lines": exported}
+
+
+def lines_zip(*, mushaf_id: uuid.UUID, page_number: int | None = None) -> tuple[str, SpooledTemporaryFile]:
+    """Bundle the exported line PNGs into a zip, ready to stream as a download.
+
+    One whole mushaf or a single logical page. Entries are laid out as
+    ``page-0007/line-03.png`` so the archive stays sorted and page-grouped
+    wherever it is unpacked. Only lines that were actually exported are
+    included — nothing is rendered here.
+    """
+    mushaf = mushaf_service.get_mushaf(mushaf_id)
+    lines = (
+        Line.objects.filter(page__mushaf=mushaf)
+        .exclude(line_png="")
+        .select_related("page")
+        .order_by("page__page_number", "line_number")
+    )
+    if page_number is not None:
+        lines = lines.filter(page__page_number=page_number)
+
+    # Deliberately not a context manager: the caller streams this file out as the
+    # response body and closes it when the download finishes.
+    buffer: SpooledTemporaryFile = SpooledTemporaryFile(max_size=_ZIP_SPOOL_BYTES)  # noqa: SIM115
+    written = 0
+    # Already-compressed PNGs: storing them is much faster and no bigger.
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_STORED) as archive:
+        for line in lines:
+            name = line.line_png.name
+            if not name or not line.line_png.storage.exists(name):
+                continue  # media file went missing — skip rather than fail the download
+            arcname = f"page-{line.page.page_number:04d}/line-{line.line_number:02d}.png"
+            with line.line_png.open("rb") as source, archive.open(arcname, "w") as target:
+                shutil.copyfileobj(source, target)
+            written += 1
+
+    if not written:
+        buffer.close()
+        raise HttpError(404, i18n.t("lines_no_export"))
+
+    buffer.seek(0)
+    stem = _safe_filename(mushaf.name)
+    suffix = f"-p{page_number:04d}" if page_number is not None else ""
+    return f"{stem}{suffix}-lines.zip", buffer
 
 
 def coordinates_json(mushaf_id: uuid.UUID) -> tuple[str, dict]:

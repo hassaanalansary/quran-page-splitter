@@ -51,6 +51,10 @@ MESSAGES: dict[str, dict[str, str]] = {
         "en": "Page has no data to export.",
         "ar": "لا تحتوي الصفحة على بيانات للتصدير.",
     },
+    "lines_no_export": {
+        "en": "No exported line images yet — run the line export first.",
+        "ar": "لا توجد صور أسطر مُصدَّرة بعد — نفّذ تصدير الأسطر أولًا.",
+    },
     "templates_required": {
         "en": "Both sura_header and aya_separator templates are required before processing.",
         "ar": "يلزم قالبا عنوان السورة وفاصل الآية قبل المعالجة.",
