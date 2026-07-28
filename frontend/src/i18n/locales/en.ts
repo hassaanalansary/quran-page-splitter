@@ -673,10 +673,13 @@ export const en = {
     tool_select: "Select",
     tool_erase: "Erase",
     tool_hand: "Hand",
-    tool_selectTitle: "Select also resizes (drag a line edge). Hold Shift to erase, Space to pan.",
+    tool_selectTip: "Select — click a line, drag its top or bottom edge to trim it (V)",
+    tool_eraseTip: "Erase — paint out bleed on the selected line (E, or hold Shift)",
+    tool_handTip: "Hand — pan the canvas (H, or hold Space)",
     bg_white: "White",
     bg_dark: "Dark",
     bg_grid: "Grid",
+    bgTitle: "Backdrop the cuts are judged against (dark shows the ink in white)",
     undoTitle: "Undo (Ctrl+Z)",
     redoTitle: "Redo (Ctrl+Shift+Z)",
     resetZoom: "Reset zoom & pan",
@@ -698,8 +701,6 @@ export const en = {
     title: "How this works",
     replayTour: "Replay tour",
     about: "Do these in order — the checklist ticks off as you go.",
-    aboutStatic:
-      "What this step involves, in order. It's a reference — nothing is ticked off here.",
     setup: {
       s1: "Flip through the PDF and mark the first page that holds Quran text.",
       s2: "Flip to the last Quran page and mark it — front/back matter is excluded.",
@@ -838,6 +839,9 @@ export const en = {
       t1_title: "One line at a time",
       t1_body:
         "Every line is cut from the page on its own and stacked here, exactly as it exports — near-white made transparent. Hover to light one up, then drag its top or bottom edge to trim it.",
+      tools_title: "Canvas tools",
+      tools_body:
+        "Select trims a line, Erase (or hold Shift) paints bleed away, Hand (or hold Space) pans. Next to them: the backdrop to judge the cut against, undo/redo, and the zoom presets — Ctrl+wheel zooms around the cursor.",
       t2_title: "Tools",
       t2_body:
         "Pad every line at once, set the eraser brush and undo strokes, or fine-tune the selected line's Y and H.",

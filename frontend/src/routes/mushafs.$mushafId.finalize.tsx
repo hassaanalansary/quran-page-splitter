@@ -249,6 +249,11 @@ function FinalizePage() {
       body: t("tour.finalize.t1_body"),
     },
     {
+      target: "canvas-toolbar",
+      title: t("tour.finalize.tools_title"),
+      body: t("tour.finalize.tools_body"),
+    },
+    {
       target: "finalize-tools",
       title: t("tour.finalize.t2_title"),
       body: t("tour.finalize.t2_body"),
@@ -382,7 +387,7 @@ function FinalizePage() {
         />
         <CanvasHelp
           guideItems={guideItems}
-          guideAbout={t("guide.aboutStatic")}
+          guideAbout={""}
           coachText={t("coach.finalize")}
           onReplayTour={tour.start}
         />

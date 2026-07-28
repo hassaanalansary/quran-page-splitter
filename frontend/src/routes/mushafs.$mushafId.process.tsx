@@ -470,7 +470,7 @@ function ProcessPage() {
         />
         <CanvasHelp
           guideItems={guideItems}
-          guideAbout={t("guide.aboutStatic")}
+          guideAbout={""}
           coachText={t("coach.process")}
           onReplayTour={tour.start}
         />

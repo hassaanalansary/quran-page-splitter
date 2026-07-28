@@ -531,7 +531,7 @@ function ReviewPage() {
         />
         <CanvasHelp
           guideItems={guideItems}
-          guideAbout={t("guide.aboutStatic")}
+          guideAbout={""}
           coachText={t("coach.review")}
           onReplayTour={tour.start}
         />

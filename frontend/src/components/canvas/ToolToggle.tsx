@@ -33,14 +33,16 @@ export function ToolToggle({ value, onChange }: Props) {
   );
 }
 
-function ToolButton({
+/** The square icon button every canvas toolbar is built from. Exported so other
+ * canvases (Finalize's eraser, undo/redo) stay visually identical. */
+export function ToolButton({
   active,
   onClick,
   title,
   children,
   ...rest
 }: {
-  active: boolean;
+  active?: boolean;
   onClick: () => void;
   title: string;
   children: React.ReactNode;
@@ -53,6 +55,7 @@ function ToolButton({
       {...rest}
       className={[
         "flex h-8 w-8 cursor-pointer items-center justify-center rounded-sm transition-colors",
+        "disabled:cursor-not-allowed disabled:opacity-30",
         active
           ? "bg-navy text-white"
           : "bg-transparent text-text-secondary hover:bg-bg-surface hover:text-text-primary",
@@ -63,7 +66,7 @@ function ToolButton({
   );
 }
 
-function CursorIcon() {
+export function CursorIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
       <path
@@ -77,7 +80,7 @@ function CursorIcon() {
   );
 }
 
-function HandIcon() {
+export function HandIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
       <path

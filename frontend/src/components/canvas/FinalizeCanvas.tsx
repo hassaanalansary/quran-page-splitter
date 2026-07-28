@@ -1,9 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { Eraser, Redo2, Undo2 } from "lucide-react";
+
 import { ChevronNav } from "@/components/canvas/ChevronNav";
 import { PageJump } from "@/components/canvas/PageJump";
 import { PageRail } from "@/components/canvas/PageRail";
+import { CursorIcon, HandIcon, ToolButton } from "@/components/canvas/ToolToggle";
+import { ZoomControl, type Zoom } from "@/components/canvas/ZoomControl";
 import type { EraseStroke, LineType, Rect } from "@/lib/api/types";
 
 export type FinalizeTool = "select" | "erase" | "hand";
@@ -48,6 +52,8 @@ type Props = {
 
 const PAD = 20;
 const GAP = 48; // screen px between stacked line crops
+/** `Zoom` value for "none of the presets" — set once the wheel takes over. */
+const CUSTOM_ZOOM: Zoom = 0;
 const EDGE_TOL = 8; // screen px for grabbing a line's top/bottom edge
 const ORANGE = "rgb(255,141,106)"; // canvas can't resolve the --orange CSS var
 
@@ -98,7 +104,11 @@ export function FinalizeCanvas({
 
   const [tool, setTool] = useState<FinalizeTool>("select");
   const [bg, setBg] = useState<FinalizeBg>("dark");
+  // `zoom` is a multiplier over the fit-to-column scale; `zoomPreset` is only
+  // which button of the shared ZoomControl is lit (those are natural-pixel
+  // scales, like every other page).
   const [zoom, setZoom] = useState(1);
+  const [zoomPreset, setZoomPreset] = useState<Zoom>(-1);
   // Mirrors `zoom` for the wheel handler, which is bound once and must read the
   // live value without nesting a setState inside another updater.
   const zoomRef = useRef(1);
@@ -183,6 +193,7 @@ export function FinalizeCanvas({
   const resetView = useCallback(() => {
     zoomRef.current = 1;
     setZoom(1);
+    setZoomPreset(-1);
     setPan({ x: 0, y: 0 });
   }, []);
 
@@ -195,11 +206,18 @@ export function FinalizeCanvas({
       return !!el && (/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) || el.isContentEditable);
     };
     const down = (e: KeyboardEvent) => {
-      if (e.code === "Space" && !typing(e.target)) {
+      if (typing(e.target)) return;
+      if (e.code === "Space") {
         e.preventDefault();
         if (!e.repeat) setSpaceHeld(true);
       }
-      if (e.key === "Shift" && !e.ctrlKey && !e.metaKey && !typing(e.target)) setShiftHeld(true);
+      if (e.key === "Shift" && !e.ctrlKey && !e.metaKey) setShiftHeld(true);
+      // V / E / H pick a tool for good, like the other canvases.
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const k = e.key.toLowerCase();
+      if (k === "v") setTool("select");
+      else if (k === "e") setTool("erase");
+      else if (k === "h") setTool("hand");
     };
     const up = (e: KeyboardEvent) => {
       if (e.code === "Space") setSpaceHeld(false);
@@ -398,9 +416,10 @@ export function FinalizeCanvas({
    * so the anchor is measured from the canvas centre / top pad, and the GAP
    * run — fixed screen spacing, not scaled — is taken out first. */
   const zoomAt = useCallback(
-    (next: number, cx: number, cy: number) => {
+    (to: number, cx: number, cy: number) => {
       const c = canvasRef.current;
       const prev = zoomRef.current;
+      const next = Math.max(0.1, Math.min(16, to));
       if (!c || next === prev) return;
       const ratio = next / prev;
       const ax = cx - c.clientWidth / 2;
@@ -422,6 +441,7 @@ export function FinalizeCanvas({
         const rect = c.getBoundingClientRect();
         const raw = Math.max(0.1, Math.min(16, zoomRef.current * Math.exp(-e.deltaY * 0.0015)));
         zoomAt(Number(raw.toFixed(3)), e.clientX - rect.left, e.clientY - rect.top);
+        setZoomPreset(CUSTOM_ZOOM);
       } else {
         setPan((p) => ({ x: p.x - e.deltaX, y: p.y - e.deltaY }));
       }
@@ -429,6 +449,30 @@ export function FinalizeCanvas({
     c.addEventListener("wheel", onWheel, { passive: false });
     return () => c.removeEventListener("wheel", onWheel);
   }, [zoomAt]);
+
+  /** Scale at which the column exactly fits the canvas — one unit of `zoom`. */
+  const fitScale = useCallback(() => {
+    const c = canvasRef.current;
+    const colW = lines[0]?.bbox.w || 1;
+    if (!c) return 1;
+    return Math.max(0.05, (c.clientWidth - PAD * 2) / colW);
+  }, [lines]);
+
+  /** The shared preset control speaks in natural-pixel scales; translate one
+   * into this canvas' fit-relative zoom, anchored on the middle of the view. */
+  const applyZoomPreset = useCallback(
+    (z: Zoom) => {
+      setZoomPreset(z);
+      if (z === -1) {
+        resetView();
+        return;
+      }
+      const c = canvasRef.current;
+      if (!c) return;
+      zoomAt(Number((z / fitScale()).toFixed(3)), c.clientWidth / 2, c.clientHeight / 2);
+    },
+    [fitScale, resetView, zoomAt],
+  );
 
   // ── pointer helpers ────────────────────────────────────────────────────────
   const lineAt = useCallback((cx: number, cy: number): LineRect | null => {
@@ -567,47 +611,62 @@ export function FinalizeCanvas({
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      <div className="flex h-11 flex-shrink-0 items-center gap-3 border-b border-border bg-white px-3">
-        <PageJump page={page} pageCount={pageCount} onPageChange={onPageChange} label={label} />
-        <Segmented<FinalizeTool>
-          value={effectiveTool}
-          onChange={setTool}
-          options={[
-            { v: "select", label: t("canvas.tool_select") },
-            { v: "erase", label: t("canvas.tool_erase") },
-            { v: "hand", label: t("canvas.tool_hand") },
-          ]}
-          title={t("canvas.tool_selectTitle")}
-        />
+      {/* Same shape as every other canvas toolbar: icon tools on the start side,
+          presets on the end, page navigation floating over the page itself. */}
+      <div
+        data-tour="canvas-toolbar"
+        className="flex h-9 flex-shrink-0 items-center gap-2 border-b border-border bg-white px-3"
+      >
+        <div className="flex items-center gap-1">
+          <ToolButton
+            active={effectiveTool === "select"}
+            onClick={() => setTool("select")}
+            title={t("canvas.tool_selectTip")}
+            aria-label={t("canvas.tool_select")}
+          >
+            <CursorIcon />
+          </ToolButton>
+          <ToolButton
+            active={effectiveTool === "erase"}
+            onClick={() => setTool("erase")}
+            title={t("canvas.tool_eraseTip")}
+            aria-label={t("canvas.tool_erase")}
+          >
+            <Eraser size={16} />
+          </ToolButton>
+          <ToolButton
+            active={effectiveTool === "hand"}
+            onClick={() => setTool("hand")}
+            title={t("canvas.tool_handTip")}
+            aria-label={t("canvas.tool_hand")}
+          >
+            <HandIcon />
+          </ToolButton>
+        </div>
+
+        <div className="mx-1 h-5 w-px bg-border" />
+
         <Segmented<FinalizeBg>
           value={bg}
           onChange={setBg}
+          title={t("canvas.bgTitle")}
           options={[
             { v: "white", label: t("canvas.bg_white") },
             { v: "dark", label: t("canvas.bg_dark") },
             { v: "checker", label: t("canvas.bg_grid") },
           ]}
         />
+
         <div className="ms-auto flex items-center gap-2">
-          <div className="flex items-center overflow-hidden rounded-sm border border-border-strong">
-            <ToolbarBtn onClick={onUndo} disabled={!canUndo} title={t("canvas.undoTitle")}>
-              ↶
-            </ToolbarBtn>
-            <ToolbarBtn onClick={onRedo} disabled={!canRedo} title={t("canvas.redoTitle")}>
-              ↷
-            </ToolbarBtn>
+          <div className="flex items-center gap-1">
+            <ToolButton onClick={onUndo} disabled={!canUndo} title={t("canvas.undoTitle")}>
+              <Undo2 size={16} />
+            </ToolButton>
+            <ToolButton onClick={onRedo} disabled={!canRedo} title={t("canvas.redoTitle")}>
+              <Redo2 size={16} />
+            </ToolButton>
           </div>
-          <div className="flex items-center gap-1 rounded-sm border border-border-strong bg-white px-2 py-[3px] font-mono text-[11px] text-text-muted">
-            <span>{Math.round(zoom * 100)}%</span>
-            <button
-              type="button"
-              onClick={resetView}
-              className="ms-1 cursor-pointer text-navy hover:underline"
-              title={t("canvas.resetZoom")}
-            >
-              {t("canvas.fit")}
-            </button>
-          </div>
+          <ZoomControl value={zoomPreset} onChange={applyZoomPreset} />
         </div>
       </div>
 
@@ -628,6 +687,9 @@ export function FinalizeCanvas({
           className="h-full w-full"
           style={{ display: "block", cursor, touchAction: "none" }}
         />
+        <div className="absolute bottom-3 left-1/2 z-10 -translate-x-1/2 rounded-pill border border-border bg-white/90 px-3 py-1.5 shadow-[var(--shadow-sm)] backdrop-blur">
+          <PageJump page={page} pageCount={pageCount} onPageChange={onPageChange} label={label} />
+        </div>
       </div>
 
       <PageRail
@@ -756,30 +818,7 @@ function paintBackground(ctx: CanvasRenderingContext2D, w: number, h: number, bg
   }
 }
 
-function ToolbarBtn({
-  onClick,
-  disabled,
-  title,
-  children,
-}: {
-  onClick: () => void;
-  disabled?: boolean;
-  title: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      title={title}
-      className="h-8 w-8 cursor-pointer text-[15px] text-text-secondary transition-colors hover:bg-bg-surface hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-30"
-    >
-      {children}
-    </button>
-  );
-}
-
+/** Preset switch built like {@link ZoomControl}, so the two sit side by side. */
 function Segmented<T extends string>({
   value,
   onChange,
@@ -792,16 +831,20 @@ function Segmented<T extends string>({
   title?: string;
 }) {
   return (
-    <div title={title} className="flex overflow-hidden rounded-sm border border-border-strong">
-      {options.map((o) => (
+    <div
+      title={title}
+      className="flex h-[30px] overflow-hidden rounded-sm border-[1.5px] border-border-strong"
+    >
+      {options.map((o, i) => (
         <button
           key={o.v}
           type="button"
           onClick={() => onChange(o.v)}
           className={[
-            "h-8 cursor-pointer px-2.5 text-[11px] font-semibold transition-colors",
+            "px-[9px] text-[11.5px] font-medium transition-colors cursor-pointer",
+            i < options.length - 1 ? "border-e border-border" : "",
             value === o.v
-              ? "bg-navy text-white"
+              ? "bg-bg-muted text-text-primary"
               : "bg-white text-text-secondary hover:bg-bg-surface",
           ].join(" ")}
         >
