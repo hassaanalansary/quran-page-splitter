@@ -262,7 +262,12 @@ def update_mushaf(mushaf_id: uuid.UUID, fields: dict) -> dict:
 
 def delete_mushaf(mushaf_id: uuid.UUID) -> None:
     """Delete a mushaf and (via cascade) all its pages/lines/segments/templates."""
-    get_mushaf(mushaf_id).delete()
+    mushaf = get_mushaf(mushaf_id)
+    if mushaf.pdf_file:
+        mushaf.pdf_file.delete(save=False)
+    if mushaf.thumbnail:
+        mushaf.thumbnail.delete(save=False)
+    mushaf.delete()
 
 
 def _serialize_template(template: Template) -> dict:
