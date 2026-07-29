@@ -9,9 +9,12 @@ import numpy as np
 from PIL import Image
 
 from core.template_matching import (
+    MAX_VERIFICATIONS,
     IgnoreRect,
+    cpu_score_at,
     make_template_spec,
     match_template,
+    needs_cpu_verification,
 )
 
 logger = logging.getLogger(__name__)
@@ -90,18 +93,41 @@ class SuraHeaderLocator:
         template_h = spec.image.shape[0]
         min_gap = max(1, round(template_h * 1.75))
 
+        # A fabricated score outranks every genuine band, so it would take one
+        # of the ``max_sura_headers`` slots and evict a real header. Verify
+        # before a candidate is allowed to consume a slot or suppress its
+        # neighbours; a rejected one leaves no trace on the selection.
+        verify = needs_cpu_verification(spec)
+        budget = MAX_VERIFICATIONS
+
         selected: list[SuraHeaderSpec] = []
         for _x, y in ordered:
             score = float(match[y, _x])
-            sura_header = SuraHeaderSpec(
-                top=int(y),
-                bottom=int(y + template_h),
-                score=score,
-                slot_count=spec.slot_count,
-            )
-            if any(abs(sura_header.top - existing.top) < min_gap for existing in selected):
+            if any(abs(int(y) - existing.top) < min_gap for existing in selected):
                 continue
-            selected.append(sura_header)
+            if verify:
+                if budget <= 0:
+                    logger.warning("  Verification budget spent; ignoring remaining header candidates")
+                    break
+                budget -= 1
+                verified = cpu_score_at(gray, spec, int(_x), int(y), crop_to_image_width=True)
+                if verified < spec.threshold:
+                    logger.warning(
+                        "  Discarded phantom sura header at y=%d (opencl %.4f → cpu %.4f)",
+                        int(y),
+                        score,
+                        verified,
+                    )
+                    continue
+                score = verified
+            selected.append(
+                SuraHeaderSpec(
+                    top=int(y),
+                    bottom=int(y + template_h),
+                    score=score,
+                    slot_count=spec.slot_count,
+                )
+            )
             if len(selected) == self.max_sura_headers:
                 break
 
