@@ -460,19 +460,19 @@ lineage but is unused by the API.)
 ### 7.3 Config dataclasses (`config.py`) and the factory (`builder.py`)
 
 `CropConfig(x,y,w,h)`, `ProcessingConfig(alternate_horizontal_margin)`,
-`DetectionConfig(padding, sura_header_slots, sura_header_threshold=0.90,
-besmella_threshold=0.70, max_sura_headers=3)`, `ExportConfig(export_images,
+`DetectionConfig(padding, sura_header_slots, sura_header_threshold=0.60,
+max_sura_headers=3)`, `ExportConfig(export_images,
 export_coordinates, start_sura, start_aya, expected_lines=15)`. `builder.init_configs`
 + `build_pipeline` assemble a `LineDetector` + `AyaSeparatorProcessor` +
-`SuraHeaderLocator` into a `Pipeline`. (Note `besmella_threshold` is defined but the
-current flow infers besmella positionally, not by template.)
+`SuraHeaderLocator` into a `Pipeline`. Besmella lines are inferred positionally
+(first separator-less line after a header), not by template match.
 
-> ⚠ **Default drift to be aware of.** Threshold defaults differ by layer:
-> `DetectionConfig.sura_header_threshold=0.90` and `AyaSeparatorConfig.match_threshold=0.35`
-> (dataclass defaults), vs `builder.init_configs` (`0.60`) vs the API `ProcessIn`
-> schema (`sura_header_threshold=0.6`, `match_threshold=0.5`) vs the frontend
-> `DEFAULT_PROCESS_SETTINGS` (`0.9` / `0.35`). The **request values win** at runtime;
-> the dataclass defaults only apply if a caller omits them.
+> **Threshold defaults are 0.60 (header) / 0.35 (aya) in every layer** — the
+> dataclass, `builder.init_configs`, the API `ProcessIn` schema, and the frontend
+> `DEFAULT_PROCESS_SETTINGS`. They used to disagree per layer, which made a
+> defaulted run behave differently depending on which entry point started it.
+> The **request values win** at runtime; the dataclass defaults only apply if a
+> caller omits them.
 
 ---
 
@@ -892,8 +892,9 @@ These are load-bearing. Violating them silently breaks things.
 - **Coverage map** renders one small cell per logical page (500+ divs for a full
   mushaf) — fine locally; virtualize if it ever feels heavy.
 - **Finalize perf** re-composites all line crops per frame (cheap for ~15 lines).
-- **`besmella_threshold`** exists in `DetectionConfig` but the pipeline infers besmella
-  positionally (first separator-less line after a header), not by template match.
+- **Besmella detection is positional**, not template-based: the first separator-less
+  line after a header. Sura 9 (At-Tawbah) has no besmella, so its opening line is
+  mislabelled and needs a manual fix in Review.
 - **No auth.** The tool assumes a trusted single-user/local context (Django admin
   aside). Don't expose it publicly without adding authentication.
 - **Roadmap ideas** (from README): background processing, per-mushaf qiraa aya-count

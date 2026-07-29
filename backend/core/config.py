@@ -41,15 +41,12 @@ class DetectionConfig:
             band. The header is still exported as one crop.
         sura_header_threshold: Template match threshold for pre-split sura
             header detection.
-        besmella_threshold: Template match threshold for optional pre-split
-            besmella detection.
         max_sura_headers: Maximum sura headers expected on one page.
     """
 
     padding: int = 0
     sura_header_slots: int = 1
-    sura_header_threshold: float = 0.90
-    besmella_threshold: float = 0.70
+    sura_header_threshold: float = 0.60
     max_sura_headers: int = 3
 
 

@@ -333,7 +333,7 @@ export const DEFAULT_PROCESS_SETTINGS: ProcessSettings = {
   padding: 0,
   expected_lines: 15,
   sura_header_slots: 1,
-  sura_header_threshold: 0.9,
+  sura_header_threshold: 0.6,
   max_sura_headers: 3,
   match_threshold: 0.35,
   alternate_horizontal_margin: false,

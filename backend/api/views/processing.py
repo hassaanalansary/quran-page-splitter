@@ -30,7 +30,7 @@ class ProcessIn(Schema):
     sura_header_slots: int = Field(default=1, ge=1)
     sura_header_threshold: float = Field(default=0.6, ge=0, le=1)
     max_sura_headers: int = Field(default=3, ge=1)
-    match_threshold: float = Field(default=0.5, ge=0, le=1)
+    match_threshold: float = Field(default=0.35, ge=0, le=1)
     alternate_horizontal_margin: bool = False
     prefer_acceleration: bool = True
 

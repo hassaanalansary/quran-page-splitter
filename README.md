@@ -143,7 +143,7 @@ The `/process` body carries the crop, templates (already stored), and tuning.
 | `sura_header_slots`         | `1`     | Line slots a sura header occupies.                                      |
 | `sura_header_threshold`     | `0.60`  | Template-match threshold for sura headers.                              |
 | `max_sura_headers`          | `3`     | Maximum sura headers expected on a page.                                |
-| `match_threshold`           | `0.50`  | Template-match threshold for aya separators.                            |
+| `match_threshold`           | `0.35`  | Template-match threshold for aya separators.                            |
 | `alternate_horizontal_margin` | `false` | Mirror the `bounds` crop on alternate (facing) pages.                 |
 | `prefer_acceleration`       | `true`  | Use OpenCL-accelerated matching when available.                         |
 | `start_sura` / `start_aya`  | —       | Sura/aya at the first processed page (edition-specific).                |
