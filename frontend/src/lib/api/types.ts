@@ -272,6 +272,18 @@ export type Run = {
   log_url?: string | null;
 };
 
+/** One slice of a run's log (GET /api/mushafs/{id}/runs/{runId}/log/tail).
+ * Polled while a run is in flight; `offset` is fed back in to resume. */
+export type RunLogTail = {
+  /** Send this back as `offset` on the next poll. */
+  offset: number;
+  /** Current size of the log; `offset < size` means more is already waiting. */
+  size: number;
+  text: string;
+  /** The log was replaced or truncated — drop what you have and start over. */
+  reset: boolean;
+};
+
 /** Aggregate detection counts (GET /api/mushafs/{id}/stats). */
 export type MushafStats = {
   lines_cut: number;

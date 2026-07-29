@@ -1,7 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, useParams } from "@tanstack/react-router";
 import type { TFunction } from "i18next";
-import { Eye, EyeOff, OctagonX, TriangleAlert } from "lucide-react";
+import { Eye, EyeOff, OctagonX, ScrollText, TriangleAlert } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -15,6 +15,7 @@ import { useStepTour, type TourStep } from "@/components/app/tour/useStepTour";
 import { ProcessAbortDialog } from "@/components/app/ProcessAbortDialog";
 import { ProcessCancelDialog } from "@/components/app/ProcessCancelDialog";
 import { ProcessConfirmDialog } from "@/components/app/ProcessConfirmDialog";
+import { RunLogDialog } from "@/components/app/RunLogDialog";
 import { CropPreview } from "@/components/canvas/CropPreview";
 import { PageStage } from "@/components/canvas/PageStage";
 import { RectInputs } from "@/components/canvas/RectInputs";
@@ -120,6 +121,7 @@ function ProcessPage() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [logOpen, setLogOpen] = useState(false);
   const [starting, setStarting] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   /** Set once the user starts a run here, so an outcome from an earlier visit
@@ -538,6 +540,12 @@ function ProcessPage() {
                   : t("process.processButton", { start: rangeStart, end: rangeEnd })}
               </Button>
             )}
+            {job?.run_id && (
+              <Button variant="outline" onClick={() => setLogOpen(true)}>
+                <ScrollText size={14} />
+                {running ? t("process.logWatch") : t("process.logView")}
+              </Button>
+            )}
             {(aborted || failed) && (
               <Button variant="outline" onClick={() => setDetailsOpen(true)}>
                 {t("process.abortDetails")}
@@ -707,6 +715,16 @@ function ProcessPage() {
           onOpenChange={setCancelConfirmOpen}
           onConfirm={() => void cancelRun()}
           job={activeJob}
+        />
+      )}
+
+      {job?.run_id && (
+        <RunLogDialog
+          open={logOpen}
+          onOpenChange={setLogOpen}
+          mushafId={mushafId}
+          runId={job.run_id}
+          live={running}
         />
       )}
 

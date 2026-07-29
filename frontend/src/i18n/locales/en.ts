@@ -203,6 +203,17 @@ export const en = {
     confirmSubmit: "Start processing",
     on: "on",
     off: "off",
+    // Run log viewer
+    logWatch: "Watch the log",
+    logView: "View the log",
+    logDialogTitle: "Detection log",
+    logLead:
+      "Every band, line and cut this run made, with the match score behind each one. Read it to pick thresholds from evidence rather than by trial.",
+    logLive: "live",
+    logCatchingUp: "catching up…",
+    logEmpty: "Nothing logged yet.",
+    logDownload: "Download",
+
     // Abort / failure surfacing
     abortStatus: "Stopped on page {{page}} — {{count}} pages saved.",
     errorStatus: "Processing failed — open the details.",

@@ -71,6 +71,18 @@ class JobStatusOut(Schema):
     job: JobOut | None = None
 
 
+class RunLogTailOut(Schema):
+    """One slice of a run log, plus where the next poll should resume."""
+
+    #: Byte offset to send back as ``offset`` next time.
+    offset: int
+    #: Current size of the log — ``offset < size`` means more is already waiting.
+    size: int
+    text: str
+    #: The log was replaced or truncated; discard what you have and start over.
+    reset: bool
+
+
 class RunOut(Schema):
     id: uuid.UUID
     run_number: int
@@ -137,3 +149,19 @@ def run_log(request: HttpRequest, mushaf_id: uuid.UUID, run_id: uuid.UUID) -> Ht
     mushaf = mushaf_service.get_mushaf(mushaf_id)
     path = processing_service.run_log_file(mushaf, run_id)
     return HttpResponse(path.read_text(encoding="utf-8"), content_type="text/plain; charset=utf-8")
+
+
+@router.get("/{mushaf_id}/runs/{run_id}/log/tail", response=RunLogTailOut)
+def run_log_tail(
+    request: HttpRequest,
+    mushaf_id: uuid.UUID,
+    run_id: uuid.UUID,
+    offset: int = 0,
+) -> dict:
+    """Read a run's log forward from ``offset`` — what the live viewer polls.
+
+    Separate from ``/log`` (which stays a whole-file download) because a viewer
+    watching a run in flight wants only what it has not seen yet.
+    """
+    mushaf = mushaf_service.get_mushaf(mushaf_id)
+    return processing_service.read_run_log_tail(mushaf, run_id, offset)

@@ -16,6 +16,7 @@ to a background job). Two consequences shape the code below:
 """
 
 import json
+import logging
 import uuid
 from collections.abc import Callable, Iterator
 from datetime import datetime
@@ -41,6 +42,8 @@ from core.sura_header import IgnoreRect, SuraHeaderLocator
 #: ``rendering`` / ``detecting`` / ``saving``, ``current_page`` is a LOGICAL page
 #: number, ``pages_saved`` counts pages already written to the DB by this run.
 ProgressHook = Callable[[str, int | None, int], None]
+
+logger = logging.getLogger(__name__)
 
 
 def process(
@@ -109,6 +112,7 @@ def process(
     log_rel = f"runs/{token}.log"
     log_path = settings.LOG_DIR / log_rel
     log_path.parent.mkdir(parents=True, exist_ok=True)
+    prune_run_logs(log_path.parent)
     # Line-detection debug PNGs live under MEDIA_ROOT so they can be served and
     # shown in the abort diagnostics (see ``_media_url``).
     results_dir = Path(settings.MEDIA_ROOT) / "run_debug" / token
@@ -266,6 +270,46 @@ def _render_pages(
         yield pdf.render_page_from(doc, pdf_index), f"{n}.png"
 
 
+def prune_run_logs(runs_dir: Path, keep: int | None = None) -> int:
+    """Keep the newest ``keep`` run logs under *runs_dir*; delete the rest.
+
+    Called when a run starts, so the directory stays bounded without a separate
+    cleanup job. A whole-mushaf run logs several MB, which is the storage this
+    reclaims — the ``ProcessingRun`` rows themselves are a few hundred bytes and
+    are kept, so pruned runs still appear in the history.
+
+    Rows that pointed at a deleted file have ``log_path`` cleared, which is what
+    makes the UI honest: ``list_runs`` then reports ``log_url: null`` and the
+    "view the log" affordances disappear instead of offering a dead link.
+
+    Best-effort on the filesystem side: failing to delete an old log is never a
+    reason to fail the run that triggered the sweep.
+    """
+    if keep is None:
+        keep = int(getattr(settings, "RUN_LOG_RETENTION", 30))
+    if keep < 0:
+        return 0
+
+    try:
+        logs = sorted(runs_dir.glob("*.log"), key=lambda p: p.stat().st_mtime, reverse=True)
+    except OSError:
+        return 0
+
+    pruned: list[str] = []
+    for stale in logs[keep:]:
+        try:
+            stale.unlink()
+        except OSError:
+            continue
+        # Stored form is the POSIX-style path relative to LOG_DIR (see ``process``).
+        pruned.append(f"{runs_dir.name}/{stale.name}")
+
+    if pruned:
+        ProcessingRun.objects.filter(log_path__in=pruned).update(log_path="")
+        logger.info("Pruned %d old run log(s) from %s", len(pruned), runs_dir)
+    return len(pruned)
+
+
 def _settle_stale_runs(mushaf: Mushaf) -> int:
     """Close out ``running`` rows left behind by a crash or a server restart.
 
@@ -344,6 +388,59 @@ def _media_url(path: str) -> str:
     rel = Path(path).resolve().relative_to(Path(settings.MEDIA_ROOT).resolve())
     media_url = settings.MEDIA_URL.lstrip("/")
     return "/" + media_url + str(rel).replace("\\", "/")
+
+
+#: Bytes served per tail request. A poll never returns an unbounded blob; a
+#: viewer opened on a long finished run simply catches up over a few polls.
+RUN_LOG_CHUNK_BYTES = 256 * 1024
+
+
+def read_run_log_tail(
+    mushaf: Mushaf,
+    run_id: uuid.UUID,
+    offset: int = 0,
+    limit: int = RUN_LOG_CHUNK_BYTES,
+) -> dict:
+    """Read a run log forward from ``offset``, for a client that polls as it grows.
+
+    Returns the text read plus the offset to resume from. Only whole lines are
+    emitted: a chunk boundary must not split a UTF-8 sequence, and a reader
+    tailing a file being written to must not be handed half a line it would
+    then see repeated. Any remainder is picked up by the next call.
+
+    ``reset`` says the file is shorter than the offset asked for — it was
+    replaced or truncated — so the caller should clear what it has and start over.
+    """
+    path = run_log_file(mushaf, run_id)
+    size = path.stat().st_size
+
+    start = max(0, int(offset))
+    reset = start > size
+    if reset:
+        start = 0
+
+    limit = max(0, int(limit))
+    with path.open("rb") as handle:
+        handle.seek(start)
+        chunk = handle.read(limit)
+
+    if chunk and not chunk.endswith(b"\n"):
+        cut = chunk.rfind(b"\n")
+        if cut != -1:
+            chunk = chunk[: cut + 1]
+        elif len(chunk) < limit:
+            # A partial line still being written, and no newline to fall back
+            # on. Leave it for the next poll rather than emitting a fragment.
+            chunk = b""
+        # else: one line longer than the whole chunk — send it as-is, otherwise
+        # the reader would never advance past it.
+
+    return {
+        "offset": start + len(chunk),
+        "size": size,
+        "text": chunk.decode("utf-8", errors="replace"),
+        "reset": reset,
+    }
 
 
 def run_log_file(mushaf: Mushaf, run_id: uuid.UUID) -> Path:

@@ -1,8 +1,11 @@
 import { Link } from "@tanstack/react-router";
+import { ScrollText } from "lucide-react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { Run } from "@/lib/api";
 import { AbortDiagnostics } from "@/components/app/AbortDiagnostics";
+import { RunLogDialog } from "@/components/app/RunLogDialog";
 
 import {
   fmtDayTime,
@@ -63,6 +66,7 @@ export function RunsTab({ mushafId, runs }: { mushafId: string; runs: Run[] | un
 
 function RunCard({ run, mushafId }: { run: Run; mushafId: string }) {
   const { t } = useTranslation();
+  const [logOpen, setLogOpen] = useState(false);
   const meta = RUN_STATUS_META[run.status] ?? RUN_STATUS_META.error;
   const statusLabel = t(runStatusKey(run.status));
   const abortPage = runAbortPage(run);
@@ -97,7 +101,27 @@ function RunCard({ run, mushafId }: { run: Run; mushafId: string }) {
             {t("details.runs_saved", { count: run.pages_saved })}
           </b>
         </span>
+        {run.log_url && (
+          <button
+            type="button"
+            onClick={() => setLogOpen(true)}
+            className="inline-flex cursor-pointer items-center gap-1 rounded-[7px] border border-border px-2 py-[3px] text-[10.5px] font-semibold text-text-secondary transition-colors hover:border-border-strong hover:text-text-primary"
+          >
+            <ScrollText size={12} />
+            {t("process.logView")}
+          </button>
+        )}
       </div>
+
+      {run.log_url && (
+        <RunLogDialog
+          open={logOpen}
+          onOpenChange={setLogOpen}
+          mushafId={mushafId}
+          runId={run.id}
+          live={false}
+        />
+      )}
 
       <div className="p-3.5">
         <div className="mb-2 text-[9.5px] font-semibold uppercase tracking-[0.1em] text-text-muted">

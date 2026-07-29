@@ -53,11 +53,33 @@ class SuraHeaderLocator:
         spec = self.header
         match = match_template(gray, spec, crop_to_image_width=True)
         if match is None:
+            logger.warning(
+                "  Sura header template (%dx%d) does not fit the page (%dx%d) — no match attempted",
+                spec.image.shape[1],
+                spec.image.shape[0],
+                gray.shape[1],
+                gray.shape[0],
+            )
             return []
 
         ys, xs = np.where(match >= spec.threshold)
 
         if ys.size == 0:
+            # Nothing cleared the bar: report the best the page had to offer, so the
+            # threshold can be chosen from evidence instead of guessed. The offset
+            # counts matter too — a template nearly as wide as the page leaves very
+            # few horizontal positions, and the true alignment may be out of reach.
+            best_y, best_x = np.unravel_index(int(np.argmax(match)), match.shape)
+            logger.warning(
+                "  No sura header passed threshold %.4f — best score %.4f at y=%d x=%d "
+                "(%d x %d candidate offsets)",
+                spec.threshold,
+                float(match[best_y, best_x]),
+                int(best_y),
+                int(best_x),
+                match.shape[0],
+                match.shape[1],
+            )
             return []
 
         ordered = sorted(

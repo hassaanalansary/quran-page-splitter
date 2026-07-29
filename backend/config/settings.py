@@ -124,11 +124,17 @@ MEDIA_URL = "media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
 # --- Logging -------------------------------------------------------------
-# Console (INFO) for the dev server + a rotating file (DEBUG) with the full
-# detection trace. The processing pipeline additionally attaches a per-run
-# file handler for that run's own log (see services/processing.py).
+# Console (INFO, minus the engine trace) for the dev server + a rotating file
+# (DEBUG) with everything. The processing pipeline additionally attaches a
+# per-run file handler for that run's own log (see services/processing.py),
+# which is what the in-app log viewer tails.
 LOG_DIR = BASE_DIR / "logs"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
+
+#: Per-run log files kept under ``LOG_DIR/runs``; the oldest beyond this are
+#: deleted when a new run starts. A run whose log has been pruned still lists
+#: normally — fetching it just 404s.
+RUN_LOG_RETENTION = 30
 
 LOGGING = {
     "version": 1,
@@ -137,8 +143,16 @@ LOGGING = {
         "detailed": {"format": "{asctime}  {name:<26}  {levelname:<7}  {message}", "style": "{"},
         "console": {"format": "{levelname:<7} {name}: {message}", "style": "{"},
     },
+    "filters": {
+        "quiet_engine_trace": {"()": "config.logging_filters.QuietEngineTrace"},
+    },
     "handlers": {
-        "console": {"class": "logging.StreamHandler", "level": "INFO", "formatter": "console"},
+        "console": {
+            "class": "logging.StreamHandler",
+            "level": "INFO",
+            "formatter": "console",
+            "filters": ["quiet_engine_trace"],
+        },
         "file": {
             "class": "logging.handlers.RotatingFileHandler",
             "filename": str(LOG_DIR / "quran.log"),
