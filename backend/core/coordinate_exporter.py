@@ -17,6 +17,14 @@ from core.quran_metadata import get_aya_count, get_sura
 
 logger = logging.getLogger(__name__)
 
+#: Breathing room left around a tightened sura-header or besmella crop. The box
+#: is pulled in to the band's ink, and an exact hull shaves the anti-aliased
+#: outer edge of an ornament; a few pixels back out keeps the stroke intact.
+#:
+#: Absolute pixels, so it is proportionally heavier on a low-resolution render:
+#: ~2% of a line on a 300-dpi page but ~9% on a page rendered four times smaller.
+HEADER_TIGHTEN_MARGIN_PX = 10
+
 
 # ------------------------------------------------------------------
 # Position tracking
@@ -37,13 +45,7 @@ def track_positions(ctx: PageContext, tracker: QuranTracker) -> None:
             )
             if content_bbox is None:
                 continue
-            x, y, w, h = content_bbox
-            line.bbox = BBox(
-                left=max(0, line.bbox.left + x - 10),
-                top=max(0, line.bbox.top + y - 10),
-                right=min(ctx.grey.shape[1], line.bbox.left + x + w + 10),
-                bottom=min(ctx.grey.shape[0], line.bbox.top + y + h + 10),
-            )
+            line.bbox = _tightened_bbox(ctx, line, content_bbox)
             continue
 
         if tracker.pending_besmella:
@@ -60,13 +62,7 @@ def track_positions(ctx: PageContext, tracker: QuranTracker) -> None:
                 )
                 if content_bbox is None:
                     continue
-                x, y, w, h = content_bbox
-                line.bbox = BBox(
-                    left=max(0, line.bbox.left + x - 10),
-                    top=max(0, line.bbox.top + y - 10),
-                    right=min(ctx.grey.shape[1], line.bbox.left + x + w + 10),
-                    bottom=min(ctx.grey.shape[0], line.bbox.top + y + h + 10),
-                )
+                line.bbox = _tightened_bbox(ctx, line, content_bbox)
                 continue
 
             # Has separator → not a besmella, treat as normal text
@@ -76,6 +72,27 @@ def track_positions(ctx: PageContext, tracker: QuranTracker) -> None:
             )
 
         _handle_text_line(line, tracker)
+
+
+def _tightened_bbox(
+    ctx: PageContext,
+    line: LineResult,
+    content_bbox: tuple[int, int, int, int],
+) -> BBox:
+    """Pull an ornamental line's box in to its ink, plus a small margin.
+
+    ``content_bbox`` is line-relative, as returned by ``find_content_bbox``.
+    Note it is a hull over every non-background pixel in the band, so ink that
+    bled in from the neighbouring lines widens the result too.
+    """
+    x, y, w, h = content_bbox
+    margin = HEADER_TIGHTEN_MARGIN_PX
+    return BBox(
+        left=max(0, line.bbox.left + x - margin),
+        top=max(0, line.bbox.top + y - margin),
+        right=min(ctx.grey.shape[1], line.bbox.left + x + w + margin),
+        bottom=min(ctx.grey.shape[0], line.bbox.top + y + h + margin),
+    )
 
 
 def _handle_sura_header(line: LineResult, tracker: QuranTracker) -> None:
