@@ -12,12 +12,28 @@ import numpy as np
 
 from core.image_utils import clean_image, find_content_bbox
 
-_SMOOTHING_KERNEL_SIZE = 75
+#: Moving-average width, as a fraction of one line's nominal height.
+#:
+#: Tuned by eye on a 300-dpi mushaf — wide enough to erase the small sharp peaks
+#: inside a line, narrow enough to leave the trough between lines intact — where
+#: it came to 75 px against a ~486 px line pitch. Kept as a ratio rather than
+#: that pixel count because a page rendered four times smaller has a ~111 px
+#: pitch, and 75 px there spans two thirds of a line: the inter-line gaps get
+#: smoothed away, valleys drift toward whichever neighbour carries more ink, and
+#: a low-ink line (a besmella) ends up with its neighbours' edges inside its box.
+_SMOOTHING_RATIO = 0.155
+_MIN_SMOOTHING_KERNEL = 3
 
 
-def _smooth(profile: np.ndarray) -> np.ndarray:
+def _smoothing_kernel_size(nominal_line_height: float) -> int:
+    """Odd moving-average width for a page with this line pitch."""
+    size = max(_MIN_SMOOTHING_KERNEL, round(nominal_line_height * _SMOOTHING_RATIO))
+    return size + 1 if size % 2 == 0 else size
+
+
+def _smooth(profile: np.ndarray, kernel_size: int) -> np.ndarray:
     """Apply a small moving-average to reduce single-row noise."""
-    kernel = np.ones(_SMOOTHING_KERNEL_SIZE) / _SMOOTHING_KERNEL_SIZE
+    kernel = np.ones(kernel_size) / kernel_size
     return np.convolve(profile, kernel, mode="same")
 
 
@@ -120,7 +136,11 @@ def split_by_valleys(
     if float(row_sums.max()) <= 0:
         return []
 
-    smoothed = _smooth(row_sums)
+    # Both the smoothing width and the minimum valley separation scale with the
+    # line pitch, so the same numbers hold whatever resolution the page was
+    # rendered at.
+    nominal_strip = ch / float(expected_lines)
+    smoothed = _smooth(row_sums, _smoothing_kernel_size(nominal_strip))
 
     # --- find and score valleys ---
     minima = _find_local_minima(smoothed)
@@ -130,7 +150,6 @@ def split_by_valleys(
     prominences = [_compute_prominence(smoothed, p) for p in minima]
 
     # Minimum separation: half of nominal line height
-    nominal_strip = ch / float(expected_lines)
     min_dist = max(1, round(nominal_strip * 0.8))
 
     n_needed = expected_lines - 1
