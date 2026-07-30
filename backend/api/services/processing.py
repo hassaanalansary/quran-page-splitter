@@ -17,8 +17,9 @@ to a background job). Two consequences shape the code below:
 
 import json
 import logging
+import shutil
 import uuid
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from datetime import datetime
 from pathlib import Path
 
@@ -117,6 +118,7 @@ def process(
     # shown in the abort diagnostics (see ``_media_url``).
     results_dir = Path(settings.MEDIA_ROOT) / "run_debug" / token
     results_dir.mkdir(parents=True, exist_ok=True)
+    prune_run_debug(results_dir.parent)
 
     settings_used = {
         "padding": padding,
@@ -270,6 +272,50 @@ def _render_pages(
         yield pdf.render_page_from(doc, pdf_index), f"{n}.png"
 
 
+def _retention(keep: int | None) -> int:
+    if keep is None:
+        keep = int(getattr(settings, "RUN_LOG_RETENTION", 30))
+    return keep
+
+
+def _stale_entries(listing: Callable[[], Iterable[Path]], keep: int) -> list[Path]:
+    """Everything past the newest ``keep`` entries, by modification time.
+
+    ``listing`` is deferred so the directory read happens inside the guard:
+    filesystem errors leave the directory alone rather than failing the run that
+    triggered the sweep. (``Path.iterdir`` scans eagerly, so passing an iterator
+    would raise before ever getting here.)
+    """
+    try:
+        ordered = sorted(listing(), key=lambda path: path.stat().st_mtime, reverse=True)
+    except OSError:
+        return []
+    return ordered[keep:]
+
+
+def prune_run_debug(debug_root: Path, keep: int | None = None) -> int:
+    """Keep the newest ``keep`` run-debug directories; delete the rest.
+
+    These hold the per-line PNGs written when a page fails line detection —
+    far heavier than the logs, and only ever of interest for a recent run.
+    """
+    keep = _retention(keep)
+    if keep < 0:
+        return 0
+
+    def directories() -> list[Path]:
+        return [path for path in debug_root.iterdir() if path.is_dir()]
+
+    removed = 0
+    for stale in _stale_entries(directories, keep):
+        shutil.rmtree(stale, ignore_errors=True)
+        if not stale.exists():
+            removed += 1
+    if removed:
+        logger.info("Pruned %d old run-debug directory(ies) from %s", removed, debug_root)
+    return removed
+
+
 def prune_run_logs(runs_dir: Path, keep: int | None = None) -> int:
     """Keep the newest ``keep`` run logs under *runs_dir*; delete the rest.
 
@@ -285,18 +331,12 @@ def prune_run_logs(runs_dir: Path, keep: int | None = None) -> int:
     Best-effort on the filesystem side: failing to delete an old log is never a
     reason to fail the run that triggered the sweep.
     """
-    if keep is None:
-        keep = int(getattr(settings, "RUN_LOG_RETENTION", 30))
+    keep = _retention(keep)
     if keep < 0:
         return 0
 
-    try:
-        logs = sorted(runs_dir.glob("*.log"), key=lambda p: p.stat().st_mtime, reverse=True)
-    except OSError:
-        return 0
-
     pruned: list[str] = []
-    for stale in logs[keep:]:
+    for stale in _stale_entries(lambda: runs_dir.glob("*.log"), keep):
         try:
             stale.unlink()
         except OSError:

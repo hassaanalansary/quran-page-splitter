@@ -4,6 +4,7 @@ Views call these functions and never touch the ORM directly. Serialization to
 plain dicts also lives here so the engine and views stay decoupled from models.
 """
 
+import logging
 import uuid
 
 from django.conf import settings
@@ -27,6 +28,8 @@ from api.models import (
     TemplateTypeChoices,
 )
 from api.services import activity, pdf
+
+logger = logging.getLogger(__name__)
 
 # Low-DPI render of the cover page used for list thumbnails.
 THUMBNAIL_DPI = 50
@@ -315,7 +318,16 @@ def upsert_template(
         mushaf=mushaf, type=template_type, defaults={"ignore_rects": ignore_rect}
     )
     if image is not None:
+        # Django suffixes a new upload rather than overwriting, so every redrawn
+        # crop used to leave its predecessor behind forever. Only the row's
+        # current image is ever read, so the one it replaced can go.
+        superseded = template.image.name
         template.image.save(f"{template_type}.png", image, save=True)
+        if superseded and superseded != template.image.name:
+            try:
+                template.image.storage.delete(superseded)
+            except OSError:
+                logger.warning("Could not delete superseded template image %s", superseded)
     activity.emit(mushaf, ActivityTypeChoices.TEMPLATE_SAVED, {"template_type": template_type})
     return _serialize_template(template)
 
