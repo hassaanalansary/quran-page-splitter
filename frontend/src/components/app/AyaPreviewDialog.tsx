@@ -135,9 +135,9 @@ export function AyaPreviewDialog({
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex gap-4" dir="ltr">
                 <Round title={t("review.previewPrev")} onClick={() => step(-1)}>
-                  <ChevronRight size={16} />
+                  <ChevronLeft size={16} />
                 </Round>
                 <Round
                   title={playing ? t("review.previewPause") : t("review.previewPlay")}
@@ -147,9 +147,11 @@ export function AyaPreviewDialog({
                   {playing ? <Pause size={16} /> : <Play size={16} />}
                 </Round>
                 <Round title={t("review.previewNext")} onClick={() => step(1)}>
-                  <ChevronLeft size={16} />
+                  <ChevronRight size={16} />
                 </Round>
+              </div>
 
+              <div className="flex items-center gap-2">
                 <div className="ms-1 flex overflow-hidden rounded-sm border border-border-strong">
                   {(Object.keys(SPEEDS) as Speed[]).map((s) => (
                     <button
