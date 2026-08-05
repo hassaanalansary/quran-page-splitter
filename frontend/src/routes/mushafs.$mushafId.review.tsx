@@ -31,6 +31,7 @@ import {
   editPageFromApiPage,
   fromApi,
   genId,
+  reflowFrom,
   type EditLine,
   type EditLineType,
   type EditPage,
@@ -38,6 +39,7 @@ import {
 } from "@/lib/review/model";
 import {
   ayaGroups,
+  entrySignature,
   pageSignature,
   recompute,
   suraSpanPages,
@@ -54,6 +56,19 @@ const HISTORY_LIMIT = 100;
 const COALESCE_MS = 500;
 
 const LINE_TYPE_VALUES: EditLineType[] = ["text", "sura_header", "besmella"];
+
+/**
+ * Match a shortcut by the PHYSICAL key, falling back to the character.
+ *
+ * `e.key` carries whatever the active layout produces, so on an Arabic keyboard
+ * Ctrl+Z arrives as "ئ" and a `e.key === "z"` test silently fails — which is why
+ * undo worked only some of the time. `e.code` is the key itself, independent of
+ * layout. The `e.key` fallback covers layouts that move Z to another key (AZERTY)
+ * and, because it lowercases, the shifted "Z" that Ctrl+Shift+Z actually sends.
+ */
+function matches(e: KeyboardEvent, code: string, letter: string): boolean {
+  return e.code === code || e.key.toLowerCase() === letter;
+}
 
 function ReviewPage() {
   const { mushafId } = useParams({ from: "/mushafs/$mushafId/review" });
@@ -91,6 +106,9 @@ function ReviewPage() {
 
   const coalesceRef = useRef<{ key: string; at: number } | null>(null);
   const baselineRef = useRef<Map<number, string>>(new Map());
+  // Saved numbering, page by page. Separate from `baselineRef` because a
+  // renumber shifts a page's suras without touching its structure.
+  const baselineEntryRef = useRef<Map<number, string>>(new Map());
   const baselineReviewedRef = useRef<Set<number>>(new Set());
   const builtForRef = useRef<string | null>(null);
   // Page whose first line we've already auto-selected, so entering a page selects
@@ -106,6 +124,11 @@ function ReviewPage() {
     builtForRef.current = mushafId;
     const next = fromApi(reviewData, mushaf.logical_page_count);
     baselineRef.current = new Map(next.pages.map((p) => [p.page_number, pageSignature(p)]));
+    // Server data is self-consistent, so what it derives to now IS what it holds.
+    // (Numbering doesn't depend on `suras` — only the overflow warnings do.)
+    baselineEntryRef.current = new Map(
+      recompute(next).pages.map((p) => [p.page_number, entrySignature(p)]),
+    );
     baselineReviewedRef.current = new Set(
       next.pages.filter((p) => p.reviewed).map((p) => p.page_number),
     );
@@ -152,12 +175,15 @@ function ReviewPage() {
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (!(e.ctrlKey || e.metaKey)) return;
-      const tag = (e.target as HTMLElement | null)?.tagName ?? "";
-      if (/^(INPUT|TEXTAREA|SELECT)$/.test(tag)) return;
-      if (e.key === "z" && !e.shiftKey) {
+      const el = e.target as HTMLElement | null;
+      // Defer only to a real native undo. A <select> has none, and bailing on it
+      // meant Ctrl+Z did nothing at all right after picking a sura.
+      const tag = el?.tagName ?? "";
+      if (tag === "INPUT" || tag === "TEXTAREA" || el?.isContentEditable) return;
+      if (matches(e, "KeyZ", "z") && !e.shiftKey) {
         e.preventDefault();
         if (canUndo) undo();
-      } else if ((e.key === "z" && e.shiftKey) || e.key === "y") {
+      } else if ((matches(e, "KeyZ", "z") && e.shiftKey) || matches(e, "KeyY", "y")) {
         e.preventDefault();
         if (canRedo) redo();
       }
@@ -201,14 +227,24 @@ function ReviewPage() {
     setSelectedCut(null);
   }, [currentEdit, page]);
 
-  // Content-dirty pages (structure changed vs the last-saved baseline).
+  // Content-dirty pages: structure changed, OR the numbering moved under them.
+  // The second case is what a renumber from a sura header does to every page
+  // after it — untouched structurally, but the suras the server holds are now
+  // wrong, so they have to go back too.
   const dirtyPages = useMemo(() => {
     if (!store) return [] as number[];
     return store.pages
-      .filter((p) => pageSignature(p) !== baselineRef.current.get(p.page_number))
+      .filter((p) => {
+        if (pageSignature(p) !== baselineRef.current.get(p.page_number)) return true;
+        // An empty page has no numbering to save; skip it so a renumber doesn't
+        // drag every unprocessed page into the payload.
+        if (!p.lines.length) return false;
+        const d = derived?.pages.find((x) => x.page_number === p.page_number);
+        return !!d && entrySignature(d) !== baselineEntryRef.current.get(p.page_number);
+      })
       .map((p) => p.page_number);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [store, baselineVersion]);
+  }, [store, derived, baselineVersion]);
 
   // Pages marked reviewed in the client but not yet persisted.
   const reviewedPending = useMemo(() => {
@@ -292,22 +328,42 @@ function ReviewPage() {
     setSelectedCut(null);
   };
 
+  // Edit a line AND renumber every sura header after it, to the end of the
+  // mushaf. Used for the three edits that move where a sura begins — see
+  // `reflowFrom` for why the later anchors have to be released.
+  const editLineAndReflow = useCallback(
+    (uid: string, edit: (l: EditLine) => EditLine | null) => {
+      if (!store) return;
+      applyStore(reflowFrom(store, uid, edit));
+    },
+    [store, applyStore],
+  );
+
   const setLineType = (uid: string, type: EditLineType) => {
-    updateLine(uid, {
+    const line = currentEdit?.lines.find((l) => l.uid === uid);
+    if (!line) return;
+    const patch = (l: EditLine): EditLine => ({
+      ...l,
       type,
-      cuts: type === "text" ? (currentEdit?.lines.find((l) => l.uid === uid)?.cuts ?? []) : [],
-      sura:
-        type === "sura_header" ? currentEdit?.lines.find((l) => l.uid === uid)?.sura : undefined,
+      cuts: type === "text" ? l.cuts : [],
+      sura: type === "sura_header" ? l.sura : undefined,
     });
+    // Gaining or losing a header shifts every sura after it, so those two cases
+    // renumber as well — not just an explicit sura pick.
+    if (type === "sura_header" || line.type === "sura_header") editLineAndReflow(uid, patch);
+    else updateLine(uid, patch(line));
     // A non-text line has no separators; clear any selection pointing at one.
     if (type !== "text" && selectedCut?.uid === uid) setSelectedCut(null);
   };
 
-  // Anchor the running sura at a header (propagates forward until the next anchor).
-  const setSura = (uid: string, sura: number) => updateLine(uid, { sura });
+  // Anchor the running sura at a header. Every later header gives up its own
+  // anchor so the correction carries across the whole mushaf.
+  const setSura = (uid: string, sura: number) => editLineAndReflow(uid, (l) => ({ ...l, sura }));
 
   const deleteLine = (uid: string) => {
-    mutatePage((p) => ({ ...p, lines: p.lines.filter((l) => l.uid !== uid) }));
+    const line = currentEdit?.lines.find((l) => l.uid === uid);
+    if (line?.type === "sura_header") editLineAndReflow(uid, () => null);
+    else mutatePage((p) => ({ ...p, lines: p.lines.filter((l) => l.uid !== uid) }));
     if (selectedUid === uid) setSelectedUid(null);
     if (selectedCut?.uid === uid) setSelectedCut(null);
   };
@@ -406,6 +462,10 @@ function ReviewPage() {
     const sent = new Map(
       contentDirty.map((n) => [n, pageSignature(store.pages.find((p) => p.page_number === n)!)]),
     );
+    // The numbering going out with them becomes the new saved numbering.
+    const sentEntries = new Map(
+      contentDirty.map((n) => [n, entrySignature(derived.pages.find((p) => p.page_number === n)!)]),
+    );
     const pages = contentDirty.map((n) => {
       const ep = store.pages.find((p) => p.page_number === n)!;
       const dp = derived.pages.find((p) => p.page_number === n)!;
@@ -416,6 +476,7 @@ function ReviewPage() {
       setSaving(false);
       if (!fresh) return;
       reconcileSaved(fresh, sent);
+      sentEntries.forEach((sig, n) => baselineEntryRef.current.set(n, sig));
       reviewedToSave.forEach((n) => baselineReviewedRef.current.add(n));
       setBaselineVersion((v) => v + 1);
       toast.success(

@@ -36,6 +36,53 @@ export function genId(prefix = "id"): string {
   return `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
+/**
+ * Edit one line (`null` deletes it), then drop the explicit sura anchor from
+ * every sura_header AFTER it — the rest of that page and all later pages.
+ *
+ * Processing stamps every header it finds with a sura number, and `recompute`
+ * lets an explicit anchor beat the running counter. So a header inserted or
+ * corrected part-way through used to renumber nothing: the very next header
+ * still asserted its old sura and pulled the count straight back. Releasing the
+ * later anchors lets auto-advance carry the correction to the end of the mushaf,
+ * which is what renumbering from a header is supposed to mean.
+ *
+ * Anchors are client-side only — `toApiPage` saves the derived number — so
+ * clearing them loses nothing that has to be persisted.
+ */
+export function reflowFrom(
+  store: ReviewStore,
+  uid: string,
+  edit: (line: EditLine) => EditLine | null,
+): ReviewStore {
+  let passed = false;
+  return {
+    ...store,
+    pages: store.pages.map((page) => {
+      // `store.pages` is in page order, so nothing before the edited line is
+      // ever reached with `passed` set.
+      let changed = false;
+      const lines: EditLine[] = [];
+      for (const line of page.lines) {
+        if (line.uid === uid) {
+          passed = true;
+          changed = true;
+          const next = edit(line);
+          if (next) lines.push(next);
+          continue;
+        }
+        if (passed && line.type === "sura_header" && line.sura !== undefined) {
+          changed = true;
+          lines.push({ ...line, sura: undefined });
+          continue;
+        }
+        lines.push(line);
+      }
+      return changed ? { ...page, lines } : page;
+    }),
+  };
+}
+
 /** A placeholder crop box for pages with no server data yet (manual pages). */
 const DEFAULT_BBOX: Rect = { x: 0, y: 0, w: 1, h: 1 };
 

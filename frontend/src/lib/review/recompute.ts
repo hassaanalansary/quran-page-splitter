@@ -217,6 +217,20 @@ export function toApiPage(page: EditPage, derived: DerivedPage) {
   };
 }
 
+/**
+ * Numbering dirty check, the companion to `pageSignature`.
+ *
+ * A page's numbers are a pure function of its entry counter and its structure,
+ * so when the structure is unchanged the entry alone decides whether the numbers
+ * the server holds are still right. That matters because renumbering from a sura
+ * header shifts every later page's suras without touching a single bbox — those
+ * pages are structurally clean but their saved numbering is now stale, and
+ * without this they would never be sent.
+ */
+export function entrySignature(page: DerivedPage): string {
+  return `${page.entry.sura}:${page.entry.aya}`;
+}
+
 /** Structural dirty check against a baseline snapshot (numbering is derived,
  * so only structure matters: line count/order, types, bboxes, cuts). */
 export function pageSignature(page: EditPage): string {
