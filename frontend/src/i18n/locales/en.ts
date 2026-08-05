@@ -324,6 +324,10 @@ export const en = {
     ignoreChip: "variable area",
     cropTip:
       "Zoom in to place the box precisely. Include the whole element with a little white space around it (trimmed automatically on processing), and keep out any nearby text or border decoration — a loose or dirty crop badly hurts detection.",
+    openingPagesTip:
+      "Never crop from the first two pages. Al-Fatiha and the opening of al-Baqara sit in an ornamental frame, so their sura band and aya markers are drawn differently from every other page — a template cut from them matches almost nothing. Pick an ordinary page from the middle of the mushaf, even if the element you need also appears here.",
+    openingPageWarning:
+      "This is one of the two opening pages — its sura band and aya markers are one-offs. Move to an ordinary page before capturing.",
   },
   review: {
     type_text: "Text",
@@ -661,6 +665,9 @@ export const en = {
     prev: "Prev",
     next: "Next",
     fit: "Fit",
+    zoomIn: "Zoom in",
+    zoomOut: "Zoom out",
+    zoomHint: "Ctrl + wheel to zoom",
     selectTool: "Select tool",
     selectToolTitle: "Select / crop tool (V)",
     handTool: "Hand tool",
@@ -711,14 +718,13 @@ export const en = {
   guide: {
     title: "How this works",
     replayTour: "Replay tour",
-    about: "Do these in order — the checklist ticks off as you go.",
     setup: {
       s1: "Flip through the PDF and mark the first page that holds Quran text.",
       s2: "Flip to the last Quran page and mark it — front/back matter is excluded.",
       s3: "Save the page range.",
     },
     templates: {
-      s1: "On a clear page, draw a tight box around the sura-title band and capture it.",
+      s1: "On a clear, ordinary page — never one of the first two — draw a tight box around the sura-title band and capture it.",
       s2: "Do the same for one aya separator (۝).",
       s3: "Optionally, select the variable area for better accuracy.",
       s4: "Save each template — they're matched against every page.",

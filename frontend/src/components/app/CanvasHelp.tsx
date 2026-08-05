@@ -1,4 +1,4 @@
-import { Check, HelpCircle, Lightbulb, RotateCcw } from "lucide-react";
+import { HelpCircle, Lightbulb, RotateCcw } from "lucide-react";
 import { useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -12,8 +12,6 @@ import {
 } from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
-export type GuideItem = { label: string; done?: boolean };
-
 const ICON_BTN =
   "flex h-8 w-8 items-center justify-center rounded-full cursor-pointer border border-border-strong bg-white/95 text-orange shadow-md backdrop-blur-sm transition-colors hover:bg-bg-surface focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-500";
 
@@ -25,34 +23,24 @@ const ICON_BTN =
  */
 export function CanvasHelp({
   guideItems,
-  guideAbout,
   coachText,
   onReplayTour,
 }: {
-  guideItems: GuideItem[];
-  /** Overrides the intro line — e.g. for steps whose list is plain instructions
-   * rather than a checklist that ticks off. */
-  guideAbout?: string;
+  /** What this step asks of you, in order — plain instructions, never ticked
+   * off: every step here is something you keep coming back to. */
+  guideItems: string[];
   coachText: string;
   onReplayTour?: () => void;
 }) {
   return (
     <div className="absolute top-10 start-3 z-20 flex items-center gap-1.5">
-      <GuideDialog items={guideItems} about={guideAbout} onReplayTour={onReplayTour} />
+      <GuideDialog items={guideItems} onReplayTour={onReplayTour} />
       <Coach text={coachText} />
     </div>
   );
 }
 
-function GuideDialog({
-  items,
-  about,
-  onReplayTour,
-}: {
-  items: GuideItem[];
-  about?: string;
-  onReplayTour?: () => void;
-}) {
+function GuideDialog({ items, onReplayTour }: { items: string[]; onReplayTour?: () => void }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   return (
@@ -75,22 +63,13 @@ function GuideDialog({
         <DialogHeader>
           <DialogTitle className="text-text-primary">{t("guide.title")}</DialogTitle>
         </DialogHeader>
-        <p className="text-[12.5px] text-text-secondary">{about ?? t("guide.about")}</p>
         <ol className="flex flex-col gap-2">
-          {items.map((item, i) => (
+          {items.map((label, i) => (
             <li key={i} className="flex items-start gap-2.5 text-[13px] leading-[1.5]">
-              <span
-                className={`mt-[1px] flex h-5 w-5 flex-none items-center justify-center rounded-full border text-[10px] font-semibold ${
-                  item.done
-                    ? "border-success bg-success text-white"
-                    : "border-border-strong text-text-muted"
-                }`}
-              >
-                {item.done ? <Check size={12} strokeWidth={3} /> : i + 1}
+              <span className="mt-[1px] flex h-5 w-5 flex-none items-center justify-center rounded-full border border-border-strong text-[10px] font-semibold text-text-muted">
+                {i + 1}
               </span>
-              <span className={item.done ? "text-text-muted line-through" : "text-text-secondary"}>
-                {item.label}
-              </span>
+              <span className="text-text-secondary">{label}</span>
             </li>
           ))}
         </ol>

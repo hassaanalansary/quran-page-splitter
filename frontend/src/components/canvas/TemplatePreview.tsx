@@ -95,10 +95,13 @@ export function ImageWithRedBox({
 }: {
   imageUrl: string;
   red: Rect | null;
-  height: number;
+  /** Fixed box height. Omit to fill the parent — e.g. inside a `ZoomPane`,
+   * which supplies both the sizing and the surrounding chrome. */
+  height?: number;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [img, setImg] = useState<HTMLImageElement | null>(null);
+  const [box, setBox] = useState<{ w: number; h: number } | null>(null);
 
   useEffect(() => {
     setImg(null);
@@ -106,6 +109,21 @@ export function ImageWithRedBox({
     im.onload = () => setImg(im);
     im.src = imageUrl;
   }, [imageUrl]);
+
+  // Zooming resizes the canvas, which alone would leave the old drawing
+  // stretched — remeasure so the redraw below reruns at the new size.
+  useEffect(() => {
+    const el = canvasRef.current;
+    if (!el) return;
+    const measure = () => {
+      const r = el.getBoundingClientRect();
+      setBox((p) => (p && p.w === r.width && p.h === r.height ? p : { w: r.width, h: r.height }));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -125,6 +143,9 @@ export function ImageWithRedBox({
     const dh = img.naturalHeight * scale;
     const dx = (w - dw) / 2;
     const dy = (h - dh) / 2;
+    // Magnifying: show the pixels as they are rather than smoothing the very
+    // edges the variable area is being lined up against.
+    ctx.imageSmoothingEnabled = scale <= 1;
     ctx.imageSmoothingQuality = "high";
     ctx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight, dx, dy, dw, dh);
     if (red) {
@@ -136,14 +157,21 @@ export function ImageWithRedBox({
       ctx.fillRect(rx, ry, red.w * scale, red.h * scale);
       ctx.strokeRect(rx, ry, red.w * scale, red.h * scale);
     }
-  }, [img, red]);
+  }, [img, red, box]);
 
+  // `imageRendering: auto` opts out of a zoom pane's inherited `pixelated`:
+  // the canvas already draws at the right scale, so the only thing left for the
+  // browser to resample is the device-pixel-ratio step.
+  const canvas = (
+    <canvas ref={canvasRef} className="h-full w-full" style={{ imageRendering: "auto" }} />
+  );
+  if (height === undefined) return canvas;
   return (
     <div
       className="raqam-canvas-grid flex-1 overflow-hidden rounded-md border border-border"
       style={{ height }}
     >
-      <canvas ref={canvasRef} className="h-full w-full" />
+      {canvas}
     </div>
   );
 }

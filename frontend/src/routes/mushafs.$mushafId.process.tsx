@@ -331,11 +331,11 @@ function ProcessPage() {
   // Plain instructions, not a checklist: this step is one long form, and ticking
   // items off said "done" for things the user can still get wrong.
   const guideItems = [
-    { label: t("guide.process.s1") },
-    { label: t("guide.process.s2") },
-    { label: t("guide.process.s3") },
-    { label: t("guide.process.s4") },
-    { label: t("guide.process.s5") },
+    t("guide.process.s1"),
+    t("guide.process.s2"),
+    t("guide.process.s3"),
+    t("guide.process.s4"),
+    t("guide.process.s5"),
   ];
   const status = activeJob ? (
     <StatusLine>
@@ -472,7 +472,6 @@ function ProcessPage() {
         />
         <CanvasHelp
           guideItems={guideItems}
-          guideAbout={""}
           coachText={t("coach.process")}
           onReplayTour={tour.start}
         />

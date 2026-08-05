@@ -92,11 +92,9 @@ function SetupPage() {
   const done2 = processed || (valid && markedLast);
   const done3 = processed || (valid && saved);
 
-  const guideItems = [
-    { label: t("guide.setup.s1"), done: done1 },
-    { label: t("guide.setup.s2"), done: done2 },
-    { label: t("guide.setup.s3"), done: done3 },
-  ];
+  // Plain instructions, not a checklist — the marking chips below already say
+  // where you are, and a second tick-list only repeated them.
+  const guideItems = [t("guide.setup.s1"), t("guide.setup.s2"), t("guide.setup.s3")];
   const status = processed ? (
     <StatusLine tone="success">{t("stepStatus.setupLocked")}</StatusLine>
   ) : !valid ? (

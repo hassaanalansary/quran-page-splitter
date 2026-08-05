@@ -278,11 +278,11 @@ function FinalizePage() {
   // Plain instructions, not a checklist: trimming is a per-line judgement call
   // you keep coming back to, so nothing here is ever really "done".
   const guideItems = [
-    { label: t("guide.finalize.s1") },
-    { label: t("guide.finalize.s2") },
-    { label: t("guide.finalize.s3") },
-    { label: t("guide.finalize.s4") },
-    { label: t("guide.finalize.s5") },
+    t("guide.finalize.s1"),
+    t("guide.finalize.s2"),
+    t("guide.finalize.s3"),
+    t("guide.finalize.s4"),
+    t("guide.finalize.s5"),
   ];
   const status = !hasLines ? (
     <StatusLine tone="warning">{t("finalize.noLines", { page })}</StatusLine>
@@ -387,7 +387,6 @@ function FinalizePage() {
         />
         <CanvasHelp
           guideItems={guideItems}
-          guideAbout={""}
           coachText={t("coach.finalize")}
           onReplayTour={tour.start}
         />

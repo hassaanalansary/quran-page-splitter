@@ -448,11 +448,11 @@ function ReviewPage() {
   // Plain instructions, not a checklist — reviewing a page isn't a linear
   // tick-list (you revisit lines, split, renumber), so nothing is "done" here.
   const guideItems = [
-    { label: t("guide.review.s1") },
-    { label: t("guide.review.s2") },
-    { label: t("guide.review.s3") },
-    { label: t("guide.review.s4") },
-    { label: t("guide.review.s5") },
+    t("guide.review.s1"),
+    t("guide.review.s2"),
+    t("guide.review.s3"),
+    t("guide.review.s4"),
+    t("guide.review.s5"),
   ];
   const status = !store ? undefined : unsavedCount > 0 ? (
     <StatusLine>{t("stepStatus.reviewUnsaved", { count: unsavedCount })}</StatusLine>
@@ -531,7 +531,6 @@ function ReviewPage() {
         />
         <CanvasHelp
           guideItems={guideItems}
-          guideAbout={""}
           coachText={t("coach.review")}
           onReplayTour={tour.start}
         />

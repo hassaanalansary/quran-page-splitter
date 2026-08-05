@@ -13,6 +13,7 @@ import { CroppableImage } from "@/components/canvas/CroppableImage";
 import { PageStage } from "@/components/canvas/PageStage";
 import { RectInputs } from "@/components/canvas/RectInputs";
 import { ImageWithRedBox, TemplatePreview } from "@/components/canvas/TemplatePreview";
+import { ZoomPane } from "@/components/canvas/ZoomPane";
 import { Button } from "@/components/ui/button";
 import {
   ApiError,
@@ -31,6 +32,11 @@ import { getTemplateDraft, setTemplateDraft } from "@/lib/templateDraft";
 export const Route = createFileRoute("/mushafs/$mushafId/templates")({ component: TemplatesPage });
 
 const TEMPLATE_TYPES: TemplateType[] = ["sura_header", "aya_separator"];
+
+/** Logical pages whose sura band and aya markers are drawn as a one-off: the
+ * Fatiha opening and the start of al-Baqara sit inside an ornamental frame, so
+ * a template cut from them matches nothing on the pages that follow. */
+const OPENING_PAGES = 2;
 
 function clamp(n: number, lo: number, hi: number) {
   return Math.max(lo, Math.min(hi, n));
@@ -187,11 +193,14 @@ function TemplatesPage() {
 
   const headerSaved = isSaved("sura_header");
   const sepSaved = isSaved("aya_separator");
+  // Plain instructions, not a checklist: a saved template still gets re-cropped
+  // once detection disagrees with it, so "done" was never the whole truth. The
+  // card chips already report what is saved.
   const guideItems = [
-    { label: t("guide.templates.s1"), done: headerSaved },
-    { label: t("guide.templates.s2"), done: sepSaved },
-    { label: t("guide.templates.s3") },
-    { label: t("guide.templates.s4"), done: headerSaved && sepSaved },
+    t("guide.templates.s1"),
+    t("guide.templates.s2"),
+    t("guide.templates.s3"),
+    t("guide.templates.s4"),
   ];
   const status =
     headerSaved && sepSaved ? (
@@ -246,6 +255,7 @@ function TemplatesPage() {
 
         <TemplatePreview mode="template" pageUrl={pageUrl} working={working} />
         <RectInputs rect={working} onChange={setWorking} max={natural} />
+        {preview <= OPENING_PAGES && <WarnNote>{t("templates.openingPageWarning")}</WarnNote>}
         <Button onClick={capture} disabled={!working || working.w < 2}>
           {cap ? t("templates.recrop") : t("templates.capture", { label: label(activeType) })}
         </Button>
@@ -306,10 +316,8 @@ function TemplatesPage() {
           </Button>
         }
       >
-        <p className="flex gap-1.5 rounded-md border border-[color:var(--warning-border)] bg-warning-bg px-2.5 py-2 text-[11px] leading-snug text-[#92400E]">
-          <TriangleAlert size={13} className="mt-[1px] flex-none" />
-          <span>{t("templates.cropTip")}</span>
-        </p>
+        <WarnNote>{t("templates.openingPagesTip")}</WarnNote>
+        <WarnNote>{t("templates.cropTip")}</WarnNote>
         <div data-tour="tpl-targets" className="flex flex-col gap-3">
           {TEMPLATE_TYPES.map((type) => {
             const name = t(`templates.name_${type}`);
@@ -368,6 +376,15 @@ function TemplatesPage() {
 
       <TourOverlay tour={tour} />
     </div>
+  );
+}
+
+function WarnNote({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="flex gap-1.5 rounded-md border border-[color:var(--warning-border)] bg-warning-bg px-2.5 py-2 text-[11px] leading-snug text-[#92400E]">
+      <TriangleAlert size={13} className="mt-[1px] flex-none" />
+      <span>{children}</span>
+    </p>
   );
 }
 
@@ -445,7 +462,7 @@ function IgnoreSection({
           <p className="text-[10.5px] leading-snug text-text-muted">
             {t("templates.ignoreEditHint")}
           </p>
-          <div className="raqam-canvas-grid h-[200px] overflow-hidden rounded-md border border-border">
+          <ZoomPane imageUrl={templateUrl} height={240}>
             <CroppableImage
               imageUrl={templateUrl}
               rect={ignoreRect}
@@ -453,10 +470,12 @@ function IgnoreSection({
               label={t("templates.ignoreLabel")}
               tone="red"
             />
-          </div>
+          </ZoomPane>
         </>
       ) : ignoreRect ? (
-        <ImageWithRedBox imageUrl={templateUrl} red={ignoreRect} height={200} />
+        <ZoomPane imageUrl={templateUrl} height={240}>
+          <ImageWithRedBox imageUrl={templateUrl} red={ignoreRect} />
+        </ZoomPane>
       ) : (
         <p className="text-[11px] text-text-muted">{t("templates.noIgnore")}</p>
       )}
