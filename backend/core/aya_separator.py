@@ -13,15 +13,15 @@ from dataclasses import dataclass
 from PIL import Image
 
 from core.context import BBox, LineResult, PageContext, SegmentResult
+from core.image_utils import find_content_bbox
 from core.template_matching import IgnoreRect, locate_x_matches, make_template_spec
-from image_utils import find_content_bbox
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass
 class AyaSeparatorConfig:
-    match_threshold: float = 0.5
+    match_threshold: float = 0.35
     short_line_ratio: float = 0.98
     min_segment_width: int = 20
 
@@ -54,7 +54,7 @@ class AyaSeparatorProcessor:
         Mutates ctx.lines by setting line.segments and line.content_bbox.
         """
         for line in ctx.lines:
-            if line.is_sura or line.is_basmala:
+            if line.is_sura or line.is_besmella:
                 continue
 
             line_binary = ctx.line_binary(line)
@@ -79,24 +79,18 @@ class AyaSeparatorProcessor:
             line_gray = ctx.line_grey(line)
             if content_ratio < self.config.short_line_ratio:
                 # Use trimmed content region for separator detection
-                detect_gray = line_gray[cy : cy + ch, cx : cx + cw]
                 detect_offset_x = cx
                 detect_width = cw
             else:
-                detect_gray = line_gray
                 detect_offset_x = 0
                 detect_width = line.bbox.width
 
             # Detect separator positions
-            boxes = locate_x_matches(detect_gray, self.template)
+            boxes = locate_x_matches(line_gray, self.template)
 
             if not boxes:
                 # No separators — single segment
-                seg_bbox = (
-                    line.content_bbox
-                    if content_ratio < self.config.short_line_ratio
-                    else line.bbox
-                )
+                seg_bbox = line.content_bbox if content_ratio < self.config.short_line_ratio else line.bbox
                 line.segments.append(SegmentResult(bbox=seg_bbox, has_separator=False))
                 continue
 
@@ -127,36 +121,48 @@ class AyaSeparatorProcessor:
         Cuts at the LEFT edge of each separator so the separator ornament
         is included with the aya text to its right (the aya it terminates).
 
+        Everything here is in line-box coordinates — the same space the matcher
+        reported its hits in — and only the content window narrows the result.
+        Matching deliberately runs across the whole line while segments are cut
+        from the content, because a separator sitting at the very end of a line
+        cannot be found inside a region trimmed to the ink: the template carries
+        white padding that has nothing to sit on there. Mixing the two spaces is
+        what used to push a segment's right edge past the content by the width
+        of the left margin, and drop the rightmost segment of a short line.
+
         Coordinates are translated to original page space.
         """
         min_w = self.config.min_segment_width
-        end = detect_width  # in detect region coords
+        content_left = detect_offset_x
+        content_right = detect_offset_x + detect_width
+        end = content_right
 
         for sep_left, _ in reversed(boxes):  # right-to-left
-            cut = max(0, sep_left)
-            seg_width = end - cut
-            if seg_width >= min_w:
+            # A hit out in the margin has no text to cut from; clamping collapses
+            # it to nothing and the width check below discards it.
+            cut = min(max(sep_left, content_left), end)
+            if end - cut >= min_w:
                 line.segments.append(
                     SegmentResult(
                         bbox=BBox(
-                            left=line.bbox.left + detect_offset_x + cut,
+                            left=line.bbox.left + cut,
                             top=line.bbox.top,
-                            right=line.bbox.left + detect_offset_x + end,
+                            right=line.bbox.left + end,
                             bottom=line.bbox.bottom,
                         ),
                         has_separator=True,
                     )
                 )
-            end = cut
+                end = cut
 
         # Leftmost remaining text — no separator
-        if end >= min_w:
+        if end - content_left >= min_w:
             line.segments.append(
                 SegmentResult(
                     bbox=BBox(
-                        left=line.bbox.left + detect_offset_x,
+                        left=line.bbox.left + content_left,
                         top=line.bbox.top,
-                        right=line.bbox.left + detect_offset_x + end,
+                        right=line.bbox.left + end,
                         bottom=line.bbox.bottom,
                     ),
                     has_separator=False,

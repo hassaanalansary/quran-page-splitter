@@ -11,6 +11,7 @@
 @theme inline {
   --font-sans: "Outfit", system-ui, sans-serif;
   --font-display: "Syne", system-ui, sans-serif;
+  --font-arabic: "Amiri", serif;
 
   --radius-xs: 3px;
   --radius-sm: 5px;
@@ -55,6 +56,8 @@
   --color-text-secondary: var(--text-secondary);
   --color-text-muted: var(--text-muted);
   --color-border-strong: var(--border-strong);
+  --color-info: var(--info);
+  --color-info-bg: var(--info-bg);
   --color-success: var(--success);
   --color-success-bg: var(--success-bg);
   --color-warning: var(--warning);
@@ -82,6 +85,8 @@
   --orange-tint: oklch(0.65 0.17 41 / 0.06);
 
   /* Semantic */
+  --info: oklch(0.6 0.13 220);
+  --info-bg: oklch(0.94 0.06 220);
   --success: oklch(0.6 0.13 156);
   --success-bg: oklch(0.94 0.06 156);
   --success-border: oklch(0.6 0.13 156 / 0.3);
@@ -130,4 +135,33 @@
   background-color: var(--bg-surface);
   background-image: radial-gradient(var(--border-strong) 1px, transparent 1px);
   background-size: 24px 24px;
+}
+
+/*
+  Review: the delete button that pops over a selected aya separator. A springy
+  pop-in draws the eye the moment it appears.
+*/
+@keyframes sep-del-pop {
+  0% {
+    transform: translateX(-50%) scale(0.4);
+    opacity: 0;
+  }
+  70% {
+    transform: translateX(-50%) scale(1.15);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(-50%) scale(1);
+    opacity: 1;
+  }
+}
+
+.sep-del-pop {
+  animation: sep-del-pop 260ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sep-del-pop {
+    animation: none;
+  }
 }

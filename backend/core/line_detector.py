@@ -7,9 +7,9 @@ import numpy as np
 
 from core.config import CropConfig, DetectionConfig, ProcessingConfig
 from core.context import BBox, LineResult, PageContext
-from core.protected_bands import ProtectedBand, ProtectedBandLocator
-from image_utils import find_content_bbox
-from script.line_cutter import split_by_valleys
+from core.image_utils import find_content_bbox
+from core.line_cutter import split_by_valleys
+from core.sura_header import SuraHeaderLocator, SuraHeaderSpec
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 class _DetectedBand:
     box: dict[str, int]
     is_sura: bool = False
-    is_basmala: bool = False
+    is_besmella: bool = False
     slot_count: int = 1
 
 
@@ -36,12 +36,12 @@ class LineDetector:
         crop: CropConfig,
         detection: DetectionConfig,
         processing: ProcessingConfig | None = None,
-        protected_locator: ProtectedBandLocator | None = None,
+        sura_header_locator: SuraHeaderLocator | None = None,
     ):
         self.crop = crop
         self.detection = detection
         self.processing = processing or ProcessingConfig()
-        self.protected_locator = protected_locator
+        self.sura_header_locator = sura_header_locator
 
     @staticmethod
     def _set_lines_from_bands(
@@ -66,7 +66,7 @@ class LineDetector:
                     line_index=i,
                     slot_count=band.slot_count,
                     is_sura=band.is_sura,
-                    is_basmala=band.is_basmala,
+                    is_besmella=band.is_besmella,
                 )
             )
 
@@ -80,9 +80,7 @@ class LineDetector:
         x, y, w, h = self.crop.as_tuple()
         img_w, img_h = ctx.image.size
 
-        should_swap = (
-            self.processing.alternate_horizontal_margin and ctx.page_index % 2 == 0
-        )
+        should_swap = self.processing.alternate_horizontal_margin and ctx.page_index % 2 == 0
         crop_x = (img_w - (x + w)) if should_swap else x
 
         left = max(0, crop_x)
@@ -100,23 +98,23 @@ class LineDetector:
         cropped_binary = ctx.cropped_binary()
 
         logger.info("Start detecting bands")
-        bands = self._detect_bands(cropped_grey, cropped_binary, n_lines)
+        bands = self._detect_bands(ctx, cropped_grey, cropped_binary, n_lines)
         self._set_lines_from_bands(ctx, left, top, bands)
 
         logger.info("  Detected %d lines", len(ctx.lines))
 
     def _detect_bands(
         self,
+        ctx: PageContext,
         grey: np.ndarray,
         binary: np.ndarray,
         expected_lines: int,
     ) -> list[_DetectedBand]:
-        protected = (
-            self.protected_locator.locate(grey)
-            if self.protected_locator is not None
-            else []
-        )
-        if not protected:
+        headers = self.sura_header_locator.locate(grey) if self.sura_header_locator is not None else []
+        ctx.detected_headers = [
+            {"top": h.top, "bottom": h.bottom, "score": h.score, "slots": h.slot_count} for h in headers
+        ]
+        if not headers:
             return [
                 _DetectedBand(box=box)
                 for box in split_by_valleys(
@@ -127,34 +125,38 @@ class LineDetector:
                 )
             ]
 
-        return self._detect_with_protected_bands(
+        return self._detect_with_sura_headers(
+            ctx,
             grey,
             binary,
             expected_lines,
-            protected,
+            headers,
         )
 
-    def _detect_with_protected_bands(
+    def _detect_with_sura_headers(
         self,
+        ctx: PageContext,
         grey: np.ndarray,
         binary: np.ndarray,
         expected_lines: int,
-        protected: list[ProtectedBand],
+        headers: list[SuraHeaderSpec],
     ) -> list[_DetectedBand]:
-        protected_slots = sum(band.slot_count for band in protected)
+        protected_slots = sum(header.slot_count for header in headers)
         text_slots = expected_lines - protected_slots
         if text_slots < 0:
             raise ValueError(
-                "Protected bands consume more slots than expected lines: "
-                f"{protected_slots} > {expected_lines}"
+                f"Protected headers consume more slots than expected lines: {protected_slots} > {expected_lines}"
             )
 
         regions = self._allocate_text_slots(
             binary,
-            protected,
+            headers,
             text_slots,
             expected_lines,
         )
+        ctx.text_regions = [
+            {"top": r.top, "bottom": r.bottom, "height": r.content_height, "slots": r.slots} for r in regions
+        ]
         detected: list[_DetectedBand] = []
 
         for region in regions:
@@ -179,18 +181,17 @@ class LineDetector:
             )
 
         _h, w = binary.shape
-        for band in protected:
+        for header in headers:
             detected.append(
                 _DetectedBand(
                     box={
                         "left": 0,
-                        "top": band.top,
+                        "top": header.top,
                         "right": w,
-                        "bottom": band.bottom,
+                        "bottom": header.bottom,
                     },
-                    is_sura=band.kind == "sura_header",
-                    is_basmala=band.kind == "basmala",
-                    slot_count=band.slot_count,
+                    is_sura=True,
+                    slot_count=header.slot_count,
                 )
             )
 
@@ -200,7 +201,7 @@ class LineDetector:
     def _allocate_text_slots(
         self,
         binary: np.ndarray,
-        protected: list[ProtectedBand],
+        protected: list[SuraHeaderSpec],
         text_slots: int,
         expected_lines: int,
     ) -> list[_TextRegion]:
@@ -209,35 +210,13 @@ class LineDetector:
         if text_slots == 0:
             return regions
         if not regions:
-            raise ValueError("Protected bands left no text regions to split")
+            raise ValueError("Protected headers left no text regions to split")
         if len(regions) > text_slots:
-            raise ValueError(
-                f"More text regions than remaining slots: {len(regions)} > {text_slots}"
-            )
+            raise ValueError(f"More text regions than remaining slots: {len(regions)} > {text_slots}")
 
         total_height = sum(region.content_height for region in regions)
-        raw_slots = [
-            region.content_height / max(1, total_height) * text_slots
-            for region in regions
-        ]
+        raw_slots = [region.content_height / max(1, total_height) * text_slots for region in regions]
         slots = [max(1, int(np.round(raw))) for raw in raw_slots]
-
-        # while sum(slots) < text_slots:
-        #     idx = max(
-        #         range(len(regions)),
-        #         key=lambda i: (raw_slots[i] - np.floor(raw_slots[i]), raw_slots[i]),
-        #     )
-        #     slots[idx] += 1
-
-        # while sum(slots) > text_slots:
-        #     candidates = [i for i, value in enumerate(slots) if value > 1]
-        #     if not candidates:
-        #         break
-        #     idx = min(
-        #         candidates,
-        #         key=lambda i: (raw_slots[i] - np.floor(raw_slots[i]), raw_slots[i]),
-        #     )
-        #     slots[idx] -= 1
 
         for region, slot_count in zip(regions, slots, strict=True):
             region.slots = slot_count
@@ -253,15 +232,15 @@ class LineDetector:
     @staticmethod
     def _content_regions(
         binary: np.ndarray,
-        protected: list[ProtectedBand],
+        headers: list[SuraHeaderSpec],
         min_region_height: int,
     ) -> list[_TextRegion]:
         h = binary.shape[0]
         ranges: list[tuple[int, int]] = []
         cursor = 0
-        for band in sorted(protected, key=lambda item: item.top):
-            top = max(0, min(h, band.top))
-            bottom = max(0, min(h, band.bottom))
+        for header in sorted(headers, key=lambda item: item.top):
+            top = max(0, min(h, header.top))
+            bottom = max(0, min(h, header.bottom))
             if top > cursor:
                 ranges.append((cursor, top))
             cursor = max(cursor, bottom)

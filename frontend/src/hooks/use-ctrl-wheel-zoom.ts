@@ -17,8 +17,9 @@ type UseCtrlWheelZoomOptions = {
  * Ctrl + mouse-wheel zoom.
  *
  * Attaches a **non-passive** `wheel` listener on the given element so
- * `preventDefault()` can suppress the browser's native pinch-zoom /
- * scroll behaviour.
+ * `preventDefault()` can suppress the browser's native pinch-zoom / scroll.
+ * Keeping the point under the pointer fixed is handled separately by
+ * {@link useZoomToPointer}, which reacts to the resulting scale change.
  */
 export function useCtrlWheelZoom({
   ref,

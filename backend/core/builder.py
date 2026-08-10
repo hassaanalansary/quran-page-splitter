@@ -1,17 +1,17 @@
-"""Pipeline factory: builds configs, prepares templates, assembles the pipeline."""
+"""Pipeline factory: builds configs and assembles the pipeline.
 
-import io
+Templates are loaded into PIL images by the caller (the API service layer);
+this module stays free of any web-framework or storage concerns.
+"""
+
 from pathlib import Path
-
-from fastapi import UploadFile
-from PIL import Image
 
 from core.aya_separator import AyaSeparatorProcessor
 from core.config import CropConfig, DetectionConfig, ExportConfig, ProcessingConfig
 from core.line_detector import LineDetector
 from core.page_processor import PageProcessor
 from core.pipeline import Pipeline
-from core.protected_bands import ProtectedBandLocator
+from core.sura_header import SuraHeaderLocator
 
 
 def init_configs(
@@ -25,10 +25,7 @@ def init_configs(
     sura_header_threshold: float = 0.60,
     max_sura_headers: int = 3,
 ) -> tuple[CropConfig, DetectionConfig, ProcessingConfig]:
-    """Initialize the configs for the pipeline.
-
-    Returns a tuple of (crop_config, detection_config, processing_config).
-    """
+    """Initialize the (crop, detection, processing) configs for the pipeline."""
     return (
         CropConfig(x=x, y=y, w=w, h=h),
         DetectionConfig(
@@ -41,28 +38,6 @@ def init_configs(
     )
 
 
-async def prepare_template(  # type: ignore[no-untyped-def]
-    template: UploadFile,
-    file_name: str,
-    results_dir: Path = Path("results"),
-) -> Image.Image:
-
-    # load the data from the request
-    template_data = await template.read()
-
-    # specify the path of the file
-    template_path = results_dir / file_name
-
-    # write the data to the file
-    template_path.write_bytes(template_data)
-
-    # load the image to memory
-    template_image = Image.open(io.BytesIO(template_data))
-    template_image.load()
-
-    return template_image
-
-
 def build_pipeline(
     crop_cfg: CropConfig,
     det_cfg: DetectionConfig,
@@ -70,17 +45,14 @@ def build_pipeline(
     export_cfg: ExportConfig,
     aya_processor: AyaSeparatorProcessor,
     results_dir: Path,
-    protected_locator: ProtectedBandLocator | None = None,
+    sura_header_locator: SuraHeaderLocator | None = None,
 ) -> Pipeline:
-    """Builds the pipeline from the given configs and templates.
-
-    Returns the pipeline.
-    """
+    """Assemble the detector, page processor, and pipeline from the given configs."""
     detector = LineDetector(
         crop=crop_cfg,
         detection=det_cfg,
         processing=proc_cfg,
-        protected_locator=protected_locator,
+        sura_header_locator=sura_header_locator,
     )
     processor = PageProcessor(
         detector=detector,

@@ -41,15 +41,12 @@ class DetectionConfig:
             band. The header is still exported as one crop.
         sura_header_threshold: Template match threshold for pre-split sura
             header detection.
-        basmala_threshold: Template match threshold for optional pre-split
-            basmala detection.
         max_sura_headers: Maximum sura headers expected on one page.
     """
 
-    padding: int = 4
+    padding: int = 0
     sura_header_slots: int = 1
     sura_header_threshold: float = 0.60
-    basmala_threshold: float = 0.70
     max_sura_headers: int = 3
 
 
@@ -63,7 +60,7 @@ class ExportConfig:
         export_coordinates: Whether to collect bounding-box coordinate data.
         start_sura: Sura number at the start of processing (1-based).
         start_aya: Aya number at the start of processing (1-based).
-        expected_lines: Expected number of detected lines per page (sura/basmala
+        expected_lines: Expected number of detected lines per page (sura/besmella
             bands count).
     """
 

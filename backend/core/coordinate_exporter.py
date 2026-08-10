@@ -12,10 +12,18 @@ import logging
 from pathlib import Path
 
 from core.context import BBox, LineResult, PageContext, QuranTracker
+from core.image_utils import find_content_bbox
 from core.quran_metadata import get_aya_count, get_sura
-from image_utils import find_content_bbox
 
 logger = logging.getLogger(__name__)
+
+#: Breathing room left around a tightened sura-header or besmella crop. The box
+#: is pulled in to the band's ink, and an exact hull shaves the anti-aliased
+#: outer edge of an ornament; a few pixels back out keeps the stroke intact.
+#:
+#: Absolute pixels, so it is proportionally heavier on a low-resolution render:
+#: ~2% of a line on a 300-dpi page but ~9% on a page rendered four times smaller.
+HEADER_TIGHTEN_MARGIN_PX = 10
 
 
 # ------------------------------------------------------------------
@@ -33,27 +41,19 @@ def track_positions(ctx: PageContext, tracker: QuranTracker) -> None:
         if line.is_sura:
             _handle_sura_header(line, tracker)
             content_bbox = find_content_bbox(
-                ctx.binary[
-                    line.bbox.top : line.bbox.bottom, line.bbox.left : line.bbox.right
-                ]
+                ctx.binary[line.bbox.top : line.bbox.bottom, line.bbox.left : line.bbox.right]
             )
             if content_bbox is None:
                 continue
-            x, y, w, h = content_bbox
-            line.bbox = BBox(
-                left=max(0, line.bbox.left + x - 10),
-                top=max(0, line.bbox.top + y - 10),
-                right=min(ctx.grey.shape[1], line.bbox.left + x + w + 10),
-                bottom=min(ctx.grey.shape[0], line.bbox.top + y + h + 10),
-            )
+            line.bbox = _tightened_bbox(ctx, line, content_bbox)
             continue
 
-        if tracker.pending_basmala:
-            tracker.pending_basmala = False
+        if tracker.pending_besmella:
+            tracker.pending_besmella = False
             has_any_separator = any(seg.has_separator for seg in line.segments)
 
             if not has_any_separator:
-                _handle_basmala(line, tracker)
+                _handle_besmella(line, tracker)
                 content_bbox = find_content_bbox(
                     ctx.binary[
                         line.bbox.top : line.bbox.bottom,
@@ -62,23 +62,37 @@ def track_positions(ctx: PageContext, tracker: QuranTracker) -> None:
                 )
                 if content_bbox is None:
                     continue
-                x, y, w, h = content_bbox
-                line.bbox = BBox(
-                    left=max(0, line.bbox.left + x - 10),
-                    top=max(0, line.bbox.top + y - 10),
-                    right=min(ctx.grey.shape[1], line.bbox.left + x + w + 10),
-                    bottom=min(ctx.grey.shape[0], line.bbox.top + y + h + 10),
-                )
+                line.bbox = _tightened_bbox(ctx, line, content_bbox)
                 continue
 
-            # Has separator → not a basmala, treat as normal text
+            # Has separator → not a besmella, treat as normal text
             logger.info(
-                "  Line %d: first line after sura header has separator "
-                "→ treating as normal text (no basmala)",
+                "  Line %d: first line after sura header has separator → treating as normal text (no besmella)",
                 line.line_index,
             )
 
         _handle_text_line(line, tracker)
+
+
+def _tightened_bbox(
+    ctx: PageContext,
+    line: LineResult,
+    content_bbox: tuple[int, int, int, int],
+) -> BBox:
+    """Pull an ornamental line's box in to its ink, plus a small margin.
+
+    ``content_bbox`` is line-relative, as returned by ``find_content_bbox``.
+    Note it is a hull over every non-background pixel in the band, so ink that
+    bled in from the neighbouring lines widens the result too.
+    """
+    x, y, w, h = content_bbox
+    margin = HEADER_TIGHTEN_MARGIN_PX
+    return BBox(
+        left=max(0, line.bbox.left + x - margin),
+        top=max(0, line.bbox.top + y - margin),
+        right=min(ctx.grey.shape[1], line.bbox.left + x + w + margin),
+        bottom=min(ctx.grey.shape[0], line.bbox.top + y + h + margin),
+    )
 
 
 def _handle_sura_header(line: LineResult, tracker: QuranTracker) -> None:
@@ -91,7 +105,7 @@ def _handle_sura_header(line: LineResult, tracker: QuranTracker) -> None:
     if tracker.current_aya != 1:
         tracker.advance_sura()
     else:
-        tracker.pending_basmala = True
+        tracker.pending_besmella = True
     sura_info = get_sura(tracker.current_sura)
 
     line.sura_number = tracker.current_sura
@@ -108,9 +122,9 @@ def _handle_sura_header(line: LineResult, tracker: QuranTracker) -> None:
     logger.info("    Total ayas in this sura: %d", sura_info.aya_count)
 
 
-def _handle_basmala(line: LineResult, tracker: QuranTracker) -> None:
-    """Process a basmala line (first line after sura header with no separator)."""
-    line.is_basmala = True
+def _handle_besmella(line: LineResult, tracker: QuranTracker) -> None:
+    """Process a besmella line (first line after sura header with no separator)."""
+    line.is_besmella = True
     line.sura_number = tracker.current_sura
     sura_info = get_sura(tracker.current_sura)
     line.sura_name = sura_info.name
@@ -218,23 +232,19 @@ def collect_page_coordinates(ctx: PageContext, padding: int = 0) -> dict:
             line_data["sura_number"] = line.sura_number
             line_data["sura_name"] = line.sura_name
             line_data["sura_transliteration"] = line.sura_transliteration
-        elif line.is_basmala:
-            line_data["type"] = "basmala"
+        elif line.is_besmella:
+            line_data["type"] = "besmella"
             line_data["sura_number"] = line.sura_number
             line_data["sura_name"] = line.sura_name
         else:
             line_data["type"] = "text"
-            line_data["separator_cuts"] = sorted(
-                seg.bbox.left for seg in line.segments if seg.has_separator
-            )
+            line_data["separator_cuts"] = sorted(seg.bbox.left for seg in line.segments if seg.has_separator)
             line_data["segments"] = []
             for seg in line.segments:
                 line_data["segments"].append(
                     {
                         "sura_number": seg.sura_number,
-                        "sura_name": get_sura(seg.sura_number).name
-                        if seg.sura_number
-                        else None,
+                        "sura_name": get_sura(seg.sura_number).name if seg.sura_number else None,
                         "aya_number": seg.aya_number,
                         "is_continuation": seg.is_continuation,
                         "has_separator": seg.has_separator,
@@ -249,7 +259,7 @@ def collect_page_coordinates(ctx: PageContext, padding: int = 0) -> dict:
 
 def _export_line_bbox(line: LineResult) -> BBox:
     """Use segment extents for text lines so review bounds avoid empty margins."""
-    if line.is_sura or line.is_basmala or not line.segments:
+    if line.is_sura or line.is_besmella or not line.segments:
         return line.bbox
 
     return BBox(
@@ -258,41 +268,6 @@ def _export_line_bbox(line: LineResult) -> BBox:
         right=max(seg.bbox.right for seg in line.segments),
         bottom=max(seg.bbox.bottom for seg in line.segments),
     )
-
-
-# ------------------------------------------------------------------
-# Logging setup
-# ------------------------------------------------------------------
-
-
-def setup_export_logging(log_path: Path) -> None:
-    """Configure the module logger to write detailed output to a file.
-
-    All messages at DEBUG level and above are written to the log file.
-    A summary stream is also printed to the console at INFO level.
-    """
-    export_logger = logging.getLogger(__name__)
-    export_logger.setLevel(logging.DEBUG)
-
-    # Remove existing handlers (avoid duplicate output on re-runs)
-    export_logger.handlers.clear()
-
-    # File handler — detailed log
-    file_handler = logging.FileHandler(log_path, mode="w", encoding="utf-8")
-    file_handler.setLevel(logging.DEBUG)
-    file_fmt = logging.Formatter("%(asctime)s  %(levelname)-8s  %(message)s")
-    file_handler.setFormatter(file_fmt)
-    export_logger.addHandler(file_handler)
-
-    # Console handler — summary only
-    console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging.INFO)
-    console_fmt = logging.Formatter("%(message)s")
-    console_handler.setFormatter(console_fmt)
-    export_logger.addHandler(console_handler)
-
-    # Prevent propagation to root logger
-    export_logger.propagate = False
 
 
 def save_json(data: dict, output_path: Path) -> None:
