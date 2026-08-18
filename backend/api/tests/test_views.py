@@ -1,11 +1,13 @@
 """End-to-end view tests through the mounted /api URLs (full stack)."""
 
+import uuid
+
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test.client import BOUNDARY, MULTIPART_CONTENT, encode_multipart
 
 from api.models import Qiraa
 from api.services import suras
-from api.tests.helpers import MediaTestCase, make_pdf_bytes, make_png_bytes
+from api.tests.helpers import ApiTestCase, MediaTestCase, make_pdf_bytes, make_png_bytes
 
 
 def _create_mushaf(client, name: str = "ViewMushaf", pages: int = 5):
@@ -42,7 +44,7 @@ class QiraatViewTests(MediaTestCase):
         self.assertIn("counting_system", body[0])
 
 
-class MushafViewTests(MediaTestCase):
+class MushafViewTests(ApiTestCase):
     def test_create_and_get(self):
         resp = _create_mushaf(self.client, "Created", 7)
         self.assertEqual(resp.status_code, 201)
@@ -150,3 +152,31 @@ class MushafViewTests(MediaTestCase):
         )
         self.assertEqual(resp.status_code, 200)
         self.assertIn("start", resp.json())
+
+
+class AuthGateTests(MediaTestCase):
+    """The API is closed by default; only reference data is open.
+
+    Deliberately extends MediaTestCase, not ApiTestCase — the whole point is an
+    anonymous client.
+    """
+
+    def test_mushaf_routes_require_a_session(self):
+        for method, path in [
+            ("get", "/api/mushafs"),
+            ("get", f"/api/mushafs/{uuid.uuid4()}"),
+            ("get", f"/api/mushafs/{uuid.uuid4()}/stats"),
+            ("delete", f"/api/mushafs/{uuid.uuid4()}"),
+        ]:
+            with self.subTest(path=path):
+                resp = getattr(self.client, method)(path)
+                self.assertEqual(resp.status_code, 401)
+
+    def test_creating_a_mushaf_anonymously_is_rejected(self):
+        self.assertEqual(_create_mushaf(self.client, "Anon").status_code, 401)
+
+    def test_reference_data_stays_public(self):
+        suras.seed_reference_data()
+        for path in ("/api/suras?qiraa=hafs", "/api/qiraat", "/api/counting-systems"):
+            with self.subTest(path=path):
+                self.assertEqual(self.client.get(path).status_code, 200)

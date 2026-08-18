@@ -5,7 +5,7 @@ from ninja.errors import HttpError
 
 from api.models import EraseStroke, ProcessingRun
 from api.services import coordinates, editing, suras
-from api.tests.helpers import bare_mushaf
+from api.tests.helpers import bare_mushaf, default_user
 
 
 class SaveFinalizeTests(TestCase):
@@ -50,6 +50,7 @@ class SaveFinalizeTests(TestCase):
                     "erase_strokes": [{"brush_size": 8, "points": [[1, 2], [3, 4]]}],
                 }
             ],
+            user=default_user(),
         )
         line = self.page.lines.get(line_number=1)
         # x=10 / w=80 from setup are untouched; only y/h come from the override.
@@ -61,8 +62,8 @@ class SaveFinalizeTests(TestCase):
 
     def test_strokes_replaced_on_resave(self):
         edits = [{"line_number": 1, "erase_strokes": [{"brush_size": 8, "points": [[1, 2]]}]}]
-        editing.save_finalize(mushaf_id=self.mushaf.id, page_number=1, line_edits=edits)
-        editing.save_finalize(mushaf_id=self.mushaf.id, page_number=1, line_edits=edits)
+        editing.save_finalize(mushaf_id=self.mushaf.id, page_number=1, line_edits=edits, user=default_user())
+        editing.save_finalize(mushaf_id=self.mushaf.id, page_number=1, line_edits=edits, user=default_user())
         self.assertEqual(EraseStroke.objects.filter(line__page=self.page).count(), 1)
 
     def test_page_dict_round_trips_strokes(self):
@@ -70,16 +71,15 @@ class SaveFinalizeTests(TestCase):
         editing.save_finalize(
             mushaf_id=self.mushaf.id,
             page_number=1,
-            line_edits=[
-                {"line_number": 1, "erase_strokes": [{"brush_size": 8, "points": [[1, 2], [3, 4]]}]}
-            ],
+            line_edits=[{"line_number": 1, "erase_strokes": [{"brush_size": 8, "points": [[1, 2], [3, 4]]}]}],
+            user=default_user(),
         )
         line = coordinates.page_to_dict(self.page)["lines"][0]
         self.assertEqual(line["erase_strokes"], [{"brush_size": 8, "points": [[1, 2], [3, 4]]}])
 
     def test_missing_page_rejected(self):
         with self.assertRaises(HttpError):
-            editing.save_finalize(mushaf_id=self.mushaf.id, page_number=5, line_edits=[])
+            editing.save_finalize(mushaf_id=self.mushaf.id, page_number=5, line_edits=[], user=default_user())
 
 
 class PageColumnTests(TestCase):

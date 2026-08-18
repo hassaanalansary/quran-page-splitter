@@ -10,7 +10,7 @@ from api.models import ActivityEvent, ActivityTypeChoices, Page, ProcessingRun
 from api.services import mushaf as mushaf_service
 from api.services import processing as processing_service
 from api.services import suras
-from api.tests.helpers import MediaTestCase, make_pdf_bytes, make_png_bytes
+from api.tests.helpers import MediaTestCase, default_user, make_pdf_bytes, make_png_bytes
 
 # Reasonable detection settings; acceleration off to use the CPU path in CI.
 _SETTINGS = {
@@ -30,13 +30,14 @@ _SETTINGS = {
 
 def _mushaf(pages: int = 3):
     created = mushaf_service.create_mushaf(
+        owner=default_user(),
         pdf_file=SimpleUploadedFile("m.pdf", make_pdf_bytes(pages), "application/pdf"),
         name="Proc",
         qiraa=None,
         first_quran_pdf_page=1,
         last_quran_pdf_page=None,
     )
-    return mushaf_service.get_mushaf(created["mushaf"]["id"])
+    return mushaf_service.get_mushaf(created["mushaf"]["id"], user=default_user())
 
 
 def _add_templates(mushaf):
@@ -49,6 +50,7 @@ def _add_templates(mushaf):
             ignore_y=None,
             ignore_w=None,
             ignore_h=None,
+            user=default_user(),
         )
 
 

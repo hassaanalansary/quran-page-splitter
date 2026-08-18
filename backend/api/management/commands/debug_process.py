@@ -151,7 +151,10 @@ class Command(BaseCommand):
         self.stdout.write(f"  job {job.id} started on a worker thread")
 
         cancelled = False
-        while not job.finished:
+        while not jobs_service.is_finished(job):
+            # The job is a database row now, so a poll has to re-read it — the
+            # worker mutates the row, not this object.
+            job.refresh_from_db()
             # ⬅ BREAKPOINT HERE is the browser's poll, in a loop you control.
             self.stdout.write(
                 f"  poll  state={job.state:<10} phase={job.phase:<10} "

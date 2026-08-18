@@ -6,6 +6,7 @@ from django.http import HttpRequest, JsonResponse
 from ninja import Router, Schema
 from pydantic import Field
 
+from api.auth import current_user
 from api.common import EraseStrokeSchema, RectSchema
 from api.services import editing as editing_service
 
@@ -80,7 +81,7 @@ class BulkSaveIn(Schema):
 
 @router.get("/{mushaf_id}/pages", response=list[PageSummaryOut])
 def list_pages(request: HttpRequest, mushaf_id: uuid.UUID) -> list[dict]:
-    return editing_service.list_pages(mushaf_id)
+    return editing_service.list_pages(mushaf_id, user=current_user(request))
 
 
 @router.get("/{mushaf_id}/review-data")
@@ -90,7 +91,7 @@ def review_data(request: HttpRequest, mushaf_id: uuid.UUID) -> JsonResponse:
     Hand-serialized (no ``response=`` schema) so the large payload skips Pydantic
     validation/re-serialization on the way out — a big chunk of the response time.
     """
-    return JsonResponse(editing_service.review_data(mushaf_id))
+    return JsonResponse(editing_service.review_data(mushaf_id, user=current_user(request)))
 
 
 @router.post("/{mushaf_id}/pages/bulk")
@@ -98,6 +99,7 @@ def bulk_save(request: HttpRequest, mushaf_id: uuid.UUID, data: BulkSaveIn) -> J
     """Save edited pages + review flags in one transaction; returns fresh review data."""
     return JsonResponse(
         editing_service.bulk_save(
+            user=current_user(request),
             mushaf_id=mushaf_id,
             pages=[p.model_dump() for p in data.pages],
             reviewed_pages=data.reviewed_pages,
@@ -107,12 +109,13 @@ def bulk_save(request: HttpRequest, mushaf_id: uuid.UUID, data: BulkSaveIn) -> J
 
 @router.get("/{mushaf_id}/pages/{page_number}", response=PageDataOut)
 def get_page(request: HttpRequest, mushaf_id: uuid.UUID, page_number: int) -> dict:
-    return editing_service.get_page_data(mushaf_id, page_number)
+    return editing_service.get_page_data(mushaf_id, page_number, user=current_user(request))
 
 
 @router.post("/{mushaf_id}/pages/{page_number}", response=PageDataOut)
 def save_page(request: HttpRequest, mushaf_id: uuid.UUID, page_number: int, data: PageSaveIn) -> dict:
     return editing_service.save_page(
+        user=current_user(request),
         mushaf_id=mushaf_id,
         page_number=page_number,
         bbox=data.bbox.model_dump(),
