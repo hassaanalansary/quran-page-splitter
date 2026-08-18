@@ -415,17 +415,24 @@ Runtime is yours — here is what to exercise, with what should happen:
 
 ## 12. Known limits (by design, worth knowing)
 
-- **Single process.** Job state is in memory. Under multiple workers a poll could land on
-  a process that doesn't know the job. Correct for a local single-user tool; if that ever
-  changes, move the job state into the `ProcessingRun` row (it already carries most of it)
-  or bring in a real queue.
-- **A restart forgets running jobs.** The row is settled as `interrupted` on the next run,
-  and the pages already written are intact — but the UI can't re-attach.
+- ~~**Single process.**~~ **Resolved.** Job state moved from a module-level dict into the
+  `ProcessJob` table (migration `0015`). Any worker can answer a progress poll, and a
+  cancel raised in one process is seen by a worker in another — the cancel is a column the
+  pipeline re-reads between pages, not a `threading.Event`.
+- **A worker still owns its own thread.** A row outlives a restart, but the *work* does
+  not: a deploy kills runs in flight. They no longer look alive forever, though — the
+  worker stamps `heartbeat_at` on every progress tick, and any process that notices the
+  silence (beyond `JOB_HEARTBEAT_TIMEOUT_SECONDS`, default 300) settles them as
+  `interrupted`. Pages already written are intact and the range can be resumed. Removing
+  this limit entirely means a real task broker.
+- **Concurrency is capped, not queued.** `MAX_CONCURRENT_JOBS` (default 2) and
+  `MAX_CONCURRENT_JOBS_PER_USER` (default 1) make a request over the limit **429** rather
+  than waiting for a slot. Counted in SQL so the cap holds across processes; a small
+  overshoot under a race is harmless and preferable to locking.
 - **Only the Process page polls.** A run continues while you are elsewhere; there is just
   no global "processing…" indicator. Easy to add later from `useProcessJob`.
 - **A mid-run crash gives no `stopped_on_page`**, so no Resume button — the range and
   `pages_saved` are still on the run row, so resuming manually is possible.
-- **One run per mushaf; several mushafs may run at once.** Nothing stops two CPU-heavy
-  runs contending; that's the user's call.
+- **One run per mushaf; several mushafs may run at once**, up to the caps above.
 - `frontend/dist/` was rebuilt by the verification build. Per the usual workflow, commit
   source only if you'd rather keep dist stale.
