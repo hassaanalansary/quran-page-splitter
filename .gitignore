@@ -74,9 +74,16 @@ dist-ssr
 
 
 db.sqlite3
+# Also the suffixed copies (db.sqlite3.bak, db.sqlite3.pre-accounts, …) — the
+# bare pattern above matches that exact filename only, and these are full
+# copies of the database.
+db.sqlite3.*
 .mypy_cache/
 .ruff_cache/
 media/
 .env
+
+# Pre-migration data snapshots (see backup/README.md)
+backup/
 
 export_reference_data.py
