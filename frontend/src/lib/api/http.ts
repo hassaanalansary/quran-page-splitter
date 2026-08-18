@@ -23,6 +23,37 @@ function acceptLanguage(): string {
   return lang === "ar" ? "ar" : "en";
 }
 
+/** Read a cookie by name. Django's CSRF cookie is not HttpOnly by design
+ * (see CSRF_COOKIE_HTTPONLY in config/settings.py) so the SPA can echo it. */
+export function getCookie(name: string): string {
+  if (typeof document === "undefined") return "";
+  const match = document.cookie.match(new RegExp(`(?:^|;\\s*)${name}=([^;]*)`));
+  return match ? decodeURIComponent(match[1]) : "";
+}
+
+/** Headers every request carries: language, session cookie, CSRF on writes. */
+function headersFor(method: string, extra?: Record<string, string>): Record<string, string> {
+  const headers: Record<string, string> = {
+    "Accept-Language": acceptLanguage(),
+    ...extra,
+  };
+  // Django exempts GET/HEAD/OPTIONS/TRACE from CSRF; sending it anyway is
+  // harmless but noisy.
+  if (!["GET", "HEAD", "OPTIONS", "TRACE"].includes(method)) {
+    headers["X-CSRFToken"] = getCookie("csrftoken");
+  }
+  return headers;
+}
+
+/** Called when an /api call comes back 401, so the app can send the user to
+ * sign in. Registered by the router rather than imported here, to keep this
+ * module free of a dependency on routing. */
+let unauthorizedHandler: (() => void) | null = null;
+
+export function setUnauthorizedHandler(handler: (() => void) | null): void {
+  unauthorizedHandler = handler;
+}
+
 /** Thrown for any non-2xx response; carries the HTTP status for callers to branch on. */
 export class ApiError extends Error {
   status: number;
@@ -51,6 +82,7 @@ function messageFromBody(body: unknown, fallback: string): string {
 
 async function handle<T>(res: Response): Promise<T> {
   if (!res.ok) {
+    if (res.status === 401) unauthorizedHandler?.();
     const body = await res.json().catch(() => null);
     throw new ApiError(res.status, messageFromBody(body, `${res.status} ${res.statusText}`));
   }
@@ -61,7 +93,8 @@ async function handle<T>(res: Response): Promise<T> {
 export function apiGet<T>(path: string, signal?: AbortSignal): Promise<T> {
   return fetch(`${API_BASE}${path}`, {
     signal,
-    headers: { "Accept-Language": acceptLanguage() },
+    credentials: "include",
+    headers: headersFor("GET"),
   }).then(handle<T>);
 }
 
@@ -73,7 +106,8 @@ export function apiJson<T>(
 ): Promise<T> {
   return fetch(`${API_BASE}${path}`, {
     method,
-    headers: { "Content-Type": "application/json", "Accept-Language": acceptLanguage() },
+    credentials: "include",
+    headers: headersFor(method, { "Content-Type": "application/json" }),
     body: body === undefined ? undefined : JSON.stringify(body),
     signal,
   }).then(handle<T>);
@@ -89,7 +123,9 @@ export function apiForm<T>(
     method,
     body: form,
     signal,
-    headers: { "Accept-Language": acceptLanguage() },
+    credentials: "include",
+    // No Content-Type: the browser sets it with the multipart boundary.
+    headers: headersFor(method),
   }).then(handle<T>);
 }
 
@@ -97,6 +133,7 @@ export function apiDelete(path: string, signal?: AbortSignal): Promise<void> {
   return fetch(`${API_BASE}${path}`, {
     method: "DELETE",
     signal,
-    headers: { "Accept-Language": acceptLanguage() },
+    credentials: "include",
+    headers: headersFor("DELETE"),
   }).then(handle<void>);
 }

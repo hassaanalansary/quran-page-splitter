@@ -4,6 +4,8 @@ import { useTranslation } from "react-i18next";
 
 import { baseLanguage } from "@/i18n/config";
 
+import { getSession } from "./auth";
+import { GALLERY_PAGE_SIZE, getGalleryItem, listGallery } from "./gallery";
 import { getMushaf, getStats, listActivity, listMushafs, listTemplates } from "./mushafs";
 import { getPage, listPages } from "./pages";
 import { getProcessJob, listRuns } from "./processing";
@@ -12,7 +14,10 @@ import { DEFAULT_QIRAA, listSuras } from "./suras";
 import { isJobRunning, type ProcessJob } from "./types";
 
 export const queryKeys = {
+  session: ["session"] as const,
   mushafs: ["mushafs"] as const,
+  gallery: (qiraa: string | null, offset: number) => ["gallery", qiraa ?? "", offset] as const,
+  galleryItem: (id: string) => ["gallery", id] as const,
   mushaf: (id: string) => ["mushaf", id] as const,
   templates: (id: string) => ["mushaf", id, "templates"] as const,
   processedPages: (id: string) => ["mushaf", id, "processed-pages"] as const,
@@ -124,5 +129,34 @@ export function usePage(mushafId: string, pageNumber: number, enabled = true) {
     queryKey: queryKeys.page(mushafId, pageNumber),
     queryFn: ({ signal }) => getPage(mushafId, pageNumber, signal),
     enabled,
+  });
+}
+
+/** Published mushafs. Works signed out — the gallery is public. */
+export function useGallery(qiraa: string | null = null, offset = 0) {
+  return useQuery({
+    queryKey: queryKeys.gallery(qiraa, offset),
+    queryFn: ({ signal }) => listGallery({ qiraa, offset, limit: GALLERY_PAGE_SIZE }, signal),
+  });
+}
+
+export function useGalleryItem(id: string, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.galleryItem(id),
+    queryFn: ({ signal }) => getGalleryItem(id, signal),
+    enabled,
+  });
+}
+
+/** The signed-in user, or `null` when signed out.
+ *
+ * `data === undefined` still resolving, `data === null` anonymous. Not retried:
+ * "signed out" is a definitive answer, not a transient failure. */
+export function useSession() {
+  return useQuery({
+    queryKey: queryKeys.session,
+    queryFn: ({ signal }) => getSession(signal),
+    retry: false,
+    staleTime: 5 * 60 * 1000,
   });
 }
