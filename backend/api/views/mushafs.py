@@ -12,9 +12,12 @@ from django.http import HttpRequest, HttpResponse
 from ninja import File, Form, Router, Schema
 from ninja.files import UploadedFile
 
+from api.auth import current_user
 from api.services import activity as activity_service
 from api.services import export as export_service
+from api.services import gallery as gallery_service
 from api.services import mushaf as mushaf_service
+from api.views.gallery import GalleryDetailOut, PublishIn
 
 router = Router(tags=["mushafs"])
 
@@ -37,6 +40,7 @@ class MushafOut(Schema):
     processed_page_count: int
     reviewed_page_count: int
     thumbnail_url: str | None = None
+    visibility: str = "private"
     created_at: datetime
     updated_at: datetime
 
@@ -54,6 +58,9 @@ class MushafDetailOut(MushafOut):
     pdf_url: str | None = None
     pdf_file_size: int = 0
     pdf_original_name: str = ""
+    published_at: datetime | None = None
+    description: str = ""
+    export_uniform_size: bool = False
 
 
 class ActivityEventOut(Schema):
@@ -86,6 +93,7 @@ class MushafPatchIn(Schema):
     qiraa: str | None = None
     first_quran_pdf_page: int | None = None
     last_quran_pdf_page: int | None = None
+    export_uniform_size: bool | None = None
 
 
 class TemplateForm(Schema):
@@ -104,7 +112,7 @@ class TemplateOut(Schema):
 
 @router.get("", response=list[MushafOut])
 def list_mushafs(request: HttpRequest, qiraa: str | None = None) -> list[dict]:
-    return mushaf_service.list_mushafs(qiraa=qiraa)
+    return mushaf_service.list_mushafs(user=current_user(request), qiraa=qiraa)
 
 
 @router.post("", response={201: MushafCreateOut})
@@ -114,6 +122,7 @@ def create_mushaf(
     data: MushafForm = Form(...),
 ) -> tuple[int, dict]:
     result = mushaf_service.create_mushaf(
+        owner=current_user(request),
         pdf_file=pdf,
         name=data.name,
         qiraa=data.qiraa,
@@ -125,26 +134,26 @@ def create_mushaf(
 
 @router.get("/{mushaf_id}", response=MushafDetailOut)
 def get_mushaf(request: HttpRequest, mushaf_id: uuid.UUID) -> dict:
-    return mushaf_service.get_mushaf_detail(mushaf_id)
+    return mushaf_service.get_mushaf_detail(mushaf_id, user=current_user(request))
 
 
 @router.get("/{mushaf_id}/stats", response=MushafStatsOut)
 def mushaf_stats(request: HttpRequest, mushaf_id: uuid.UUID) -> dict:
     """Aggregate detection counts (ayat, lines, segments, exported PNGs)."""
-    return mushaf_service.mushaf_stats(mushaf_id)
+    return mushaf_service.mushaf_stats(mushaf_id, user=current_user(request))
 
 
 @router.get("/{mushaf_id}/activity", response=list[ActivityEventOut])
 def list_activity(request: HttpRequest, mushaf_id: uuid.UUID, limit: int = 50) -> list[dict]:
     """Newest-first activity feed (uploads, templates, runs, review saves, exports)."""
-    mushaf = mushaf_service.get_mushaf(mushaf_id)
+    mushaf = mushaf_service.get_mushaf(mushaf_id, user=current_user(request), write=False)
     return activity_service.list_events(mushaf, limit=limit)
 
 
 @router.get("/{mushaf_id}/coordinates")
 def download_coordinates(request: HttpRequest, mushaf_id: uuid.UUID) -> HttpResponse:
     """The aya-coordinates JSON document (schema aya-bbox/v1), as an attachment."""
-    filename, doc = export_service.coordinates_json(mushaf_id)
+    filename, doc = export_service.coordinates_json(mushaf_id, user=current_user(request))
     response = HttpResponse(
         json.dumps(doc, ensure_ascii=False, indent=2),
         content_type="application/json; charset=utf-8",
@@ -156,24 +165,36 @@ def download_coordinates(request: HttpRequest, mushaf_id: uuid.UUID) -> HttpResp
 @router.post("/{mushaf_id}/thumbnail", response=MushafDetailOut)
 def regenerate_thumbnail(request: HttpRequest, mushaf_id: uuid.UUID) -> dict:
     """Re-render the cover thumbnail from physical page 1."""
-    return mushaf_service.regenerate_thumbnail(mushaf_id)
+    return mushaf_service.regenerate_thumbnail(mushaf_id, user=current_user(request))
 
 
 @router.patch("/{mushaf_id}", response=MushafOut)
 def update_mushaf(request: HttpRequest, mushaf_id: uuid.UUID, data: MushafPatchIn) -> dict:
     """Patch name / qiraa / Quran-page bounds (only the fields actually sent)."""
-    return mushaf_service.update_mushaf(mushaf_id, data.model_dump(exclude_unset=True))
+    return mushaf_service.update_mushaf(mushaf_id, data.model_dump(exclude_unset=True), user=current_user(request))
 
 
 @router.delete("/{mushaf_id}", response={204: None})
 def delete_mushaf(request: HttpRequest, mushaf_id: uuid.UUID) -> tuple[int, None]:
-    mushaf_service.delete_mushaf(mushaf_id)
+    mushaf_service.delete_mushaf(mushaf_id, user=current_user(request))
     return 204, None
+
+
+@router.post("/{mushaf_id}/publish", response=GalleryDetailOut)
+def publish_mushaf(request: HttpRequest, mushaf_id: uuid.UUID, data: PublishIn) -> dict:
+    """List this mushaf in the public gallery, with an optional blurb."""
+    return gallery_service.publish(mushaf_id, user=current_user(request), description=data.description)
+
+
+@router.post("/{mushaf_id}/unpublish", response=GalleryDetailOut)
+def unpublish_mushaf(request: HttpRequest, mushaf_id: uuid.UUID) -> dict:
+    """Take it out of the gallery. Copies others already made keep working."""
+    return gallery_service.unpublish(mushaf_id, user=current_user(request))
 
 
 @router.get("/{mushaf_id}/templates", response=list[TemplateOut])
 def list_templates(request: HttpRequest, mushaf_id: uuid.UUID) -> list[dict]:
-    return mushaf_service.list_templates(mushaf_id)
+    return mushaf_service.list_templates(mushaf_id, user=current_user(request))
 
 
 @router.put("/{mushaf_id}/templates/{template_type}", response=TemplateOut)
@@ -185,6 +206,7 @@ def put_template(
     image: UploadedFile | None = File(None),
 ) -> dict:
     return mushaf_service.upsert_template(
+        user=current_user(request),
         mushaf_id=mushaf_id,
         template_type=template_type,
         image=image,
@@ -197,5 +219,5 @@ def put_template(
 
 @router.get("/{mushaf_id}/pages/{page_number}/image")
 def page_image(request: HttpRequest, mushaf_id: uuid.UUID, page_number: int) -> HttpResponse:
-    png = mushaf_service.render_page_image(mushaf_id, page_number)
+    png = mushaf_service.render_page_image(mushaf_id, page_number, user=current_user(request))
     return HttpResponse(png, content_type="image/png")
