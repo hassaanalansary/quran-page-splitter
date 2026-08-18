@@ -134,6 +134,52 @@ class DevEmailBackendTests(TestCase):
         self.assertIn("Thank you!", output)
 
 
+class RateLimitCacheCheckTests(TestCase):
+    """The deploy check that stops brute-force limits being silently per-worker.
+
+    allauth counts its rate limits in the cache, so an unshared cache backend
+    turns "5 failed logins per 5 minutes" into five *per worker process*.
+    """
+
+    def _run(self, backend: str):
+        from accounts.checks import rate_limit_cache_is_shared
+
+        with self.settings(CACHES={"default": {"BACKEND": backend}}):
+            return rate_limit_cache_is_shared(app_configs=None)
+
+    def test_locmem_is_flagged(self):
+        warnings = self._run("django.core.cache.backends.locmem.LocMemCache")
+        self.assertEqual([w.id for w in warnings], ["accounts.W001"])
+
+    def test_dummy_cache_is_flagged(self):
+        """Worse than locmem: it stores nothing, so no limit ever trips."""
+        self.assertEqual(len(self._run("django.core.cache.backends.dummy.DummyCache")), 1)
+
+    def test_a_shared_backend_passes(self):
+        self.assertEqual(self._run("django.core.cache.backends.redis.RedisCache"), [])
+        self.assertEqual(self._run("django.core.cache.backends.db.DatabaseCache"), [])
+
+    def test_it_only_runs_under_check_deploy(self):
+        """Registered with deploy=True so development is not nagged about it."""
+        from django.core.checks import registry
+
+        from accounts.checks import rate_limit_cache_is_shared
+
+        self.assertIn(rate_limit_cache_is_shared, registry.registry.deployment_checks)
+
+
+class AllauthRateLimitTests(TestCase):
+    """The limits themselves are allauth's defaults; pin the ones that matter."""
+
+    def test_brute_force_limits_are_active(self):
+        from allauth.account import app_settings
+
+        limits = app_settings.RATE_LIMITS
+        self.assertTrue(limits.get("login_failed"), "failed-login limiting is switched off")
+        self.assertTrue(limits.get("reset_password"), "password-reset limiting is switched off")
+        self.assertTrue(limits.get("signup"), "signup limiting is switched off")
+
+
 class GoogleCallbackRoutingTests(TestCase):
     """HEADLESS_ONLY strips allauth's HTML views, but the provider callback must
     still be routable — Google redirects the browser straight to it."""
