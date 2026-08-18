@@ -2,6 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 
 import { LanguageSwitcher } from "@/components/app/LanguageSwitcher";
+import { UserMenu } from "@/components/app/UserMenu";
 import { coordinatesUrl, mushafStatus, useStats, useTemplates, type MushafDetail } from "@/lib/api";
 
 import { pipelineSteps, STATUS_META, STEP_ROUTES, type StepSlug } from "./details/helpers";
@@ -121,7 +122,14 @@ export function MushafHeader({
       >
         {t("header.downloadJson")}
       </a>
+      <Link
+        to="/gallery"
+        className="flex h-8 items-center rounded-[7px] px-2 text-[11.5px] font-semibold text-text-secondary transition-colors hover:bg-bg-surface hover:text-navy"
+      >
+        {t("gallery.navLink")}
+      </Link>
       <LanguageSwitcher />
+      <UserMenu />
     </header>
   );
 }
