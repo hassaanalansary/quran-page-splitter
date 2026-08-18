@@ -1,6 +1,8 @@
 import uuid
 
+from django.conf import settings
 from django.db import models
+from django.utils import timezone
 
 
 class TemplateTypeChoices(models.TextChoices):
@@ -110,12 +112,55 @@ class SuraAyaCount(models.Model):
         return f"{self.sura.transliteration} has {self.count} ayat"
 
 
+# ── Media layout ─────────────────────────────────────────────────────────────
+# Everything a mushaf owns lives under ``mushafs/<mushaf id>/`` — its thumbnail,
+# its template crops and its exported line PNGs — so one directory holds one
+# mushaf's work and deleting it takes the lot.
+#
+# The source PDF is the deliberate exception: it stays content-addressed in a
+# shared ``pdfs/<sha256>.pdf``. A FileField stores a *path*, so several rows can
+# address one file, and that is what makes duplicating a mushaf from the gallery
+# (and re-uploading a PDF someone already holds) cost zero storage on a ~150 MB
+# scan. ``services.mushaf._delete_if_unshared`` refcounts it before deleting.
+
+
+def mushaf_dir(mushaf_id: uuid.UUID | str) -> str:
+    return f"mushafs/{mushaf_id}"
+
+
+def thumbnail_path(instance: "Mushaf", filename: str) -> str:
+    return f"{mushaf_dir(instance.id)}/thumbnail.png"
+
+
+def template_path(instance: "Template", filename: str) -> str:
+    return f"{mushaf_dir(instance.mushaf_id)}/templates/{filename}"
+
+
+def line_png_path(instance: "Line", filename: str) -> str:
+    # ``filename`` arrives as "page-0007/line-03.png" so the stored tree mirrors
+    # the layout of the lines.zip download.
+    return f"{mushaf_dir(instance.page.mushaf_id)}/lines/{filename}"
+
+
+class VisibilityChoices(models.TextChoices):
+    PRIVATE = "private", "Private"
+    PUBLISHED = "published", "Published"
+
+
 class Mushaf(BaseModel):
     """A table for Mushafs"""
 
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="mushafs",
+        help_text="Who created this mushaf. Deleting the account deletes their mushafs.",
+    )
     qiraa = models.ForeignKey(Qiraa, null=True, on_delete=models.SET_NULL, related_name="mushafs")
-    name = models.CharField(max_length=256, unique=True)
-    pdf_file = models.FileField(upload_to="mushafs/")
+    # Unique per owner, not globally — two people may each keep their own
+    # "مصحف المدينة". See the constraint in Meta.
+    name = models.CharField(max_length=256)
+    pdf_file = models.FileField(upload_to="pdfs/")
     pdf_original_name = models.CharField(
         max_length=255,
         blank=True,
@@ -125,7 +170,7 @@ class Mushaf(BaseModel):
     pdf_sha256 = models.CharField(max_length=64)
     pdf_page_count = models.PositiveSmallIntegerField()
     thumbnail = models.ImageField(
-        upload_to="thumbnails/",
+        upload_to=thumbnail_path,
         null=True,
         blank=True,
         help_text="Small render of the first physical PDF page (the cover), for list views.",
@@ -136,11 +181,39 @@ class Mushaf(BaseModel):
     last_quran_pdf_page = models.PositiveSmallIntegerField(
         help_text="PDF physical page index (1-based) of the last logical Quran page."
     )
+    visibility = models.CharField(
+        max_length=16,
+        choices=VisibilityChoices.choices,
+        default=VisibilityChoices.PRIVATE,
+        help_text="Published mushafs appear in the public gallery and can be duplicated by anyone.",
+    )
+    published_at = models.DateTimeField(null=True, blank=True)
+    export_uniform_size = models.BooleanField(
+        default=False,
+        help_text=(
+            "Pad every exported line PNG on a page out to the size of that page's "
+            "largest line, with transparent space. Nothing is ever cropped."
+        ),
+    )
+    description = models.TextField(
+        blank=True,
+        default="",
+        help_text="Shown on the gallery card — what this mushaf is and how complete the work is.",
+    )
+    duplicated_from = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="duplicates",
+        help_text=("The gallery mushaf this was copied from. SET_NULL so a copy outlives its source being deleted."),
+    )
 
     class Meta:
         db_table = "mushaf"
         verbose_name = "Mushaf"
         verbose_name_plural = "Masahef"
+        constraints = (models.UniqueConstraint(fields=["owner", "name"], name="unique_owner_mushaf_name"),)
 
     def __str__(self) -> str:
         return self.name
@@ -155,7 +228,7 @@ class Template(BaseModel):
         choices=TemplateTypeChoices.choices,
         default=TemplateTypeChoices.SURA_HEADER,
     )
-    image = models.ImageField(upload_to="templates/")
+    image = models.ImageField(upload_to=template_path)
     ignore_rects = models.JSONField(
         default=dict,
         blank=True,
@@ -214,6 +287,90 @@ class ProcessingRun(BaseModel):
         verbose_name_plural = "Processing Runs"
 
 
+class ProcessJobStateChoices(models.TextChoices):
+    RUNNING = "running", "Running"
+    COMPLETED = "completed", "Completed"
+    ABORTED_LINE_DETECTION = "aborted_line_detection", "Aborted (line detection)"
+    CANCELLED = "cancelled", "Cancelled"
+    ERROR = "error", "Error"
+    #: The worker that owned this job stopped reporting — a deploy, a crash, or
+    #: a killed process. Only ever set by another process noticing the silence.
+    INTERRUPTED = "interrupted", "Interrupted"
+
+
+class ProcessJob(BaseModel):
+    """Live state of one processing run.
+
+    This used to be a dataclass in a module-level dict, which meant a restart
+    forgot every running job and a status poll answered by a *different* worker
+    process knew nothing about it. Keeping it in the database makes the state
+    visible to whichever process happens to serve the next request, which is
+    what allows more than one worker.
+
+    The row is written by the worker and read by pollers, so it is deliberately
+    small and its updates are single-column where possible.
+    """
+
+    mushaf = models.ForeignKey(Mushaf, on_delete=models.CASCADE, related_name="process_jobs")
+    run = models.ForeignKey(ProcessingRun, null=True, blank=True, on_delete=models.SET_NULL, related_name="jobs")
+    started_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="process_jobs",
+        help_text="Who asked for this run; used for the per-user concurrency cap.",
+    )
+
+    page_range_start = models.PositiveSmallIntegerField()
+    page_range_end = models.PositiveSmallIntegerField()
+    total = models.PositiveSmallIntegerField(default=0, help_text="Pages in the requested range.")
+
+    state = models.CharField(
+        max_length=32, choices=ProcessJobStateChoices.choices, default=ProcessJobStateChoices.RUNNING
+    )
+    phase = models.CharField(
+        max_length=16, default="starting", help_text="starting/rendering/detecting/saving/finished."
+    )
+    current_page = models.PositiveSmallIntegerField(null=True, blank=True)
+    pages_saved = models.PositiveSmallIntegerField(
+        default=0, help_text="Pages actually written — durable, not an estimate."
+    )
+
+    cancel_requested = models.BooleanField(
+        default=False,
+        help_text="Polled by the worker between pages. A flag rather than a signal, so any process can set it.",
+    )
+    heartbeat_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text=(
+            "Last sign of life from the worker. What lets another process tell a "
+            "long page apart from a worker that died."
+        ),
+    )
+    started_at = models.DateTimeField(default=timezone.now)
+    ended_at = models.DateTimeField(null=True, blank=True)
+
+    stopped_on_page = models.PositiveSmallIntegerField(
+        null=True, blank=True, help_text="Page the run came to rest on — what 'Resume from here' uses."
+    )
+    abort_info = models.JSONField(null=True, blank=True)
+    error = models.TextField(blank=True, default="")
+    end_sura = models.PositiveSmallIntegerField(null=True, blank=True)
+    end_aya = models.PositiveSmallIntegerField(null=True, blank=True)
+    log_url = models.CharField(max_length=255, blank=True, default="")
+
+    class Meta:
+        db_table = "process_job"
+        verbose_name = "Process Job"
+        verbose_name_plural = "Process Jobs"
+        indexes = (models.Index(fields=["mushaf", "-started_at"], name="process_job_mushaf_recent"),)
+
+    def __str__(self) -> str:
+        return f"{self.state} job for {self.mushaf_id} ({self.page_range_start}-{self.page_range_end})"
+
+
 class Page(BaseModel):
     """A table for Pages"""
 
@@ -254,7 +411,7 @@ class Line(BaseModel):
     )
     sura = models.ForeignKey(Sura, null=True, on_delete=models.SET_NULL, related_name="lines")
     line_png = models.ImageField(
-        upload_to="lines/", null=True, help_text="Final PNG path after coordinates + erase; set on export"
+        upload_to=line_png_path, null=True, help_text="Final PNG path after coordinates + erase; set on export"
     )
     bbox_x = models.PositiveIntegerField(help_text="The x coordinate of the bounding box.")
     bbox_y = models.PositiveIntegerField(help_text="The y coordinate of the bounding box.")
@@ -305,6 +462,17 @@ class ActivityEvent(BaseModel):
     """A table for Activity Events (the per-mushaf audit feed)"""
 
     mushaf = models.ForeignKey(Mushaf, on_delete=models.CASCADE, related_name="activity_events")
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="activity_events",
+        help_text=(
+            "Who did it. Null for events recorded before accounts existed, and for "
+            "anything a background worker does on nobody's behalf."
+        ),
+    )
     type = models.CharField(max_length=32, choices=ActivityTypeChoices.choices)
     payload = models.JSONField(
         default=dict,
