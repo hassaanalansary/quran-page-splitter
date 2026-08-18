@@ -31,14 +31,23 @@ export type Mushaf = {
   reviewed_page_count: number;
   /** Cover thumbnail (first physical PDF page); null until generated. */
   thumbnail_url: string | null;
+  /** "published" means it is listed in the public gallery. */
+  visibility: "private" | "published";
   created_at: string;
   updated_at: string;
 };
 
 export type MushafStatus = "empty" | "partial" | "processed" | "completed";
 
+/** The page counts `mushafStatus` reads — shared by `Mushaf` and `GalleryItem`,
+ * so a gallery card can show the same status as the owner's own card. */
+export type PageCounts = Pick<
+  Mushaf,
+  "logical_page_count" | "processed_page_count" | "reviewed_page_count"
+>;
+
 /** Derive a coarse pipeline status from a mushaf's page counts. */
-export function mushafStatus(m: Mushaf): MushafStatus {
+export function mushafStatus(m: PageCounts): MushafStatus {
   const total = m.logical_page_count;
   if (m.processed_page_count === 0) return "empty";
   if (total > 0 && m.reviewed_page_count >= total) return "completed";
@@ -59,6 +68,10 @@ export type MushafDetail = Mushaf & {
   pdf_url: string | null;
   pdf_file_size: number;
   pdf_original_name: string;
+  published_at: string | null;
+  description: string;
+  /** Pad every exported line PNG on a page out to that page's tallest line. */
+  export_uniform_size: boolean;
 };
 
 export type MushafCreateResult = {
@@ -71,6 +84,7 @@ export type MushafPatch = Partial<{
   qiraa: string | null;
   first_quran_pdf_page: number;
   last_quran_pdf_page: number;
+  export_uniform_size: boolean;
 }>;
 
 // ── Templates ───────────────────────────────────────────────────────────────
@@ -203,7 +217,10 @@ export type ProcessJobState =
   | "completed"
   | "aborted_line_detection"
   | "cancelled"
-  | "error";
+  | "error"
+  /** The worker that owned the run stopped reporting — a restart or a crash.
+   * Set by whichever process notices the silence, never by the run itself. */
+  | "interrupted";
 
 /** What the run is doing right now — drives the progress label. */
 export type ProcessJobPhase = "starting" | "rendering" | "detecting" | "saving" | "finished";
@@ -244,6 +261,7 @@ export const PROCESS_JOB_DONE: readonly ProcessJobState[] = [
   "aborted_line_detection",
   "cancelled",
   "error",
+  "interrupted",
 ];
 
 /** Has this run come to rest? Deliberately NOT a type predicate: a settled job

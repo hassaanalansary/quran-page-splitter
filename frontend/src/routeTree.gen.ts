@@ -9,23 +9,61 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as GalleryRouteImport } from './routes/gallery'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as GalleryIndexRouteImport } from './routes/gallery.index'
 import { Route as MushafsMushafIdRouteImport } from './routes/mushafs.$mushafId'
+import { Route as GalleryMushafIdRouteImport } from './routes/gallery.$mushafId'
+import { Route as AuthSignupRouteImport } from './routes/auth.signup'
+import { Route as AuthLoginRouteImport } from './routes/auth.login'
+import { Route as AuthForgotRouteImport } from './routes/auth.forgot'
 import { Route as MushafsMushafIdIndexRouteImport } from './routes/mushafs.$mushafId.index'
 import { Route as MushafsMushafIdTemplatesRouteImport } from './routes/mushafs.$mushafId.templates'
 import { Route as MushafsMushafIdSetupRouteImport } from './routes/mushafs.$mushafId.setup'
 import { Route as MushafsMushafIdReviewRouteImport } from './routes/mushafs.$mushafId.review'
 import { Route as MushafsMushafIdProcessRouteImport } from './routes/mushafs.$mushafId.process'
 import { Route as MushafsMushafIdFinalizeRouteImport } from './routes/mushafs.$mushafId.finalize'
+import { Route as AuthVerifyEmailKeyRouteImport } from './routes/auth.verify-email.$key'
+import { Route as AuthResetKeyRouteImport } from './routes/auth.reset.$key'
 
+const GalleryRoute = GalleryRouteImport.update({
+  id: '/gallery',
+  path: '/gallery',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const GalleryIndexRoute = GalleryIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => GalleryRoute,
+} as any)
 const MushafsMushafIdRoute = MushafsMushafIdRouteImport.update({
   id: '/mushafs/$mushafId',
   path: '/mushafs/$mushafId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const GalleryMushafIdRoute = GalleryMushafIdRouteImport.update({
+  id: '/$mushafId',
+  path: '/$mushafId',
+  getParentRoute: () => GalleryRoute,
+} as any)
+const AuthSignupRoute = AuthSignupRouteImport.update({
+  id: '/auth/signup',
+  path: '/auth/signup',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthLoginRoute = AuthLoginRouteImport.update({
+  id: '/auth/login',
+  path: '/auth/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthForgotRoute = AuthForgotRouteImport.update({
+  id: '/auth/forgot',
+  path: '/auth/forgot',
   getParentRoute: () => rootRouteImport,
 } as any)
 const MushafsMushafIdIndexRoute = MushafsMushafIdIndexRouteImport.update({
@@ -59,10 +97,28 @@ const MushafsMushafIdFinalizeRoute = MushafsMushafIdFinalizeRouteImport.update({
   path: '/finalize',
   getParentRoute: () => MushafsMushafIdRoute,
 } as any)
+const AuthVerifyEmailKeyRoute = AuthVerifyEmailKeyRouteImport.update({
+  id: '/auth/verify-email/$key',
+  path: '/auth/verify-email/$key',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthResetKeyRoute = AuthResetKeyRouteImport.update({
+  id: '/auth/reset/$key',
+  path: '/auth/reset/$key',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/gallery': typeof GalleryRouteWithChildren
+  '/auth/forgot': typeof AuthForgotRoute
+  '/auth/login': typeof AuthLoginRoute
+  '/auth/signup': typeof AuthSignupRoute
+  '/gallery/$mushafId': typeof GalleryMushafIdRoute
   '/mushafs/$mushafId': typeof MushafsMushafIdRouteWithChildren
+  '/gallery/': typeof GalleryIndexRoute
+  '/auth/reset/$key': typeof AuthResetKeyRoute
+  '/auth/verify-email/$key': typeof AuthVerifyEmailKeyRoute
   '/mushafs/$mushafId/finalize': typeof MushafsMushafIdFinalizeRoute
   '/mushafs/$mushafId/process': typeof MushafsMushafIdProcessRoute
   '/mushafs/$mushafId/review': typeof MushafsMushafIdReviewRoute
@@ -72,6 +128,13 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/auth/forgot': typeof AuthForgotRoute
+  '/auth/login': typeof AuthLoginRoute
+  '/auth/signup': typeof AuthSignupRoute
+  '/gallery/$mushafId': typeof GalleryMushafIdRoute
+  '/gallery': typeof GalleryIndexRoute
+  '/auth/reset/$key': typeof AuthResetKeyRoute
+  '/auth/verify-email/$key': typeof AuthVerifyEmailKeyRoute
   '/mushafs/$mushafId/finalize': typeof MushafsMushafIdFinalizeRoute
   '/mushafs/$mushafId/process': typeof MushafsMushafIdProcessRoute
   '/mushafs/$mushafId/review': typeof MushafsMushafIdReviewRoute
@@ -82,7 +145,15 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/gallery': typeof GalleryRouteWithChildren
+  '/auth/forgot': typeof AuthForgotRoute
+  '/auth/login': typeof AuthLoginRoute
+  '/auth/signup': typeof AuthSignupRoute
+  '/gallery/$mushafId': typeof GalleryMushafIdRoute
   '/mushafs/$mushafId': typeof MushafsMushafIdRouteWithChildren
+  '/gallery/': typeof GalleryIndexRoute
+  '/auth/reset/$key': typeof AuthResetKeyRoute
+  '/auth/verify-email/$key': typeof AuthVerifyEmailKeyRoute
   '/mushafs/$mushafId/finalize': typeof MushafsMushafIdFinalizeRoute
   '/mushafs/$mushafId/process': typeof MushafsMushafIdProcessRoute
   '/mushafs/$mushafId/review': typeof MushafsMushafIdReviewRoute
@@ -94,7 +165,15 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/gallery'
+    | '/auth/forgot'
+    | '/auth/login'
+    | '/auth/signup'
+    | '/gallery/$mushafId'
     | '/mushafs/$mushafId'
+    | '/gallery/'
+    | '/auth/reset/$key'
+    | '/auth/verify-email/$key'
     | '/mushafs/$mushafId/finalize'
     | '/mushafs/$mushafId/process'
     | '/mushafs/$mushafId/review'
@@ -104,6 +183,13 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/auth/forgot'
+    | '/auth/login'
+    | '/auth/signup'
+    | '/gallery/$mushafId'
+    | '/gallery'
+    | '/auth/reset/$key'
+    | '/auth/verify-email/$key'
     | '/mushafs/$mushafId/finalize'
     | '/mushafs/$mushafId/process'
     | '/mushafs/$mushafId/review'
@@ -113,7 +199,15 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/gallery'
+    | '/auth/forgot'
+    | '/auth/login'
+    | '/auth/signup'
+    | '/gallery/$mushafId'
     | '/mushafs/$mushafId'
+    | '/gallery/'
+    | '/auth/reset/$key'
+    | '/auth/verify-email/$key'
     | '/mushafs/$mushafId/finalize'
     | '/mushafs/$mushafId/process'
     | '/mushafs/$mushafId/review'
@@ -124,11 +218,24 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  GalleryRoute: typeof GalleryRouteWithChildren
+  AuthForgotRoute: typeof AuthForgotRoute
+  AuthLoginRoute: typeof AuthLoginRoute
+  AuthSignupRoute: typeof AuthSignupRoute
   MushafsMushafIdRoute: typeof MushafsMushafIdRouteWithChildren
+  AuthResetKeyRoute: typeof AuthResetKeyRoute
+  AuthVerifyEmailKeyRoute: typeof AuthVerifyEmailKeyRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/gallery': {
+      id: '/gallery'
+      path: '/gallery'
+      fullPath: '/gallery'
+      preLoaderRoute: typeof GalleryRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -136,11 +243,46 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/gallery/': {
+      id: '/gallery/'
+      path: '/'
+      fullPath: '/gallery/'
+      preLoaderRoute: typeof GalleryIndexRouteImport
+      parentRoute: typeof GalleryRoute
+    }
     '/mushafs/$mushafId': {
       id: '/mushafs/$mushafId'
       path: '/mushafs/$mushafId'
       fullPath: '/mushafs/$mushafId'
       preLoaderRoute: typeof MushafsMushafIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/gallery/$mushafId': {
+      id: '/gallery/$mushafId'
+      path: '/$mushafId'
+      fullPath: '/gallery/$mushafId'
+      preLoaderRoute: typeof GalleryMushafIdRouteImport
+      parentRoute: typeof GalleryRoute
+    }
+    '/auth/signup': {
+      id: '/auth/signup'
+      path: '/auth/signup'
+      fullPath: '/auth/signup'
+      preLoaderRoute: typeof AuthSignupRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/auth/login': {
+      id: '/auth/login'
+      path: '/auth/login'
+      fullPath: '/auth/login'
+      preLoaderRoute: typeof AuthLoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/auth/forgot': {
+      id: '/auth/forgot'
+      path: '/auth/forgot'
+      fullPath: '/auth/forgot'
+      preLoaderRoute: typeof AuthForgotRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/mushafs/$mushafId/': {
@@ -185,8 +327,35 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MushafsMushafIdFinalizeRouteImport
       parentRoute: typeof MushafsMushafIdRoute
     }
+    '/auth/verify-email/$key': {
+      id: '/auth/verify-email/$key'
+      path: '/auth/verify-email/$key'
+      fullPath: '/auth/verify-email/$key'
+      preLoaderRoute: typeof AuthVerifyEmailKeyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/auth/reset/$key': {
+      id: '/auth/reset/$key'
+      path: '/auth/reset/$key'
+      fullPath: '/auth/reset/$key'
+      preLoaderRoute: typeof AuthResetKeyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
+
+interface GalleryRouteChildren {
+  GalleryMushafIdRoute: typeof GalleryMushafIdRoute
+  GalleryIndexRoute: typeof GalleryIndexRoute
+}
+
+const GalleryRouteChildren: GalleryRouteChildren = {
+  GalleryMushafIdRoute: GalleryMushafIdRoute,
+  GalleryIndexRoute: GalleryIndexRoute,
+}
+
+const GalleryRouteWithChildren =
+  GalleryRoute._addFileChildren(GalleryRouteChildren)
 
 interface MushafsMushafIdRouteChildren {
   MushafsMushafIdFinalizeRoute: typeof MushafsMushafIdFinalizeRoute
@@ -212,7 +381,13 @@ const MushafsMushafIdRouteWithChildren = MushafsMushafIdRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  GalleryRoute: GalleryRouteWithChildren,
+  AuthForgotRoute: AuthForgotRoute,
+  AuthLoginRoute: AuthLoginRoute,
+  AuthSignupRoute: AuthSignupRoute,
   MushafsMushafIdRoute: MushafsMushafIdRouteWithChildren,
+  AuthResetKeyRoute: AuthResetKeyRoute,
+  AuthVerifyEmailKeyRoute: AuthVerifyEmailKeyRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
