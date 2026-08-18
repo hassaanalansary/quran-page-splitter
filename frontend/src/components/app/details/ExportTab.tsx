@@ -1,15 +1,18 @@
-import { useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
+import { BundlePanel } from "@/components/app/details/BundlePanel";
+import { Switch } from "@/components/ui/switch";
 import {
   ApiError,
   coordinatesUrl,
   exportLines,
   linesZipUrl,
   queryKeys,
+  updateMushaf,
   type MushafDetail,
   type MushafStats,
   type PageSummary,
@@ -27,6 +30,12 @@ export function ExportTab({
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+
+  const uniformSize = useMutation({
+    mutationFn: (value: boolean) => updateMushaf(mushaf.id, { export_uniform_size: value }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.mushaf(mushaf.id) }),
+    onError: (e) => toast.error(e instanceof ApiError ? e.message : t("details.ex_uniformFailed")),
+  });
 
   const processed = summaries ?? [];
   const reviewedPages = processed.filter((s) => s.reviewed);
@@ -96,9 +105,33 @@ export function ExportTab({
           </div>
           <div className="mt-3.5 flex flex-col gap-1.5">
             <KvRow k={t("details.kv_format")} v="transparent PNG" />
-            <KvRow k={t("details.kv_path")} v="media/lines/…" />
-            <KvRow k={t("details.kv_naming")} v="{mushaf}_p{page}_l{line}.png" />
+            <KvRow k={t("details.kv_path")} v="media/mushafs/{id}/lines/…" />
+            <KvRow k={t("details.kv_naming")} v="page-{page}/line-{line}.png" />
           </div>
+
+          {/* Uniform size. Persisted on the mushaf rather than asked per export,
+              so a mushaf cannot end up half padded and half not. */}
+          <label className="mt-3.5 flex cursor-pointer items-start gap-2.5 rounded-lg border border-border bg-bg-surface p-2.5">
+            <Switch
+              checked={mushaf.export_uniform_size}
+              disabled={uniformSize.isPending}
+              onCheckedChange={(value) => uniformSize.mutate(value)}
+              className="mt-0.5"
+            />
+            <span className="min-w-0">
+              <span className="block text-[12px] font-semibold text-text-primary">
+                {t("details.ex_uniformLabel")}
+              </span>
+              <span className="mt-0.5 block text-[11px] leading-snug text-text-muted">
+                {t("details.ex_uniformHelp")}
+              </span>
+            </span>
+          </label>
+          {exported > 0 && (
+            <p className="mt-1.5 text-[11px] leading-snug text-text-muted">
+              {t("details.ex_uniformReexport")}
+            </p>
+          )}
           <div className="mt-[15px] flex gap-2">
             <button
               type="button"
@@ -201,6 +234,9 @@ export function ExportTab({
           </Link>
         </div>
       )}
+
+      {/* The work itself, portable — as opposed to the rendered artifacts above. */}
+      <BundlePanel mushaf={mushaf} summaries={summaries} />
     </div>
   );
 }
