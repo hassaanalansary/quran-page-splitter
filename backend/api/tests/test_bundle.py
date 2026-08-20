@@ -15,7 +15,14 @@ from ninja.errors import HttpError
 from api.models import EraseStroke, Line, Mushaf, Page, Segment, Template
 from api.services import bundle
 from api.services import mushaf as mushaf_service
-from api.tests.helpers import ApiTestCase, MediaTestCase, default_user, make_pdf_bytes, make_png_bytes
+from api.tests.helpers import (
+    ApiTestCase,
+    MediaTestCase,
+    default_user,
+    make_pdf_bytes,
+    make_png_bytes,
+    make_user,
+)
 
 SHARED_PDF = make_pdf_bytes(4)
 OTHER_PDF = make_pdf_bytes(7)
@@ -253,8 +260,6 @@ class ImportRefusalTests(MediaTestCase):
         self.assertEqual(ctx.exception.status_code, 400)
 
     def test_you_cannot_import_into_someone_elses_mushaf(self):
-        from api.tests.helpers import make_user
-
         bob = make_user("bob@example.com")
         target = Mushaf.objects.get(id=_create(self.alice, "Mine")["id"])
 
@@ -352,3 +357,154 @@ class BundleApiTests(ApiTestCase):
         )
 
         self.assertEqual(resp.status_code, 409)
+
+
+class InspectTests(MediaTestCase):
+    """Finding a bundle's home by checksum, so the user need not know the sha.
+
+    Detection is a convenience, never an authority: whatever it returns, the
+    import still re-checks the hash against the mushaf the user picks.
+    """
+
+    def setUp(self):
+        self.alice = default_user()
+        self.source = _with_work(self.alice, "Source")
+        self.data = _export_bytes(self.source, self.alice)
+
+    def test_it_finds_the_mushaf_the_bundle_came_from(self):
+        result = bundle.inspect_bundle(_upload(self.data), user=self.alice)
+
+        self.assertEqual(result["bundle"]["pdf_sha256"], self.source.pdf_sha256)
+        self.assertEqual(result["bundle"]["name"], "Source")
+        self.assertEqual(result["bundle"]["pages"], 2)
+        self.assertEqual([m["id"] for m in result["matches"]], [self.source.id])
+
+    def test_a_mushaf_from_a_different_pdf_is_not_offered(self):
+        _create(self.alice, "DifferentPdf", OTHER_PDF)
+
+        result = bundle.inspect_bundle(_upload(self.data), user=self.alice)
+
+        self.assertEqual([m["name"] for m in result["matches"]], ["Source"])
+
+    def test_every_mushaf_built_from_that_pdf_is_offered(self):
+        """The same PDF may be registered more than once, on purpose."""
+        twin = _create(self.alice, "SamePdfAgain")
+
+        result = bundle.inspect_bundle(_upload(self.data), user=self.alice)
+
+        self.assertEqual(
+            {m["id"] for m in result["matches"]},
+            {self.source.id, twin["id"]},
+        )
+
+    def test_matches_carry_what_an_import_would_overwrite(self):
+        """So the dialog can warn *before* the request, not after a 409."""
+        result = bundle.inspect_bundle(_upload(self.data), user=self.alice)
+
+        (match,) = result["matches"]
+        self.assertEqual(match["processed_page_count"], 2)
+
+    def test_divergent_bounds_are_flagged_before_the_import(self):
+        twin = Mushaf.objects.get(id=_create(self.alice, "OtherBounds")["id"])
+        twin.first_quran_pdf_page = 2
+        twin.save(update_fields=["first_quran_pdf_page"])
+
+        result = bundle.inspect_bundle(_upload(self.data), user=self.alice)
+        flags = {m["name"]: m["bounds_differ"] for m in result["matches"]}
+
+        self.assertTrue(flags["OtherBounds"])
+        self.assertFalse(flags["Source"])
+
+    def test_someone_elses_mushaf_is_never_offered(self):
+        """Detection must not become an oracle for who else holds a PDF."""
+        bob = make_user("bob@example.com")
+        bobs = _create(bob, "BobsCopy")
+
+        result = bundle.inspect_bundle(_upload(self.data), user=bob)
+
+        # Bob's own mushaf from the same PDF is his to see; Alice's is not.
+        self.assertEqual([m["id"] for m in result["matches"]], [bobs["id"]])
+
+    def test_no_match_is_an_empty_list_not_an_error(self):
+        """Nothing fitting is an answer the dialog renders, not a failure."""
+        bob = make_user("nomushafs@example.com")
+
+        result = bundle.inspect_bundle(_upload(self.data), user=bob)
+
+        self.assertEqual(result["matches"], [])
+        self.assertEqual(result["bundle"]["pdf_original_name"], "m.pdf")
+
+    def test_inspecting_writes_nothing(self):
+        target = Mushaf.objects.get(id=_create(self.alice, "Untouched")["id"])
+
+        bundle.inspect_bundle(_upload(self.data), user=self.alice)
+
+        self.assertEqual(target.pages.count(), 0)
+        self.assertEqual(self.source.pages.count(), 2)
+
+    def test_a_non_zip_is_refused(self):
+        with self.assertRaises(HttpError) as ctx:
+            bundle.inspect_bundle(_upload(b"not a zip at all"), user=self.alice)
+        self.assertEqual(ctx.exception.status_code, 400)
+
+    def test_an_unknown_schema_is_refused(self):
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w") as archive:
+            archive.writestr("manifest.json", json.dumps({"schema": "mushaf-work/v99"}))
+            archive.writestr("pages.json", json.dumps({"pages": []}))
+
+        with self.assertRaises(HttpError) as ctx:
+            bundle.inspect_bundle(_upload(buffer.getvalue()), user=self.alice)
+        self.assertEqual(ctx.exception.status_code, 400)
+
+    def test_a_hostile_manifest_does_not_crash_the_reader(self):
+        """Every value in an upload is attacker-controlled, including the types."""
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w") as archive:
+            archive.writestr(
+                "manifest.json",
+                json.dumps({"schema": bundle.SCHEMA, "mushaf": "not-an-object"}),
+            )
+            archive.writestr("pages.json", json.dumps({"pages": []}))
+
+        result = bundle.inspect_bundle(_upload(buffer.getvalue()), user=self.alice)
+
+        self.assertEqual(result["matches"], [])
+        self.assertEqual(result["bundle"]["pdf_sha256"], "")
+
+
+class InspectApiTests(ApiTestCase):
+    def test_inspect_over_http_names_the_mushaf_to_import_into(self):
+        source = _with_work(self.user, "ApiSource")
+        data = _export_bytes(source, self.user)
+
+        resp = self.client.post("/api/bundles/inspect", data={"file": _upload(data)})
+
+        self.assertEqual(resp.status_code, 200, resp.content)
+        body = resp.json()
+        self.assertEqual(body["bundle"]["pdf_sha256"], source.pdf_sha256)
+        self.assertEqual([m["id"] for m in body["matches"]], [str(source.id)])
+        self.assertIn("processed_page_count", body["matches"][0])
+        self.assertIn("bounds_differ", body["matches"][0])
+
+    def test_inspect_requires_a_session(self):
+        source = _with_work(self.user, "ApiSource")
+        data = _export_bytes(source, self.user)
+        self.client.logout()
+
+        resp = self.client.post("/api/bundles/inspect", data={"file": _upload(data)})
+
+        self.assertEqual(resp.status_code, 401)
+
+    def test_the_detected_id_is_accepted_by_the_import_endpoint(self):
+        """The whole flow: inspect names a mushaf, import applies it there."""
+        source = _with_work(self.user, "ApiSource")
+        _create(self.user, "ApiTarget")
+        data = _export_bytes(source, self.user)
+
+        detected = self.client.post("/api/bundles/inspect", data={"file": _upload(data)}).json()
+        target_id = next(m["id"] for m in detected["matches"] if m["name"] == "ApiTarget")
+        applied = self.client.post(f"/api/mushafs/{target_id}/import", data={"file": _upload(data)})
+
+        self.assertEqual(applied.status_code, 200, applied.content)
+        self.assertEqual(applied.json()["pages_imported"], 2)

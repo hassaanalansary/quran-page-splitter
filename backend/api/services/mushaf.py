@@ -108,8 +108,15 @@ def _serialize(row: dict) -> dict:
     }
 
 
-def list_mushafs(*, user: User, qiraa: str | None = None) -> list[dict]:
-    """The caller's mushafs, newest first (single query; page counts annotated)."""
+def list_mushafs(*, user: User, qiraa: str | None = None, pdf_sha256: str | None = None) -> list[dict]:
+    """The caller's mushafs, newest first (single query; page counts annotated).
+
+    ``pdf_sha256`` narrows the list to the ones built from one specific PDF —
+    what the work-bundle detector asks for. Several rows can share a hash: the
+    same file may be registered more than once on purpose (see
+    ``create_mushaf``'s ``duplicate_file`` warning), so callers must be ready
+    for more than one answer.
+    """
     rows = (
         Mushaf.objects.filter(owner=user)
         .annotate(
@@ -122,6 +129,8 @@ def list_mushafs(*, user: User, qiraa: str | None = None) -> list[dict]:
     if qiraa is not None:
         qiraa = qiraa.strip().lower()
         rows = rows.filter(qiraa__name__iexact=qiraa)
+    if pdf_sha256:
+        rows = rows.filter(pdf_sha256=pdf_sha256)
     return [_serialize(row) for row in rows]
 
 

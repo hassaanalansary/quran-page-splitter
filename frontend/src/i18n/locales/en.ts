@@ -169,10 +169,34 @@ export const en = {
     replaceWarning:
       "This mushaf has {{count}} processed page(s). Importing will delete them and write the bundle's pages in their place.",
     mismatchHint:
-      "Bundles are tied to one PDF by checksum. To use this one, import it onto a mushaf created from the same file.",
+      "Bundles are tied to one PDF by checksum. To use this one, import it onto a mushaf created from the same file — or use “Import a bundle” on the mushafs list, which finds it for you.",
     warnBounds:
       "The bundle's Quran-page bounds differ from this mushaf's — check the page mapping.",
     warnPageCount: "The bundle's PDF had a different page count.",
+    // Importing from the shelf, where the bundle has to name its own mushaf.
+    detect: {
+      open: "Import a bundle",
+      title: "Import a work bundle",
+      description:
+        "Choose a bundle zip. Its PDF checksum says which mushaf the work belongs to, so you don't have to.",
+      fileLabel: "Bundle file",
+      inspecting: "Reading the bundle…",
+      invalid: "Could not read that bundle.",
+      unnamed: "Untitled bundle",
+      fromPdf: "PDF",
+      checksum: "Checksum",
+      contents: "Contents",
+      contentsValue: "{{pages}} page(s) · {{lines}} line(s)",
+      exportedAt: "Exported {{date}}",
+      matchOne: "Matching mushaf",
+      matchMany: "{{count}} matching mushafs — pick one",
+      noMatchTitle: "No mushaf here was built from that PDF",
+      noMatchBody:
+        "The bundle was made from “{{pdf}}”. Add that PDF as a new mushaf first, then import the bundle into it.",
+      boundsDiffer: "The bundle's Quran-page bounds differ from this mushaf's.",
+      pageCountDiffers: "The bundle's PDF had a different page count.",
+      importInto: "Import into “{{name}}”",
+    },
   },
   status: {
     empty: "Not processed",

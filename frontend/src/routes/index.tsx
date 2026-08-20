@@ -1,14 +1,16 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Globe, Plus, Trash2 } from "lucide-react";
+import { Globe, Plus, Trash2, Upload } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
 import { CreateMushafDialog } from "@/components/app/CreateMushafDialog";
+import { ImportBundleDialog } from "@/components/app/ImportBundleDialog";
 import { LanguageSwitcher } from "@/components/app/LanguageSwitcher";
 import { MushafStatusBadge } from "@/components/app/MushafStatusBadge";
 import { UserMenu } from "@/components/app/UserMenu";
+import { Button } from "@/components/ui/button";
 import { requireSessionOrGallery } from "@/lib/auth/guard";
 import {
   ApiError,
@@ -29,6 +31,7 @@ function HomePage() {
   const { t } = useTranslation();
   const { data: mushafs, isPending, isError, error } = useMushafs();
   const [createOpen, setCreateOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-bg-page">
@@ -53,9 +56,22 @@ function HomePage() {
 
       <main className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-6xl px-8 py-9">
-          <div className="mb-7">
-            <h1 className="font-display text-2xl font-bold text-navy">{t("home.title")}</h1>
-            <p className="mt-1 text-sm text-text-secondary">{t("home.subtitle")}</p>
+          <div className="mb-7 flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h1 className="font-display text-2xl font-bold text-navy">{t("home.title")}</h1>
+              <p className="mt-1 text-sm text-text-secondary">{t("home.subtitle")}</p>
+            </div>
+            {/* Importing from here rather than from a mushaf: the bundle names
+                its own mushaf by checksum, so there is nothing to look up first. */}
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              onClick={() => setImportOpen(true)}
+            >
+              <Upload size={14} />
+              {t("bundle.detect.open")}
+            </Button>
           </div>
 
           {isError ? (
@@ -76,6 +92,7 @@ function HomePage() {
       </main>
 
       <CreateMushafDialog open={createOpen} onOpenChange={setCreateOpen} />
+      <ImportBundleDialog open={importOpen} onOpenChange={setImportOpen} />
     </div>
   );
 }

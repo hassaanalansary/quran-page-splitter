@@ -11,6 +11,12 @@ guarantee than shipping the bytes would.
 A zip rather than one JSON file because template crops are binary; base64 inside
 JSON would inflate them for nothing.
 
+Because the hash *identifies* the work, it can also find its home:
+``inspect_bundle`` reads a manifest and reports which of the caller's mushafs
+the zip belongs to, so nobody has to match a checksum by eye. That answer is a
+shortlist only — ``apply_bundle`` still re-checks the hash against whichever
+mushaf the user approves.
+
 This module also owns the canonical tree (de)serialization, which
 ``services.cloning`` reuses — duplicating a mushaf and importing a bundle write
 rows through the very same function, so the two cannot drift apart.
@@ -21,6 +27,8 @@ import logging
 import shutil
 import uuid
 import zipfile
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from tempfile import SpooledTemporaryFile
 from typing import Any
@@ -308,10 +316,91 @@ def _read_member(archive: zipfile.ZipFile, name: str, *, max_bytes: int) -> byte
     return archive.read(info)
 
 
+def _section(manifest: dict, key: str) -> dict:
+    """One mapping out of a manifest, tolerating a hostile or truncated one.
+
+    Everything in an uploaded manifest is attacker-controlled, so a value that
+    should be an object may be a string — read that as an empty section rather
+    than let an ``AttributeError`` surface as a 500.
+    """
+    value = manifest.get(key)
+    return value if isinstance(value, dict) else {}
+
+
+def read_manifest(archive: zipfile.ZipFile) -> dict:
+    """The bundle's manifest, or an ``HttpError`` saying why this is not one.
+
+    Both required members are checked here so "is this a work bundle?" has
+    exactly one answer, whether the caller is about to apply it or only to look
+    at it.
+    """
+    raw = _read_member(archive, MANIFEST_NAME, max_bytes=MAX_JSON_BYTES)
+    if raw is None:
+        raise HttpError(400, i18n.t("bundle_invalid"))
+
+    try:
+        manifest = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise HttpError(400, i18n.t("bundle_invalid")) from exc
+    if not isinstance(manifest, dict):
+        raise HttpError(400, i18n.t("bundle_invalid"))
+
+    if manifest.get("schema") != SCHEMA:
+        raise HttpError(
+            400,
+            i18n.t("bundle_schema_unknown", schema=manifest.get("schema"), expected=SCHEMA),
+        )
+    if PAGES_NAME not in archive.namelist():
+        raise HttpError(400, i18n.t("bundle_invalid"))
+    return manifest
+
+
+@contextmanager
+def open_bundle(upload: UploadedFile) -> Iterator[tuple[zipfile.ZipFile, dict]]:
+    """Open an uploaded bundle, yielding its archive and validated manifest.
+
+    The upload is copied into a seekable buffer first — ``ZipFile`` seeks, and a
+    streamed multipart upload may not.
+    """
+    source_file = getattr(upload, "file", None)
+    if source_file is None:
+        raise HttpError(400, i18n.t("bundle_invalid"))
+
+    with SpooledTemporaryFile(max_size=SPOOL_MAX_BYTES) as buffer:
+        shutil.copyfileobj(source_file, buffer)
+        buffer.seek(0)
+
+        try:
+            archive = zipfile.ZipFile(buffer)
+        except zipfile.BadZipFile as exc:
+            raise HttpError(400, i18n.t("bundle_invalid")) from exc
+
+        with archive:
+            yield archive, read_manifest(archive)
+
+
+def _divergence(source: dict, *, first_page: int, last_page: int, page_count: int) -> dict:
+    """How a bundle's setup differs from a candidate target's.
+
+    Reported, never enforced: the same PDF can legitimately be set up with a
+    different first/last Quran page, and only the user knows whether that
+    matters. One definition, used both *before* an import (to warn on the
+    approval dialog) and *after* one (to warn on the result).
+    """
+    return {
+        "bounds_differ": (
+            source.get("first_quran_pdf_page") != first_page or source.get("last_quran_pdf_page") != last_page
+        ),
+        "page_count_differs": source.get("pdf_page_count") != page_count,
+    }
+
+
 def _restore_templates(target: Mushaf, archive: zipfile.ZipFile, manifest: dict) -> None:
     """Recreate template crops from the bundle, replacing any already there."""
-    entries = manifest.get("templates") or []
-    for entry in entries:
+    entries = manifest.get("templates")
+    for entry in entries if isinstance(entries, list) else []:
+        if not isinstance(entry, dict):
+            continue
         template_type = entry.get("type")
         if template_type not in TemplateTypeChoices.values:
             continue  # unknown type from a future version — skip rather than fail
@@ -331,6 +420,56 @@ def _restore_templates(target: Mushaf, archive: zipfile.ZipFile, manifest: dict)
                     logger.warning("Could not delete superseded template image %s", superseded)
 
 
+def inspect_bundle(upload: UploadedFile, *, user: User) -> dict:
+    """Read a bundle's manifest and find which of the caller's mushafs it fits.
+
+    The sha256 that import *enforces* is also what identifies a bundle's home,
+    so the field that refuses a wrong target can just as well find the right
+    one — nobody should have to recognise a checksum by eye to import their own
+    work. Nothing is written here, and the answer is only a shortlist: the real
+    import re-checks the hash against whichever mushaf the user approves.
+
+    The lookup is scoped to the caller's own mushafs. Searching everyone's would
+    turn this into an oracle for "who else here has this PDF?", and would print
+    strangers' mushaf names into the dialog.
+    """
+    from api.services import mushaf as mushaf_service
+
+    with open_bundle(upload) as (_, manifest):
+        source = _section(manifest, "mushaf")
+        counts = _section(manifest, "counts")
+        exported_at = manifest.get("exported_at")
+
+    sha = source.get("pdf_sha256") or ""
+    candidates = mushaf_service.list_mushafs(user=user, pdf_sha256=sha) if sha else []
+
+    return {
+        "bundle": {
+            "name": source.get("name") or "",
+            "qiraa": source.get("qiraa"),
+            "pdf_sha256": sha,
+            "pdf_original_name": source.get("pdf_original_name") or "",
+            "pdf_page_count": source.get("pdf_page_count") or 0,
+            "first_quran_pdf_page": source.get("first_quran_pdf_page") or 1,
+            "last_quran_pdf_page": source.get("last_quran_pdf_page"),
+            "exported_at": exported_at if isinstance(exported_at, str) else "",
+            "pages": counts.get("pages") or 0,
+            "lines": counts.get("lines") or 0,
+            "segments": counts.get("segments") or 0,
+        },
+        "matches": [
+            candidate
+            | _divergence(
+                source,
+                first_page=candidate["first_quran_pdf_page"],
+                last_page=candidate["last_quran_pdf_page"],
+                page_count=candidate["pdf_page_count"],
+            )
+            for candidate in candidates
+        ],
+    }
+
+
 def apply_bundle(
     mushaf_id: uuid.UUID,
     upload: UploadedFile,
@@ -348,84 +487,60 @@ def apply_bundle(
 
     target = mushaf_service.get_mushaf(mushaf_id, user=user)
 
-    # Copy the upload into a seekable buffer — ZipFile needs to seek, and a
-    # streamed multipart upload may not be.
-    source_file = getattr(upload, "file", None)
-    if source_file is None:
-        raise HttpError(400, i18n.t("bundle_invalid"))
-
-    with SpooledTemporaryFile(max_size=SPOOL_MAX_BYTES) as buffer:
-        shutil.copyfileobj(source_file, buffer)
-        buffer.seek(0)
+    with open_bundle(upload) as (archive, manifest):
+        raw_pages = _read_member(archive, PAGES_NAME, max_bytes=MAX_JSON_BYTES)
+        if raw_pages is None:
+            raise HttpError(400, i18n.t("bundle_invalid"))
 
         try:
-            archive = zipfile.ZipFile(buffer)
-        except zipfile.BadZipFile as exc:
+            pages = json.loads(raw_pages).get("pages", [])
+        except (json.JSONDecodeError, AttributeError) as exc:
             raise HttpError(400, i18n.t("bundle_invalid")) from exc
+        if not isinstance(pages, list):
+            raise HttpError(400, i18n.t("bundle_invalid"))
 
-        with archive:
-            raw_manifest = _read_member(archive, MANIFEST_NAME, max_bytes=MAX_JSON_BYTES)
-            raw_pages = _read_member(archive, PAGES_NAME, max_bytes=MAX_JSON_BYTES)
-            if raw_manifest is None or raw_pages is None:
-                raise HttpError(400, i18n.t("bundle_invalid"))
+        source = _section(manifest, "mushaf")
+        bundle_sha = source.get("pdf_sha256") or ""
+        if bundle_sha != target.pdf_sha256:
+            raise HttpError(
+                409,
+                i18n.t(
+                    "bundle_pdf_mismatch",
+                    bundle=bundle_sha[:12],
+                    target=target.pdf_sha256[:12],
+                ),
+            )
 
-            try:
-                manifest = json.loads(raw_manifest)
-                pages = json.loads(raw_pages).get("pages", [])
-            except (json.JSONDecodeError, AttributeError) as exc:
-                raise HttpError(400, i18n.t("bundle_invalid")) from exc
+        if target.pages.exists() and not replace:
+            raise HttpError(409, i18n.t("bundle_has_pages", count=target.pages.count()))
 
-            if manifest.get("schema") != SCHEMA:
-                raise HttpError(
-                    400,
-                    i18n.t("bundle_schema_unknown", schema=manifest.get("schema"), expected=SCHEMA),
-                )
+        with transaction.atomic():
+            # Cascade clears lines, segments and strokes with the pages.
+            target.pages.all().delete()
+            write_tree(target, pages)
+            _restore_templates(target, archive, manifest)
 
-            source = manifest.get("mushaf") or {}
-            bundle_sha = source.get("pdf_sha256") or ""
-            if bundle_sha != target.pdf_sha256:
-                raise HttpError(
-                    409,
-                    i18n.t(
-                        "bundle_pdf_mismatch",
-                        bundle=bundle_sha[:12],
-                        target=target.pdf_sha256[:12],
-                    ),
-                )
+            activity.emit(
+                target,
+                ActivityTypeChoices.MUSHAF_CREATED,
+                {
+                    "imported_from": source.get("name", ""),
+                    "pages": len(pages),
+                    "exported_at": manifest.get("exported_at", ""),
+                },
+                actor=user,
+            )
 
-            if target.pages.exists() and not replace:
-                raise HttpError(409, i18n.t("bundle_has_pages", count=target.pages.count()))
-
-            with transaction.atomic():
-                # Cascade clears lines, segments and strokes with the pages.
-                target.pages.all().delete()
-                write_tree(target, pages)
-                _restore_templates(target, archive, manifest)
-
-                activity.emit(
-                    target,
-                    ActivityTypeChoices.MUSHAF_CREATED,
-                    {
-                        "imported_from": source.get("name", ""),
-                        "pages": len(pages),
-                        "exported_at": manifest.get("exported_at", ""),
-                    },
-                    actor=user,
-                )
-
-    # Bounds and page-count differences are reported, not enforced: the same PDF
-    # can legitimately be set up with a different first/last Quran page.
-    warnings = {
-        "bounds_differ": (
-            source.get("first_quran_pdf_page") != target.first_quran_pdf_page
-            or source.get("last_quran_pdf_page") != target.last_quran_pdf_page
-        ),
-        "page_count_differs": source.get("pdf_page_count") != target.pdf_page_count,
-    }
     logger.info("Imported %d pages into mushaf %s", len(pages), target.id)
+    # Bounds and page-count differences are reported, not enforced.
     return {
         "pages_imported": len(pages),
         "lines_imported": sum(len(p.get("lines", [])) for p in pages),
         "source_name": source.get("name", ""),
-        "warnings": warnings,
+        "warnings": _divergence(
+            source,
+            first_page=target.first_quran_pdf_page,
+            last_page=target.last_quran_pdf_page,
+            page_count=target.pdf_page_count,
+        ),
     }
