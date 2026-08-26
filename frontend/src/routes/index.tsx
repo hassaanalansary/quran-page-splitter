@@ -1,36 +1,37 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Plus, Trash2 } from "lucide-react";
+import { Globe, Plus, Trash2, Upload } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
 import { CreateMushafDialog } from "@/components/app/CreateMushafDialog";
+import { ImportBundleDialog } from "@/components/app/ImportBundleDialog";
 import { LanguageSwitcher } from "@/components/app/LanguageSwitcher";
+import { MushafStatusBadge } from "@/components/app/MushafStatusBadge";
+import { UserMenu } from "@/components/app/UserMenu";
+import { Button } from "@/components/ui/button";
+import { requireSessionOrGallery } from "@/lib/auth/guard";
 import {
   ApiError,
   deleteMushaf,
-  mushafStatus,
   pageImageUrl,
   queryKeys,
   useMushafs,
   type Mushaf,
-  type MushafStatus,
 } from "@/lib/api";
 
-export const Route = createFileRoute("/")({ component: HomePage });
-
-const STATUS_STYLE: Record<MushafStatus, { dot: string; text: string; bg: string }> = {
-  empty: { dot: "var(--text-muted)", text: "text-text-muted", bg: "bg-bg-muted" },
-  partial: { dot: "var(--warning)", text: "text-[#92400E]", bg: "bg-warning-bg" },
-  processed: { dot: "var(--navy-light)", text: "text-navy", bg: "bg-bg-muted" },
-  completed: { dot: "var(--success)", text: "text-success", bg: "bg-success-bg" },
-};
+export const Route = createFileRoute("/")({
+  component: HomePage,
+  // Anonymous visitors land on the public gallery instead of a sign-in form.
+  beforeLoad: ({ context }) => requireSessionOrGallery(context.queryClient),
+});
 
 function HomePage() {
   const { t } = useTranslation();
   const { data: mushafs, isPending, isError, error } = useMushafs();
   const [createOpen, setCreateOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-bg-page">
@@ -41,16 +42,36 @@ function HomePage() {
             {t("common.appName")}
           </span>
         </div>
-        <div className="ms-auto">
+        <div className="ms-auto flex items-center gap-3">
+          <Link
+            to="/gallery"
+            className="text-[12px] font-semibold text-text-secondary transition-colors hover:text-navy"
+          >
+            {t("gallery.navLink")}
+          </Link>
           <LanguageSwitcher />
+          <UserMenu />
         </div>
       </header>
 
       <main className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-6xl px-8 py-9">
-          <div className="mb-7">
-            <h1 className="font-display text-2xl font-bold text-navy">{t("home.title")}</h1>
-            <p className="mt-1 text-sm text-text-secondary">{t("home.subtitle")}</p>
+          <div className="mb-7 flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h1 className="font-display text-2xl font-bold text-navy">{t("home.title")}</h1>
+              <p className="mt-1 text-sm text-text-secondary">{t("home.subtitle")}</p>
+            </div>
+            {/* Importing from here rather than from a mushaf: the bundle names
+                its own mushaf by checksum, so there is nothing to look up first. */}
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              onClick={() => setImportOpen(true)}
+            >
+              <Upload size={14} />
+              {t("bundle.detect.open")}
+            </Button>
           </div>
 
           {isError ? (
@@ -71,6 +92,7 @@ function HomePage() {
       </main>
 
       <CreateMushafDialog open={createOpen} onOpenChange={setCreateOpen} />
+      <ImportBundleDialog open={importOpen} onOpenChange={setImportOpen} />
     </div>
   );
 }
@@ -79,8 +101,6 @@ function MushafCard({ mushaf }: { mushaf: Mushaf }) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [imgFailed, setImgFailed] = useState(false);
-  const statusKey = mushafStatus(mushaf);
-  const status = STATUS_STYLE[statusKey];
 
   const remove = useMutation({
     mutationFn: () => deleteMushaf(mushaf.id),
@@ -110,12 +130,13 @@ function MushafCard({ mushaf }: { mushaf: Mushaf }) {
               {t("home.noPreview")}
             </div>
           )}
-          <span
-            className={`absolute start-2 top-2 flex items-center gap-1.5 rounded-pill px-2 py-0.5 text-[10px] font-semibold ${status.bg} ${status.text}`}
-          >
-            <span className="h-1.5 w-1.5 rounded-full" style={{ background: status.dot }} />
-            {t(`status.${statusKey}`)}
-          </span>
+          <MushafStatusBadge mushaf={mushaf} className="absolute start-2 top-2" />
+          {mushaf.visibility === "published" && (
+            <span className="absolute bottom-2 start-2 flex items-center gap-1 rounded-pill bg-success-bg px-2 py-0.5 text-[10px] font-semibold text-success">
+              <Globe size={9} />
+              {t("gallery.publishedBadge")}
+            </span>
+          )}
         </div>
 
         {/* Footer */}

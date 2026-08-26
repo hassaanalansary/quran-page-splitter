@@ -241,6 +241,19 @@ function ProcessPage() {
         ended_at,
       });
       setDetailsOpen(true);
+    } else if (job.state === "interrupted") {
+      // The server lost the worker (restart, deploy, crash). Distinct from an
+      // error: nothing went wrong with the *work*, and whatever pages were
+      // saved before it stopped are still there to resume from.
+      writeLastProcessOutcome(mushafId, {
+        status: "error",
+        pages_saved,
+        abort_page: job.stopped_on_page ?? undefined,
+        message: t("process.interruptedToast"),
+        ended_at,
+      });
+      setDetailsOpen(true);
+      toast.warning(t("process.interruptedToast", { count: pages_saved }));
     } else {
       writeLastProcessOutcome(mushafId, {
         status: "error",

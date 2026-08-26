@@ -1,4 +1,4 @@
-import { createFileRoute, useParams } from "@tanstack/react-router";
+import { createFileRoute, Link, useParams } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -50,9 +50,16 @@ function MushafDetailsPage() {
   if (isError || !mushaf) {
     return (
       <Centered>
-        <span className="text-error">
-          {error instanceof Error ? error.message : t("workspace.loadFailed")}
-        </span>
+        <div className="flex flex-col items-center gap-3">
+          <span className="text-error">
+            {error instanceof Error ? error.message : t("workspace.loadFailed")}
+          </span>
+          {/* Reaching a mushaf that isn't yours lands here, so there has to be a
+              way out — otherwise the only option is the browser's back button. */}
+          <Link to="/" className="text-[12.5px] font-semibold text-navy hover:underline">
+            {t("header.allMushafs")}
+          </Link>
+        </div>
       </Centered>
     );
   }

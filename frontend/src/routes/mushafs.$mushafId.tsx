@@ -3,8 +3,12 @@ import { useTranslation } from "react-i18next";
 
 import { MushafHeader } from "@/components/app/MushafHeader";
 import { useMushaf } from "@/lib/api";
+import { requireSession } from "@/lib/auth/guard";
 
-export const Route = createFileRoute("/mushafs/$mushafId")({ component: WorkspaceLayout });
+export const Route = createFileRoute("/mushafs/$mushafId")({
+  component: WorkspaceLayout,
+  beforeLoad: ({ context, location }) => requireSession(context.queryClient, location.href),
+});
 
 const STEPS = [
   { slug: "setup" },

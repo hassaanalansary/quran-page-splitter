@@ -13,15 +13,16 @@ from django.db import transaction
 from django.db.models import Count, Q
 from ninja.errors import HttpError
 
+from accounts.models import User
 from api import i18n, validators
 from api.models import ActivityTypeChoices, EraseStroke, Line, LineTypeChoices, Mushaf, Page, Segment
 from api.services import activity, coordinates
 from api.services import mushaf as mushaf_service
 
 
-def get_page_data(mushaf_id: uuid.UUID, page_number: int) -> dict:
+def get_page_data(mushaf_id: uuid.UUID, page_number: int, *, user: User) -> dict:
     """Coordinate data for a logical page; empty (no lines) if not yet processed."""
-    mushaf = mushaf_service.get_mushaf(mushaf_id)
+    mushaf = mushaf_service.get_mushaf(mushaf_id, user=user, write=False)
     validators.validate_page_number(mushaf, page_number)
     page = Page.objects.filter(mushaf=mushaf, page_number=page_number).first()
     if page is None:
@@ -29,13 +30,13 @@ def get_page_data(mushaf_id: uuid.UUID, page_number: int) -> dict:
     return coordinates.page_to_dict(page)
 
 
-def list_pages(mushaf_id: uuid.UUID) -> list[dict]:
+def list_pages(mushaf_id: uuid.UUID, *, user: User) -> list[dict]:
     """Per-page summaries: review state + detection counts (rail map + Pages tab).
 
     ``ayat`` counts aya-closing segments (``has_separator=True``);
     ``source_pdf_page`` is the resolved physical page (override or derived).
     """
-    mushaf = mushaf_service.get_mushaf(mushaf_id)
+    mushaf = mushaf_service.get_mushaf(mushaf_id, user=user, write=False)
     rows = (
         Page.objects.filter(mushaf=mushaf)
         .annotate(
@@ -91,9 +92,9 @@ def _suras_by_page(mushaf: Mushaf) -> dict[int, list[dict]]:
     return result
 
 
-def save_page(*, mushaf_id: uuid.UUID, page_number: int, bbox: dict, lines: list[dict]) -> dict:
+def save_page(*, user: User, mushaf_id: uuid.UUID, page_number: int, bbox: dict, lines: list[dict]) -> dict:
     """Replace a page's lines/segments from the payload, then renumber forward."""
-    mushaf = mushaf_service.get_mushaf(mushaf_id)
+    mushaf = mushaf_service.get_mushaf(mushaf_id, user=user)
     validators.validate_page_number(mushaf, page_number)
     was_reviewed = Page.objects.filter(mushaf=mushaf, page_number=page_number, reviewed=True).exists()
     page, _ = Page.objects.update_or_create(
@@ -113,7 +114,7 @@ def save_page(*, mushaf_id: uuid.UUID, page_number: int, bbox: dict, lines: list
     coordinates.renumber_from(page)
     # Only the first review of a page (since its last processing) is feed-worthy.
     if not was_reviewed:
-        activity.emit(mushaf, ActivityTypeChoices.REVIEW_SAVED, {"page_number": page_number})
+        activity.emit(mushaf, ActivityTypeChoices.REVIEW_SAVED, {"page_number": page_number}, actor=user)
     return coordinates.page_to_dict(page)
 
 
@@ -148,13 +149,13 @@ def _write_edited_line(page: Page, line_data: dict) -> None:
         )
 
 
-def save_finalize(*, mushaf_id: uuid.UUID, page_number: int, line_edits: list[dict]) -> dict:
+def save_finalize(*, user: User, mushaf_id: uuid.UUID, page_number: int, line_edits: list[dict]) -> dict:
     """Apply the cut layer: optional line bbox overrides + erase strokes.
 
     These never affect numbering (segments are independent of line bbox), so no
     renumber is needed — only the export crop/alpha are affected.
     """
-    mushaf = mushaf_service.get_mushaf(mushaf_id)
+    mushaf = mushaf_service.get_mushaf(mushaf_id, user=user)
     page = Page.objects.filter(mushaf=mushaf, page_number=page_number).first()
     if page is None:
         raise HttpError(404, i18n.t("page_no_finalize"))
@@ -183,7 +184,7 @@ def save_finalize(*, mushaf_id: uuid.UUID, page_number: int, line_edits: list[di
     return coordinates.page_to_dict(page)
 
 
-def review_data(mushaf_id: uuid.UUID) -> dict:
+def review_data(mushaf_id: uuid.UUID, *, user: User) -> dict:
     """Whole-document payload for the review session: numbering seed + every page
     that currently has data (each with its ``reviewed`` flag).
 
@@ -191,7 +192,7 @@ def review_data(mushaf_id: uuid.UUID) -> dict:
     number from the true start of the mushaf (page 1 = sura 1 aya 1 unless it was
     processed with a different start). The client fills in the blank pages 1..N.
     """
-    mushaf = mushaf_service.get_mushaf(mushaf_id)
+    mushaf = mushaf_service.get_mushaf(mushaf_id, user=user, write=False)
     page_rows = list(
         Page.objects.filter(mushaf=mushaf)
         .order_by("page_number")
@@ -286,7 +287,7 @@ def _start(page_rows: Sequence[Mapping[str, Any]]) -> dict:
     return {"sura": 1, "aya": 1}
 
 
-def bulk_save(*, mushaf_id: uuid.UUID, pages: list[dict], reviewed_pages: list[int]) -> dict:
+def bulk_save(*, user: User, mushaf_id: uuid.UUID, pages: list[dict], reviewed_pages: list[int]) -> dict:
     """Persist edited pages + review flags in one transaction.
 
     ``pages`` entries are the ``save_page`` shape ({page_number, bbox, lines}).
@@ -295,7 +296,7 @@ def bulk_save(*, mushaf_id: uuid.UUID, pages: list[dict], reviewed_pages: list[i
     this does NOT run ``renumber_from`` (that would overwrite the manual edits).
     Data writes do NOT flip ``reviewed`` — only ``reviewed_pages`` does.
     """
-    mushaf = mushaf_service.get_mushaf(mushaf_id)
+    mushaf = mushaf_service.get_mushaf(mushaf_id, user=user)
     for entry in pages:
         validators.validate_page_number(mushaf, entry["page_number"])
 
@@ -319,12 +320,13 @@ def bulk_save(*, mushaf_id: uuid.UUID, pages: list[dict], reviewed_pages: list[i
         Page.objects.filter(mushaf=mushaf, page_number__in=reviewed_pages).update(reviewed=True)
 
         if len(newly_reviewed) == 1:
-            activity.emit(mushaf, ActivityTypeChoices.REVIEW_SAVED, {"page_number": newly_reviewed[0]})
+            activity.emit(mushaf, ActivityTypeChoices.REVIEW_SAVED, {"page_number": newly_reviewed[0]}, actor=user)
         elif newly_reviewed:
             activity.emit(
                 mushaf,
                 ActivityTypeChoices.REVIEW_SAVED,
                 {"page_start": newly_reviewed[0], "page_end": newly_reviewed[-1], "count": len(newly_reviewed)},
+                actor=user,
             )
 
-    return review_data(mushaf_id)
+    return review_data(mushaf_id, user=user)

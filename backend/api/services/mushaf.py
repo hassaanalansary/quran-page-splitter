@@ -14,6 +14,7 @@ from django.db.models import Count, Q, Sum
 from django.shortcuts import get_object_or_404
 from ninja.errors import HttpError
 
+from accounts.models import User
 from api import i18n, validators
 from api.models import (
     ActivityTypeChoices,
@@ -26,6 +27,7 @@ from api.models import (
     SuraAyaCount,
     Template,
     TemplateTypeChoices,
+    VisibilityChoices,
 )
 from api.services import activity, pdf
 
@@ -48,7 +50,7 @@ def generate_thumbnail(mushaf: Mushaf) -> None:
         png = pdf.render_page(mushaf.pdf_file.path, 1, dpi=THUMBNAIL_DPI)
     except Exception:  # best-effort; a missing thumbnail just falls back to on-demand render
         return
-    mushaf.thumbnail.save(f"{mushaf.pdf_sha256}_thumb.png", ContentFile(png), save=True)
+    mushaf.thumbnail.save("thumbnail.png", ContentFile(png), save=True)
 
 
 # Columns read straight from the DB for serialization. ``processed_page_count``
@@ -61,14 +63,28 @@ _MUSHAF_VALUES = (
     "first_quran_pdf_page",
     "last_quran_pdf_page",
     "thumbnail",
+    "visibility",
     "created_at",
     "updated_at",
 )
 
 
-def get_mushaf(mushaf_id: uuid.UUID) -> Mushaf:
-    """Fetch a mushaf instance or raise 404 (for paths that mutate or render it)."""
-    return get_object_or_404(Mushaf, id=mushaf_id)
+def get_mushaf(mushaf_id: uuid.UUID, *, user: User | None, write: bool = True) -> Mushaf:
+    """Fetch a mushaf the caller is allowed to touch, or raise 404.
+
+    404 rather than 403 for someone else's private mushaf: a 403 would confirm
+    that the id exists, which is exactly what someone probing ids wants to learn.
+
+    Access is: the owner may do anything; anyone at all — signed in or not — may
+    *read* a published one. ``user`` is None for anonymous gallery visitors.
+    Writes always require ownership, so publishing never hands out an edit path.
+    """
+    mushaf = get_object_or_404(Mushaf, id=mushaf_id)
+    if user is not None and mushaf.owner_id == user.pk:
+        return mushaf
+    if not write and mushaf.visibility == VisibilityChoices.PUBLISHED:
+        return mushaf
+    raise HttpError(404, i18n.t("mushaf_not_found"))
 
 
 def _serialize(row: dict) -> dict:
@@ -86,15 +102,24 @@ def _serialize(row: dict) -> dict:
         "processed_page_count": row["processed_page_count"],
         "reviewed_page_count": row["reviewed_page_count"],
         "thumbnail_url": _media_url(row["thumbnail"]),
+        "visibility": row["visibility"],
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
     }
 
 
-def list_mushafs(qiraa: str | None = None) -> list[dict]:
-    """All mushafs, newest first (single query; page counts annotated)."""
+def list_mushafs(*, user: User, qiraa: str | None = None, pdf_sha256: str | None = None) -> list[dict]:
+    """The caller's mushafs, newest first (single query; page counts annotated).
+
+    ``pdf_sha256`` narrows the list to the ones built from one specific PDF —
+    what the work-bundle detector asks for. Several rows can share a hash: the
+    same file may be registered more than once on purpose (see
+    ``create_mushaf``'s ``duplicate_file`` warning), so callers must be ready
+    for more than one answer.
+    """
     rows = (
-        Mushaf.objects.annotate(
+        Mushaf.objects.filter(owner=user)
+        .annotate(
             processed_page_count=Count("pages"),
             reviewed_page_count=Count("pages", filter=Q(pages__reviewed=True)),
         )
@@ -104,13 +129,15 @@ def list_mushafs(qiraa: str | None = None) -> list[dict]:
     if qiraa is not None:
         qiraa = qiraa.strip().lower()
         rows = rows.filter(qiraa__name__iexact=qiraa)
+    if pdf_sha256:
+        rows = rows.filter(pdf_sha256=pdf_sha256)
     return [_serialize(row) for row in rows]
 
 
-def get_mushaf_dict(mushaf_id: uuid.UUID) -> dict:
-    """Serialized single mushaf (404 if missing)."""
+def get_mushaf_dict(mushaf_id: uuid.UUID, *, user: User) -> dict:
+    """Serialized single mushaf (404 if missing or not the caller's)."""
     row = (
-        Mushaf.objects.filter(id=mushaf_id)
+        Mushaf.objects.filter(id=mushaf_id, owner=user)
         .annotate(
             processed_page_count=Count("pages"),
             reviewed_page_count=Count("pages", filter=Q(pages__reviewed=True)),
@@ -123,13 +150,13 @@ def get_mushaf_dict(mushaf_id: uuid.UUID) -> dict:
     return _serialize(row)
 
 
-def get_mushaf_detail(mushaf_id: uuid.UUID) -> dict:
+def get_mushaf_detail(mushaf_id: uuid.UUID, *, user: User) -> dict:
     """Serialized mushaf enriched for the detail page: counting system + source file.
 
     A superset of ``get_mushaf_dict`` (the lean list shape), kept separate so the
     list endpoint never pays for the counting-system sum or the file stat.
     """
-    data = get_mushaf_dict(mushaf_id)  # 404s if missing
+    data = get_mushaf_dict(mushaf_id, user=user)  # 404s if missing or not theirs
     mushaf = Mushaf.objects.select_related("qiraa__counting_system").get(id=mushaf_id)
 
     counting_system = None
@@ -142,25 +169,30 @@ def get_mushaf_detail(mushaf_id: uuid.UUID) -> dict:
     data["pdf_url"] = _media_url(mushaf.pdf_file.name) if mushaf.pdf_file else None
     data["pdf_file_size"] = mushaf.pdf_file.size if mushaf.pdf_file else 0
     data["pdf_original_name"] = mushaf.pdf_original_name
+    # So the details page can show the publish control without a second request.
+    data["visibility"] = mushaf.visibility
+    data["published_at"] = mushaf.published_at
+    data["description"] = mushaf.description
+    data["export_uniform_size"] = mushaf.export_uniform_size
     return data
 
 
-def regenerate_thumbnail(mushaf_id: uuid.UUID) -> dict:
+def regenerate_thumbnail(mushaf_id: uuid.UUID, *, user: User) -> dict:
     """Re-render the cover thumbnail from physical page 1; returns the detail dict."""
-    mushaf = get_mushaf(mushaf_id)
+    mushaf = get_mushaf(mushaf_id, user=user)
     if mushaf.thumbnail:
-        mushaf.thumbnail.delete(save=False)
+        _delete_if_unshared(mushaf, "thumbnail")
     generate_thumbnail(mushaf)
-    return get_mushaf_detail(mushaf.id)
+    return get_mushaf_detail(mushaf.id, user=user)
 
 
-def mushaf_stats(mushaf_id: uuid.UUID) -> dict:
+def mushaf_stats(mushaf_id: uuid.UUID, *, user: User | None) -> dict:
     """Aggregate detection counts across all of a mushaf's processed pages.
 
     Feeds the detail page's stat strips (ayat / lines / segments / exported PNGs).
     ``ayat_found`` counts segments that close an aya (i.e. carry a separator).
     """
-    mushaf = get_mushaf(mushaf_id)  # 404s if missing
+    mushaf = get_mushaf(mushaf_id, user=user, write=False)  # 404s if missing
     lines = Line.objects.filter(page__mushaf=mushaf)
     segments = Segment.objects.filter(line__page__mushaf=mushaf)
     line_counts = lines.aggregate(
@@ -176,8 +208,46 @@ def mushaf_stats(mushaf_id: uuid.UUID) -> dict:
     return {**line_counts, **seg_counts}
 
 
+def _stored_twin(sha: str) -> Mushaf | None:
+    """An existing mushaf whose stored files this upload can point at instead of
+    writing its own copy, or ``None`` if there is no usable one.
+
+    Uploads are named by content hash, so a row with the same ``pdf_sha256``
+    already has these exact bytes on disk. Storage is checked rather than
+    trusted: a row can outlive its file (a hand-cleaned media dir, a half-done
+    storage migration), and pointing a new mushaf at a missing file would break
+    it on the first render.
+    """
+    twins = Mushaf.objects.filter(pdf_sha256=sha).exclude(pdf_file="").order_by("created_at")
+    for twin in twins.iterator():
+        name = twin.pdf_file.name
+        if name and twin.pdf_file.storage.exists(name):
+            return twin
+    return None
+
+
+def _copy_thumbnail_from(source: Mushaf | None, target: Mushaf) -> bool:
+    """Copy ``source``'s cover into ``target``'s own directory. False if there is none.
+
+    A few KB, so unlike the PDF this is copied outright rather than shared —
+    which is what lets ``mushafs/<id>/`` hold everything that mushaf owns.
+    """
+    if source is None or not source.thumbnail:
+        return False
+    try:
+        source.thumbnail.open("rb")
+        target.thumbnail.save("thumbnail.png", ContentFile(source.thumbnail.read()), save=True)
+    except (OSError, ValueError):
+        # A missing cover just means we render a fresh one.
+        return False
+    finally:
+        source.thumbnail.close()
+    return True
+
+
 def create_mushaf(
     *,
+    owner: User,
     pdf_file: UploadedFile,
     name: str,
     qiraa: str | None,
@@ -186,10 +256,13 @@ def create_mushaf(
 ) -> dict:
     """Store a PDF mushaf, compute its hash + page count, and create the record.
 
-    The unique ``name`` is enforced (409 on conflict). An identical file uploaded
-    under a different name is allowed and flagged via ``warnings.duplicate_file``.
+    ``name`` is unique per owner (409 on conflict) — two people may each have
+    their own "مصحف المدينة". An identical file uploaded under a different name
+    is allowed, flagged via ``warnings.duplicate_file``, and **costs no storage**:
+    the new row is pointed at the bytes already held rather than storing a second
+    copy of a ~150 MB scan. See ``_stored_twin``.
     """
-    if Mushaf.objects.filter(name=name).exists():
+    if Mushaf.objects.filter(owner=owner, name=name).exists():
         raise HttpError(409, i18n.t("mushaf_name_exists", name=name))
 
     data = pdf_file.read()
@@ -200,8 +273,10 @@ def create_mushaf(
 
     qiraa_obj = Qiraa.objects.filter(name=qiraa).first() if qiraa else None
     duplicate_file = Mushaf.objects.filter(pdf_sha256=sha).exists()
+    twin = _stored_twin(sha) if duplicate_file else None
 
     mushaf = Mushaf(
+        owner=owner,
         name=name,
         qiraa=qiraa_obj,
         pdf_original_name=pdf_file.name or "",
@@ -210,18 +285,39 @@ def create_mushaf(
         first_quran_pdf_page=first_quran_pdf_page,
         last_quran_pdf_page=last,
     )
-    mushaf.pdf_file.save(f"{sha}.pdf", ContentFile(data), save=False)
+    if twin is not None:
+        # Assigning the *path* instead of calling .save() is what makes this
+        # free — the same move services/cloning.py uses to duplicate a mushaf,
+        # and what _delete_if_unshared already expects to find.
+        #
+        # Two identical uploads racing here both miss and both write, leaving a
+        # suffixed second copy. That is exactly today's behaviour, so the race
+        # costs nothing that locking every upload would be worth.
+        mushaf.pdf_file.name = twin.pdf_file.name
+    else:
+        mushaf.pdf_file.save(f"{sha}.pdf", ContentFile(data), save=False)
     mushaf.save()
-    generate_thumbnail(mushaf)
-    activity.emit(mushaf, ActivityTypeChoices.MUSHAF_CREATED, {"pdf_original_name": mushaf.pdf_original_name})
+
+    # The cover renders from physical page 1, so identical bytes give an
+    # identical thumbnail — copying the twin's bytes skips a whole PDF render.
+    # Copied rather than shared by path: thumbnails live inside the mushaf's own
+    # directory now, so each row needs its own (they are a few KB).
+    if not _copy_thumbnail_from(twin, mushaf):
+        generate_thumbnail(mushaf)
+    activity.emit(
+        mushaf,
+        ActivityTypeChoices.MUSHAF_CREATED,
+        {"pdf_original_name": mushaf.pdf_original_name},
+        actor=owner,
+    )
 
     return {
-        "mushaf": get_mushaf_dict(mushaf.id),
+        "mushaf": get_mushaf_dict(mushaf.id, user=owner),
         "warnings": {"duplicate_file": duplicate_file},
     }
 
 
-def update_mushaf(mushaf_id: uuid.UUID, fields: dict) -> dict:
+def update_mushaf(mushaf_id: uuid.UUID, fields: dict, *, user: User) -> dict:
     """Patch a mushaf's name / qiraa / Quran-page bounds (only the given fields).
 
     ``fields`` holds just the keys the client sent (PATCH semantics), so an
@@ -230,17 +326,22 @@ def update_mushaf(mushaf_id: uuid.UUID, fields: dict) -> dict:
     the mushaf is unprocessed — shifting first/last would desync the
     logical->physical mapping of stored pages (revert = reprocess).
     """
-    mushaf = get_mushaf(mushaf_id)
+    mushaf = get_mushaf(mushaf_id, user=user)
 
     if "name" in fields:
         name = fields["name"]
-        if Mushaf.objects.filter(name=name).exclude(id=mushaf.id).exists():
+        if Mushaf.objects.filter(owner=user, name=name).exclude(id=mushaf.id).exists():
             raise HttpError(409, i18n.t("mushaf_name_exists", name=name))
         mushaf.name = name
 
     if "qiraa" in fields:
         qiraa = fields["qiraa"]
         mushaf.qiraa = Qiraa.objects.filter(name=qiraa).first() if qiraa else None
+
+    if "export_uniform_size" in fields:
+        # Affects future exports only — pages already exported keep the size
+        # they were written at until they are exported again.
+        mushaf.export_uniform_size = bool(fields["export_uniform_size"])
 
     bounds_changed = False
     if "first_quran_pdf_page" in fields or "last_quran_pdf_page" in fields:
@@ -259,17 +360,33 @@ def update_mushaf(mushaf_id: uuid.UUID, fields: dict) -> dict:
             mushaf,
             ActivityTypeChoices.BOUNDS_SET,
             {"first": mushaf.first_quran_pdf_page, "last": mushaf.last_quran_pdf_page},
+            actor=user,
         )
-    return get_mushaf_dict(mushaf.id)
+    return get_mushaf_dict(mushaf.id, user=user)
 
 
-def delete_mushaf(mushaf_id: uuid.UUID) -> None:
+def _delete_if_unshared(mushaf: Mushaf, field_name: str) -> None:
+    """Delete a mushaf's stored file, unless another mushaf points at it too.
+
+    A ``FileField`` column holds a *path*, not the bytes, and uploads are named
+    by content hash (``mushafs/{sha}.pdf``, ``thumbnails/{sha}_thumb.png``). So
+    several rows legitimately reference one file on disk — that is what makes
+    duplicating a mushaf cost no storage. Deleting unconditionally would pull
+    the file out from under every other row sharing it.
+    """
+    field = getattr(mushaf, field_name)
+    if not field:
+        return
+    shared = Mushaf.objects.filter(**{field_name: field.name}).exclude(id=mushaf.id).exists()
+    if not shared:
+        field.delete(save=False)
+
+
+def delete_mushaf(mushaf_id: uuid.UUID, *, user: User) -> None:
     """Delete a mushaf and (via cascade) all its pages/lines/segments/templates."""
-    mushaf = get_mushaf(mushaf_id)
-    if mushaf.pdf_file:
-        mushaf.pdf_file.delete(save=False)
-    if mushaf.thumbnail:
-        mushaf.thumbnail.delete(save=False)
+    mushaf = get_mushaf(mushaf_id, user=user)
+    _delete_if_unshared(mushaf, "pdf_file")
+    _delete_if_unshared(mushaf, "thumbnail")
     mushaf.delete()
 
 
@@ -282,14 +399,15 @@ def _serialize_template(template: Template) -> dict:
     }
 
 
-def list_templates(mushaf_id: uuid.UUID) -> list[dict]:
+def list_templates(mushaf_id: uuid.UUID, *, user: User) -> list[dict]:
     """All saved templates for a mushaf (so the editor can rehydrate on revisit)."""
-    mushaf = get_mushaf(mushaf_id)
+    mushaf = get_mushaf(mushaf_id, user=user, write=False)
     return [_serialize_template(t) for t in mushaf.templates.order_by("type")]
 
 
 def upsert_template(
     *,
+    user: User,
     mushaf_id: uuid.UUID,
     template_type: str,
     image: UploadedFile | None,
@@ -306,7 +424,7 @@ def upsert_template(
     if template_type not in TemplateTypeChoices.values:
         raise HttpError(400, i18n.t("invalid_template_type", template_type=template_type))
 
-    mushaf = get_mushaf(mushaf_id)
+    mushaf = get_mushaf(mushaf_id, user=user)
     ignore_rect: dict = {}
     if None not in (ignore_x, ignore_y, ignore_w, ignore_h):
         ignore_rect = {"x": ignore_x, "y": ignore_y, "w": ignore_w, "h": ignore_h}
@@ -328,13 +446,13 @@ def upsert_template(
                 template.image.storage.delete(superseded)
             except OSError:
                 logger.warning("Could not delete superseded template image %s", superseded)
-    activity.emit(mushaf, ActivityTypeChoices.TEMPLATE_SAVED, {"template_type": template_type})
+    activity.emit(mushaf, ActivityTypeChoices.TEMPLATE_SAVED, {"template_type": template_type}, actor=user)
     return _serialize_template(template)
 
 
-def render_page_image(mushaf_id: uuid.UUID, page_number: int) -> bytes:
+def render_page_image(mushaf_id: uuid.UUID, page_number: int, *, user: User) -> bytes:
     """Render a logical page to PNG bytes (honoring a per-page source override)."""
-    mushaf = get_mushaf(mushaf_id)
+    mushaf = get_mushaf(mushaf_id, user=user, write=False)
     validators.validate_page_number(mushaf, page_number)
     override = (
         Page.objects.filter(mushaf=mushaf, page_number=page_number).values_list("source_pdf_page", flat=True).first()

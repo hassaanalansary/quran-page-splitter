@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
+import { PublishPanel } from "@/components/app/details/PublishPanel";
 import {
   ApiError,
   deleteMushaf,
@@ -198,6 +199,11 @@ export function SettingsTab({ mushaf }: { mushaf: MushafDetail }) {
             </button>
           </div>
         </div>
+      </div>
+
+      {/* sharing */}
+      <div className="mt-3.5">
+        <PublishPanel mushaf={mushaf} />
       </div>
 
       {/* danger zone */}

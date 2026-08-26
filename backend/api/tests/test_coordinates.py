@@ -4,6 +4,7 @@ from django.test import TestCase
 
 from api.models import Line, Mushaf, ProcessingRun, Segment
 from api.services import coordinates, suras
+from api.tests.helpers import default_user
 
 
 def _coord_page() -> dict:
@@ -53,6 +54,7 @@ class WriteCoordsToPageTests(TestCase):
     def setUp(self):
         suras.seed_reference_data()
         self.mushaf = Mushaf.objects.create(
+            owner=default_user(),
             name="Coords",
             pdf_sha256="x",
             pdf_page_count=10,

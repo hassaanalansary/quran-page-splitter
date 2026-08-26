@@ -18,8 +18,42 @@ MESSAGES: dict[str, dict[str, str]] = {
         "ar": "المصحف غير موجود.",
     },
     "mushaf_name_exists": {
-        "en": "A mushaf named {name!r} already exists.",
-        "ar": "يوجد مصحف بالاسم {name!r} بالفعل.",
+        "en": "You already have a mushaf named {name!r}.",
+        "ar": "لديك بالفعل مصحف بالاسم {name!r}.",
+    },
+    "not_authenticated": {
+        "en": "Sign in to continue.",
+        "ar": "سجّل الدخول للمتابعة.",
+    },
+    "too_many_jobs": {
+        "en": "The server is already running as many processing jobs as it can. Try again shortly.",
+        "ar": "الخادم يشغّل بالفعل أقصى عدد ممكن من عمليات المعالجة. حاول بعد قليل.",
+    },
+    "too_many_jobs_for_user": {
+        "en": "You already have {count} processing job(s) running. Wait for one to finish, or cancel it.",
+        "ar": "لديك بالفعل {count} عملية معالجة قيد التشغيل. انتظر انتهاء إحداها أو ألغِها.",
+    },
+    "bundle_invalid": {
+        "en": "That file is not a readable work bundle.",
+        "ar": "هذا الملف ليس حزمة عمل صالحة للقراءة.",
+    },
+    "bundle_schema_unknown": {
+        "en": "Unsupported bundle format {schema!r}; this server reads {expected!r}.",
+        "ar": "صيغة حزمة غير مدعومة {schema!r}؛ هذا الخادم يقرأ {expected!r}.",
+    },
+    "bundle_pdf_mismatch": {
+        "en": (
+            "This bundle was made from a different PDF (bundle {bundle}…, this mushaf {target}…). "
+            "Import it onto a mushaf built from the same file."
+        ),
+        "ar": (
+            "أُنشئت هذه الحزمة من ملف PDF مختلف (الحزمة {bundle}…، هذا المصحف {target}…). "
+            "استوردها إلى مصحف مبني على الملف نفسه."
+        ),
+    },
+    "bundle_has_pages": {
+        "en": "This mushaf already has {count} processed page(s). Choose replace to overwrite them.",
+        "ar": "هذا المصحف يحتوي بالفعل على {count} صفحة معالَجة. اختر الاستبدال للكتابة فوقها.",
     },
     "bounds_locked": {
         "en": (

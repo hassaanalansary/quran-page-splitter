@@ -13,6 +13,8 @@ dependencies = [
     "opencv-python-headless>=4.11.0",
     "pillow>=12.2.0",
     "pymupdf>=1.27.2.3",
+    "django-allauth[headless-spec,socialaccount]>=65.19.1",
+    "psycopg[binary]>=3.3.4",
 ]
 
 [dependency-groups]
@@ -72,10 +74,22 @@ ignore_missing_imports = true
 module = "environ"
 ignore_missing_imports = true
 
+# django-allauth ships no py.typed marker; the django-stubs plugin still pulls
+# its models in when resolving the user model's reverse relations.
 [[tool.mypy.overrides]]
-module = "api.tests.*"
+module = "allauth.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["api.tests.*", "accounts.tests"]
 disallow_untyped_defs = false
 check_untyped_defs = false
+
+# Migrations are generated (or hand-written to match); their RunPython callables
+# take the historical-model registry, which has no useful static type.
+[[tool.mypy.overrides]]
+module = ["api.migrations.*", "accounts.migrations.*"]
+disallow_untyped_defs = false
 
 [tool.django-stubs]
 django_settings_module = "config.settings"

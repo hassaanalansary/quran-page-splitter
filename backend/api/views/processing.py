@@ -11,6 +11,7 @@ from django.http import HttpRequest, HttpResponse
 from ninja import Router, Schema
 from pydantic import Field
 
+from api.auth import current_user
 from api.common import RectSchema
 from api.services import jobs as jobs_service
 from api.services import mushaf as mushaf_service
@@ -103,15 +104,15 @@ def process(request: HttpRequest, mushaf_id: uuid.UUID, data: ProcessIn) -> tupl
     409 if this mushaf already has a run in flight — one at a time, since two
     runs would fight over the same Page rows.
     """
-    mushaf = mushaf_service.get_mushaf(mushaf_id)
+    mushaf = mushaf_service.get_mushaf(mushaf_id, user=current_user(request))
     params = data.model_dump()
     # Busy first, then payload: "a run is already going" is the more useful answer
     # even when the new request is also malformed. Both must be settled here —
     # once the job is registered the response has gone and nothing can be rejected.
     jobs_service.ensure_idle(mushaf.id)
     processing_service.preflight(mushaf, params["page_range_start"], params["page_range_end"])
-    job = jobs_service.start(mushaf, params)
-    return 202, job.to_dict()
+    job = jobs_service.start(mushaf, params, user=current_user(request))
+    return 202, jobs_service.to_dict(job)
 
 
 @router.get("/{mushaf_id}/process/job", response=JobStatusOut)
@@ -122,7 +123,7 @@ def process_job(request: HttpRequest, mushaf_id: uuid.UUID) -> dict:
     the browser had to keep.
     """
     job = jobs_service.latest_for(mushaf_id)
-    return {"job": job.to_dict() if job else None}
+    return {"job": jobs_service.to_dict(job) if job else None}
 
 
 @router.post("/{mushaf_id}/process/cancel", response=JobOut)
@@ -133,20 +134,20 @@ def cancel_process(request: HttpRequest, mushaf_id: uuid.UUID) -> dict:
     ``/process/job`` for the settled outcome. Pages already written stay written.
     """
     job = jobs_service.request_cancel(mushaf_id)
-    return job.to_dict()
+    return jobs_service.to_dict(job)
 
 
 @router.get("/{mushaf_id}/runs", response=list[RunOut])
 def list_runs(request: HttpRequest, mushaf_id: uuid.UUID) -> list[dict]:
     """Processing-run history for a mushaf (newest first)."""
-    mushaf = mushaf_service.get_mushaf(mushaf_id)
+    mushaf = mushaf_service.get_mushaf(mushaf_id, user=current_user(request), write=False)
     return processing_service.list_runs(mushaf)
 
 
 @router.get("/{mushaf_id}/runs/{run_id}/log")
 def run_log(request: HttpRequest, mushaf_id: uuid.UUID, run_id: uuid.UUID) -> HttpResponse:
     """Return a processing run's detailed log file as plain text."""
-    mushaf = mushaf_service.get_mushaf(mushaf_id)
+    mushaf = mushaf_service.get_mushaf(mushaf_id, user=current_user(request), write=False)
     path = processing_service.run_log_file(mushaf, run_id)
     return HttpResponse(path.read_text(encoding="utf-8"), content_type="text/plain; charset=utf-8")
 
@@ -163,5 +164,5 @@ def run_log_tail(
     Separate from ``/log`` (which stays a whole-file download) because a viewer
     watching a run in flight wants only what it has not seen yet.
     """
-    mushaf = mushaf_service.get_mushaf(mushaf_id)
+    mushaf = mushaf_service.get_mushaf(mushaf_id, user=current_user(request), write=False)
     return processing_service.read_run_log_tail(mushaf, run_id, offset)

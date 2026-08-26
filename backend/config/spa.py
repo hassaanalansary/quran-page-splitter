@@ -8,6 +8,7 @@ routes, while ``/api`` and ``/media`` are matched earlier in the URLconf.
 
 from django.conf import settings
 from django.http import FileResponse, Http404, HttpRequest, HttpResponse, HttpResponseBase
+from django.views.decorators.csrf import ensure_csrf_cookie
 
 FRONTEND_DIST = settings.BASE_DIR.parent / "frontend" / "dist"
 SPA_INDEX = FRONTEND_DIST / "index.html"
@@ -25,12 +26,18 @@ def _index_response() -> HttpResponseBase:
     return FileResponse(SPA_INDEX.open("rb"), content_type="text/html")
 
 
+@ensure_csrf_cookie
 def spa_serve(request: HttpRequest, path: str = "") -> HttpResponseBase:
     """Serve a real file from ``dist`` if it exists, else the SPA ``index.html``.
 
     The path is resolved and confined to ``dist`` to block traversal. Hashed
     assets (``/assets/...``), the favicon, etc. are served directly; every other
     path returns ``index.html`` so the client router can handle it.
+
+    ``ensure_csrf_cookie`` guarantees the ``csrftoken`` cookie is set by the page
+    load itself, so the SPA's first API call already has a token to echo back in
+    ``X-CSRFToken``. In development the SPA is served by Vite instead, where the
+    cookie comes from the first ``/_allauth/browser/v1/auth/session`` request.
     """
     if path:
         candidate = (FRONTEND_DIST / path).resolve()

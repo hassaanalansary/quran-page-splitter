@@ -8,11 +8,12 @@ from django.utils import timezone
 from api.models import ActivityEvent, ActivityTypeChoices, Mushaf
 from api.services import activity, editing, suras
 from api.services import mushaf as mushaf_service
-from api.tests.helpers import MediaTestCase, bare_mushaf, make_pdf_bytes, make_png_bytes
+from api.tests.helpers import MediaTestCase, bare_mushaf, default_user, make_pdf_bytes, make_png_bytes
 
 
 def _create(name: str = "ActM", pages: int = 5):
     return mushaf_service.create_mushaf(
+        owner=default_user(),
         pdf_file=SimpleUploadedFile("original-scan.pdf", make_pdf_bytes(pages), "application/pdf"),
         name=name,
         qiraa=None,
@@ -31,9 +32,9 @@ class EmissionTests(MediaTestCase):
 
     def test_bounds_patch_emits_only_on_actual_change(self):
         created = _create("ActBounds")
-        mushaf_service.update_mushaf(created["id"], {"first_quran_pdf_page": 2})
-        mushaf_service.update_mushaf(created["id"], {"name": "ActBounds2"})  # no bounds change
-        mushaf_service.update_mushaf(created["id"], {"first_quran_pdf_page": 2})  # unchanged value
+        mushaf_service.update_mushaf(created["id"], {"first_quran_pdf_page": 2}, user=default_user())
+        mushaf_service.update_mushaf(created["id"], {"name": "ActBounds2"}, user=default_user())  # no bounds change
+        mushaf_service.update_mushaf(created["id"], {"first_quran_pdf_page": 2}, user=default_user())  # unchanged value
         events = ActivityEvent.objects.filter(mushaf_id=created["id"], type=ActivityTypeChoices.BOUNDS_SET)
         self.assertEqual(events.count(), 1)
         self.assertEqual(events.get().payload, {"first": 2, "last": 5})
@@ -48,6 +49,7 @@ class EmissionTests(MediaTestCase):
             ignore_y=None,
             ignore_w=None,
             ignore_h=None,
+            user=default_user(),
         )
         event = ActivityEvent.objects.get(mushaf_id=created["id"], type=ActivityTypeChoices.TEMPLATE_SAVED)
         self.assertEqual(event.payload, {"template_type": "sura_header"})
@@ -57,8 +59,8 @@ class EmissionTests(MediaTestCase):
         mushaf = bare_mushaf("ActReview")
         bbox = {"x": 0, "y": 0, "w": 10, "h": 10}
         lines = [{"line_number": 1, "type": "text", "bbox_x": 0, "bbox_y": 0, "bbox_w": 5, "bbox_h": 5, "segments": []}]
-        editing.save_page(mushaf_id=mushaf.id, page_number=1, bbox=bbox, lines=lines)
-        editing.save_page(mushaf_id=mushaf.id, page_number=1, bbox=bbox, lines=lines)  # re-save
+        editing.save_page(mushaf_id=mushaf.id, page_number=1, bbox=bbox, lines=lines, user=default_user())
+        editing.save_page(mushaf_id=mushaf.id, page_number=1, bbox=bbox, lines=lines, user=default_user())  # re-save
         events = ActivityEvent.objects.filter(mushaf=mushaf, type=ActivityTypeChoices.REVIEW_SAVED)
         self.assertEqual(events.count(), 1)
         self.assertEqual(events.get().payload, {"page_number": 1})

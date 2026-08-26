@@ -2,7 +2,10 @@
 
 Each line is cropped from the freshly rendered page, its white background is
 made transparent, eraser strokes are punched out of the alpha channel, and the
-PNG is saved to ``media/lines/`` with its path recorded on the line.
+PNG is saved under ``media/mushafs/<id>/lines/`` with its path recorded on
+the line. With ``Mushaf.export_uniform_size`` on, every line of a page is then
+centred on a transparent canvas the size of that page's largest line, so the
+whole page exports at one size.
 
 ``lines_zip`` bundles those stored PNGs into a downloadable archive — the way
 the images leave the tool and land wherever the user wants them.
@@ -19,6 +22,7 @@ from django.db.models import Prefetch
 from ninja.errors import HttpError
 from PIL import Image, ImageDraw
 
+from accounts.models import User
 from api import i18n
 from api.models import ActivityTypeChoices, Line, Page, Segment
 from api.services import activity, coordinates, pdf
@@ -30,9 +34,9 @@ from core.image_utils import make_transparent
 _ZIP_SPOOL_BYTES = 16 * 1024 * 1024
 
 
-def export_lines(*, mushaf_id: uuid.UUID, page_number: int) -> dict:
+def export_lines(*, user: User, mushaf_id: uuid.UUID, page_number: int) -> dict:
     """Render the page, crop each line to a transparent PNG, and store its path."""
-    mushaf = mushaf_service.get_mushaf(mushaf_id)
+    mushaf = mushaf_service.get_mushaf(mushaf_id, user=user)
     page = Page.objects.filter(mushaf=mushaf, page_number=page_number).first()
     if page is None:
         raise HttpError(404, i18n.t("page_no_export"))
@@ -42,20 +46,43 @@ def export_lines(*, mushaf_id: uuid.UUID, page_number: int) -> dict:
     image.load()
 
     column = coordinates.page_column(page)
+    lines = list(page.lines.order_by("line_number").prefetch_related("erase_strokes"))
+
+    # Rendered up front rather than streamed one at a time: a uniform canvas can
+    # only be sized once every line on the page has been cut and erased. Fifteen
+    # RGBA line crops is a manageable amount to hold.
+    rendered = [(line, _render_line_image(image, line, column)) for line in lines]
+    canvas: tuple[int, int] | None = None
+    if mushaf.export_uniform_size and rendered:
+        canvas = (
+            max(img.width for _, img in rendered),
+            max(img.height for _, img in rendered),
+        )
+
     exported: list[dict] = []
-    for line in page.lines.order_by("line_number").prefetch_related("erase_strokes"):
-        png_bytes = _render_line_png(image, line, column)
-        filename = f"{mushaf.id}_p{page_number:04d}_l{line.line_number:02d}.png"
+    for line, rgba in rendered:
+        # Priming the FK cache keeps models.line_png_path from re-querying the
+        # page (and through it the mushaf) once per line.
+        line.page = page
+        png_bytes = _to_png_bytes(_pad_to(rgba, canvas) if canvas else rgba)
+        filename = f"page-{page_number:04d}/line-{line.line_number:02d}.png"
         if line.line_png:
             line.line_png.delete(save=False)
         line.line_png.save(filename, ContentFile(png_bytes), save=True)
         exported.append({"line_number": line.line_number, "line_png": line.line_png.url})
 
-    activity.emit(mushaf, ActivityTypeChoices.LINES_EXPORTED, {"page_number": page_number, "exported": len(exported)})
+    activity.emit(
+        mushaf,
+        ActivityTypeChoices.LINES_EXPORTED,
+        {"page_number": page_number, "exported": len(exported)},
+        actor=user,
+    )
     return {"page_number": page_number, "exported": len(exported), "lines": exported}
 
 
-def lines_zip(*, mushaf_id: uuid.UUID, page_number: int | None = None) -> tuple[str, SpooledTemporaryFile]:
+def lines_zip(
+    *, user: User | None, mushaf_id: uuid.UUID, page_number: int | None = None
+) -> tuple[str, SpooledTemporaryFile]:
     """Bundle the exported line PNGs into a zip, ready to stream as a download.
 
     One whole mushaf or a single logical page. Entries are laid out as
@@ -63,7 +90,7 @@ def lines_zip(*, mushaf_id: uuid.UUID, page_number: int | None = None) -> tuple[
     wherever it is unpacked. Only lines that were actually exported are
     included — nothing is rendered here.
     """
-    mushaf = mushaf_service.get_mushaf(mushaf_id)
+    mushaf = mushaf_service.get_mushaf(mushaf_id, user=user, write=False)
     lines = (
         Line.objects.filter(page__mushaf=mushaf)
         .exclude(line_png="")
@@ -98,14 +125,14 @@ def lines_zip(*, mushaf_id: uuid.UUID, page_number: int | None = None) -> tuple[
     return f"{stem}{suffix}-lines.zip", buffer
 
 
-def coordinates_json(mushaf_id: uuid.UUID) -> tuple[str, dict]:
+def coordinates_json(mushaf_id: uuid.UUID, *, user: User | None) -> tuple[str, dict]:
     """Assemble the downloadable aya-coordinates document (schema ``aya-bbox/v1``).
 
     One entry per aya per page, in reading order (line by line, right-to-left
     within a line). An aya's rects are its segments' boxes: x/w from the segment,
     y/h from the segment's line. Pages without aya data are omitted.
     """
-    mushaf = mushaf_service.get_mushaf(mushaf_id)
+    mushaf = mushaf_service.get_mushaf(mushaf_id, user=user, write=False)
     pages = (
         Page.objects.filter(mushaf=mushaf)
         .order_by("page_number")
@@ -154,7 +181,29 @@ def _safe_filename(name: str) -> str:
     return cleaned.strip("-") or "mushaf"
 
 
-def _render_line_png(image: Image.Image, line: Line, column: dict | None) -> bytes:
+def _pad_to(rgba: Image.Image, size: tuple[int, int]) -> Image.Image:
+    """Centre ``rgba`` on a fully transparent canvas of ``size``.
+
+    Padding only ever *adds* space — the caller sizes the canvas from the
+    largest line on the page, so nothing can be cropped. Centring keeps the
+    glyphs optically in the middle of their band, which is what reproduces the
+    original page when the lines are stacked back up.
+    """
+    width, height = size
+    if rgba.width == width and rgba.height == height:
+        return rgba
+    canvas = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    canvas.paste(rgba, ((width - rgba.width) // 2, (height - rgba.height) // 2))
+    return canvas
+
+
+def _to_png_bytes(rgba: Image.Image) -> bytes:
+    buffer = io.BytesIO()
+    rgba.save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+def _render_line_image(image: Image.Image, line: Line, column: dict | None) -> Image.Image:
     # The line cut spans the page's text-column bounds (coordinates.page_column);
     # the line's own x/w track content extent (from segments) and are left
     # untouched. Only the vertical extent (Y/H) comes from the line.
@@ -179,6 +228,4 @@ def _render_line_png(image: Image.Image, line: Line, column: dict | None) -> byt
             )
         rgba.putalpha(alpha)
 
-    buffer = io.BytesIO()
-    rgba.save(buffer, format="PNG")
-    return buffer.getvalue()
+    return rgba
