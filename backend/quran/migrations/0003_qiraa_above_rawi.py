@@ -54,6 +54,13 @@ def flatten_qiraat_back_onto_rawis(apps, schema_editor):
 
     Django re-adds ``Rawi.counting_system`` before this runs, so the column is
     there to write into.
+
+    The constraint flush at the end is load-bearing. Django writes foreign keys
+    as DEFERRABLE INITIALLY DEFERRED, so the writes above leave trigger events
+    queued until the end of the transaction — and the very next operation drops
+    ``Rawi.qiraa``, which is an ALTER TABLE on that same table. PostgreSQL
+    refuses: "cannot ALTER TABLE rawi because it has pending trigger events".
+    Checking the constraints now empties the queue so the ALTER can proceed.
     """
     Qiraa = apps.get_model("quran", "Qiraa")
     Rawi = apps.get_model("quran", "Rawi")
@@ -61,7 +68,15 @@ def flatten_qiraat_back_onto_rawis(apps, schema_editor):
         if rawi.qiraa_id:
             rawi.counting_system_id = rawi.qiraa.counting_system_id
             rawi.save(update_fields=["counting_system"])
+    # Unlink before deleting. ``Rawi.qiraa`` cascades, so deleting the ten qiraat
+    # while the rawis still point at them takes all twenty rawis with them — and
+    # ``Mushaf.rawi`` is SET_NULL, so every mushaf silently loses its riwaya on
+    # the way past. Breaking the link first leaves the delete with nothing to
+    # follow; the counting system each rawi needs was copied across just above.
+    Rawi.objects.update(qiraa=None)
     Qiraa.objects.all().delete()
+    if schema_editor.connection.vendor == "postgresql":
+        schema_editor.execute("SET CONSTRAINTS ALL IMMEDIATE")
 
 
 class Migration(migrations.Migration):
