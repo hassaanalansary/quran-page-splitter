@@ -5,9 +5,9 @@ import uuid
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test.client import BOUNDARY, MULTIPART_CONTENT, encode_multipart
 
-from api.models import Qiraa
-from api.services import suras
 from api.tests.helpers import ApiTestCase, MediaTestCase, make_pdf_bytes, make_png_bytes
+from quran.models import Rawi
+from quran.services import suras
 
 
 def _create_mushaf(client, name: str = "ViewMushaf", pages: int = 5):
@@ -35,8 +35,8 @@ class SurasViewTests(MediaTestCase):
 
 class QiraatViewTests(MediaTestCase):
     def test_list(self):
-        Qiraa.objects.create(name="Hafs", name_arabic="حفص")
-        Qiraa.objects.create(name="warsh", name_arabic="ورش")
+        Rawi.objects.create(name="Hafs", name_arabic="حفص")
+        Rawi.objects.create(name="warsh", name_arabic="ورش")
         resp = self.client.get("/api/qiraat")
         self.assertEqual(resp.status_code, 200)
         body = resp.json()

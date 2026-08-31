@@ -44,6 +44,9 @@ INSTALLED_APPS = [
     # Exposes allauth's flows as JSON under /_allauth/ so the React SPA can drive
     # them; HEADLESS_ONLY below turns off allauth's own HTML views entirely.
     "allauth.headless",
+    # Quranic reference data (suras, qiraat, the word list and the aya maps).
+    # Before "api", which holds foreign keys into it.
+    "quran",
     "api",
 ]
 

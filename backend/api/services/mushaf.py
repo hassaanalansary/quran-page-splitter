@@ -22,14 +22,13 @@ from api.models import (
     LineTypeChoices,
     Mushaf,
     Page,
-    Qiraa,
     Segment,
-    SuraAyaCount,
     Template,
     TemplateTypeChoices,
     VisibilityChoices,
 )
 from api.services import activity, pdf
+from quran.models import Rawi, SuraAyaCount
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +57,7 @@ def generate_thumbnail(mushaf: Mushaf) -> None:
 _MUSHAF_VALUES = (
     "id",
     "name",
-    "qiraa__name",
+    "rawi__name",
     "pdf_page_count",
     "first_quran_pdf_page",
     "last_quran_pdf_page",
@@ -94,7 +93,7 @@ def _serialize(row: dict) -> dict:
     return {
         "id": row["id"],
         "name": row["name"],
-        "qiraa": row["qiraa__name"],
+        "qiraa": row["rawi__name"],
         "pdf_page_count": row["pdf_page_count"],
         "first_quran_pdf_page": first,
         "last_quran_pdf_page": last,
@@ -128,7 +127,7 @@ def list_mushafs(*, user: User, qiraa: str | None = None, pdf_sha256: str | None
     )
     if qiraa is not None:
         qiraa = qiraa.strip().lower()
-        rows = rows.filter(qiraa__name__iexact=qiraa)
+        rows = rows.filter(rawi__name__iexact=qiraa)
     if pdf_sha256:
         rows = rows.filter(pdf_sha256=pdf_sha256)
     return [_serialize(row) for row in rows]
@@ -157,10 +156,10 @@ def get_mushaf_detail(mushaf_id: uuid.UUID, *, user: User) -> dict:
     list endpoint never pays for the counting-system sum or the file stat.
     """
     data = get_mushaf_dict(mushaf_id, user=user)  # 404s if missing or not theirs
-    mushaf = Mushaf.objects.select_related("qiraa__counting_system").get(id=mushaf_id)
+    mushaf = Mushaf.objects.select_related("rawi__qiraa__counting_system").get(id=mushaf_id)
 
     counting_system = None
-    system = mushaf.qiraa.counting_system if mushaf.qiraa else None
+    system = mushaf.rawi.counting_system if mushaf.rawi else None
     if system is not None:
         total = SuraAyaCount.objects.filter(counting_system=system).aggregate(total=Sum("count"))["total"]
         counting_system = {"name": system.name, "name_arabic": system.name_arabic, "total_ayat": total or 0}
@@ -271,14 +270,14 @@ def create_mushaf(
     last = last_quran_pdf_page or count
     validators.validate_pdf_bounds(first_quran_pdf_page, last, count)
 
-    qiraa_obj = Qiraa.objects.filter(name=qiraa).first() if qiraa else None
+    rawi = Rawi.objects.filter(name=qiraa).first() if qiraa else None
     duplicate_file = Mushaf.objects.filter(pdf_sha256=sha).exists()
     twin = _stored_twin(sha) if duplicate_file else None
 
     mushaf = Mushaf(
         owner=owner,
         name=name,
-        qiraa=qiraa_obj,
+        rawi=rawi,
         pdf_original_name=pdf_file.name or "",
         pdf_sha256=sha,
         pdf_page_count=count,
@@ -336,7 +335,7 @@ def update_mushaf(mushaf_id: uuid.UUID, fields: dict, *, user: User) -> dict:
 
     if "qiraa" in fields:
         qiraa = fields["qiraa"]
-        mushaf.qiraa = Qiraa.objects.filter(name=qiraa).first() if qiraa else None
+        mushaf.rawi = Rawi.objects.filter(name=qiraa).first() if qiraa else None
 
     if "export_uniform_size" in fields:
         # Affects future exports only — pages already exported keep the size

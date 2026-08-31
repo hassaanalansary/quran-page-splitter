@@ -3,8 +3,9 @@
 from django.test import TestCase
 
 from api.models import ProcessingRun
-from api.services import coordinates, suras
+from api.services import coordinates
 from api.tests.helpers import bare_mushaf
+from quran.services import suras
 
 
 def _two_sep_text_page(sura: int, aya1: int, aya2: int) -> dict:

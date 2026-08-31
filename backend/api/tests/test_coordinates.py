@@ -3,8 +3,9 @@
 from django.test import TestCase
 
 from api.models import Line, Mushaf, ProcessingRun, Segment
-from api.services import coordinates, suras
+from api.services import coordinates
 from api.tests.helpers import default_user
+from quran.services import suras
 
 
 def _coord_page() -> dict:

@@ -23,7 +23,6 @@ from api.models import ProcessingRun, ProcessJob, RunStatusChoices
 from api.services import jobs as jobs_service
 from api.services import mushaf as mushaf_service
 from api.services import processing as processing_service
-from api.services import suras
 from api.tests.helpers import (
     ApiTestCase,
     MediaTestCase,
@@ -34,6 +33,7 @@ from api.tests.helpers import (
     make_png_bytes,
     make_user,
 )
+from quran.services import suras
 
 _SETTINGS = {
     "start_sura": 2,

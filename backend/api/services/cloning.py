@@ -96,7 +96,7 @@ def duplicate(source: Mushaf, *, owner: User) -> Mushaf:
         target = Mushaf(
             owner=owner,
             name=_unique_name(owner, source.name),
-            qiraa=source.qiraa,
+            rawi=source.rawi,
             pdf_original_name=source.pdf_original_name,
             pdf_sha256=source.pdf_sha256,
             pdf_page_count=source.pdf_page_count,

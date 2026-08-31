@@ -8,7 +8,7 @@ from ninja.errors import HttpError
 from PIL import Image
 
 from api.models import ActivityEvent, ActivityTypeChoices, ProcessingRun
-from api.services import coordinates, export, suras
+from api.services import coordinates, export
 from api.services import mushaf as mushaf_service
 from api.tests.helpers import (
     MediaTestCase,
@@ -17,6 +17,7 @@ from api.tests.helpers import (
     make_pdf_bytes,
     make_png_bytes,
 )
+from quran.services import suras
 
 
 class ExportLinesTests(MediaTestCase):

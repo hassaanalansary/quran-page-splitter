@@ -27,124 +27,176 @@
   ],
   "qiraat": [
     {
+      "name": "Nafi",
+      "name_arabic": "نافع",
+      "counting_system": "Last Madinan"
+    },
+    {
+      "name": "Ibn-Kathir",
+      "name_arabic": "ابن كثير",
+      "counting_system": "Makkan"
+    },
+    {
+      "name": "Abu-Amr",
+      "name_arabic": "أبو عمرو",
+      "counting_system": "Basran"
+    },
+    {
+      "name": "Ibn-Amir",
+      "name_arabic": "ابن عامر",
+      "counting_system": "Damascene"
+    },
+    {
+      "name": "Asim",
+      "name_arabic": "عاصم",
+      "counting_system": "Kufi"
+    },
+    {
+      "name": "Hamza",
+      "name_arabic": "حمزة",
+      "counting_system": "Kufi"
+    },
+    {
+      "name": "Al-Kisai",
+      "name_arabic": "الكسائي",
+      "counting_system": "Kufi"
+    },
+    {
+      "name": "Abu-Jafar",
+      "name_arabic": "أبو جعفر",
+      "counting_system": "First Madinan"
+    },
+    {
+      "name": "Yaqub",
+      "name_arabic": "يعقوب",
+      "counting_system": "Basran"
+    },
+    {
+      "name": "Khalaf-Al-Ashir",
+      "name_arabic": "خلف العاشر",
+      "counting_system": "Kufi"
+    }
+  ],
+  "rawis": [
+    {
       "name": "Abu-Al-Harith",
       "name_arabic": "أبو الحارث",
       "description": "Abu-Al-Harith an Kisai",
-      "counting_system": "Kufi"
-    },
-    {
-      "name": "Duri-Kisai",
-      "name_arabic": "الدوري الكسائي",
-      "description": "Duri an Kisai",
-      "counting_system": "Kufi"
-    },
-    {
-      "name": "Hafs",
-      "name_arabic": "حفص",
-      "description": "Hafs an Asim",
-      "counting_system": "Kufi"
-    },
-    {
-      "name": "Hisham",
-      "name_arabic": "هشام",
-      "description": "Hisham an Ibn-Amir",
-      "counting_system": "Damascene"
-    },
-    {
-      "name": "Ibn-Dhakwan",
-      "name_arabic": "ابن ذكوان",
-      "description": "Ibn-Dhakwan an Ibn-Amir",
-      "counting_system": "Damascene"
-    },
-    {
-      "name": "Ibn-Jammaz",
-      "name_arabic": "ابن جمّاز",
-      "description": "Ibn-Jammaz an Abu Ja'far",
-      "counting_system": "First Madinan"
-    },
-    {
-      "name": "Ibn-Wardan",
-      "name_arabic": "عيسى بن وردان",
-      "description": "Ibn-Wardan an Abu-Jafar",
-      "counting_system": "First Madinan"
-    },
-    {
-      "name": "Idris",
-      "name_arabic": "إدريس",
-      "description": "Idris an Khalaf al-Ashir",
-      "counting_system": "Kufi"
-    },
-    {
-      "name": "Ishaq",
-      "name_arabic": "إسحاق",
-      "description": "Ishaq an Khalaf al-Ashir",
-      "counting_system": "Kufi"
-    },
-    {
-      "name": "Khalaf",
-      "name_arabic": "خلف",
-      "description": "Khalaf an Hamza",
-      "counting_system": "Kufi"
-    },
-    {
-      "name": "Rawh",
-      "name_arabic": "روح",
-      "description": "Rawh an Ya'qub",
-      "counting_system": "Basran"
-    },
-    {
-      "name": "Ruways",
-      "name_arabic": "رويس",
-      "description": "Ruways an Ya'qub",
-      "counting_system": "Basran"
-    },
-    {
-      "name": "Shuba",
-      "name_arabic": "شعبة",
-      "description": "Shuba an Asim",
-      "counting_system": "Kufi"
+      "qiraa": "Al-Kisai"
     },
     {
       "name": "bazzi",
       "name_arabic": "البزي",
       "description": "bazzi an ibn-kathir",
-      "counting_system": "Makkan"
+      "qiraa": "Ibn-Kathir"
     },
     {
       "name": "duri",
       "name_arabic": "الدوري",
       "description": "duri an abu-amr",
-      "counting_system": "Basran"
+      "qiraa": "Abu-Amr"
+    },
+    {
+      "name": "Duri-Kisai",
+      "name_arabic": "الدوري الكسائي",
+      "description": "Duri an Kisai",
+      "qiraa": "Al-Kisai"
+    },
+    {
+      "name": "Hafs",
+      "name_arabic": "حفص",
+      "description": "Hafs an Asim",
+      "qiraa": "Asim"
+    },
+    {
+      "name": "Hisham",
+      "name_arabic": "هشام",
+      "description": "Hisham an Ibn-Amir",
+      "qiraa": "Ibn-Amir"
+    },
+    {
+      "name": "Ibn-Dhakwan",
+      "name_arabic": "ابن ذكوان",
+      "description": "Ibn-Dhakwan an Ibn-Amir",
+      "qiraa": "Ibn-Amir"
+    },
+    {
+      "name": "Ibn-Jammaz",
+      "name_arabic": "ابن جمّاز",
+      "description": "Ibn-Jammaz an Abu Ja'far",
+      "qiraa": "Abu-Jafar"
+    },
+    {
+      "name": "Ibn-Wardan",
+      "name_arabic": "عيسى بن وردان",
+      "description": "Ibn-Wardan an Abu-Jafar",
+      "qiraa": "Abu-Jafar"
+    },
+    {
+      "name": "Idris",
+      "name_arabic": "إدريس",
+      "description": "Idris an Khalaf al-Ashir",
+      "qiraa": "Khalaf-Al-Ashir"
+    },
+    {
+      "name": "Ishaq",
+      "name_arabic": "إسحاق",
+      "description": "Ishaq an Khalaf al-Ashir",
+      "qiraa": "Khalaf-Al-Ashir"
+    },
+    {
+      "name": "Khalaf",
+      "name_arabic": "خلف",
+      "description": "Khalaf an Hamza",
+      "qiraa": "Hamza"
     },
     {
       "name": "khallad",
       "name_arabic": "خلًاد",
       "description": "khallad an Hamza",
-      "counting_system": "Kufi"
+      "qiraa": "Hamza"
     },
     {
       "name": "qalun",
       "name_arabic": "قالون",
       "description": "qalun an nafi",
-      "counting_system": "Last Madinan"
+      "qiraa": "Nafi"
     },
     {
       "name": "qunbul",
       "name_arabic": "قنبل",
       "description": "qunbul an ibn-kathir",
-      "counting_system": "Makkan"
+      "qiraa": "Ibn-Kathir"
+    },
+    {
+      "name": "Rawh",
+      "name_arabic": "روح",
+      "description": "Rawh an Ya'qub",
+      "qiraa": "Yaqub"
+    },
+    {
+      "name": "Ruways",
+      "name_arabic": "رويس",
+      "description": "Ruways an Ya'qub",
+      "qiraa": "Yaqub"
+    },
+    {
+      "name": "Shuba",
+      "name_arabic": "شعبة",
+      "description": "Shuba an Asim",
+      "qiraa": "Asim"
     },
     {
       "name": "susi",
       "name_arabic": "السوسي",
       "description": "susi an abu-amr",
-      "counting_system": "Basran"
+      "qiraa": "Abu-Amr"
     },
     {
       "name": "warsh",
       "name_arabic": "ورش",
       "description": "warsh an nafi",
-      "counting_system": "Last Madinan"
+      "qiraa": "Nafi"
     }
   ],
   "suras": [

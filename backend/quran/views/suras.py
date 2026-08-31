@@ -3,7 +3,7 @@
 from django.http import HttpRequest
 from ninja import Router, Schema
 
-from api.services import suras as suras_service
+from quran.services import suras as suras_service
 
 router = Router(tags=["suras"])
 

@@ -6,7 +6,7 @@ exposes them for selection. See ``services.suras`` for the sura/aya-count side.
 
 from django.db.models.functions import Lower
 
-from api.models import CountingSystem
+from quran.models import CountingSystem
 
 
 def list_counting_systems() -> list[dict]:

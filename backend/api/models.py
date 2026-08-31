@@ -37,16 +37,6 @@ class ActivityTypeChoices(models.TextChoices):
     LINES_EXPORTED = "lines_exported", "Lines Exported"
 
 
-class CountingSystem(models.Model):
-    """A table for Quran Counting Systems, e.g. Kufi"""
-
-    name = models.CharField(max_length=256, unique=True)
-    name_arabic = models.CharField(max_length=256, unique=True)
-
-    def __str__(self) -> str:
-        return f"{self.name} ({self.name_arabic})"
-
-
 class BaseModel(models.Model):
     """A base model for all models"""
 
@@ -56,60 +46,6 @@ class BaseModel(models.Model):
 
     class Meta:
         abstract = True
-
-
-class Qiraa(models.Model):
-    """A table for Qiraat"""
-
-    name = models.CharField(max_length=256, unique=True)
-    name_arabic = models.CharField(max_length=256, unique=True)
-    description = models.TextField(blank=True, default="")
-    counting_system = models.ForeignKey(CountingSystem, null=True, on_delete=models.CASCADE, related_name="qiraat")
-
-    class Meta:
-        db_table = "qiraa"
-        verbose_name = "Qiraa"
-        verbose_name_plural = "Qiraat"
-
-    def __str__(self) -> str:
-        return f"{self.name} ({self.name_arabic})"
-
-
-class Sura(models.Model):
-    """A table for the swar"""
-
-    number = models.PositiveSmallIntegerField(primary_key=True)
-    transliteration = models.CharField(max_length=32, unique=True)
-    name_arabic = models.CharField(max_length=32, unique=True)
-
-    class Meta:
-        db_table = "sura"
-        verbose_name = "Sura"
-        verbose_name_plural = "Suras"
-
-    def __str__(self) -> str:
-        return f"{self.number}. {self.transliteration} ({self.name_arabic})"
-
-
-class SuraAyaCount(models.Model):
-    """A table for the number of ayat in each sura"""
-
-    sura = models.ForeignKey(Sura, on_delete=models.CASCADE, related_name="aya_counts")
-    counting_system = models.ForeignKey(
-        CountingSystem, null=True, on_delete=models.CASCADE, related_name="sura_aya_counts"
-    )
-    count = models.PositiveSmallIntegerField()
-
-    class Meta:
-        db_table = "sura_aya_count"
-        verbose_name = "Sura Aya Count"
-        verbose_name_plural = "Sura Aya Counts"
-        constraints = (models.UniqueConstraint(fields=["sura", "counting_system"], name="unique_sura_counting_system"),)
-
-    def __str__(self) -> str:
-        if self.counting_system:
-            return f"{self.sura.transliteration} has {self.count} ayat in {self.counting_system.name}"
-        return f"{self.sura.transliteration} has {self.count} ayat"
 
 
 # ── Media layout ─────────────────────────────────────────────────────────────
@@ -156,7 +92,11 @@ class Mushaf(BaseModel):
         related_name="mushafs",
         help_text="Who created this mushaf. Deleting the account deletes their mushafs.",
     )
-    qiraa = models.ForeignKey(Qiraa, null=True, on_delete=models.SET_NULL, related_name="mushafs")
+    # The riwaya this mushaf is printed in — Hafs, Warsh, Qalun. It is what fixes
+    # the counting system, and so where every aya ends. The API still calls this
+    # "qiraa" on the wire (``qiraa: "Hafs"``), which is the colloquial name and
+    # the one stored inside exported bundles; services/mushaf.py maps between them.
+    rawi = models.ForeignKey("quran.Rawi", null=True, on_delete=models.SET_NULL, related_name="mushafs")
     # Unique per owner, not globally — two people may each keep their own
     # "مصحف المدينة". See the constraint in Meta.
     name = models.CharField(max_length=256)
@@ -409,7 +349,7 @@ class Line(BaseModel):
         choices=LineTypeChoices.choices,
         default=LineTypeChoices.TEXT,
     )
-    sura = models.ForeignKey(Sura, null=True, on_delete=models.SET_NULL, related_name="lines")
+    sura = models.ForeignKey("quran.Sura", null=True, on_delete=models.SET_NULL, related_name="lines")
     line_png = models.ImageField(
         upload_to=line_png_path, null=True, help_text="Final PNG path after coordinates + erase; set on export"
     )

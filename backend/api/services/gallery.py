@@ -21,7 +21,7 @@ _GALLERY_VALUES = (
     "id",
     "name",
     "description",
-    "qiraa__name",
+    "rawi__name",
     "pdf_page_count",
     "first_quran_pdf_page",
     "last_quran_pdf_page",
@@ -49,7 +49,7 @@ def _serialize(row: dict, *, viewer_id: object = None) -> dict:
         "id": row["id"],
         "name": row["name"],
         "description": row["description"],
-        "qiraa": row["qiraa__name"],
+        "qiraa": row["rawi__name"],
         "logical_page_count": last - first + 1,
         "processed_page_count": row["processed_page_count"],
         "reviewed_page_count": row["reviewed_page_count"],
@@ -80,9 +80,9 @@ def list_published(
     limit = max(1, min(limit, MAX_PAGE_SIZE))
     offset = max(0, offset)
 
-    rows = Mushaf.objects.filter(visibility=VisibilityChoices.PUBLISHED).select_related("owner", "qiraa")
+    rows = Mushaf.objects.filter(visibility=VisibilityChoices.PUBLISHED).select_related("owner", "rawi")
     if qiraa is not None:
-        rows = rows.filter(qiraa__name__iexact=qiraa.strip().lower())
+        rows = rows.filter(rawi__name__iexact=qiraa.strip().lower())
 
     total = rows.count()
     page = (
@@ -105,7 +105,7 @@ def get_published(mushaf_id: uuid.UUID, *, user: User | None) -> dict:
     mushaf = mushaf_service.get_mushaf(mushaf_id, user=user, write=False)
     row = (
         Mushaf.objects.filter(id=mushaf.id)
-        .select_related("owner", "qiraa")
+        .select_related("owner", "rawi")
         .annotate(
             processed_page_count=Count("pages", distinct=True),
             reviewed_page_count=Count("pages", filter=Q(pages__reviewed=True), distinct=True),

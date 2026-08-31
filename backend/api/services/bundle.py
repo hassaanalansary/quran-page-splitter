@@ -254,7 +254,7 @@ def build(mushaf_id: uuid.UUID, *, user: User | None) -> tuple[str, SpooledTempo
         "mushaf": {
             "name": mushaf.name,
             "description": mushaf.description,
-            "qiraa": mushaf.qiraa.name if mushaf.qiraa else None,
+            "qiraa": mushaf.rawi.name if mushaf.rawi else None,
             # The contract: this bundle describes work over one specific PDF.
             "pdf_sha256": mushaf.pdf_sha256,
             "pdf_page_count": mushaf.pdf_page_count,

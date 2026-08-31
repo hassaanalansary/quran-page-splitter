@@ -167,7 +167,7 @@ def coordinates_json(mushaf_id: uuid.UUID, *, user: User | None) -> tuple[str, d
         "mushaf": {
             "id": str(mushaf.id),
             "name": mushaf.name,
-            "qiraa": mushaf.qiraa.name if mushaf.qiraa else None,
+            "qiraa": mushaf.rawi.name if mushaf.rawi else None,
             "pages": mushaf.last_quran_pdf_page - mushaf.first_quran_pdf_page + 1,
         },
         "pages": pages_out,

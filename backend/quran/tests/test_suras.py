@@ -1,11 +1,11 @@
-"""Tests for api.services.suras (reference data)."""
+"""Tests for quran.services.suras (reference data)."""
 
 import json
 
 from django.test import TestCase
 
-from api.models import CountingSystem, Qiraa, Sura, SuraAyaCount
-from api.services import suras
+from quran.models import CountingSystem, Qiraa, Rawi, Sura, SuraAyaCount
+from quran.services import suras
 
 KUFI_NAME = "Kufi"
 
@@ -19,13 +19,21 @@ class SeedReferenceDataTests(TestCase):
         suras.seed_reference_data()
         self.assertEqual(CountingSystem.objects.count(), len(REFERENCE_DATA["counting_systems"]))
         self.assertEqual(Qiraa.objects.count(), len(REFERENCE_DATA["qiraat"]))
+        self.assertEqual(Rawi.objects.count(), len(REFERENCE_DATA["rawis"]))
         self.assertEqual(Sura.objects.count(), len(REFERENCE_DATA["suras"]))
         self.assertEqual(SuraAyaCount.objects.count(), len(REFERENCE_DATA["aya_counts"]))
 
-    def test_seeds_qiraat_with_counting_system(self):
+    def test_seeds_rawis_under_qiraat_with_counting_system(self):
+        """The chain the whole app reads: rawi -> qiraa -> counting system."""
         suras.seed_reference_data()
-        hafs = Qiraa.objects.select_related("counting_system").get(name__iexact="hafs")
+        hafs = Rawi.objects.select_related("qiraa__counting_system").get(name__iexact="hafs")
+        self.assertEqual(hafs.qiraa.name, "Asim")
         self.assertEqual(hafs.counting_system.name, KUFI_NAME)
+
+    def test_both_rawis_of_a_qiraa_share_its_counting_system(self):
+        suras.seed_reference_data()
+        systems = {r.counting_system.name for r in Rawi.objects.filter(qiraa__name="Nafi")}
+        self.assertEqual(systems, {"Last Madinan"})
 
     def test_known_counts(self):
         suras.seed_reference_data()
@@ -39,13 +47,14 @@ class SeedReferenceDataTests(TestCase):
         suras.seed_reference_data()
         self.assertEqual(CountingSystem.objects.count(), len(REFERENCE_DATA["counting_systems"]))
         self.assertEqual(Qiraa.objects.count(), len(REFERENCE_DATA["qiraat"]))
+        self.assertEqual(Rawi.objects.count(), len(REFERENCE_DATA["rawis"]))
         self.assertEqual(Sura.objects.count(), len(REFERENCE_DATA["suras"]))
         self.assertEqual(SuraAyaCount.objects.count(), len(REFERENCE_DATA["aya_counts"]))
 
 
 class ListSurasTests(TestCase):
     def setUp(self):
-        # Seeding creates the qiraat too, so fetch (don't recreate) the hafs row.
+        # Seeding creates the rawis too, so fetch (don't recreate) the hafs row.
         suras.seed_reference_data()
 
     def test_returns_all_with_counts(self):

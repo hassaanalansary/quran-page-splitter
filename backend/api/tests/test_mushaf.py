@@ -5,10 +5,11 @@ import uuid
 from django.core.files.uploadedfile import SimpleUploadedFile
 from ninja.errors import HttpError
 
-from api.models import CountingSystem, Line, Mushaf, Page, Qiraa, Segment, Template
+from api.models import Line, Mushaf, Page, Segment, Template
 from api.services import mushaf as mushaf_service
-from api.services import suras
 from api.tests.helpers import MediaTestCase, default_user, make_pdf_bytes, make_png_bytes
+from quran.models import CountingSystem, Rawi
+from quran.services import suras
 
 
 def _pdf_upload(num_pages: int = 10, name: str = "m.pdf") -> SimpleUploadedFile:
@@ -137,7 +138,7 @@ class CreateMushafTests(MediaTestCase):
         self.assertTrue(second.thumbnail.storage.exists(second.thumbnail.name))
 
     def test_links_qiraa(self):
-        Qiraa.objects.create(name="hafs", name_arabic="حفص")
+        Rawi.objects.create(name="hafs", name_arabic="حفص")
         self.assertEqual(_create("WithQiraa", qiraa="hafs")["qiraa"], "hafs")
 
     def test_invalid_bounds(self):
@@ -191,7 +192,7 @@ class UpdateMushafTests(MediaTestCase):
         self.assertEqual(updated["last_quran_pdf_page"], 10)
 
     def test_qiraa_relink_then_clear(self):
-        Qiraa.objects.create(name="hafs", name_arabic="حفص")
+        Rawi.objects.create(name="hafs", name_arabic="حفص")
         created = _create("Q", qiraa="hafs")
         relinked = mushaf_service.update_mushaf(created["id"], {"qiraa": "hafs"}, user=default_user())
         self.assertEqual(relinked["qiraa"], "hafs")

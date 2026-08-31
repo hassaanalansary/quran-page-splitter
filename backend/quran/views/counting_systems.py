@@ -1,7 +1,7 @@
 from django.http import HttpRequest
 from ninja import Router, Schema
 
-from api.services import counting_system as counting_systems_service
+from quran.services import counting_system as counting_systems_service
 
 router = Router(tags=["Counting Systems"])
 

@@ -8,7 +8,7 @@ from typing import Any
 
 from django.core.management.base import BaseCommand
 
-from api.services.suras import seed_reference_data
+from quran.services.suras import seed_reference_data
 
 
 class Command(BaseCommand):
