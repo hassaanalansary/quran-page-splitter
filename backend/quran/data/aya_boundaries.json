@@ -1,0 +1,3183 @@
+{
+  "_source": {
+    "repo": "https://github.com/quranpedia/qiraat-ayah-map",
+    "file": "data/book-boundary-primitives.json",
+    "license": "MIT",
+    "reference_system": "Kufi"
+  },
+  "_description": "Aya boundaries where the six counting systems differ from Kufi. 'after_position' is the 1-based word index within the Kufi aya, on the Tanzil Uthmani text with the prepended basmala stripped.",
+  "boundaries": [
+    {
+      "sura": 1,
+      "kufi_aya": 1,
+      "kind": "end",
+      "word": "الرحيم",
+      "occurrence": 1,
+      "after_position": 4,
+      "counted_by": [
+        "Makkan",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 1,
+      "kufi_aya": 7,
+      "kind": "internal",
+      "word": "عليهم",
+      "occurrence": 1,
+      "after_position": 4,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Basran",
+        "Damascene"
+      ],
+      "review": "2 occurrences, took #1"
+    },
+    {
+      "sura": 2,
+      "kufi_aya": 1,
+      "kind": "end",
+      "word": "الم",
+      "occurrence": 1,
+      "after_position": 1,
+      "counted_by": [
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 2,
+      "kufi_aya": 10,
+      "kind": "internal",
+      "word": "أليم",
+      "occurrence": 1,
+      "after_position": 9,
+      "counted_by": [
+        "Damascene"
+      ]
+    },
+    {
+      "sura": 2,
+      "kufi_aya": 11,
+      "kind": "end",
+      "word": "مصلحون",
+      "occurrence": 1,
+      "after_position": 11,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan",
+        "Basran",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 2,
+      "kufi_aya": 114,
+      "kind": "internal",
+      "word": "خائفين",
+      "occurrence": 1,
+      "after_position": 21,
+      "counted_by": [
+        "Basran"
+      ]
+    },
+    {
+      "sura": 2,
+      "kufi_aya": 197,
+      "kind": "end",
+      "word": "الألباب",
+      "occurrence": 1,
+      "after_position": 29,
+      "counted_by": [
+        "Last Madinan",
+        "Basran",
+        "Damascene",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 2,
+      "kufi_aya": 200,
+      "kind": "end",
+      "word": "خلاق",
+      "occurrence": 1,
+      "after_position": 24,
+      "counted_by": [
+        "First Madinan",
+        "Makkan",
+        "Basran",
+        "Damascene",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 2,
+      "kufi_aya": 219,
+      "kind": "internal",
+      "word": "ينفقون",
+      "occurrence": 1,
+      "after_position": 17,
+      "counted_by": [
+        "First Madinan",
+        "Makkan"
+      ]
+    },
+    {
+      "sura": 2,
+      "kufi_aya": 219,
+      "kind": "end",
+      "word": "تتفكرون",
+      "occurrence": 1,
+      "after_position": 26,
+      "counted_by": [
+        "Last Madinan",
+        "Damascene",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 2,
+      "kufi_aya": 235,
+      "kind": "internal",
+      "word": "معروفا",
+      "occurrence": 1,
+      "after_position": 26,
+      "counted_by": [
+        "Basran"
+      ]
+    },
+    {
+      "sura": 2,
+      "kufi_aya": 255,
+      "kind": "internal",
+      "word": "القيوم",
+      "occurrence": 1,
+      "after_position": 7,
+      "counted_by": [
+        "Last Madinan",
+        "Makkan",
+        "Basran"
+      ]
+    },
+    {
+      "sura": 2,
+      "kufi_aya": 257,
+      "kind": "internal",
+      "word": "النور",
+      "occurrence": 1,
+      "after_position": 9,
+      "counted_by": [
+        "First Madinan"
+      ],
+      "review": "2 occurrences, took #1"
+    },
+    {
+      "sura": 3,
+      "kufi_aya": 1,
+      "kind": "end",
+      "word": "الم",
+      "occurrence": 1,
+      "after_position": 1,
+      "counted_by": [
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 3,
+      "kufi_aya": 3,
+      "kind": "end",
+      "word": "والإنجيل",
+      "occurrence": 1,
+      "after_position": 11,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan",
+        "Basran",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 3,
+      "kufi_aya": 4,
+      "kind": "internal",
+      "word": "الفرقان",
+      "occurrence": 1,
+      "after_position": 6,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan",
+        "Basran",
+        "Damascene"
+      ]
+    },
+    {
+      "sura": 3,
+      "kufi_aya": 48,
+      "kind": "end",
+      "word": "والإنجيل",
+      "occurrence": 1,
+      "after_position": 5,
+      "counted_by": [
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 3,
+      "kufi_aya": 49,
+      "kind": "internal",
+      "word": "إسرائيل",
+      "occurrence": 1,
+      "after_position": 4,
+      "counted_by": [
+        "Basran"
+      ],
+      "review": "matched hamza-insensitive"
+    },
+    {
+      "sura": 3,
+      "kufi_aya": 92,
+      "kind": "internal",
+      "word": "تحبون",
+      "occurrence": 1,
+      "after_position": 7,
+      "counted_by": [
+        "Last Madinan",
+        "Makkan",
+        "Damascene"
+      ]
+    },
+    {
+      "sura": 3,
+      "kufi_aya": 97,
+      "kind": "internal",
+      "word": "إبراهيم",
+      "occurrence": 1,
+      "after_position": 5,
+      "counted_by": [
+        "First Madinan",
+        "Damascene"
+      ]
+    },
+    {
+      "sura": 4,
+      "kufi_aya": 44,
+      "kind": "end",
+      "word": "السبيل",
+      "occurrence": 1,
+      "after_position": 14,
+      "counted_by": [
+        "Damascene",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 4,
+      "kufi_aya": 173,
+      "kind": "internal",
+      "word": "أليما",
+      "occurrence": 1,
+      "after_position": 17,
+      "counted_by": [
+        "Damascene"
+      ]
+    },
+    {
+      "sura": 5,
+      "kufi_aya": 1,
+      "kind": "internal",
+      "word": "بالعقود",
+      "occurrence": 1,
+      "after_position": 5,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan",
+        "Basran",
+        "Damascene"
+      ]
+    },
+    {
+      "sura": 5,
+      "kufi_aya": 15,
+      "kind": "internal",
+      "word": "كثير",
+      "occurrence": 1,
+      "after_position": 16,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan",
+        "Basran",
+        "Damascene"
+      ]
+    },
+    {
+      "sura": 5,
+      "kufi_aya": 23,
+      "kind": "internal",
+      "word": "غالبون",
+      "occurrence": 1,
+      "after_position": 15,
+      "counted_by": [
+        "Basran"
+      ]
+    },
+    {
+      "sura": 6,
+      "kufi_aya": 1,
+      "kind": "internal",
+      "word": "والنور",
+      "occurrence": 1,
+      "after_position": 9,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan"
+      ]
+    },
+    {
+      "sura": 6,
+      "kufi_aya": 66,
+      "kind": "end",
+      "word": "بوكيل",
+      "occurrence": 1,
+      "after_position": 9,
+      "counted_by": [
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 6,
+      "kufi_aya": 73,
+      "kind": "internal",
+      "word": "فيكون",
+      "occurrence": 1,
+      "after_position": 10,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan",
+        "Basran",
+        "Damascene"
+      ]
+    },
+    {
+      "sura": 6,
+      "kufi_aya": 161,
+      "kind": "internal",
+      "word": "مستقيم",
+      "occurrence": 1,
+      "after_position": 7,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan",
+        "Basran",
+        "Damascene"
+      ]
+    },
+    {
+      "sura": 7,
+      "kufi_aya": 1,
+      "kind": "end",
+      "word": "المص",
+      "occurrence": 1,
+      "after_position": 1,
+      "counted_by": [
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 7,
+      "kufi_aya": 29,
+      "kind": "internal",
+      "word": "الدين",
+      "occurrence": 1,
+      "after_position": 13,
+      "counted_by": [
+        "Basran",
+        "Damascene"
+      ]
+    },
+    {
+      "sura": 7,
+      "kufi_aya": 29,
+      "kind": "end",
+      "word": "تعودون",
+      "occurrence": 1,
+      "after_position": 16,
+      "counted_by": [
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 7,
+      "kufi_aya": 38,
+      "kind": "internal",
+      "word": "النار",
+      "occurrence": 2,
+      "after_position": 34,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan"
+      ],
+      "review": "2 occurrences, took #2"
+    },
+    {
+      "sura": 7,
+      "kufi_aya": 137,
+      "kind": "internal",
+      "word": "إسرائيل",
+      "occurrence": 1,
+      "after_position": 18,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan"
+      ],
+      "review": "matched hamza-insensitive"
+    },
+    {
+      "sura": 8,
+      "kufi_aya": 36,
+      "kind": "internal",
+      "word": "يغلبون",
+      "occurrence": 1,
+      "after_position": 16,
+      "counted_by": [
+        "Basran",
+        "Damascene"
+      ]
+    },
+    {
+      "sura": 8,
+      "kufi_aya": 42,
+      "kind": "internal",
+      "word": "مفعولا",
+      "occurrence": 1,
+      "after_position": 21,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan",
+        "Basran",
+        "Damascene"
+      ]
+    },
+    {
+      "sura": 8,
+      "kufi_aya": 62,
+      "kind": "end",
+      "word": "وبالمؤمنين",
+      "occurrence": 1,
+      "after_position": 12,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan",
+        "Damascene",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 9,
+      "kufi_aya": 3,
+      "kind": "internal",
+      "word": "المشركين",
+      "occurrence": 1,
+      "after_position": 14,
+      "counted_by": [
+        "Basran"
+      ]
+    },
+    {
+      "sura": 9,
+      "kufi_aya": 39,
+      "kind": "internal",
+      "word": "أليما",
+      "occurrence": 1,
+      "after_position": 5,
+      "counted_by": [
+        "Damascene"
+      ]
+    },
+    {
+      "sura": 9,
+      "kufi_aya": 70,
+      "kind": "internal",
+      "word": "وثمود",
+      "occurrence": 1,
+      "after_position": 10,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan"
+      ]
+    },
+    {
+      "sura": 10,
+      "kufi_aya": 22,
+      "kind": "internal",
+      "word": "الدين",
+      "occurrence": 1,
+      "after_position": 34,
+      "counted_by": [
+        "Damascene"
+      ]
+    },
+    {
+      "sura": 10,
+      "kufi_aya": 22,
+      "kind": "end",
+      "word": "الشاكرين",
+      "occurrence": 1,
+      "after_position": 41,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan",
+        "Basran",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 10,
+      "kufi_aya": 57,
+      "kind": "internal",
+      "word": "الصدور",
+      "occurrence": 1,
+      "after_position": 11,
+      "counted_by": [
+        "Damascene"
+      ]
+    },
+    {
+      "sura": 11,
+      "kufi_aya": 54,
+      "kind": "end",
+      "word": "تشركون",
+      "occurrence": 1,
+      "after_position": 16,
+      "counted_by": [
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 11,
+      "kufi_aya": 74,
+      "kind": "end",
+      "word": "لوط",
+      "occurrence": 1,
+      "after_position": 11,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan",
+        "Damascene",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 11,
+      "kufi_aya": 82,
+      "kind": "internal",
+      "word": "سجيل",
+      "occurrence": 1,
+      "after_position": 11,
+      "counted_by": [
+        "Last Madinan",
+        "Makkan"
+      ]
+    },
+    {
+      "sura": 11,
+      "kufi_aya": 82,
+      "kind": "end",
+      "word": "منضود",
+      "occurrence": 1,
+      "after_position": 12,
+      "counted_by": [
+        "First Madinan",
+        "Basran",
+        "Damascene",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 11,
+      "kufi_aya": 86,
+      "kind": "internal",
+      "word": "مؤمنين",
+      "occurrence": 1,
+      "after_position": 7,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan"
+      ]
+    },
+    {
+      "sura": 11,
+      "kufi_aya": 118,
+      "kind": "end",
+      "word": "مختلفين",
+      "occurrence": 1,
+      "after_position": 10,
+      "counted_by": [
+        "Basran",
+        "Damascene",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 11,
+      "kufi_aya": 121,
+      "kind": "end",
+      "word": "عاملون",
+      "occurrence": 1,
+      "after_position": 9,
+      "counted_by": [
+        "First Madinan",
+        "Basran",
+        "Damascene",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 13,
+      "kufi_aya": 5,
+      "kind": "internal",
+      "word": "جديد",
+      "occurrence": 1,
+      "after_position": 11,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan",
+        "Basran",
+        "Damascene"
+      ]
+    },
+    {
+      "sura": 13,
+      "kufi_aya": 16,
+      "kind": "internal",
+      "word": "والبصير",
+      "occurrence": 1,
+      "after_position": 23,
+      "counted_by": [
+        "Damascene"
+      ]
+    },
+    {
+      "sura": 13,
+      "kufi_aya": 16,
+      "kind": "internal",
+      "word": "والنور",
+      "occurrence": 1,
+      "after_position": 28,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan",
+        "Basran",
+        "Damascene"
+      ]
+    },
+    {
+      "sura": 13,
+      "kufi_aya": 18,
+      "kind": "internal",
+      "word": "الحساب",
+      "occurrence": 1,
+      "after_position": 23,
+      "counted_by": [
+        "Damascene"
+      ]
+    },
+    {
+      "sura": 13,
+      "kufi_aya": 23,
+      "kind": "end",
+      "word": "باب",
+      "occurrence": 1,
+      "after_position": 15,
+      "counted_by": [
+        "Basran",
+        "Damascene",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 14,
+      "kufi_aya": 1,
+      "kind": "internal",
+      "word": "النور",
+      "occurrence": 1,
+      "after_position": 10,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan",
+        "Damascene"
+      ]
+    },
+    {
+      "sura": 14,
+      "kufi_aya": 5,
+      "kind": "internal",
+      "word": "النور",
+      "occurrence": 1,
+      "after_position": 11,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan",
+        "Damascene"
+      ]
+    },
+    {
+      "sura": 14,
+      "kufi_aya": 9,
+      "kind": "internal",
+      "word": "وثمود",
+      "occurrence": 1,
+      "after_position": 10,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan",
+        "Basran"
+      ]
+    },
+    {
+      "sura": 14,
+      "kufi_aya": 19,
+      "kind": "end",
+      "word": "جديد",
+      "occurrence": 1,
+      "after_position": 14,
+      "counted_by": [
+        "First Madinan",
+        "Damascene",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 14,
+      "kufi_aya": 24,
+      "kind": "end",
+      "word": "السماء",
+      "occurrence": 1,
+      "after_position": 15,
+      "counted_by": [
+        "Last Madinan",
+        "Makkan",
+        "Basran",
+        "Damascene",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 14,
+      "kufi_aya": 33,
+      "kind": "end",
+      "word": "والنهار",
+      "occurrence": 1,
+      "after_position": 9,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan",
+        "Damascene",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 14,
+      "kufi_aya": 42,
+      "kind": "internal",
+      "word": "الظالمون",
+      "occurrence": 1,
+      "after_position": 7,
+      "counted_by": [
+        "Damascene"
+      ]
+    },
+    {
+      "sura": 17,
+      "kufi_aya": 107,
+      "kind": "end",
+      "word": "سجدا",
+      "occurrence": 1,
+      "after_position": 18,
+      "counted_by": [
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 18,
+      "kufi_aya": 13,
+      "kind": "end",
+      "word": "هدى",
+      "occurrence": 1,
+      "after_position": 11,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan",
+        "Basran",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 18,
+      "kufi_aya": 22,
+      "kind": "internal",
+      "word": "قليل",
+      "occurrence": 1,
+      "after_position": 22,
+      "counted_by": [
+        "Last Madinan"
+      ]
+    },
+    {
+      "sura": 18,
+      "kufi_aya": 23,
+      "kind": "end",
+      "word": "غدا",
+      "occurrence": 1,
+      "after_position": 7,
+      "counted_by": [
+        "First Madinan",
+        "Makkan",
+        "Basran",
+        "Damascene",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 18,
+      "kufi_aya": 32,
+      "kind": "end",
+      "word": "زرعا",
+      "occurrence": 1,
+      "after_position": 14,
+      "counted_by": [
+        "Last Madinan",
+        "Basran",
+        "Damascene",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 18,
+      "kufi_aya": 35,
+      "kind": "end",
+      "word": "أبدا",
+      "occurrence": 1,
+      "after_position": 12,
+      "counted_by": [
+        "First Madinan",
+        "Makkan",
+        "Basran",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 18,
+      "kufi_aya": 84,
+      "kind": "end",
+      "word": "سببا",
+      "occurrence": 1,
+      "after_position": 10,
+      "counted_by": [
+        "Last Madinan",
+        "Basran",
+        "Damascene",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 18,
+      "kufi_aya": 85,
+      "kind": "end",
+      "word": "سببا",
+      "occurrence": 1,
+      "after_position": 2,
+      "counted_by": [
+        "Basran",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 18,
+      "kufi_aya": 86,
+      "kind": "internal",
+      "word": "قوما",
+      "occurrence": 1,
+      "after_position": 13,
+      "counted_by": [
+        "First Madinan",
+        "Makkan",
+        "Basran",
+        "Damascene"
+      ]
+    },
+    {
+      "sura": 18,
+      "kufi_aya": 89,
+      "kind": "end",
+      "word": "سببا",
+      "occurrence": 1,
+      "after_position": 3,
+      "counted_by": [
+        "Basran",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 18,
+      "kufi_aya": 92,
+      "kind": "end",
+      "word": "سببا",
+      "occurrence": 1,
+      "after_position": 3,
+      "counted_by": [
+        "Basran",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 18,
+      "kufi_aya": 103,
+      "kind": "end",
+      "word": "أعمالا",
+      "occurrence": 1,
+      "after_position": 5,
+      "counted_by": [
+        "Basran",
+        "Damascene",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 19,
+      "kufi_aya": 1,
+      "kind": "end",
+      "word": "كهيعص",
+      "occurrence": 1,
+      "after_position": 1,
+      "counted_by": [
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 19,
+      "kufi_aya": 41,
+      "kind": "internal",
+      "word": "إبراهيم",
+      "occurrence": 1,
+      "after_position": 4,
+      "counted_by": [
+        "Last Madinan",
+        "Makkan"
+      ]
+    },
+    {
+      "sura": 19,
+      "kufi_aya": 75,
+      "kind": "internal",
+      "word": "مدا",
+      "occurrence": 1,
+      "after_position": 9,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan",
+        "Basran",
+        "Damascene"
+      ]
+    },
+    {
+      "sura": 20,
+      "kufi_aya": 1,
+      "kind": "end",
+      "word": "طه",
+      "occurrence": 1,
+      "after_position": 1,
+      "counted_by": [
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 20,
+      "kufi_aya": 33,
+      "kind": "end",
+      "word": "كثيرا",
+      "occurrence": 1,
+      "after_position": 3,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan",
+        "Damascene",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 20,
+      "kufi_aya": 34,
+      "kind": "end",
+      "word": "كثيرا",
+      "occurrence": 1,
+      "after_position": 2,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan",
+        "Damascene",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 20,
+      "kufi_aya": 39,
+      "kind": "internal",
+      "word": "مني",
+      "occurrence": 1,
+      "after_position": 19,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan",
+        "Damascene"
+      ]
+    },
+    {
+      "sura": 20,
+      "kufi_aya": 40,
+      "kind": "internal",
+      "word": "تحزن",
+      "occurrence": 1,
+      "after_position": 17,
+      "counted_by": [
+        "Damascene"
+      ]
+    },
+    {
+      "sura": 20,
+      "kufi_aya": 40,
+      "kind": "internal",
+      "word": "فتونا",
+      "occurrence": 1,
+      "after_position": 24,
+      "counted_by": [
+        "Basran",
+        "Damascene"
+      ]
+    },
+    {
+      "sura": 20,
+      "kufi_aya": 40,
+      "kind": "internal",
+      "word": "مدين",
+      "occurrence": 1,
+      "after_position": 29,
+      "counted_by": [
+        "Damascene"
+      ]
+    },
+    {
+      "sura": 20,
+      "kufi_aya": 41,
+      "kind": "end",
+      "word": "لنفسي",
+      "occurrence": 1,
+      "after_position": 2,
+      "counted_by": [
+        "Damascene",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 20,
+      "kufi_aya": 47,
+      "kind": "internal",
+      "word": "إسرائيل",
+      "occurrence": 1,
+      "after_position": 9,
+      "counted_by": [
+        "Damascene"
+      ],
+      "review": "matched hamza-insensitive"
+    },
+    {
+      "sura": 20,
+      "kufi_aya": 77,
+      "kind": "internal",
+      "word": "موسى",
+      "occurrence": 1,
+      "after_position": 4,
+      "counted_by": [
+        "Damascene"
+      ]
+    },
+    {
+      "sura": 20,
+      "kufi_aya": 78,
+      "kind": "end",
+      "word": "غشيهم",
+      "occurrence": 1,
+      "after_position": 8,
+      "counted_by": [
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 20,
+      "kufi_aya": 86,
+      "kind": "internal",
+      "word": "أسفا",
+      "occurrence": 1,
+      "after_position": 6,
+      "counted_by": [
+        "First Madinan",
+        "Makkan"
+      ]
+    },
+    {
+      "sura": 20,
+      "kufi_aya": 86,
+      "kind": "internal",
+      "word": "حسنا",
+      "occurrence": 1,
+      "after_position": 13,
+      "counted_by": [
+        "Last Madinan"
+      ]
+    },
+    {
+      "sura": 20,
+      "kufi_aya": 87,
+      "kind": "end",
+      "word": "السامري",
+      "occurrence": 1,
+      "after_position": 15,
+      "counted_by": [
+        "First Madinan",
+        "Makkan",
+        "Basran",
+        "Damascene",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 20,
+      "kufi_aya": 88,
+      "kind": "internal",
+      "word": "موسى",
+      "occurrence": 1,
+      "after_position": 11,
+      "counted_by": [
+        "First Madinan",
+        "Makkan"
+      ]
+    },
+    {
+      "sura": 20,
+      "kufi_aya": 88,
+      "kind": "end",
+      "word": "فنسي",
+      "occurrence": 1,
+      "after_position": 12,
+      "counted_by": [
+        "Last Madinan",
+        "Basran",
+        "Damascene",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 20,
+      "kufi_aya": 89,
+      "kind": "internal",
+      "word": "قولا",
+      "occurrence": 1,
+      "after_position": 6,
+      "counted_by": [
+        "Last Madinan"
+      ]
+    },
+    {
+      "sura": 20,
+      "kufi_aya": 92,
+      "kind": "end",
+      "word": "ضلوا",
+      "occurrence": 1,
+      "after_position": 7,
+      "counted_by": [
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 20,
+      "kufi_aya": 106,
+      "kind": "end",
+      "word": "صفصفا",
+      "occurrence": 1,
+      "after_position": 3,
+      "counted_by": [
+        "Basran",
+        "Damascene",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 20,
+      "kufi_aya": 123,
+      "kind": "internal",
+      "word": "هدى",
+      "occurrence": 1,
+      "after_position": 11,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan",
+        "Basran",
+        "Damascene"
+      ]
+    },
+    {
+      "sura": 20,
+      "kufi_aya": 131,
+      "kind": "internal",
+      "word": "الدنيا",
+      "occurrence": 1,
+      "after_position": 12,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan",
+        "Basran",
+        "Damascene"
+      ]
+    },
+    {
+      "sura": 21,
+      "kufi_aya": 66,
+      "kind": "end",
+      "word": "يضركم",
+      "occurrence": 1,
+      "after_position": 11,
+      "counted_by": [
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 22,
+      "kufi_aya": 19,
+      "kind": "end",
+      "word": "الحميم",
+      "occurrence": 1,
+      "after_position": 17,
+      "counted_by": [
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 22,
+      "kufi_aya": 20,
+      "kind": "end",
+      "word": "والجلود",
+      "occurrence": 1,
+      "after_position": 6,
+      "counted_by": [
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 22,
+      "kufi_aya": 42,
+      "kind": "end",
+      "word": "وثمود",
+      "occurrence": 1,
+      "after_position": 9,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan",
+        "Basran",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 22,
+      "kufi_aya": 43,
+      "kind": "end",
+      "word": "لوط",
+      "occurrence": 1,
+      "after_position": 4,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 22,
+      "kufi_aya": 78,
+      "kind": "internal",
+      "word": "المسلمين",
+      "occurrence": 1,
+      "after_position": 20,
+      "counted_by": [
+        "Makkan"
+      ]
+    },
+    {
+      "sura": 23,
+      "kufi_aya": 45,
+      "kind": "internal",
+      "word": "هارون",
+      "occurrence": 1,
+      "after_position": 5,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan",
+        "Basran",
+        "Damascene"
+      ]
+    },
+    {
+      "sura": 24,
+      "kufi_aya": 36,
+      "kind": "end",
+      "word": "والآصال",
+      "occurrence": 1,
+      "after_position": 14,
+      "counted_by": [
+        "Basran",
+        "Damascene",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 24,
+      "kufi_aya": 43,
+      "kind": "end",
+      "word": "بالأبصار",
+      "occurrence": 1,
+      "after_position": 38,
+      "counted_by": [
+        "Basran",
+        "Damascene",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 26,
+      "kufi_aya": 1,
+      "kind": "end",
+      "word": "طسم",
+      "occurrence": 1,
+      "after_position": 1,
+      "counted_by": [
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 26,
+      "kufi_aya": 49,
+      "kind": "internal",
+      "word": "تعلمون",
+      "occurrence": 1,
+      "after_position": 14,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan",
+        "Basran",
+        "Damascene"
+      ]
+    },
+    {
+      "sura": 26,
+      "kufi_aya": 92,
+      "kind": "end",
+      "word": "تعبدون",
+      "occurrence": 1,
+      "after_position": 6,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan",
+        "Damascene",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 26,
+      "kufi_aya": 210,
+      "kind": "end",
+      "word": "الشياطين",
+      "occurrence": 1,
+      "after_position": 4,
+      "counted_by": [
+        "First Madinan",
+        "Basran",
+        "Damascene",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 27,
+      "kufi_aya": 33,
+      "kind": "internal",
+      "word": "شديد",
+      "occurrence": 1,
+      "after_position": 7,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan"
+      ]
+    },
+    {
+      "sura": 27,
+      "kufi_aya": 44,
+      "kind": "internal",
+      "word": "قوارير",
+      "occurrence": 1,
+      "after_position": 17,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan",
+        "Basran",
+        "Damascene"
+      ]
+    },
+    {
+      "sura": 28,
+      "kufi_aya": 1,
+      "kind": "end",
+      "word": "طسم",
+      "occurrence": 1,
+      "after_position": 1,
+      "counted_by": [
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 28,
+      "kufi_aya": 23,
+      "kind": "internal",
+      "word": "يسقون",
+      "occurrence": 1,
+      "after_position": 10,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan",
+        "Basran",
+        "Damascene"
+      ]
+    },
+    {
+      "sura": 29,
+      "kufi_aya": 1,
+      "kind": "end",
+      "word": "الم",
+      "occurrence": 1,
+      "after_position": 1,
+      "counted_by": [
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 29,
+      "kufi_aya": 29,
+      "kind": "internal",
+      "word": "السبيل",
+      "occurrence": 1,
+      "after_position": 5,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan"
+      ]
+    },
+    {
+      "sura": 29,
+      "kufi_aya": 65,
+      "kind": "internal",
+      "word": "الدين",
+      "occurrence": 1,
+      "after_position": 9,
+      "counted_by": [
+        "Basran",
+        "Damascene"
+      ]
+    },
+    {
+      "sura": 30,
+      "kufi_aya": 1,
+      "kind": "end",
+      "word": "الم",
+      "occurrence": 1,
+      "after_position": 1,
+      "counted_by": [
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 30,
+      "kufi_aya": 2,
+      "kind": "end",
+      "word": "الروم",
+      "occurrence": 1,
+      "after_position": 2,
+      "counted_by": [
+        "First Madinan",
+        "Basran",
+        "Damascene",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 30,
+      "kufi_aya": 4,
+      "kind": "internal",
+      "word": "سنين",
+      "occurrence": 1,
+      "after_position": 3,
+      "counted_by": [
+        "Last Madinan",
+        "Makkan",
+        "Basran",
+        "Damascene"
+      ]
+    },
+    {
+      "sura": 30,
+      "kufi_aya": 55,
+      "kind": "internal",
+      "word": "المجرمون",
+      "occurrence": 1,
+      "after_position": 5,
+      "counted_by": [
+        "First Madinan"
+      ]
+    },
+    {
+      "sura": 31,
+      "kufi_aya": 1,
+      "kind": "end",
+      "word": "الم",
+      "occurrence": 1,
+      "after_position": 1,
+      "counted_by": [
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 31,
+      "kufi_aya": 32,
+      "kind": "internal",
+      "word": "الدين",
+      "occurrence": 1,
+      "after_position": 9,
+      "counted_by": [
+        "Basran",
+        "Damascene"
+      ]
+    },
+    {
+      "sura": 32,
+      "kufi_aya": 1,
+      "kind": "end",
+      "word": "الم",
+      "occurrence": 1,
+      "after_position": 1,
+      "counted_by": [
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 32,
+      "kufi_aya": 10,
+      "kind": "internal",
+      "word": "جديد",
+      "occurrence": 1,
+      "after_position": 9,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan",
+        "Damascene"
+      ]
+    },
+    {
+      "sura": 34,
+      "kufi_aya": 15,
+      "kind": "internal",
+      "word": "وشمال",
+      "occurrence": 1,
+      "after_position": 10,
+      "counted_by": [
+        "Damascene"
+      ]
+    },
+    {
+      "sura": 35,
+      "kufi_aya": 7,
+      "kind": "internal",
+      "word": "شديد",
+      "occurrence": 1,
+      "after_position": 5,
+      "counted_by": [
+        "Basran",
+        "Damascene"
+      ]
+    },
+    {
+      "sura": 35,
+      "kufi_aya": 16,
+      "kind": "end",
+      "word": "جديد",
+      "occurrence": 1,
+      "after_position": 6,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan",
+        "Damascene",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 35,
+      "kufi_aya": 19,
+      "kind": "end",
+      "word": "والبصير",
+      "occurrence": 1,
+      "after_position": 4,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan",
+        "Damascene",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 35,
+      "kufi_aya": 20,
+      "kind": "end",
+      "word": "النور",
+      "occurrence": 1,
+      "after_position": 4,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan",
+        "Damascene",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 35,
+      "kufi_aya": 22,
+      "kind": "end",
+      "word": "القبور",
+      "occurrence": 1,
+      "after_position": 16,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan",
+        "Basran",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 35,
+      "kufi_aya": 41,
+      "kind": "internal",
+      "word": "تزولا",
+      "occurrence": 1,
+      "after_position": 7,
+      "counted_by": [
+        "Basran"
+      ]
+    },
+    {
+      "sura": 35,
+      "kufi_aya": 43,
+      "kind": "internal",
+      "word": "تبديلا",
+      "occurrence": 1,
+      "after_position": 21,
+      "counted_by": [
+        "Last Madinan",
+        "Basran",
+        "Damascene"
+      ]
+    },
+    {
+      "sura": 36,
+      "kufi_aya": 1,
+      "kind": "end",
+      "word": "يس",
+      "occurrence": 1,
+      "after_position": 1,
+      "counted_by": [
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 37,
+      "kufi_aya": 22,
+      "kind": "end",
+      "word": "يعبدون",
+      "occurrence": 1,
+      "after_position": 7,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan",
+        "Damascene",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 37,
+      "kufi_aya": 167,
+      "kind": "end",
+      "word": "ليقولون",
+      "occurrence": 1,
+      "after_position": 3,
+      "counted_by": [
+        "Last Madinan",
+        "Makkan",
+        "Basran",
+        "Damascene",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 38,
+      "kufi_aya": 1,
+      "kind": "end",
+      "word": "الذكر",
+      "occurrence": 1,
+      "after_position": 4,
+      "counted_by": [
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 38,
+      "kufi_aya": 37,
+      "kind": "end",
+      "word": "وغواص",
+      "occurrence": 1,
+      "after_position": 4,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan",
+        "Damascene",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 38,
+      "kufi_aya": 84,
+      "kind": "end",
+      "word": "أقول",
+      "occurrence": 1,
+      "after_position": 4,
+      "counted_by": [
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 39,
+      "kufi_aya": 3,
+      "kind": "internal",
+      "word": "يختلفون",
+      "occurrence": 1,
+      "after_position": 25,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan",
+        "Basran",
+        "Damascene"
+      ]
+    },
+    {
+      "sura": 39,
+      "kufi_aya": 11,
+      "kind": "end",
+      "word": "الدين",
+      "occurrence": 1,
+      "after_position": 9,
+      "counted_by": [
+        "Damascene",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 39,
+      "kufi_aya": 14,
+      "kind": "end",
+      "word": "ديني",
+      "occurrence": 1,
+      "after_position": 6,
+      "counted_by": [
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 39,
+      "kufi_aya": 17,
+      "kind": "end",
+      "word": "عباد",
+      "occurrence": 1,
+      "after_position": 12,
+      "counted_by": [
+        "Last Madinan",
+        "Basran",
+        "Damascene",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 39,
+      "kufi_aya": 20,
+      "kind": "internal",
+      "word": "الأنهار",
+      "occurrence": 1,
+      "after_position": 14,
+      "counted_by": [
+        "First Madinan",
+        "Makkan"
+      ]
+    },
+    {
+      "sura": 39,
+      "kufi_aya": 36,
+      "kind": "end",
+      "word": "هاد",
+      "occurrence": 1,
+      "after_position": 15,
+      "counted_by": [
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 39,
+      "kufi_aya": 39,
+      "kind": "end",
+      "word": "تعلمون",
+      "occurrence": 1,
+      "after_position": 9,
+      "counted_by": [
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 40,
+      "kufi_aya": 1,
+      "kind": "end",
+      "word": "حم",
+      "occurrence": 1,
+      "after_position": 1,
+      "counted_by": [
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 40,
+      "kufi_aya": 15,
+      "kind": "end",
+      "word": "التلاق",
+      "occurrence": 1,
+      "after_position": 16,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan",
+        "Basran",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 40,
+      "kufi_aya": 16,
+      "kind": "internal",
+      "word": "بارزون",
+      "occurrence": 1,
+      "after_position": 3,
+      "counted_by": [
+        "Damascene"
+      ]
+    },
+    {
+      "sura": 40,
+      "kufi_aya": 18,
+      "kind": "internal",
+      "word": "كاظمين",
+      "occurrence": 1,
+      "after_position": 8,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan",
+        "Basran",
+        "Damascene"
+      ]
+    },
+    {
+      "sura": 40,
+      "kufi_aya": 53,
+      "kind": "end",
+      "word": "الكتاب",
+      "occurrence": 1,
+      "after_position": 8,
+      "counted_by": [
+        "First Madinan",
+        "Makkan",
+        "Damascene",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 40,
+      "kufi_aya": 58,
+      "kind": "internal",
+      "word": "والبصير",
+      "occurrence": 1,
+      "after_position": 4,
+      "counted_by": [
+        "Last Madinan",
+        "Damascene"
+      ]
+    },
+    {
+      "sura": 40,
+      "kufi_aya": 71,
+      "kind": "end",
+      "word": "يسحبون",
+      "occurrence": 1,
+      "after_position": 6,
+      "counted_by": [
+        "Last Madinan",
+        "Damascene",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 40,
+      "kufi_aya": 72,
+      "kind": "internal",
+      "word": "الحميم",
+      "occurrence": 1,
+      "after_position": 2,
+      "counted_by": [
+        "First Madinan",
+        "Makkan"
+      ]
+    },
+    {
+      "sura": 40,
+      "kufi_aya": 73,
+      "kind": "end",
+      "word": "تشركون",
+      "occurrence": 1,
+      "after_position": 7,
+      "counted_by": [
+        "Damascene",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 41,
+      "kufi_aya": 1,
+      "kind": "end",
+      "word": "حم",
+      "occurrence": 1,
+      "after_position": 1,
+      "counted_by": [
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 41,
+      "kufi_aya": 13,
+      "kind": "end",
+      "word": "وثمود",
+      "occurrence": 1,
+      "after_position": 9,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 42,
+      "kufi_aya": 1,
+      "kind": "end",
+      "word": "حم",
+      "occurrence": 1,
+      "after_position": 1,
+      "counted_by": [
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 42,
+      "kufi_aya": 2,
+      "kind": "end",
+      "word": "عسق",
+      "occurrence": 1,
+      "after_position": 1,
+      "counted_by": [
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 42,
+      "kufi_aya": 32,
+      "kind": "end",
+      "word": "كالأعلام",
+      "occurrence": 1,
+      "after_position": 6,
+      "counted_by": [
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 43,
+      "kufi_aya": 1,
+      "kind": "end",
+      "word": "حم",
+      "occurrence": 1,
+      "after_position": 1,
+      "counted_by": [
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 43,
+      "kufi_aya": 52,
+      "kind": "internal",
+      "word": "مهين",
+      "occurrence": 1,
+      "after_position": 8,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan",
+        "Basran"
+      ]
+    },
+    {
+      "sura": 44,
+      "kufi_aya": 1,
+      "kind": "end",
+      "word": "حم",
+      "occurrence": 1,
+      "after_position": 1,
+      "counted_by": [
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 44,
+      "kufi_aya": 34,
+      "kind": "end",
+      "word": "ليقولون",
+      "occurrence": 1,
+      "after_position": 3,
+      "counted_by": [
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 44,
+      "kufi_aya": 43,
+      "kind": "end",
+      "word": "الزقوم",
+      "occurrence": 1,
+      "after_position": 3,
+      "counted_by": [
+        "First Madinan",
+        "Basran",
+        "Damascene",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 44,
+      "kufi_aya": 45,
+      "kind": "end",
+      "word": "البطون",
+      "occurrence": 1,
+      "after_position": 4,
+      "counted_by": [
+        "Last Madinan",
+        "Makkan",
+        "Basran",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 45,
+      "kufi_aya": 1,
+      "kind": "end",
+      "word": "حم",
+      "occurrence": 1,
+      "after_position": 1,
+      "counted_by": [
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 46,
+      "kufi_aya": 1,
+      "kind": "end",
+      "word": "حم",
+      "occurrence": 1,
+      "after_position": 1,
+      "counted_by": [
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 47,
+      "kufi_aya": 4,
+      "kind": "internal",
+      "word": "أوزارها",
+      "occurrence": 1,
+      "after_position": 20,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan",
+        "Basran",
+        "Damascene"
+      ]
+    },
+    {
+      "sura": 47,
+      "kufi_aya": 15,
+      "kind": "internal",
+      "word": "للشاربين",
+      "occurrence": 1,
+      "after_position": 22,
+      "counted_by": [
+        "Basran"
+      ]
+    },
+    {
+      "sura": 52,
+      "kufi_aya": 1,
+      "kind": "end",
+      "word": "والطور",
+      "occurrence": 1,
+      "after_position": 1,
+      "counted_by": [
+        "Basran",
+        "Damascene",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 52,
+      "kufi_aya": 13,
+      "kind": "end",
+      "word": "دعا",
+      "occurrence": 1,
+      "after_position": 6,
+      "counted_by": [
+        "Damascene",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 53,
+      "kufi_aya": 28,
+      "kind": "end",
+      "word": "شيئا",
+      "occurrence": 1,
+      "after_position": 16,
+      "counted_by": [
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 53,
+      "kufi_aya": 29,
+      "kind": "internal",
+      "word": "تولى",
+      "occurrence": 1,
+      "after_position": 4,
+      "counted_by": [
+        "Damascene"
+      ]
+    },
+    {
+      "sura": 53,
+      "kufi_aya": 29,
+      "kind": "end",
+      "word": "الدنيا",
+      "occurrence": 1,
+      "after_position": 11,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan",
+        "Basran",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 55,
+      "kufi_aya": 1,
+      "kind": "end",
+      "word": "الرحمن",
+      "occurrence": 1,
+      "after_position": 1,
+      "counted_by": [
+        "Damascene",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 55,
+      "kufi_aya": 3,
+      "kind": "end",
+      "word": "الإنسان",
+      "occurrence": 1,
+      "after_position": 2,
+      "counted_by": [
+        "Makkan",
+        "Basran",
+        "Damascene",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 55,
+      "kufi_aya": 10,
+      "kind": "end",
+      "word": "للأنام",
+      "occurrence": 1,
+      "after_position": 3,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Basran",
+        "Damascene",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 55,
+      "kufi_aya": 35,
+      "kind": "internal",
+      "word": "نار",
+      "occurrence": 1,
+      "after_position": 5,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan"
+      ]
+    },
+    {
+      "sura": 55,
+      "kufi_aya": 43,
+      "kind": "end",
+      "word": "المجرمون",
+      "occurrence": 1,
+      "after_position": 6,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan",
+        "Damascene",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 56,
+      "kufi_aya": 8,
+      "kind": "internal",
+      "word": "الميمنة",
+      "occurrence": 1,
+      "after_position": 2,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan",
+        "Basran",
+        "Damascene"
+      ],
+      "review": "2 occurrences, took #1"
+    },
+    {
+      "sura": 56,
+      "kufi_aya": 9,
+      "kind": "internal",
+      "word": "المشأمة",
+      "occurrence": 1,
+      "after_position": 2,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan",
+        "Basran",
+        "Damascene"
+      ],
+      "review": "2 occurrences, took #1, matched skeleton"
+    },
+    {
+      "sura": 56,
+      "kufi_aya": 15,
+      "kind": "end",
+      "word": "موضونة",
+      "occurrence": 1,
+      "after_position": 3,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 56,
+      "kufi_aya": 18,
+      "kind": "internal",
+      "word": "وأباريق",
+      "occurrence": 1,
+      "after_position": 2,
+      "counted_by": [
+        "Last Madinan",
+        "Makkan"
+      ]
+    },
+    {
+      "sura": 56,
+      "kufi_aya": 22,
+      "kind": "end",
+      "word": "عين",
+      "occurrence": 1,
+      "after_position": 2,
+      "counted_by": [
+        "First Madinan",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 56,
+      "kufi_aya": 25,
+      "kind": "end",
+      "word": "تأثيما",
+      "occurrence": 1,
+      "after_position": 6,
+      "counted_by": [
+        "Last Madinan",
+        "Basran",
+        "Damascene",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 56,
+      "kufi_aya": 27,
+      "kind": "internal",
+      "word": "اليمين",
+      "occurrence": 1,
+      "after_position": 2,
+      "counted_by": [
+        "First Madinan",
+        "Makkan",
+        "Basran",
+        "Damascene"
+      ],
+      "review": "2 occurrences, took #1"
+    },
+    {
+      "sura": 56,
+      "kufi_aya": 35,
+      "kind": "end",
+      "word": "إنشاء",
+      "occurrence": 1,
+      "after_position": 3,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan",
+        "Damascene",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 56,
+      "kufi_aya": 41,
+      "kind": "internal",
+      "word": "الشمال",
+      "occurrence": 1,
+      "after_position": 2,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan",
+        "Basran",
+        "Damascene"
+      ],
+      "review": "2 occurrences, took #1"
+    },
+    {
+      "sura": 56,
+      "kufi_aya": 42,
+      "kind": "end",
+      "word": "وحميم",
+      "occurrence": 1,
+      "after_position": 3,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Basran",
+        "Damascene",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 56,
+      "kufi_aya": 47,
+      "kind": "internal",
+      "word": "يقولون",
+      "occurrence": 1,
+      "after_position": 2,
+      "counted_by": [
+        "Makkan"
+      ]
+    },
+    {
+      "sura": 56,
+      "kufi_aya": 49,
+      "kind": "end",
+      "word": "والآخرين",
+      "occurrence": 1,
+      "after_position": 4,
+      "counted_by": [
+        "First Madinan",
+        "Makkan",
+        "Basran",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 56,
+      "kufi_aya": 50,
+      "kind": "internal",
+      "word": "لمجموعون",
+      "occurrence": 1,
+      "after_position": 1,
+      "counted_by": [
+        "Last Madinan",
+        "Damascene"
+      ]
+    },
+    {
+      "sura": 56,
+      "kufi_aya": 89,
+      "kind": "internal",
+      "word": "وريحان",
+      "occurrence": 1,
+      "after_position": 2,
+      "counted_by": [
+        "Damascene"
+      ]
+    },
+    {
+      "sura": 57,
+      "kufi_aya": 13,
+      "kind": "end",
+      "word": "العذاب",
+      "occurrence": 1,
+      "after_position": 27,
+      "counted_by": [
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 57,
+      "kufi_aya": 27,
+      "kind": "internal",
+      "word": "الإنجيل",
+      "occurrence": 1,
+      "after_position": 11,
+      "counted_by": [
+        "Basran"
+      ]
+    },
+    {
+      "sura": 58,
+      "kufi_aya": 20,
+      "kind": "end",
+      "word": "الأذلين",
+      "occurrence": 1,
+      "after_position": 8,
+      "counted_by": [
+        "First Madinan",
+        "Basran",
+        "Damascene",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 65,
+      "kufi_aya": 2,
+      "kind": "internal",
+      "word": "الآخر",
+      "occurrence": 1,
+      "after_position": 24,
+      "counted_by": [
+        "Damascene"
+      ]
+    },
+    {
+      "sura": 65,
+      "kufi_aya": 2,
+      "kind": "end",
+      "word": "مخرجا",
+      "occurrence": 1,
+      "after_position": 30,
+      "counted_by": [
+        "Last Madinan",
+        "Makkan",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 65,
+      "kufi_aya": 10,
+      "kind": "internal",
+      "word": "الألباب",
+      "occurrence": 1,
+      "after_position": 9,
+      "counted_by": [
+        "First Madinan"
+      ]
+    },
+    {
+      "sura": 67,
+      "kufi_aya": 9,
+      "kind": "internal",
+      "word": "نذير",
+      "occurrence": 1,
+      "after_position": 5,
+      "counted_by": [
+        "Last Madinan",
+        "Makkan"
+      ]
+    },
+    {
+      "sura": 69,
+      "kufi_aya": 1,
+      "kind": "end",
+      "word": "الحاقة",
+      "occurrence": 1,
+      "after_position": 1,
+      "counted_by": [
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 69,
+      "kufi_aya": 25,
+      "kind": "internal",
+      "word": "بشماله",
+      "occurrence": 1,
+      "after_position": 5,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan"
+      ]
+    },
+    {
+      "sura": 70,
+      "kufi_aya": 4,
+      "kind": "end",
+      "word": "سنة",
+      "occurrence": 1,
+      "after_position": 11,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan",
+        "Basran",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 71,
+      "kufi_aya": 23,
+      "kind": "internal",
+      "word": "سواعا",
+      "occurrence": 1,
+      "after_position": 9,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan",
+        "Basran",
+        "Damascene"
+      ]
+    },
+    {
+      "sura": 71,
+      "kufi_aya": 23,
+      "kind": "end",
+      "word": "ونسرا",
+      "occurrence": 1,
+      "after_position": 13,
+      "counted_by": [
+        "Last Madinan",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 71,
+      "kufi_aya": 24,
+      "kind": "internal",
+      "word": "كثيرا",
+      "occurrence": 1,
+      "after_position": 3,
+      "counted_by": [
+        "First Madinan",
+        "Makkan"
+      ]
+    },
+    {
+      "sura": 71,
+      "kufi_aya": 25,
+      "kind": "internal",
+      "word": "نارا",
+      "occurrence": 1,
+      "after_position": 5,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan",
+        "Basran",
+        "Damascene"
+      ]
+    },
+    {
+      "sura": 72,
+      "kufi_aya": 22,
+      "kind": "internal",
+      "word": "أحد",
+      "occurrence": 1,
+      "after_position": 7,
+      "counted_by": [
+        "Makkan"
+      ]
+    },
+    {
+      "sura": 72,
+      "kufi_aya": 22,
+      "kind": "end",
+      "word": "ملتحدا",
+      "occurrence": 1,
+      "after_position": 12,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Basran",
+        "Damascene",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 73,
+      "kufi_aya": 1,
+      "kind": "end",
+      "word": "المزمل",
+      "occurrence": 1,
+      "after_position": 2,
+      "counted_by": [
+        "First Madinan",
+        "Damascene",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 73,
+      "kufi_aya": 15,
+      "kind": "internal",
+      "word": "رسولا",
+      "occurrence": 1,
+      "after_position": 4,
+      "counted_by": [
+        "Makkan"
+      ],
+      "review": "2 occurrences, took #1"
+    },
+    {
+      "sura": 73,
+      "kufi_aya": 17,
+      "kind": "end",
+      "word": "شيبا",
+      "occurrence": 1,
+      "after_position": 8,
+      "counted_by": [
+        "First Madinan",
+        "Makkan",
+        "Basran",
+        "Damascene",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 74,
+      "kufi_aya": 40,
+      "kind": "end",
+      "word": "يتساءلون",
+      "occurrence": 1,
+      "after_position": 3,
+      "counted_by": [
+        "First Madinan",
+        "Makkan",
+        "Basran",
+        "Damascene",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 74,
+      "kufi_aya": 41,
+      "kind": "end",
+      "word": "المجرمين",
+      "occurrence": 1,
+      "after_position": 2,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Basran",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 75,
+      "kufi_aya": 16,
+      "kind": "end",
+      "word": "به",
+      "occurrence": 1,
+      "after_position": 6,
+      "counted_by": [
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 78,
+      "kufi_aya": 40,
+      "kind": "internal",
+      "word": "قريبا",
+      "occurrence": 1,
+      "after_position": 4,
+      "counted_by": [
+        "Basran"
+      ]
+    },
+    {
+      "sura": 79,
+      "kufi_aya": 33,
+      "kind": "end",
+      "word": "ولأنعامكم",
+      "occurrence": 1,
+      "after_position": 3,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 79,
+      "kufi_aya": 37,
+      "kind": "end",
+      "word": "طغى",
+      "occurrence": 1,
+      "after_position": 3,
+      "counted_by": [
+        "Basran",
+        "Damascene",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 80,
+      "kufi_aya": 24,
+      "kind": "end",
+      "word": "طعامه",
+      "occurrence": 1,
+      "after_position": 4,
+      "counted_by": [
+        "Last Madinan",
+        "Makkan",
+        "Basran",
+        "Damascene",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 80,
+      "kufi_aya": 32,
+      "kind": "end",
+      "word": "ولأنعامكم",
+      "occurrence": 1,
+      "after_position": 3,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 80,
+      "kufi_aya": 33,
+      "kind": "end",
+      "word": "الصاخة",
+      "occurrence": 1,
+      "after_position": 3,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan",
+        "Basran",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 81,
+      "kufi_aya": 26,
+      "kind": "end",
+      "word": "تذهبون",
+      "occurrence": 1,
+      "after_position": 2,
+      "counted_by": [
+        "Last Madinan",
+        "Makkan",
+        "Basran",
+        "Damascene",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 84,
+      "kufi_aya": 7,
+      "kind": "end",
+      "word": "بيمينه",
+      "occurrence": 1,
+      "after_position": 5,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 84,
+      "kufi_aya": 10,
+      "kind": "end",
+      "word": "ظهره",
+      "occurrence": 1,
+      "after_position": 6,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 86,
+      "kufi_aya": 15,
+      "kind": "end",
+      "word": "كيدا",
+      "occurrence": 1,
+      "after_position": 3,
+      "counted_by": [
+        "Last Madinan",
+        "Makkan",
+        "Basran",
+        "Damascene",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 89,
+      "kufi_aya": 15,
+      "kind": "internal",
+      "word": "ونعمه",
+      "occurrence": 1,
+      "after_position": 8,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan"
+      ]
+    },
+    {
+      "sura": 89,
+      "kufi_aya": 16,
+      "kind": "internal",
+      "word": "رزقه",
+      "occurrence": 1,
+      "after_position": 7,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan"
+      ]
+    },
+    {
+      "sura": 89,
+      "kufi_aya": 23,
+      "kind": "internal",
+      "word": "بجهنم",
+      "occurrence": 1,
+      "after_position": 3,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan",
+        "Damascene"
+      ]
+    },
+    {
+      "sura": 89,
+      "kufi_aya": 29,
+      "kind": "end",
+      "word": "عبادي",
+      "occurrence": 1,
+      "after_position": 3,
+      "counted_by": [
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 91,
+      "kufi_aya": 14,
+      "kind": "internal",
+      "word": "فعقروها",
+      "occurrence": 1,
+      "after_position": 2,
+      "counted_by": [
+        "First Madinan"
+      ]
+    },
+    {
+      "sura": 96,
+      "kufi_aya": 9,
+      "kind": "end",
+      "word": "ينهى",
+      "occurrence": 1,
+      "after_position": 3,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan",
+        "Basran",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 96,
+      "kufi_aya": 15,
+      "kind": "internal",
+      "word": "ينته",
+      "occurrence": 1,
+      "after_position": 4,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan"
+      ]
+    },
+    {
+      "sura": 97,
+      "kufi_aya": 3,
+      "kind": "internal",
+      "word": "القدر",
+      "occurrence": 1,
+      "after_position": 2,
+      "counted_by": [
+        "Makkan",
+        "Damascene"
+      ]
+    },
+    {
+      "sura": 98,
+      "kufi_aya": 5,
+      "kind": "internal",
+      "word": "الدين",
+      "occurrence": 1,
+      "after_position": 8,
+      "counted_by": [
+        "Basran",
+        "Damascene"
+      ]
+    },
+    {
+      "sura": 99,
+      "kufi_aya": 6,
+      "kind": "internal",
+      "word": "أشتاتا",
+      "occurrence": 1,
+      "after_position": 4,
+      "counted_by": [
+        "Last Madinan",
+        "Makkan",
+        "Basran",
+        "Damascene"
+      ]
+    },
+    {
+      "sura": 101,
+      "kufi_aya": 1,
+      "kind": "end",
+      "word": "القارعة",
+      "occurrence": 1,
+      "after_position": 1,
+      "counted_by": [
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 101,
+      "kufi_aya": 6,
+      "kind": "end",
+      "word": "موازينه",
+      "occurrence": 1,
+      "after_position": 4,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 101,
+      "kufi_aya": 8,
+      "kind": "end",
+      "word": "موازينه",
+      "occurrence": 1,
+      "after_position": 4,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 103,
+      "kufi_aya": 1,
+      "kind": "end",
+      "word": "والعصر",
+      "occurrence": 1,
+      "after_position": 1,
+      "counted_by": [
+        "First Madinan",
+        "Makkan",
+        "Basran",
+        "Damascene",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 103,
+      "kufi_aya": 3,
+      "kind": "internal",
+      "word": "بالحق",
+      "occurrence": 1,
+      "after_position": 7,
+      "counted_by": [
+        "Last Madinan"
+      ]
+    },
+    {
+      "sura": 106,
+      "kufi_aya": 4,
+      "kind": "internal",
+      "word": "جوع",
+      "occurrence": 1,
+      "after_position": 4,
+      "counted_by": [
+        "First Madinan",
+        "Last Madinan",
+        "Makkan"
+      ]
+    },
+    {
+      "sura": 107,
+      "kufi_aya": 6,
+      "kind": "end",
+      "word": "يراءون",
+      "occurrence": 1,
+      "after_position": 3,
+      "counted_by": [
+        "Basran",
+        "Kufi"
+      ]
+    },
+    {
+      "sura": 112,
+      "kufi_aya": 3,
+      "kind": "internal",
+      "word": "يلد",
+      "occurrence": 1,
+      "after_position": 2,
+      "counted_by": [
+        "Makkan",
+        "Damascene"
+      ]
+    },
+    {
+      "sura": 114,
+      "kufi_aya": 4,
+      "kind": "internal",
+      "word": "الوسواس",
+      "occurrence": 1,
+      "after_position": 3,
+      "counted_by": [
+        "Makkan",
+        "Damascene"
+      ]
+    }
+  ]
+}
