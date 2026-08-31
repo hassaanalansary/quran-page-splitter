@@ -43,12 +43,20 @@ select = [
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["api", "config", "core"]
+known-first-party = ["api", "config", "core", "quran"]
 
 [tool.ruff.lint.per-file-ignores]
 # Auto-generated Django migrations: don't hand-format long help_text (E501)
 # or fight the framework's class-level mutable lists (RUF012).
 "**/migrations/*" = ["E501", "RUF012"]
+# Files that work on Arabic text. RUF001 flags letters that resemble Latin ones
+# (ا like l, ه like o) — a real hazard in an English identifier, and pure noise in
+# a table of Arabic letters, which is all these files contain.
+"core/arabic.py" = ["RUF001"]
+"core/quran_text.py" = ["RUF001"]
+"quran/tests/test_arabic.py" = ["RUF001"]
+"quran/tests/test_quran_text.py" = ["RUF001"]
+"quran/management/commands/build_aya_boundaries.py" = ["RUF001"]
 
 [tool.ruff.format]
 quote-style = "double"
@@ -81,14 +89,14 @@ module = "allauth.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-module = ["api.tests.*", "accounts.tests"]
+module = ["api.tests.*", "accounts.tests", "quran.tests.*"]
 disallow_untyped_defs = false
 check_untyped_defs = false
 
 # Migrations are generated (or hand-written to match); their RunPython callables
 # take the historical-model registry, which has no useful static type.
 [[tool.mypy.overrides]]
-module = ["api.migrations.*", "accounts.migrations.*"]
+module = ["api.migrations.*", "accounts.migrations.*", "quran.migrations.*"]
 disallow_untyped_defs = false
 
 [tool.django-stubs]
