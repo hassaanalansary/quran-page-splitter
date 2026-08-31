@@ -51,7 +51,7 @@ def export_lines(*, user: User, mushaf_id: uuid.UUID, page_number: int) -> dict:
     # Rendered up front rather than streamed one at a time: a uniform canvas can
     # only be sized once every line on the page has been cut and erased. Fifteen
     # RGBA line crops is a manageable amount to hold.
-    rendered = [(line, _render_line_image(image, line, column)) for line in lines]
+    rendered = [(line, render_line_image(image, line, column)) for line in lines]
     canvas: tuple[int, int] | None = None
     if mushaf.export_uniform_size and rendered:
         canvas = (
@@ -203,7 +203,13 @@ def _to_png_bytes(rgba: Image.Image) -> bytes:
     return buffer.getvalue()
 
 
-def _render_line_image(image: Image.Image, line: Line, column: dict | None) -> Image.Image:
+def render_line_image(image: Image.Image, line: Line, column: dict | None) -> Image.Image:
+    """Crop one line out of a rendered page, make it transparent, punch the erasers out.
+
+    Public because ``services.line_images`` needs the same crop to feed the
+    word-boundary engine — a line whose PNG was never exported, or one that must
+    line up with page coordinates, is cut here rather than read from disk.
+    """
     # The line cut spans the page's text-column bounds (coordinates.page_column);
     # the line's own x/w track content extent (from segments) and are left
     # untouched. Only the vertical extent (Y/H) comes from the line.
