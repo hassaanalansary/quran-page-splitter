@@ -95,3 +95,6 @@ export_reference_data.py
 # be able to run `manage.py seed_quran`, and the Tanzil text is a .txt.
 # (Tanzil Project, tanzil.net — copied verbatim with its licence notice intact.)
 !backend/quran/data/*.txt
+
+
+frontend/.tanstack/tmp/*
