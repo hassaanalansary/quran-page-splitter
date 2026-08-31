@@ -80,16 +80,46 @@ class WriteCoordsToPageTests(TestCase):
         types = list(page.lines.order_by("line_number").values_list("type", flat=True))
         self.assertEqual(types, ["sura_header", "besmella", "text"])
 
-    def test_sets_sura_on_all_lines(self):
+    def test_leaves_numbering_to_the_walk(self):
+        """Detection writes structure; it does not number anything.
+
+        A run only ever sees its own page range and would number it from its own
+        seed, so letting it write these columns is what lets two runs disagree.
+        They stay null until ``renumber_mushaf`` fills them — visibly missing
+        rather than quietly wrong.
+        """
         page = self._write(_coord_page())
-        self.assertEqual(set(page.lines.values_list("sura_id", flat=True)), {2})
+        self.assertEqual(set(page.lines.values_list("sura_id", flat=True)), {None})
+        segments = page.lines.get(line_number=3).segments.all()
+        self.assertEqual({s.aya_number for s in segments}, {None})
 
     def test_segments_persisted_in_order(self):
         page = self._write(_coord_page())
         segments = list(page.lines.get(line_number=3).segments.order_by("segment_order"))
-        self.assertEqual([s.aya_number for s in segments], [1, 2])
         self.assertEqual([s.has_separator for s in segments], [True, False])
         self.assertEqual((segments[0].bbox_x, segments[0].bbox_w), (150, 151))
+
+    def test_renumbering_fills_what_detection_left_null(self):
+        """And it numbers from the run's seed, not from what the engine claimed.
+
+        The fixture's segments say ``sura_number: 2``; the run says start at 1:1.
+        The walk follows the run — a sura header sitting where the count is
+        already aya 1 does not advance, because that is where the sura begins.
+        """
+        page = self._write(_coord_page())
+        coordinates.renumber_mushaf(self.mushaf)
+        page.refresh_from_db()
+        self.assertEqual(set(page.lines.values_list("sura_id", flat=True)), {1})
+        segments = page.lines.get(line_number=3).segments.order_by("segment_order")
+        self.assertEqual([s.aya_number for s in segments], [1, 2])
+
+    def test_the_seed_decides_the_sura(self):
+        self.run.settings = {"start_sura": 2, "start_aya": 1}
+        self.run.save(update_fields=["settings"])
+        page = self._write(_coord_page())
+        coordinates.renumber_mushaf(self.mushaf)
+        page.refresh_from_db()
+        self.assertEqual(set(page.lines.values_list("sura_id", flat=True)), {2})
 
     def test_reprocess_replaces_rows(self):
         self._write(_coord_page())

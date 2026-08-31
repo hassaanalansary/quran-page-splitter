@@ -143,6 +143,9 @@ class CoordinatesJsonTests(TestCase):
         )
 
     def test_document_shape_and_aya_grouping(self):
+        # write_coords_to_page stores structure with null sura/aya; a processing
+        # run fills them by renumbering once it finishes, so do the same here.
+        coordinates.renumber_mushaf(self.mushaf)
         filename, doc = export.coordinates_json(self.mushaf.id, user=default_user())
         self.assertEqual(filename, "Coord-Doc-coordinates.json")  # space sanitized
         self.assertEqual(doc["schema"], "aya-bbox/v1")

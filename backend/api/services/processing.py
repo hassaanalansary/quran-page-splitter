@@ -206,6 +206,17 @@ def process(
         if isinstance(detail, dict) and detail.get("page_index") is not None:
             stopped_on = page_range_start + detail["page_index"] - 1
 
+    # Detection wrote structure with null sura/aya (see coordinates._write_engine_line).
+    # One forward walk over the whole mushaf turns that into numbering — the whole
+    # mushaf and not just this run's range, because a run that adds or drops an aya
+    # shifts every page after it. Runs that saved nothing leave the rows untouched.
+    if saved:
+        plan = coordinates.renumber_mushaf(mushaf)
+        for problem in plan.problems:
+            # Not fatal: the walk is still the best numbering available. It means a
+            # separator was missed or invented on some page and needs a human.
+            logger.warning("renumber %s: %s", mushaf.name, problem)
+
     with transaction.atomic():
         ProcessingRun.objects.filter(id=run.id).update(
             status=output["status"],

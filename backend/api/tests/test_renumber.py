@@ -1,10 +1,11 @@
-"""Tests for coordinates.renumber_from (forward sura/aya recompute)."""
+"""Tests for the sura/aya forward recompute — one page onward, and whole-mushaf."""
 
 from django.test import TestCase
 
-from api.models import ProcessingRun
+from api.models import Page, ProcessingRun
 from api.services import coordinates
 from api.tests.helpers import bare_mushaf
+from quran.models import Rawi
 from quran.services import suras
 
 
@@ -116,3 +117,94 @@ class RenumberFromTests(TestCase):
         page2 = self.mushaf.pages.get(page_number=2)
         self.assertEqual(page2.lines.get(line_number=1).sura_id, 3)
         self.assertEqual(page2.lines.get(line_number=2).segments.first().aya_number, 1)
+
+
+def _header_page(sura: int) -> dict:
+    """A page holding just a sura header — the thing that advances the sura."""
+    return {
+        "crop_box": {"x": 0, "y": 0, "w": 100, "h": 100},
+        "lines": [
+            {
+                "line_number": 1,
+                "type": "sura_header",
+                "sura_number": sura,
+                "line_bbox": {"x": 0, "y": 0, "w": 100, "h": 40},
+            }
+        ],
+    }
+
+
+class RenumberMushafTests(TestCase):
+    """The whole-mushaf walk: the repair for a numbering written by two writers."""
+
+    def setUp(self):
+        suras.seed_reference_data()
+        self.mushaf = bare_mushaf("Whole", last_quran_pdf_page=20)
+        self.rawi = Rawi.objects.get(name="Hafs")
+        self.mushaf.rawi = self.rawi
+        self.mushaf.save(update_fields=["rawi"])
+
+    def _run(self, first: int, last: int, sura: int, aya: int) -> ProcessingRun:
+        return ProcessingRun.objects.create(
+            mushaf=self.mushaf,
+            settings={"start_sura": sura, "start_aya": aya},
+            page_range_start=first,
+            page_range_end=last,
+            status="completed",
+        )
+
+    def _write(self, page_number: int, run: ProcessingRun, coord_page: dict):
+        return coordinates.write_coords_to_page(
+            mushaf=self.mushaf, page_number=page_number, run=run, coord_page=coord_page
+        )
+
+    def _ayas(self, page_number: int) -> list[int | None]:
+        page = Page.objects.get(mushaf=self.mushaf, page_number=page_number)
+        return [s.aya_number for line in page.lines.order_by("line_number") for s in line.segments.all()]
+
+    def test_two_runs_with_different_seeds_end_up_one_numbering(self):
+        """The regression this repair exists for.
+
+        Each run numbered only its own page range, from its own seed, so page 2
+        used to restart at 50 while page 1 ended at 4 — a gap the app never showed
+        because the review UI derives the numbering instead of reading it.
+        """
+        first = self._run(1, 1, 2, 1)
+        second = self._run(2, 2, 2, 50)  # a later run over a different range
+        self._write(1, first, _two_sep_text_page(2, 1, 2))
+        self._write(2, second, _two_sep_text_page(2, 50, 51))
+
+        coordinates.renumber_mushaf(self.mushaf)
+        self.assertEqual(self._ayas(1), [1, 2])
+        self.assertEqual(self._ayas(2), [3, 4])  # continues, rather than jumping to 50
+
+    def test_a_page_gap_is_not_walked_across(self):
+        """Pages 1 and 9 are not adjacent, so page 9 reseeds from its own run."""
+        first = self._run(1, 1, 2, 1)
+        far = self._run(9, 9, 2, 100)
+        self._write(1, first, _two_sep_text_page(2, 1, 2))
+        self._write(9, far, _two_sep_text_page(2, 100, 101))
+
+        coordinates.renumber_mushaf(self.mushaf)
+        self.assertEqual(self._ayas(1), [1, 2])
+        self.assertEqual(self._ayas(9), [100, 101])
+
+    def test_reports_a_sura_whose_separators_do_not_add_up(self):
+        """Al-Kawthar has 3 ayat; give it 2 separators and the walk says so."""
+        run = self._run(1, 2, 108, 1)
+        self._write(1, run, _two_sep_text_page(108, 1, 2))  # only two ayat closed
+        self._write(2, run, _header_page(109))  # ...then the next sura begins
+
+        plan = coordinates.renumber_mushaf(self.mushaf)
+        self.assertEqual(len(plan.problems), 1, plan.problems)
+        self.assertIn("sura 108", plan.problems[0])
+        self.assertIn("2 separators", plan.problems[0])
+        # Reported, not refused: the numbering is still written.
+        self.assertEqual(self._ayas(1), [1, 2])
+
+    def test_a_partly_covered_sura_is_not_reported(self):
+        """A run over two pages sees a slice of a sura and cannot match its count."""
+        run = self._run(1, 1, 2, 1)
+        self._write(1, run, _two_sep_text_page(2, 1, 2))
+        plan = coordinates.renumber_mushaf(self.mushaf)
+        self.assertEqual(plan.problems, [])
