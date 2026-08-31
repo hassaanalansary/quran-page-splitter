@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
+import { AppLogo } from "@/components/app/AppLogo";
 import { CreateMushafDialog } from "@/components/app/CreateMushafDialog";
 import { ImportBundleDialog } from "@/components/app/ImportBundleDialog";
 import { LanguageSwitcher } from "@/components/app/LanguageSwitcher";
@@ -36,12 +37,7 @@ function HomePage() {
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-bg-page">
       <header className="flex h-[52px] flex-shrink-0 items-center border-b border-border bg-white px-6">
-        <div className="flex items-center gap-2.5">
-          <span className="mt-px h-2 w-2 rounded-[2px] bg-orange" />
-          <span className="font-display text-[15px] font-bold leading-none text-navy">
-            {t("common.appName")}
-          </span>
-        </div>
+        <AppLogo />
         <div className="ms-auto flex items-center gap-3">
           <Link
             to="/gallery"

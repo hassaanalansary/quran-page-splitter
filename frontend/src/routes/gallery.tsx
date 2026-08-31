@@ -1,6 +1,7 @@
 import { createFileRoute, Link, Outlet } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 
+import { AppLogo } from "@/components/app/AppLogo";
 import { LanguageSwitcher } from "@/components/app/LanguageSwitcher";
 import { UserMenu } from "@/components/app/UserMenu";
 import { useSession } from "@/lib/api";
@@ -26,11 +27,8 @@ function GalleryLayout() {
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-bg-page">
       <header className="flex h-[52px] flex-shrink-0 items-center border-b border-border bg-white px-6">
-        <Link to="/" className="flex items-center gap-2.5">
-          <span className="mt-px h-2 w-2 rounded-[2px] bg-orange" />
-          <span className="font-display text-[15px] font-bold leading-none text-navy">
-            {t("common.appName")}
-          </span>
+        <Link to="/">
+          <AppLogo />
         </Link>
         <div className="ms-auto flex items-center gap-3">
           {/* Signed out, `UserMenu` renders a "Sign in" button — the only way in

@@ -1,5 +1,4 @@
-import { useTranslation } from "react-i18next";
-
+import { AppLogo } from "@/components/app/AppLogo";
 import { LanguageSwitcher } from "@/components/app/LanguageSwitcher";
 
 /** Centered card used by every /auth/* page.
@@ -18,17 +17,10 @@ export function AuthShell({
   children: React.ReactNode;
   footer?: React.ReactNode;
 }) {
-  const { t } = useTranslation();
-
   return (
     <div className="flex min-h-screen flex-col bg-bg-page">
       <header className="flex h-[52px] flex-shrink-0 items-center border-b border-border bg-white px-6">
-        <div className="flex items-center gap-2.5">
-          <span className="mt-px h-2 w-2 rounded-[2px] bg-orange" />
-          <span className="font-display text-[15px] font-bold leading-none text-navy">
-            {t("common.appName")}
-          </span>
-        </div>
+        <AppLogo />
         <div className="ms-auto">
           <LanguageSwitcher />
         </div>

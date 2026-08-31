@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 
+import { AppLogo } from "@/components/app/AppLogo";
 import { LanguageSwitcher } from "@/components/app/LanguageSwitcher";
 import { UserMenu } from "@/components/app/UserMenu";
 import { coordinatesUrl, mushafStatus, useStats, useTemplates, type MushafDetail } from "@/lib/api";
@@ -36,11 +37,8 @@ export function MushafHeader({
 
   return (
     <header className="flex h-[60px] flex-shrink-0 items-center gap-3 border-b border-border bg-white px-5">
-      <Link to="/" className="flex items-center gap-2.5" title={t("header.allMushafs")}>
-        <span className="mt-px h-2 w-2 rounded-[2px] bg-orange" />
-        <span className="font-display text-[15px] font-bold leading-none text-navy">
-          {t("common.appName")}
-        </span>
+      <Link to="/" title={t("header.allMushafs")}>
+        <AppLogo />
       </Link>
       <span className="text-text-muted">/</span>
       <Link
