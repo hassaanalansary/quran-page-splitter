@@ -8,7 +8,7 @@ it is wrong too.
 from django.test import SimpleTestCase
 
 from core.arabic import letters_of
-from core.quran_text import BASMALA_LETTERS, drop_leading_basmala, load_ayat
+from core.quran_text import BASMALA_LETTERS, drop_leading_basmala, load_ayat, span
 from quran.services.quran_text import DEFAULT_QURAN_TEXT_PATH
 
 BASMALA = ["بِسْمِ", "ٱللَّهِ", "ٱلرَّحْمَٰنِ", "ٱلرَّحِيمِ"]
@@ -69,25 +69,36 @@ class LoadAyatTests(SimpleTestCase):
         self.assertEqual(sum(len(a.words) for a in raw) - 77_433, 112 * 4)
 
 
-class PrototypeAgreementTests(SimpleTestCase):
-    """The word-boundary prototype still carries its own copy of this loader.
+class SpanTests(SimpleTestCase):
+    """``span`` is what the CLI resolves a --from/--to pair with.
 
-    Until the engine is extracted, the two have to be pinned together: if they
-    ever disagree about where an aya starts, the ink the engine aligns and the
-    words the database numbers would be describing different texts, and nothing
-    else in the suite would notice.
+    It replaced a second copy of this whole loader that lived in the prototype
+    only because it needed this one function. With one loader there is nothing
+    left to drift.
     """
 
-    def test_matches_the_prototype_loader(self):
-        try:
-            from script.word_lines import QuranText
-        except ImportError as error:  # pragma: no cover - only when cv2 is broken
-            self.skipTest(f"word_lines is not importable: {error}")
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.ayat = load_ayat(DEFAULT_QURAN_TEXT_PATH)
 
-        theirs = QuranText.load(DEFAULT_QURAN_TEXT_PATH).records
-        ours = load_ayat(DEFAULT_QURAN_TEXT_PATH)
-        self.assertEqual(len(theirs), len(ours))
-        self.assertEqual(
-            [(a.sura, a.number, a.words) for a in theirs],
-            [(a.sura, a.number, a.words) for a in ours],
-        )
+    def test_is_inclusive_at_both_ends(self):
+        got = span(self.ayat, (7, 82), (7, 84))
+        self.assertEqual([(a.sura, a.number) for a in got], [(7, 82), (7, 83), (7, 84)])
+
+    def test_one_aya(self):
+        self.assertEqual(len(span(self.ayat, (1, 1), (1, 1))), 1)
+
+    def test_crosses_a_sura_boundary(self):
+        """Recitation order, not sura order — a page does not stop at a sura."""
+        got = span(self.ayat, (7, 206), (8, 2))
+        self.assertEqual([(a.sura, a.number) for a in got], [(7, 206), (8, 1), (8, 2)])
+
+    def test_an_aya_that_is_not_there_says_which(self):
+        with self.assertRaises(LookupError) as caught:
+            span(self.ayat, (7, 82), (7, 999))
+        self.assertIn("7:999", str(caught.exception))
+
+    def test_backwards_is_refused(self):
+        with self.assertRaises(LookupError):
+            span(self.ayat, (7, 84), (7, 82))

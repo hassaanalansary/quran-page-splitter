@@ -81,3 +81,21 @@ def drop_leading_basmala(words: list[str]) -> list[str]:
             if head == BASMALA_LETTERS:
                 return words[take:]
     return words
+
+
+def span(ayat: list[Aya], start: tuple[int, int], end: tuple[int, int]) -> list[Aya]:
+    """The ayat from ``start`` through ``end``, inclusive.
+
+    Recitation order, so a span may cross a sura boundary. Raises ``LookupError``
+    when either end is missing or the two are the wrong way round — the caller
+    named an aya that is not in this file, which is worth saying rather than
+    silently returning nothing.
+    """
+    index = {(aya.sura, aya.number): i for i, aya in enumerate(ayat)}
+    for point in (start, end):
+        if point not in index:
+            raise LookupError(f"{point[0]}:{point[1]} is not in the text.")
+    first, last = index[start], index[end]
+    if last < first:
+        raise LookupError(f"span {start[0]}:{start[1]}..{end[0]}:{end[1]} runs backwards.")
+    return ayat[first : last + 1]

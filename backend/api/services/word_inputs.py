@@ -1,6 +1,6 @@
 """Assemble everything one run of the word-boundary engine needs, from the database.
 
-One call in, an ``EngineInput`` out. It lives in ``api`` because it is the only
+One call in, a ``WordBoundaryInput`` out. It lives in ``api`` because it is the only
 layer allowed to reach into both apps: the pictures come from a mushaf's pages
 (``api``), the words from the Quran text (``quran``), and the thing that joins them
 is the mushaf's own riwaya.
@@ -21,7 +21,7 @@ from accounts.models import User
 from api.models import Mushaf
 from api.services import line_images as line_images_service
 from api.services import mushaf as mushaf_service
-from core.word_inputs import EngineInput
+from core.word_boundary import WordBoundaryInput
 from quran.models import CountingSystem
 from quran.services import words as words_service
 
@@ -48,7 +48,7 @@ def prepare_engine_input(
     start: tuple[int, int],
     end: tuple[int, int] | None = None,
     refresh: bool = False,
-) -> tuple[EngineInput, CountingSystem]:
+) -> tuple[WordBoundaryInput, CountingSystem]:
     """Line images and the word stream for one span, ready for the engine.
 
     ``start`` and ``end`` are ``(sura, aya)`` in the mushaf's own numbering.
@@ -67,7 +67,7 @@ def prepare_engine_input(
     lines = line_images_service.line_images(mushaf, start=start, end=end, refresh=refresh)
     stream = words_service.word_stream(system, start=start, end=end)
     return (
-        EngineInput(
+        WordBoundaryInput(
             lines=lines,
             words=stream,
             separator_template=line_images_service.separator_template(mushaf),

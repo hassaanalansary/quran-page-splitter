@@ -1,6 +1,6 @@
 """The word stream the boundary engine aligns against, read out of the database.
 
-The file-backed counterpart is ``core.word_inputs.words_from_ayat``; both produce
+The file-backed counterpart is ``core.word_boundary.words_from_ayat``; both produce
 the same ``WordInput`` records, and they must agree — the counts here were written
 by ``core.arabic`` at seed time, which is the same code that one calls live.
 
@@ -11,7 +11,7 @@ start on different words and carry different aya labels. That is the whole reaso
 the ``Aya`` table exists.
 """
 
-from core.word_inputs import WordInput
+from core.word_boundary import WordInput
 from quran.models import Aya, CountingSystem, Word
 
 

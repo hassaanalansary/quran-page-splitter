@@ -29,7 +29,7 @@ from PIL import Image
 from api.models import Line, LineTypeChoices, Mushaf, Page, Segment
 from api.services import coordinates, pdf
 from api.services.export import render_line_image
-from core.word_inputs import LineImage
+from core.word_boundary import LineImage
 
 
 def separator_template(mushaf: Mushaf) -> Image.Image | None:

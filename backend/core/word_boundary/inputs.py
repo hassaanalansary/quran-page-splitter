@@ -67,7 +67,7 @@ class WordInput:
 
 
 @dataclass(frozen=True)
-class EngineInput:
+class WordBoundaryInput:
     """Everything one run of the engine needs."""
 
     lines: list[LineImage]

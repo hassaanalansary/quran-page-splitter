@@ -1,4 +1,4 @@
-"""Tests for core.word_inputs — the contract, and the file-backed side of it.
+"""Tests for core.word_boundary.inputs — the contract, and the file-backed side of it.
 
 Lives under ``quran`` rather than ``core`` because there is no test package there
 and these need the same runner; nothing here touches the database.
@@ -11,7 +11,7 @@ from django.test import SimpleTestCase
 from PIL import Image
 
 from core.quran_text import Aya
-from core.word_inputs import LineImage, aya_starts, images_from_paths, words_from_ayat
+from core.word_boundary import LineImage, aya_starts, images_from_paths, words_from_ayat
 
 
 class ImagesFromPathsTests(SimpleTestCase):

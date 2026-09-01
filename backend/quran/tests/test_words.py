@@ -8,7 +8,7 @@ matter here compare two systems.
 from django.test import TestCase
 
 from core.quran_text import load_ayat
-from core.word_inputs import words_from_ayat
+from core.word_boundary import words_from_ayat
 from quran.models import CountingSystem
 from quran.services import words
 from quran.services.quran_text import DEFAULT_QURAN_TEXT_PATH
