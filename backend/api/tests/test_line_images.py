@@ -74,6 +74,18 @@ class LineImageGeometryTests(TestCase):
         )
         self.assertEqual(crop, (300, None))
 
+    def test_ending_on_the_rightmost_aya_still_cuts_the_rest_of_the_line(self):
+        """End at aya 5, which is segment 1 — the rightmost on the line.
+
+        Ayat 6 and 7 sit to its left and are past the end of the span, so they must
+        go. This used to be skipped by a guard testing the wrong end of the line, and
+        the engine was handed two ayat of ink it had no words for.
+        """
+        crop = line_images._crop_for(
+            self.line, self.line, self.line, self._segment(1), self._segment(1), self.column
+        )
+        self.assertEqual(crop, (600, None))
+
     def test_both_ends_on_one_line(self):
         crop = line_images._crop_for(
             self.line, self.line, self.line, self._segment(2), self._segment(2), self.column

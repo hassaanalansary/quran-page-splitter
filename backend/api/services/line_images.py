@@ -151,15 +151,29 @@ def _crop_for(
     its first segment, so the cut keeps ``x`` up to that segment's right edge. For
     the **end** aya, later ayat lie to the *left* of its last segment, so the cut
     keeps ``x`` from that segment's left edge onward.
+
+    Each end is cut only when there is something there to remove, and the two tests
+    are mirror images: the start aya must not be the line's **rightmost** segment
+    (nothing lies right of it), the end aya must not be its **leftmost** (nothing
+    lies left of it). Without that, an end aya sitting in the rightmost segment of
+    its final line would keep every later aya on that line, and the engine would be
+    handed ink for words it was never given.
     """
     origin = _origin_x(column, line)
+    segments = sorted(line.segments.all(), key=lambda s: s.segment_order)
     left, right = 0, None
-    if _line_key(line) == _line_key(last_line) and last_segment.segment_order > 1:
+    if (
+        _line_key(line) == _line_key(last_line)
+        and segments
+        and last_segment.segment_order < segments[-1].segment_order
+    ):
         left = max(0, last_segment.bbox_x - origin)
-    if _line_key(line) == _line_key(first_line):
-        segments = sorted(line.segments.all(), key=lambda s: s.segment_order)
-        if segments and first_segment.segment_order > segments[0].segment_order:
-            right = max(0, first_segment.bbox_x + first_segment.bbox_w - origin)
+    if (
+        _line_key(line) == _line_key(first_line)
+        and segments
+        and first_segment.segment_order > segments[0].segment_order
+    ):
+        right = max(0, first_segment.bbox_x + first_segment.bbox_w - origin)
     if left == 0 and right is None:
         return None
     return (left, right)
