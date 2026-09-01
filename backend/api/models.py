@@ -398,6 +398,48 @@ class Segment(BaseModel):
         ordering = ("segment_order",)
 
 
+class LineWord(BaseModel):
+    """Where one word of the Quran ends on one line of a mushaf.
+
+    Written by ``services.word_coordinates`` from the boundary engine's output. The
+    whole reason the engine exists is this one number.
+
+    **Only the end is stored.** A word's right edge is the previous word's ``end_x``,
+    and the first word's is the line's own right edge — so storing it as well would
+    only create a second thing to keep true. The same argument as
+    :class:`quran.models.Aya`, which stores where an aya starts and never where it
+    ends.
+
+    **No sura or aya column**, for the reason :class:`quran.models.Word` has none:
+    that question has six different answers, one per counting system, and a single
+    stored answer would bake one of them in. Ask ``quran.Aya`` for the word range of
+    an aya and filter on ``word`` instead — reference data that has been reviewed,
+    rather than ``Segment.aya_number``, which is a cache of a derivation.
+    """
+
+    line = models.ForeignKey(Line, on_delete=models.CASCADE, related_name="words")
+    word_order = models.PositiveSmallIntegerField(help_text="Position on the line; 1 is the rightmost word.")
+    word = models.ForeignKey(
+        "quran.Word",
+        on_delete=models.PROTECT,
+        related_name="+",
+        help_text="Which word of the Quran this is, by its global index.",
+    )
+    end_x = models.PositiveIntegerField(
+        help_text="Page x where the word ends — its LEFT edge, since Arabic runs right to left."
+    )
+
+    class Meta:
+        db_table = "line_word"
+        verbose_name = "Line Word"
+        verbose_name_plural = "Line Words"
+        ordering = ("word_order",)
+        constraints = (models.UniqueConstraint(fields=["line", "word_order"], name="unique_line_word_order"),)
+
+    def __str__(self) -> str:
+        return f"word {self.word_id} ends at x={self.end_x}"
+
+
 class ActivityEvent(BaseModel):
     """A table for Activity Events (the per-mushaf audit feed)"""
 

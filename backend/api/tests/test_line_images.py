@@ -5,11 +5,13 @@ before this aya" are the ones at *larger* x, and getting that backwards would cr
 away exactly the half we meant to keep — while still producing a plausible image.
 """
 
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 
-from api.models import Line, LineTypeChoices, Page, Segment
-from api.services import line_images
-from api.tests.helpers import bare_mushaf
+from api.models import Line, LineTypeChoices, Page, ProcessingRun, Segment
+from api.services import coordinates, line_images
+from api.services import mushaf as mushaf_service
+from api.tests.helpers import MediaTestCase, bare_mushaf, default_user, make_pdf_bytes
 from quran.models import Rawi
 from quran.services import suras
 
@@ -175,3 +177,86 @@ class LocateTests(TestCase):
         with self.assertRaises(LookupError) as caught:
             line_images.locate(self.mushaf, 2, 99)
         self.assertIn("2:99", str(caught.exception))
+
+
+class PlacedLineTests(MediaTestCase):
+    """Where each picture sits on the page, end to end through a real render.
+
+    ``origin_x`` is the page x that image x 0 corresponds to, and it is the number
+    every stored word coordinate is measured from. It is not a constant: a line's
+    image is cut at the page column, and the far end of a span is cut again at an aya
+    boundary, which moves the zero further right. Nothing about the ``Line`` row
+    records that second shift — it depends on where the run stops — so it has to
+    travel out with the picture.
+    """
+
+    def setUp(self):
+        suras.seed_reference_data()
+        created = mushaf_service.create_mushaf(
+            pdf_file=SimpleUploadedFile("m.pdf", make_pdf_bytes(1), "application/pdf"),
+            name="Placed",
+            qiraa=None,
+            first_quran_pdf_page=1,
+            last_quran_pdf_page=None,
+            owner=default_user(),
+        )
+        self.mushaf = mushaf_service.get_mushaf(created["mushaf"]["id"], user=default_user())
+        self.mushaf.rawi = Rawi.objects.get(name="Hafs")
+        self.mushaf.save(update_fields=["rawi"])
+        run = ProcessingRun.objects.create(
+            mushaf=self.mushaf,
+            settings={"start_sura": 2, "start_aya": 5},
+            page_range_start=1,
+            page_range_end=1,
+            status="completed",
+        )
+        # One text line across a column at page x 100, carrying two ayat: aya 5 on
+        # the right (x 400..700) and aya 6 to its left (x 100..400).
+        coordinates.write_coords_to_page(
+            mushaf=self.mushaf,
+            page_number=1,
+            run=run,
+            coord_page={
+                "crop_box": {"x": 100, "y": 0, "w": 600, "h": 200},
+                "lines": [
+                    {
+                        "line_number": 1,
+                        "type": "text",
+                        "line_bbox": {"x": 100, "y": 0, "w": 600, "h": 40},
+                        "segments": [
+                            {"bbox": {"x": 400, "w": 300}, "has_separator": True},
+                            {"bbox": {"x": 100, "w": 300}, "has_separator": False},
+                        ],
+                    }
+                ],
+            },
+        )
+        self.line = Line.objects.get(page__mushaf=self.mushaf, line_number=1)
+        self.line.sura_id = 2
+        self.line.save(update_fields=["sura"])
+        for order, aya in ((1, 5), (2, 6)):
+            self.line.segments.filter(segment_order=order).update(aya_number=aya)
+
+    def test_an_uncropped_line_starts_at_the_column_edge(self):
+        placed = line_images.line_images(self.mushaf, start=(2, 5), end=(2, 6))
+        self.assertEqual([p.origin_x for p in placed], [100])
+        self.assertIs(placed[0].line, placed[0].line)
+        self.assertEqual(placed[0].line.pk, self.line.pk)
+
+    def test_ending_mid_line_moves_the_origin_by_the_crop(self):
+        """The span ends at aya 5, so aya 6 — at smaller x — is cut away.
+
+        The cut is at page x 400, which is image x 300; the surviving image now
+        begins at page x 400, not 100. A word at image x 50 is page x 450.
+        """
+        placed = line_images.line_images(self.mushaf, start=(2, 5), end=(2, 5))
+        self.assertEqual(placed[0].origin_x, 400)
+        # And the picture really is the narrower one, not the whole column.
+        self.assertEqual(placed[0].image.image.width, 300)
+
+    def test_the_engine_still_sees_only_a_picture(self):
+        """PlacedLine is the caller's bookkeeping; LineImage stays what it was."""
+        placed = line_images.line_images(self.mushaf, start=(2, 5), end=(2, 6))
+        image = placed[0].image
+        self.assertEqual(image.label, "page-0001/line-01")
+        self.assertFalse(hasattr(image, "origin_x"))

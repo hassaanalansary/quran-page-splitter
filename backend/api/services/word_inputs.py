@@ -12,18 +12,36 @@ get different words, because the two count their ayat differently — and the en
 anchors on aya ornaments, so being handed the wrong aya boundaries would put every
 word cut on the page in the wrong place.
 
-Nothing here runs the engine. This phase stops at "the inputs can be produced".
+Nothing here runs the engine. It assembles what a run needs and hands it over; the
+API calls ``detect_words`` and then ``services.word_coordinates`` to store the answer.
 """
 
 import uuid
+from dataclasses import dataclass
 
 from accounts.models import User
 from api.models import Mushaf
 from api.services import line_images as line_images_service
 from api.services import mushaf as mushaf_service
+from api.services.line_images import PlacedLine
 from core.word_boundary import WordBoundaryInput
 from quran.models import CountingSystem
 from quran.services import words as words_service
+
+
+@dataclass(frozen=True)
+class EngineRun:
+    """One prepared run: what the engine eats, and what it will take to store.
+
+    ``placements`` is parallel to ``source.lines`` — same lines, same order — and
+    carries the row and the page offset each picture came from. The engine answers in
+    image coordinates and has no idea either exists, which is the point; keeping them
+    here is what lets the result be written back afterwards.
+    """
+
+    source: WordBoundaryInput
+    counting_system: CountingSystem
+    placements: list[PlacedLine]
 
 
 def counting_system_for(mushaf: Mushaf) -> CountingSystem:
@@ -48,7 +66,7 @@ def prepare_engine_input(
     start: tuple[int, int],
     end: tuple[int, int] | None = None,
     refresh: bool = False,
-) -> tuple[WordBoundaryInput, CountingSystem]:
+) -> EngineRun:
     """Line images and the word stream for one span, ready for the engine.
 
     ``start`` and ``end`` are ``(sura, aya)`` in the mushaf's own numbering.
@@ -64,13 +82,14 @@ def prepare_engine_input(
     if end is None:
         end = (start[0], words_service.sura_last_aya(system, start[0]))
 
-    lines = line_images_service.line_images(mushaf, start=start, end=end, refresh=refresh)
+    placements = line_images_service.line_images(mushaf, start=start, end=end, refresh=refresh)
     stream = words_service.word_stream(system, start=start, end=end)
-    return (
-        WordBoundaryInput(
-            lines=lines,
+    return EngineRun(
+        source=WordBoundaryInput(
+            lines=[placed.image for placed in placements],
             words=stream,
             separator_template=line_images_service.separator_template(mushaf),
         ),
-        system,
+        counting_system=system,
+        placements=placements,
     )

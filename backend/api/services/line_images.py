@@ -15,6 +15,9 @@ Three jobs:
   starts on a known first word. The last line is cut the same way at the far end.
 * **Hand over what is already known.** The separators were located once during
   processing; their positions come along so the engine can skip finding them again.
+* **Remember where each picture sits.** The engine answers in the image's own
+  coordinates; the database speaks page coordinates. ``PlacedLine`` carries the
+  offset between them, because nothing downstream can work it out — see below.
 
 Requires the **process phase** to have run — it is what puts lines, their
 classification and the aya segmentation in the database. Finalize is optional: it
@@ -23,6 +26,7 @@ and below, so it helps the engine without being a prerequisite.
 """
 
 import io
+from dataclasses import dataclass
 
 from PIL import Image
 
@@ -30,6 +34,28 @@ from api.models import Line, LineTypeChoices, Mushaf, Page, Segment
 from api.services import coordinates, pdf
 from api.services.export import render_line_image
 from core.word_boundary import LineImage
+
+
+@dataclass(frozen=True)
+class PlacedLine:
+    """One line's picture, and where on the page that picture sits.
+
+    ``origin_x`` is the page x that image x 0 corresponds to. It is **not** derivable
+    from ``line`` alone: a line's image starts at the page column
+    (``render_line_image`` cuts every line there), and the first and last line of a
+    span are then cut again at an aya boundary, which moves the zero further right.
+    That second shift depends on which line is first and last *in this run*, so it is
+    a property of the run rather than of the row — a writer holding only a ``Line``
+    cannot know whether its image was cropped, or by how much.
+
+    So it travels with the picture. ``LineImage`` stays what the engine sees, knowing
+    nothing about pages or rows; this is the caller's own bookkeeping, on the
+    caller's side of that boundary.
+    """
+
+    image: LineImage
+    line: Line
+    origin_x: int
 
 
 def separator_template(mushaf: Mushaf) -> Image.Image | None:
@@ -75,7 +101,7 @@ def line_images(
     start: tuple[int, int],
     end: tuple[int, int],
     refresh: bool = False,
-) -> list[LineImage]:
+) -> list[PlacedLine]:
     """Every text line from the start aya through the end aya, in reading order.
 
     Sura headers and besmella lines are left out: they are not text, and the
@@ -99,7 +125,7 @@ def line_images(
 
     template = separator_template(mushaf)
     template_width = template.width if template is not None else 0
-    out: list[LineImage] = []
+    out: list[PlacedLine] = []
     for page in pages:
         rendered_page: Image.Image | None = None
         column = coordinates.page_column(page)
@@ -114,11 +140,15 @@ def line_images(
                 rendered_page = _render_page(mushaf, page)
             image, origin_x = _image_for(mushaf, line, page, column, rendered_page, crop, refresh)
             out.append(
-                LineImage(
-                    image=image,
-                    label=f"page-{page.page_number:04d}/line-{line.line_number:02d}",
-                    source=f"{mushaf.id}:{page.page_number}:{line.line_number}",
-                    separators=_separators(line, origin_x, image.width, template_width),
+                PlacedLine(
+                    image=LineImage(
+                        image=image,
+                        label=f"page-{page.page_number:04d}/line-{line.line_number:02d}",
+                        source=f"{mushaf.id}:{page.page_number}:{line.line_number}",
+                        separators=_separators(line, origin_x, image.width, template_width),
+                    ),
+                    line=line,
+                    origin_x=origin_x,
                 )
             )
     return out
