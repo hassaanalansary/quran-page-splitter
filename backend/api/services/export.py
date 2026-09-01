@@ -37,9 +37,7 @@ _ZIP_SPOOL_BYTES = 16 * 1024 * 1024
 def export_lines(*, user: User, mushaf_id: uuid.UUID, page_number: int) -> dict:
     """Render the page, crop each line to a transparent PNG, and store its path."""
     mushaf = mushaf_service.get_mushaf(mushaf_id, user=user)
-    page = Page.objects.filter(mushaf=mushaf, page_number=page_number).first()
-    if page is None:
-        raise HttpError(404, i18n.t("page_no_export"))
+    page = mushaf_service.get_page(mushaf, page_number, message="page_no_export")
 
     pdf_index = pdf.logical_to_pdf_index(mushaf.first_quran_pdf_page, page_number, page.source_pdf_page)
     image = Image.open(io.BytesIO(pdf.render_page(mushaf.pdf_file.path, pdf_index)))

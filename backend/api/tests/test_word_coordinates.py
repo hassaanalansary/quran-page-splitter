@@ -12,7 +12,7 @@ already does byte for byte; what needs pinning is the write.
 from django.test import TestCase
 from PIL import Image
 
-from api.models import Line, LineTypeChoices, LineWord, Mushaf, Page
+from api.models import Line, LineTypeChoices, LineWord, LineWordStatus, Mushaf, Page
 from api.services import word_coordinates
 from api.services.line_images import PlacedLine
 from api.tests.helpers import bare_mushaf
@@ -105,7 +105,8 @@ class WordCoordinateTests(TestCase):
             words_consumed=3,
             complete=True,
         )
-        return word_coordinates.save_word_coordinates(result, placements)
+        # The span asked for, which is what a run clears — not what it produced.
+        return word_coordinates.save_word_coordinates(result, placements, word_range=(1, 3))
 
     def test_image_x_becomes_page_x(self):
         self._run()
@@ -120,16 +121,32 @@ class WordCoordinateTests(TestCase):
         self._run()
         self.assertEqual([w.end_x for w in self.line2.words.all()], [450])
 
-    def test_word_order_runs_right_to_left_from_one(self):
+    def test_words_come_back_right_to_left(self):
+        """Ordering is geometry, not a stored rank: -end_x is reading order.
+
+        Nothing has to be renumbered when a word is added, deleted or moved to a
+        neighbouring line, and it stays defined for a word with no label.
+        """
         self._run()
-        self.assertEqual([w.word_order for w in self.line1.words.all()], [1, 2])
-        # Order 1 is the rightmost word, so its end_x is the larger.
-        self.assertGreater(self.line1.words.get(word_order=1).end_x, self.line1.words.get(word_order=2).end_x)
+        self.assertEqual([w.end_x for w in self.line1.words.all()], [350, 220])
+        self.assertEqual([w.word_id for w in self.line1.words.all()], [1, 2])
 
     def test_the_word_rows_are_the_quran_words_the_engine_was_given(self):
         self._run()
         self.assertEqual([w.word_id for w in self.line1.words.all()], [1, 2])
         self.assertEqual([w.word_id for w in self.line2.words.all()], [3])
+
+    def test_the_engines_verdict_is_stored_for_triage(self):
+        """Without this a reviewer has no way to tell a confident cut from a guess."""
+        self._run(statuses=("scored", "exact"))
+        status = LineWordStatus.objects.get(line=self.line1)
+        self.assertEqual(status.status, "scored")
+        self.assertFalse(status.edited)
+
+    def test_a_status_goes_when_its_line_goes(self):
+        self._run()
+        self.line2.delete()
+        self.assertFalse(LineWordStatus.objects.filter(line_id=self.line2.pk).exists())
 
     def test_the_report_counts_what_happened(self):
         report = self._run()
@@ -177,7 +194,7 @@ class WordCoordinateTests(TestCase):
         )
         result = WordBoundaryResult(lines=[_outcome("line-01", [orphan])], words_consumed=1, complete=True)
         with self.assertRaises(ValueError) as caught:
-            word_coordinates.save_word_coordinates(result, placements)
+            word_coordinates.save_word_coordinates(result, placements, word_range=(1, 3))
         self.assertIn("جَوَابَ", str(caught.exception))
         self.assertEqual(LineWord.objects.count(), 0)
 
@@ -187,10 +204,181 @@ class WordCoordinateTests(TestCase):
         result = WordBoundaryResult(lines=[_outcome("line-01", [_box(0, 250, 1)])], words_consumed=1, complete=True)
         with self.assertRaises(ValueError):
             word_coordinates.save_word_coordinates(
-                result, [self._placed(self.line1, 100), self._placed(self.line2, 400)]
+                result,
+                [self._placed(self.line1, 100), self._placed(self.line2, 400)],
+                word_range=(1, 3),
             )
 
     def test_deleting_a_line_takes_its_words(self):
         self._run()
         self.line2.delete()
         self.assertEqual(LineWord.objects.count(), 2)
+
+
+class ChunkSeamTests(TestCase):
+    """Two chunks meeting on one line — the case that decided the schema.
+
+    A run is split into aya spans, and an aya boundary rarely falls at a line break,
+    so consecutive chunks share the line it falls on. Chunk B must add its words to
+    that line without destroying chunk A's. With a per-line rank both chunks would
+    start at 1 and collide; clearing the whole line would lose A's work outright.
+    """
+
+    mushaf: Mushaf
+    page: Page
+    lines: list[Line]
+
+    @classmethod
+    def setUpTestData(cls):
+        seed_reference_data()
+        Word.objects.bulk_create(
+            [Word(id=n, text=f"w{n}", paw_count=1, ijam_above=0, ijam_below=0) for n in range(1, 11)]
+        )
+        cls.mushaf = bare_mushaf("Seam")
+        cls.page = Page.objects.create(
+            mushaf=cls.mushaf, page_number=1, bbox_x=100, bbox_y=0, bbox_w=900, bbox_h=500
+        )
+        cls.lines = [
+            Line.objects.create(
+                page=cls.page,
+                line_number=n,
+                type=LineTypeChoices.TEXT,
+                bbox_x=100,
+                bbox_y=50 * n,
+                bbox_w=900,
+                bbox_h=50,
+            )
+            for n in (1, 2, 3)
+        ]
+
+    def _placed(self, line: Line, origin_x: int) -> PlacedLine:
+        return PlacedLine(
+            image=LineImage(image=Image.new("RGBA", (4, 2)), label=f"line-{line.line_number:02d}"),
+            line=line,
+            origin_x=origin_x,
+        )
+
+    def _chunk_a(self):
+        """Words 1..3: all of line 1, and the start of line 2."""
+        return word_coordinates.save_word_coordinates(
+            WordBoundaryResult(
+                lines=[
+                    _outcome("line-01", [_box(0, 250, 1), _box(1, 120, 2)]),
+                    _outcome("line-02", [_box(2, 50, 3)]),
+                ],
+                words_consumed=3,
+                complete=True,
+            ),
+            [self._placed(self.lines[0], 100), self._placed(self.lines[1], 400)],
+            word_range=(1, 3),
+        )
+
+    def _chunk_b(self):
+        """Words 4..6: the rest of line 2, and all of line 3."""
+        return word_coordinates.save_word_coordinates(
+            WordBoundaryResult(
+                lines=[
+                    _outcome("line-02", [_box(3, 200, 4)]),
+                    _outcome("line-03", [_box(4, 260, 5), _box(5, 130, 6)]),
+                ],
+                words_consumed=3,
+                complete=True,
+            ),
+            [self._placed(self.lines[1], 100), self._placed(self.lines[2], 100)],
+            word_range=(4, 6),
+        )
+
+    def test_the_second_chunk_does_not_wipe_the_first(self):
+        self._chunk_a()
+        self._chunk_b()
+        seam = self.lines[1].words.all()
+        self.assertEqual([row.word_id for row in seam], [3, 4])
+        self.assertEqual(LineWord.objects.count(), 6)
+
+    def test_the_seam_line_still_reads_right_to_left(self):
+        """Word 3 ends at page x 450, word 4 at 300 — so 3 comes first."""
+        self._chunk_a()
+        self._chunk_b()
+        self.assertEqual([row.end_x for row in self.lines[1].words.all()], [450, 300])
+
+    def test_re_running_one_chunk_replaces_only_its_own_words(self):
+        self._chunk_a()
+        self._chunk_b()
+        self._chunk_a()
+        self.assertEqual([row.word_id for row in self.lines[1].words.all()], [3, 4])
+        self.assertEqual(LineWord.objects.count(), 6)
+
+
+class AddedWordTests(TestCase):
+    """A word this mushaf prints that the stored Hafs text does not have.
+
+    The reviewer supplies the cut and there is no ``Word`` row to point at, so the
+    label is null. It has to survive a re-run — the engine cannot reproduce it, and
+    discarding a person's work on every run would make the fix pointless.
+    """
+
+    mushaf: Mushaf
+    page: Page
+    line: Line
+
+    @classmethod
+    def setUpTestData(cls):
+        seed_reference_data()
+        Word.objects.bulk_create(
+            [Word(id=n, text=f"w{n}", paw_count=1, ijam_above=0, ijam_below=0) for n in range(1, 11)]
+        )
+        cls.mushaf = bare_mushaf("Added")
+        cls.page = Page.objects.create(
+            mushaf=cls.mushaf, page_number=1, bbox_x=100, bbox_y=0, bbox_w=900, bbox_h=500
+        )
+        cls.line = Line.objects.create(
+            page=cls.page, line_number=1, type=LineTypeChoices.TEXT, bbox_x=100, bbox_y=0, bbox_w=900, bbox_h=50
+        )
+
+    def _placed(self) -> PlacedLine:
+        return PlacedLine(
+            image=LineImage(image=Image.new("RGBA", (4, 2)), label="line-01"),
+            line=self.line,
+            origin_x=100,
+        )
+
+    def _run(self, *, second_at: int = 120):
+        """``second_at`` is image x, so page x is 100 more — the origin."""
+        return word_coordinates.save_word_coordinates(
+            WordBoundaryResult(
+                lines=[_outcome("line-01", [_box(0, 250, 1), _box(1, second_at, 2)])],
+                words_consumed=2,
+                complete=True,
+            ),
+            [self._placed()],
+            word_range=(1, 2),
+        )
+
+    def test_an_added_cut_survives_a_re_run(self):
+        self._run()
+        LineWord.objects.create(line=self.line, word=None, end_x=280)
+        self._run()
+        rows = list(self.line.words.all())
+        # 350, 280 (added), 220 — right to left, with the unlabelled one in place.
+        self.assertEqual([row.end_x for row in rows], [350, 280, 220])
+        self.assertIsNone(rows[1].word_id)
+
+    def test_the_line_is_still_marked_as_touched_by_a_person(self):
+        self._run()
+        LineWord.objects.create(line=self.line, word=None, end_x=280)
+        self._run()
+        self.assertTrue(LineWordStatus.objects.get(line=self.line).edited)
+
+    def test_a_cut_the_engine_later_claims_is_displaced_rather_than_crashing(self):
+        """The run moves onto a human's x. unique(line, end_x) would refuse the write.
+
+        The run wins that tie: it found a word where the person had put a cut, which
+        is the very thing they were compensating for.
+        """
+        self._run()
+        LineWord.objects.create(line=self.line, word=None, end_x=280)
+        # Word 2 now lands on page x 280 — exactly where the added cut sits.
+        report = self._run(second_at=180)
+        self.assertEqual(report.displaced, 1)
+        self.assertEqual([row.word_id for row in self.line.words.all()], [1, 2])
+        self.assertEqual([row.end_x for row in self.line.words.all()], [350, 280])

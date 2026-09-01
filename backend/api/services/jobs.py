@@ -48,8 +48,10 @@ from ninja.errors import HttpError
 
 from accounts.models import User
 from api import i18n
-from api.models import Mushaf, ProcessJob, ProcessJobStateChoices
+from api.models import ActivityTypeChoices, Mushaf, ProcessJob, ProcessJobKindChoices, ProcessJobStateChoices
+from api.services import activity as activity_service
 from api.services import processing as processing_service
+from api.services import word_runs
 
 logger = logging.getLogger(__name__)
 
@@ -90,8 +92,12 @@ def to_dict(job: ProcessJob) -> dict:
         "stopped_on_page": job.stopped_on_page,
         "abort_info": job.abort_info,
         "error": job.error or None,
+        "start_sura": job.start_sura,
+        "start_aya": job.start_aya,
         "end_sura": job.end_sura,
         "end_aya": job.end_aya,
+        "kind": job.kind,
+        "lines_done": job.lines_done,
     }
 
 
@@ -129,28 +135,40 @@ def get(job_id: uuid.UUID) -> ProcessJob | None:
     return ProcessJob.objects.filter(id=job_id).first()
 
 
-def latest_for(mushaf_id: uuid.UUID) -> ProcessJob | None:
-    """The mushaf's most recent job, running or settled (None if never run)."""
+def latest_for(mushaf_id: uuid.UUID, *, kind: str | None = None) -> ProcessJob | None:
+    """The mushaf's most recent job, running or settled (None if never run).
+
+    ``kind`` narrows it to one engine, which is what each poller wants: a word run
+    appearing in the processing panel would be read as a detection run that had
+    somehow lost its page counter.
+    """
     _settle_dead_jobs()
-    return ProcessJob.objects.filter(mushaf_id=mushaf_id).order_by("-started_at").first()
+    rows = ProcessJob.objects.filter(mushaf_id=mushaf_id)
+    if kind is not None:
+        rows = rows.filter(kind=kind)
+    return rows.order_by("-started_at").first()
 
 
-def active_for(mushaf_id: uuid.UUID) -> ProcessJob | None:
-    """The mushaf's job if it is still working, else None."""
+def active_for(mushaf_id: uuid.UUID, *, kind: str | None = None) -> ProcessJob | None:
+    """The mushaf's job if it is still working, else None.
+
+    Callers guarding against a clash pass no ``kind`` on purpose — see ``ensure_idle``.
+    """
     _settle_dead_jobs()
-    return (
-        ProcessJob.objects.filter(mushaf_id=mushaf_id)
-        .exclude(state__in=TERMINAL_STATES)
-        .order_by("-started_at")
-        .first()
-    )
+    rows = ProcessJob.objects.filter(mushaf_id=mushaf_id).exclude(state__in=TERMINAL_STATES)
+    if kind is not None:
+        rows = rows.filter(kind=kind)
+    return rows.order_by("-started_at").first()
 
 
 def ensure_idle(mushaf_id: uuid.UUID) -> None:
-    """409 if this mushaf already has a run in flight.
+    """409 if this mushaf already has a run in flight, **of either kind**.
 
-    Two runs would race over the same Page rows and the same sura/aya carry-over,
-    so a mushaf gets one at a time.
+    Two detection runs would race over the same Page rows and the same sura/aya
+    carry-over. A detection run overlapping a *word* run is worse than a race:
+    ``write_coords_to_page`` deletes the page's Line rows and every LineWord goes
+    with them by cascade, halfway through a word run that is still writing more.
+    So a mushaf gets one run at a time whatever the two are.
     """
     if active_for(mushaf_id) is not None:
         raise HttpError(409, i18n.t("process_already_running"))
@@ -205,6 +223,47 @@ def start(
     )
 
     work = runner if runner is not None else _processing_runner(mushaf, params)
+    return _launch(job, work, inline)
+
+
+def start_words(
+    mushaf: Mushaf,
+    plan: word_runs.RunPlan,
+    *,
+    user: User | None = None,
+    runner: Callable[[ProcessJob], None] | None = None,
+    inline: bool | None = None,
+) -> ProcessJob:
+    """Register a word-detection job and set it going.
+
+    Shares the table, the caps and the worker plumbing with detection — see
+    ``ensure_idle`` for why the two must not overlap on one mushaf. What differs is
+    only what the row counts: lines rather than pages, and a span rather than a page
+    range, though the page range is filled in too since the span implies one.
+    """
+    ensure_idle(mushaf.id)
+    _ensure_capacity(user)
+
+    job = ProcessJob.objects.create(
+        kind=ProcessJobKindChoices.WORDS,
+        mushaf=mushaf,
+        started_by=user,
+        page_range_start=plan.first_page,
+        page_range_end=plan.last_page,
+        total=plan.total_lines,
+        lines_done=0,
+        start_sura=plan.start[0],
+        start_aya=plan.start[1],
+        end_sura=plan.end[0],
+        end_aya=plan.end[1],
+        heartbeat_at=timezone.now(),
+    )
+    work = runner if runner is not None else _word_runner(mushaf, plan, user)
+    return _launch(job, work, inline)
+
+
+def _launch(job: ProcessJob, work: Callable[[ProcessJob], None], inline: bool | None) -> ProcessJob:
+    """Run ``work`` on this thread or a worker, and hand back the settled row."""
     if inline is None:
         inline = bool(getattr(settings, "PROCESS_JOBS_INLINE", False))
 
@@ -217,11 +276,15 @@ def start(
     return job
 
 
-def request_cancel(mushaf_id: uuid.UUID) -> ProcessJob:
-    """Ask the mushaf's running job to stop at the next page boundary."""
-    job = active_for(mushaf_id)
+def request_cancel(mushaf_id: uuid.UUID, *, kind: str | None = None, message: str = "no_active_process") -> ProcessJob:
+    """Ask the mushaf's running job to stop at its next boundary.
+
+    Detection stops between pages, a word run between chunks; both poll the same
+    flag, and both settle with everything they had already written still written.
+    """
+    job = active_for(mushaf_id, kind=kind)
     if job is None:
-        raise HttpError(404, i18n.t("no_active_process"))
+        raise HttpError(404, i18n.t(message))
     # A column write rather than a threading.Event: the worker may well be in a
     # different process, where an in-memory signal would never arrive.
     ProcessJob.objects.filter(pk=job.pk).update(cancel_requested=True)
@@ -312,6 +375,41 @@ def _processing_runner(mushaf: Mushaf, params: dict[str, Any]) -> Callable[[Proc
             abort_info=result["abort_info"],
             end_sura=result["end_sura"],
             end_aya=result["end_aya"],
+        )
+
+    return run
+
+
+def _word_runner(mushaf: Mushaf, plan: word_runs.RunPlan, user: User | None) -> Callable[[ProcessJob], None]:
+    """Bind a mushaf + a settled run plan into the callable a job executes."""
+
+    def run(job: ProcessJob) -> None:
+        def on_progress(lines_done: int) -> None:
+            _touch(job.id, phase="detecting", lines_done=lines_done)
+
+        report = word_runs.run_for_job(
+            mushaf.id,
+            plan,
+            user=user,
+            on_progress=on_progress,
+            cancelled=lambda: cancel_requested(job.id),
+        )
+        state = ProcessJobStateChoices.CANCELLED if report.cancelled else ProcessJobStateChoices.COMPLETED
+        settle(job.id, state, lines_done=report.lines_done)
+        # Emitted after settling, so the feed never claims a run finished before the
+        # row it refers to says so.
+        activity_service.emit(
+            mushaf,
+            ActivityTypeChoices.WORDS_DETECTED,
+            {
+                "from": f"{plan.start[0]}:{plan.start[1]}",
+                "to": f"{plan.end[0]}:{plan.end[1]}",
+                "lines": report.lines_done,
+                "words": report.words_written,
+                "unresolved": len(report.unresolved),
+                "cancelled": report.cancelled,
+            },
+            actor=user,
         )
 
     return run

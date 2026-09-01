@@ -35,6 +35,8 @@ class ActivityTypeChoices(models.TextChoices):
     RUN_FINISHED = "run_finished", "Run Finished"
     REVIEW_SAVED = "review_saved", "Review Saved"
     LINES_EXPORTED = "lines_exported", "Lines Exported"
+    WORDS_DETECTED = "words_detected", "Words Detected"
+    WORDS_EDITED = "words_edited", "Words Edited"
 
 
 class BaseModel(models.Model):
@@ -238,8 +240,13 @@ class ProcessJobStateChoices(models.TextChoices):
     INTERRUPTED = "interrupted", "Interrupted"
 
 
+class ProcessJobKindChoices(models.TextChoices):
+    DETECTION = "detection", "Page detection"
+    WORDS = "words", "Word boundaries"
+
+
 class ProcessJob(BaseModel):
-    """Live state of one processing run.
+    """Live state of one long-running run, of either kind.
 
     This used to be a dataclass in a module-level dict, which meant a restart
     forgot every running job and a status poll answered by a *different* worker
@@ -249,8 +256,21 @@ class ProcessJob(BaseModel):
 
     The row is written by the worker and read by pollers, so it is deliberately
     small and its updates are single-column where possible.
+
+    **Both kinds of run share this table on purpose.** Word detection could have had
+    its own, and then two things would break: the concurrency caps count CPU-bound
+    work, and two tables would let a box run twice what it was configured for; and
+    ``ensure_idle`` would stop guarding the case that matters most — a *detection*
+    run overlapping a *word* run on one mushaf, where ``write_coords_to_page`` deletes
+    the page's ``Line`` rows and takes every ``LineWord`` with them by cascade.
     """
 
+    kind = models.CharField(
+        max_length=16,
+        choices=ProcessJobKindChoices.choices,
+        default=ProcessJobKindChoices.DETECTION,
+        help_text="Which engine this run drives. Detection walks pages; words walks lines.",
+    )
     mushaf = models.ForeignKey(Mushaf, on_delete=models.CASCADE, related_name="process_jobs")
     run = models.ForeignKey(ProcessingRun, null=True, blank=True, on_delete=models.SET_NULL, related_name="jobs")
     started_by = models.ForeignKey(
@@ -297,8 +317,15 @@ class ProcessJob(BaseModel):
     )
     abort_info = models.JSONField(null=True, blank=True)
     error = models.TextField(blank=True, default="")
+    #: Detection *reports* where it ended up; a word run is *asked* for a span, so it
+    #: fills the start pair too and both ends are known before it begins.
+    start_sura = models.PositiveSmallIntegerField(null=True, blank=True)
+    start_aya = models.PositiveSmallIntegerField(null=True, blank=True)
     end_sura = models.PositiveSmallIntegerField(null=True, blank=True)
     end_aya = models.PositiveSmallIntegerField(null=True, blank=True)
+    lines_done = models.PositiveIntegerField(
+        null=True, blank=True, help_text="Word runs only: lines written so far. Detection counts pages instead."
+    )
     log_url = models.CharField(max_length=255, blank=True, default="")
 
     class Meta:
@@ -399,10 +426,17 @@ class Segment(BaseModel):
 
 
 class LineWord(BaseModel):
-    """Where one word of the Quran ends on one line of a mushaf.
+    """Where one word ends on one line of a mushaf. **The cut is the product.**
 
-    Written by ``services.word_coordinates`` from the boundary engine's output. The
-    whole reason the engine exists is this one number.
+    Written by ``services.word_coordinates`` from the boundary engine's output, and
+    corrected by hand through the page-words endpoint. The one number this project
+    wants from the engine is ``end_x``.
+
+    **``word`` is a label, not the identity.** The Quran text is supplied to help the
+    engine align ink to spelling; it is not a claim about what this mushaf prints. A
+    riwaya other than Hafs may carry a word the stored text does not have — an added
+    حرف جر — and a reviewer adding that cut has no row to point at. So it is nullable,
+    and a null means "there is a word here that the text does not name".
 
     **Only the end is stored.** A word's right edge is the previous word's ``end_x``,
     and the first word's is the line's own right edge — so storing it as well would
@@ -418,12 +452,13 @@ class LineWord(BaseModel):
     """
 
     line = models.ForeignKey(Line, on_delete=models.CASCADE, related_name="words")
-    word_order = models.PositiveSmallIntegerField(help_text="Position on the line; 1 is the rightmost word.")
     word = models.ForeignKey(
         "quran.Word",
+        null=True,
         on_delete=models.PROTECT,
         related_name="+",
-        help_text="Which word of the Quran this is, by its global index.",
+        help_text="Which word of the Quran this is, by its global index. Null where this mushaf "
+        "carries a word the stored text does not have.",
     )
     end_x = models.PositiveIntegerField(
         help_text="Page x where the word ends — its LEFT edge, since Arabic runs right to left."
@@ -433,11 +468,61 @@ class LineWord(BaseModel):
         db_table = "line_word"
         verbose_name = "Line Word"
         verbose_name_plural = "Line Words"
-        ordering = ("word_order",)
-        constraints = (models.UniqueConstraint(fields=["line", "word_order"], name="unique_line_word_order"),)
+        # Right to left: the largest x is the line's first word. Ordering by the
+        # geometry rather than by a stored rank means nothing has to be renumbered
+        # when a word is added, deleted or moved to a neighbouring line — and it is
+        # defined for a word with no label, which an index-based order would not be.
+        ordering = ("-end_x",)
+        constraints = (
+            # Repeated NULLs are allowed by a unique index, so added words are
+            # unaffected while a labelled word still cannot appear twice on a line.
+            models.UniqueConstraint(fields=["line", "word"], name="unique_line_word"),
+            # Makes the ordering total. Two words cannot end at the same pixel.
+            models.UniqueConstraint(fields=["line", "end_x"], name="unique_line_word_end"),
+        )
 
     def __str__(self) -> str:
-        return f"word {self.word_id} ends at x={self.end_x}"
+        return f"word {self.word_id or '?'} ends at x={self.end_x}"
+
+
+class LineWordStatusChoices(models.TextChoices):
+    EXACT = "exact", "Exact"
+    SCORED = "scored", "Scored"
+    PARTIAL = "partial", "Partial"
+    UNRESOLVED = "unresolved", "Unresolved"
+
+
+class LineWordStatus(BaseModel):
+    """How much the boundary engine trusted its own reading of one line.
+
+    Its own table rather than columns on :class:`Line`, because ``Line`` belongs to
+    the detection pipeline and this is a different engine's opinion of it.
+
+    The point is triage. A sura-7 run comes back with 136 of 388 lines ``scored``, so
+    a reviewer who can see this checks 136 lines instead of eyeballing 3,320 words.
+    """
+
+    line = models.OneToOneField(Line, on_delete=models.CASCADE, related_name="word_status")
+    status = models.CharField(max_length=16, choices=LineWordStatusChoices.choices)
+    reason = models.TextField(
+        blank=True, default="", help_text="Why it is not exact, e.g. '2 word(s) off-count; 3 equal-cost readings'."
+    )
+    deviations = models.PositiveSmallIntegerField(
+        default=0, help_text="Words that closed on more or fewer ink blobs than their spelling demands."
+    )
+    ties = models.PositiveSmallIntegerField(default=0, help_text="Equal-cost readings the parser could not separate.")
+    edited = models.BooleanField(
+        default=False,
+        help_text="A human has corrected this line since; the engine's verdict is no longer the truth about it.",
+    )
+
+    class Meta:
+        db_table = "line_word_status"
+        verbose_name = "Line Word Status"
+        verbose_name_plural = "Line Word Statuses"
+
+    def __str__(self) -> str:
+        return f"line {self.line_id}: {self.status}"
 
 
 class ActivityEvent(BaseModel):

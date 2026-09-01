@@ -156,9 +156,7 @@ def save_finalize(*, user: User, mushaf_id: uuid.UUID, page_number: int, line_ed
     renumber is needed — only the export crop/alpha are affected.
     """
     mushaf = mushaf_service.get_mushaf(mushaf_id, user=user)
-    page = Page.objects.filter(mushaf=mushaf, page_number=page_number).first()
-    if page is None:
-        raise HttpError(404, i18n.t("page_no_finalize"))
+    page = mushaf_service.get_page(mushaf, page_number, message="page_no_finalize")
     lines_by_number = {line.line_number: line for line in page.lines.all()}
     for edit in line_edits:
         line = lines_by_number.get(edit["line_number"])

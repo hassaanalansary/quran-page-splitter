@@ -105,6 +105,32 @@ MESSAGES: dict[str, dict[str, str]] = {
         "en": "No processing run is in progress for this mushaf.",
         "ar": "لا توجد عملية معالجة جارية لهذا المصحف.",
     },
+    "words_no_riwaya": {
+        "en": "Set this mushaf's riwaya before detecting words — it is what says where its ayat end.",
+        "ar": "حدّد رواية هذا المصحف قبل كشف الكلمات — فهي التي تحدد نهايات آياته.",
+    },
+    "words_span_not_found": {
+        "en": (
+            "{sura}:{aya} is not on any reviewed line of this mushaf. Process the pages that hold "
+            "it, and make sure their aya numbering has been reviewed."
+        ),
+        "ar": (
+            "الآية {sura}:{aya} ليست على أي سطر مُراجَع في هذا المصحف. عالج الصفحات التي تحتويها، "
+            "وتأكد من مراجعة ترقيم آياتها."
+        ),
+    },
+    "words_span_backwards": {
+        "en": "The span {from_sura}:{from_aya}..{to_sura}:{to_aya} runs backwards through this mushaf.",
+        "ar": "النطاق {from_sura}:{from_aya}..{to_sura}:{to_aya} يسير عكسيًا في هذا المصحف.",
+    },
+    "no_active_word_run": {
+        "en": "No word detection run is in progress for this mushaf.",
+        "ar": "لا توجد عملية كشف كلمات جارية لهذا المصحف.",
+    },
+    "page_not_found": {
+        "en": "Page {page} is not in this mushaf.",
+        "ar": "الصفحة {page} ليست في هذا المصحف.",
+    },
     "log_not_found": {
         "en": "Log file not found.",
         "ar": "ملف السجل غير موجود.",

@@ -86,6 +86,26 @@ def get_mushaf(mushaf_id: uuid.UUID, *, user: User | None, write: bool = True) -
     raise HttpError(404, i18n.t("mushaf_not_found"))
 
 
+def get_page(mushaf: Mushaf, page_number: int, *, message: str = "page_not_found") -> Page:
+    """One of a mushaf's pages, or the 404 that says which way it went wrong.
+
+    Two different failures, and telling them apart is the point. ``validate_page_number``
+    answers "could this mushaf have a page 500?" — bounds, without reading the table.
+    This then answers "has page 3 been processed?" A number can pass the first and fail
+    the second on every mushaf that has not been run yet, so a caller wants both and
+    wants to know which one bit.
+
+    ``message`` is a key rather than a string because the useful half of the second
+    404 is the verb: "no page to export" and "no page to finalize" send a reader
+    somewhere different.
+    """
+    validators.validate_page_number(mushaf, page_number)
+    page = Page.objects.filter(mushaf=mushaf, page_number=page_number).first()
+    if page is None:
+        raise HttpError(404, i18n.t(message, page=page_number))
+    return page
+
+
 def _serialize(row: dict) -> dict:
     """Shape an annotated ``.values()`` row into the API representation."""
     first = row["first_quran_pdf_page"]

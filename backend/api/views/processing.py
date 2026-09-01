@@ -13,6 +13,7 @@ from pydantic import Field
 
 from api.auth import current_user
 from api.common import RectSchema
+from api.models import ProcessJobKindChoices
 from api.services import jobs as jobs_service
 from api.services import mushaf as mushaf_service
 from api.services import processing as processing_service
@@ -122,7 +123,7 @@ def process_job(request: HttpRequest, mushaf_id: uuid.UUID) -> dict:
     Answers after a page reload too: the job is keyed by mushaf, not by a handle
     the browser had to keep.
     """
-    job = jobs_service.latest_for(mushaf_id)
+    job = jobs_service.latest_for(mushaf_id, kind=ProcessJobKindChoices.DETECTION)
     return {"job": jobs_service.to_dict(job) if job else None}
 
 
@@ -133,7 +134,7 @@ def cancel_process(request: HttpRequest, mushaf_id: uuid.UUID) -> dict:
     Returns immediately — the run stops at the next page boundary, so poll
     ``/process/job`` for the settled outcome. Pages already written stay written.
     """
-    job = jobs_service.request_cancel(mushaf_id)
+    job = jobs_service.request_cancel(mushaf_id, kind=ProcessJobKindChoices.DETECTION)
     return jobs_service.to_dict(job)
 
 
