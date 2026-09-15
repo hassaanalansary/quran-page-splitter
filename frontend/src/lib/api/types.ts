@@ -225,6 +225,9 @@ export type ProcessJobState =
 /** What the run is doing right now — drives the progress label. */
 export type ProcessJobPhase = "starting" | "rendering" | "detecting" | "saving" | "finished";
 
+/** Which engine a run drives: detection walks pages, words walks lines. */
+export type ProcessJobKind = "detection" | "words";
+
 /** Live state of a processing run (POST /process, GET /process/job).
  *
  * The backend owns the run; the client only starts it, polls this, and may ask
@@ -252,8 +255,16 @@ export type ProcessJob = {
   stopped_on_page: number | null;
   abort_info: AbortInfo | null;
   error: string | null;
+  start_sura: number | null;
+  start_aya: number | null;
   end_sura: number | null;
   end_aya: number | null;
+  /** Which engine this run drives. Both share the table — see ProcessJob in
+   * backend/api/models.py — so a poller must know which one it is looking at. */
+  kind: ProcessJobKind;
+  /** Word runs count lines, not pages: read this against `total`, and leave
+   * `pages_saved` alone (it stays 0 for the whole run). */
+  lines_done: number;
 };
 
 export const PROCESS_JOB_DONE: readonly ProcessJobState[] = [
@@ -318,7 +329,9 @@ export type ActivityType =
   | "template_saved"
   | "run_finished"
   | "review_saved"
-  | "lines_exported";
+  | "lines_exported"
+  | "words_detected"
+  | "words_edited";
 
 /** One audit-feed entry (GET /api/mushafs/{id}/activity, newest first). */
 export type ActivityEvent = {
@@ -391,4 +404,114 @@ export type ReviewData = {
 export type BulkSaveInput = {
   pages: { page_number: number; bbox: Rect; lines: Line[] }[];
   reviewed_pages: number[];
+};
+
+// ── Word boundaries ─────────────────────────────────────────────────────────
+// Where each word of a line ends. `end_x` is PAGE x — the same space as
+// Line.bbox_* and Segment.bbox_*, and the space pageImageUrl() serves — so
+// nothing here needs converting to draw. The engine's own image-x coordinates
+// are bridged server-side (see save_word_coordinates), and never reach us.
+
+/** One word's box on a line, `start_x`..`end_x` across the line's full height.
+ *
+ * Arabic runs right to left, so **`start_x` is the LARGER number** — a word starts at
+ * its right edge and ends at its left. Neither says which word it is: the API returns
+ * these in reading order and `position` records it, because the engine's placement is
+ * a suggestion and a badly read line comes back with its boxes out of order along the
+ * page. Never re-sort by geometry.
+ *
+ * Boxes do not tile the line — the gap between words is real — and about 7% of them
+ * overlap a neighbour, where a tail sweeps under the next word. Both are measured. */
+export type WordCut = {
+  /** Null where this mushaf prints a word the stored Hafs text has no row for.
+   * The cut is the product; the label is optional. */
+  word_id: number | null;
+  /** Slot in the line's reading order, from 0. */
+  position: number;
+  /** The word's RIGHT edge — larger than `end_x`. */
+  start_x: number;
+  end_x: number;
+  /** Display only, derived server-side from `word_id`; empty when unlabelled. */
+  text: string;
+  /** "7:82", likewise display only. */
+  aya: string;
+};
+
+/** How much the engine trusted its reading of one line. `exact` needs no look;
+ * everything else is what the reviewer is routed to. */
+export type WordLineStatus = "exact" | "scored" | "partial" | "unresolved";
+
+export type LineWords = {
+  line_id: string;
+  line_number: number;
+  /** Null when the engine has never run over this line. */
+  status: WordLineStatus | null;
+  reason: string;
+  /** Words that closed on more or fewer ink blobs than their spelling demands. */
+  deviations: number;
+  /** Equal-cost readings the parser could not separate. */
+  ties: number;
+  /** A human has corrected this line since the engine last spoke. */
+  edited: boolean;
+  words: WordCut[];
+};
+
+/** A way the stored words stopped reading as one text. Reported, never enforced:
+ * fixing line 10 before line 11 passes through a broken state on purpose. */
+export type CoherenceIssue = {
+  kind: "gap" | "overlap" | "outside_aya" | "out_of_sequence" | "unknown_word" | string;
+  detail: string;
+  line_number: number | null;
+  words: number[];
+};
+
+export type PageWords = {
+  page: number;
+  lines: LineWords[];
+  issues: CoherenceIssue[];
+};
+
+/** PUT body: whole lines, never single rows. Add = include it, delete = omit it,
+ * move across a line break = list it under the other line. */
+export type PageWordsSave = {
+  lines: {
+    line_id: string;
+    /** Both edges, and no position: the array's order is the reading order. */
+    words: { word_id: number | null; start_x: number; end_x: number }[];
+  }[];
+};
+
+export type PageWordCoverage = {
+  page: number;
+  text_lines: number;
+  lines_with_words: number;
+  words: number;
+  /** Lines the engine was not confident about — where the reviewer should look. */
+  needs_review: number;
+  complete: boolean;
+};
+
+/** Needs no staleness flag: re-processing a page deletes its lines and cascades
+ * the words away, so a stale page honestly reports as having none. */
+export type WordCoverage = {
+  pages: PageWordCoverage[];
+  complete: boolean;
+};
+
+/** The span to read, as (sura, aya) at each end. Omit `to_*` and the server
+ * defaults to that sura's last aya IN THIS MUSHAF'S counting system. */
+export type DetectWordsRequest = {
+  from_sura: number;
+  from_aya: number;
+  to_sura?: number;
+  to_aya?: number;
+};
+
+export type DetectWordsResult = {
+  job: ProcessJob;
+  /** Chunks the run was split into — progress counts lines, not these. */
+  chunks: number;
+  total_lines: number;
+  /** Not reasons it was refused; things worth knowing anyway. */
+  warnings: string[];
 };

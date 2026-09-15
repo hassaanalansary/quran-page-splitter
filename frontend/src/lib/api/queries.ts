@@ -12,6 +12,7 @@ import { getProcessJob, listRuns } from "./processing";
 import { listQiraat } from "./qiraat";
 import { DEFAULT_QIRAA, listSuras } from "./suras";
 import { isJobRunning, type ProcessJob } from "./types";
+import { getPageWords, getWordsCoverage, getWordsJob } from "./words";
 
 export const queryKeys = {
   session: ["session"] as const,
@@ -28,6 +29,10 @@ export const queryKeys = {
   qiraat: (lang: string) => ["qiraat", lang] as const,
   suras: (qiraa: string, lang: string) => ["suras", qiraa, lang] as const,
   page: (mushafId: string, pageNumber: number) => ["mushaf", mushafId, "page", pageNumber] as const,
+  wordsJob: (id: string) => ["mushaf", id, "words-job"] as const,
+  wordsCoverage: (id: string) => ["mushaf", id, "words-coverage"] as const,
+  pageWords: (mushafId: string, pageNumber: number) =>
+    ["mushaf", mushafId, "page", pageNumber, "words"] as const,
 };
 
 export function useMushafs() {
@@ -88,6 +93,44 @@ export function useProcessJob(id: string, intervalMs = 1000) {
     // A poll is the point — never serve it from cache.
     staleTime: 0,
     refetchOnWindowFocus: true,
+  });
+}
+
+/** The mushaf's word-detection run, polled while it works.
+ *
+ * Its own key and its own endpoint, not a filter over `useProcessJob`: the two
+ * runs share a table but not a meaning — this one counts lines in `lines_done`
+ * and leaves `pages_saved` at zero the whole way. */
+export function useWordsJob(id: string, intervalMs = 1000) {
+  // Same reason as useProcessJob: `refetchInterval` reads `query.state.data`,
+  // which makes inferring the type from `queryFn` circular.
+  return useQuery<ProcessJob | null>({
+    queryKey: queryKeys.wordsJob(id),
+    queryFn: ({ signal }) => getWordsJob(id, signal),
+    refetchInterval: (query) => (isJobRunning(query.state.data) ? intervalMs : false),
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+  });
+}
+
+/** Which pages hold word data and how much of each still wants a look.
+ *
+ * Held briefly rather than always fresh: the header reads it on every workspace
+ * page and a 604-page mushaf answers with 604 rows, so re-fetching it on each
+ * navigation buys nothing — a run invalidates it explicitly when it finishes. */
+export function useWordsCoverage(id: string) {
+  return useQuery({
+    queryKey: queryKeys.wordsCoverage(id),
+    queryFn: ({ signal }) => getWordsCoverage(id, signal),
+    staleTime: 30_000,
+  });
+}
+
+export function usePageWords(mushafId: string, pageNumber: number, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.pageWords(mushafId, pageNumber),
+    queryFn: ({ signal }) => getPageWords(mushafId, pageNumber, signal),
+    enabled,
   });
 }
 

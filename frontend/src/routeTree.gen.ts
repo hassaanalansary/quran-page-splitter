@@ -18,6 +18,7 @@ import { Route as AuthSignupRouteImport } from './routes/auth.signup'
 import { Route as AuthLoginRouteImport } from './routes/auth.login'
 import { Route as AuthForgotRouteImport } from './routes/auth.forgot'
 import { Route as MushafsMushafIdIndexRouteImport } from './routes/mushafs.$mushafId.index'
+import { Route as MushafsMushafIdWordsRouteImport } from './routes/mushafs.$mushafId.words'
 import { Route as MushafsMushafIdTemplatesRouteImport } from './routes/mushafs.$mushafId.templates'
 import { Route as MushafsMushafIdSetupRouteImport } from './routes/mushafs.$mushafId.setup'
 import { Route as MushafsMushafIdReviewRouteImport } from './routes/mushafs.$mushafId.review'
@@ -69,6 +70,11 @@ const AuthForgotRoute = AuthForgotRouteImport.update({
 const MushafsMushafIdIndexRoute = MushafsMushafIdIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => MushafsMushafIdRoute,
+} as any)
+const MushafsMushafIdWordsRoute = MushafsMushafIdWordsRouteImport.update({
+  id: '/words',
+  path: '/words',
   getParentRoute: () => MushafsMushafIdRoute,
 } as any)
 const MushafsMushafIdTemplatesRoute =
@@ -124,6 +130,7 @@ export interface FileRoutesByFullPath {
   '/mushafs/$mushafId/review': typeof MushafsMushafIdReviewRoute
   '/mushafs/$mushafId/setup': typeof MushafsMushafIdSetupRoute
   '/mushafs/$mushafId/templates': typeof MushafsMushafIdTemplatesRoute
+  '/mushafs/$mushafId/words': typeof MushafsMushafIdWordsRoute
   '/mushafs/$mushafId/': typeof MushafsMushafIdIndexRoute
 }
 export interface FileRoutesByTo {
@@ -140,6 +147,7 @@ export interface FileRoutesByTo {
   '/mushafs/$mushafId/review': typeof MushafsMushafIdReviewRoute
   '/mushafs/$mushafId/setup': typeof MushafsMushafIdSetupRoute
   '/mushafs/$mushafId/templates': typeof MushafsMushafIdTemplatesRoute
+  '/mushafs/$mushafId/words': typeof MushafsMushafIdWordsRoute
   '/mushafs/$mushafId': typeof MushafsMushafIdIndexRoute
 }
 export interface FileRoutesById {
@@ -159,6 +167,7 @@ export interface FileRoutesById {
   '/mushafs/$mushafId/review': typeof MushafsMushafIdReviewRoute
   '/mushafs/$mushafId/setup': typeof MushafsMushafIdSetupRoute
   '/mushafs/$mushafId/templates': typeof MushafsMushafIdTemplatesRoute
+  '/mushafs/$mushafId/words': typeof MushafsMushafIdWordsRoute
   '/mushafs/$mushafId/': typeof MushafsMushafIdIndexRoute
 }
 export interface FileRouteTypes {
@@ -179,6 +188,7 @@ export interface FileRouteTypes {
     | '/mushafs/$mushafId/review'
     | '/mushafs/$mushafId/setup'
     | '/mushafs/$mushafId/templates'
+    | '/mushafs/$mushafId/words'
     | '/mushafs/$mushafId/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -195,6 +205,7 @@ export interface FileRouteTypes {
     | '/mushafs/$mushafId/review'
     | '/mushafs/$mushafId/setup'
     | '/mushafs/$mushafId/templates'
+    | '/mushafs/$mushafId/words'
     | '/mushafs/$mushafId'
   id:
     | '__root__'
@@ -213,6 +224,7 @@ export interface FileRouteTypes {
     | '/mushafs/$mushafId/review'
     | '/mushafs/$mushafId/setup'
     | '/mushafs/$mushafId/templates'
+    | '/mushafs/$mushafId/words'
     | '/mushafs/$mushafId/'
   fileRoutesById: FileRoutesById
 }
@@ -292,6 +304,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MushafsMushafIdIndexRouteImport
       parentRoute: typeof MushafsMushafIdRoute
     }
+    '/mushafs/$mushafId/words': {
+      id: '/mushafs/$mushafId/words'
+      path: '/words'
+      fullPath: '/mushafs/$mushafId/words'
+      preLoaderRoute: typeof MushafsMushafIdWordsRouteImport
+      parentRoute: typeof MushafsMushafIdRoute
+    }
     '/mushafs/$mushafId/templates': {
       id: '/mushafs/$mushafId/templates'
       path: '/templates'
@@ -363,6 +382,7 @@ interface MushafsMushafIdRouteChildren {
   MushafsMushafIdReviewRoute: typeof MushafsMushafIdReviewRoute
   MushafsMushafIdSetupRoute: typeof MushafsMushafIdSetupRoute
   MushafsMushafIdTemplatesRoute: typeof MushafsMushafIdTemplatesRoute
+  MushafsMushafIdWordsRoute: typeof MushafsMushafIdWordsRoute
   MushafsMushafIdIndexRoute: typeof MushafsMushafIdIndexRoute
 }
 
@@ -372,6 +392,7 @@ const MushafsMushafIdRouteChildren: MushafsMushafIdRouteChildren = {
   MushafsMushafIdReviewRoute: MushafsMushafIdReviewRoute,
   MushafsMushafIdSetupRoute: MushafsMushafIdSetupRoute,
   MushafsMushafIdTemplatesRoute: MushafsMushafIdTemplatesRoute,
+  MushafsMushafIdWordsRoute: MushafsMushafIdWordsRoute,
   MushafsMushafIdIndexRoute: MushafsMushafIdIndexRoute,
 }
 

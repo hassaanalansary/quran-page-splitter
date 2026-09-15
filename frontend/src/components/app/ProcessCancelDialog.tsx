@@ -19,16 +19,23 @@ type Props = {
   job: ProcessJob;
 };
 
-/** Confirmation before stopping a run.
+/** Confirmation before stopping a run, of either kind.
  *
  * Stopping loses no saved work, but it does end something the user waited for —
  * and on a long range the cost of an accidental click is minutes of detection.
  * So the dialog's job is not to warn: it is to state the ledger plainly (what is
  * already banked, where it will stop, that it can be resumed) so the decision is
- * made with the numbers in view. */
+ * made with the numbers in view.
+ *
+ * A word run counts **lines**, and `pages_saved` stays zero for the whole of it —
+ * so the same three rows read against `lines_done` instead. It also has no resume
+ * page to offer: it stops at the next chunk boundary, and picking it back up means
+ * running the remaining ayat, not the remaining pages. */
 export function ProcessCancelDialog({ open, onOpenChange, onConfirm, job }: Props) {
   const { t } = useTranslation();
-  const remaining = Math.max(0, job.total - job.pages_saved);
+  const words = job.kind === "words";
+  const done = words ? job.lines_done : job.pages_saved;
+  const remaining = Math.max(0, job.total - done);
   const resumeFrom = job.current_page ?? job.page_range_start + job.pages_saved;
 
   return (
@@ -44,12 +51,22 @@ export function ProcessCancelDialog({ open, onOpenChange, onConfirm, job }: Prop
 
         <div className="flex flex-col gap-2.5">
           <div className="rounded-md border border-border bg-bg-surface px-3 py-2.5">
-            <Row label={t("process.cancelConfirmSaved")} value={String(job.pages_saved)} good />
-            <Row label={t("process.cancelConfirmRemaining")} value={String(remaining)} />
-            <Row label={t("process.cancelConfirmResume")} value={String(resumeFrom)} last />
+            <Row
+              label={words ? t("words.cancelSaved") : t("process.cancelConfirmSaved")}
+              value={String(done)}
+              good
+            />
+            <Row
+              label={words ? t("words.cancelRemaining") : t("process.cancelConfirmRemaining")}
+              value={String(remaining)}
+              last={words}
+            />
+            {!words && (
+              <Row label={t("process.cancelConfirmResume")} value={String(resumeFrom)} last />
+            )}
           </div>
           <p className="text-[12px] leading-[1.55] text-text-secondary">
-            {t("process.cancelConfirmBody", { page: resumeFrom })}
+            {words ? t("words.cancelBody") : t("process.cancelConfirmBody", { page: resumeFrom })}
           </p>
         </div>
 

@@ -16,6 +16,7 @@ const STEPS = [
   { slug: "process" },
   { slug: "review" },
   { slug: "finalize" },
+  { slug: "words" },
 ] as const;
 
 function WorkspaceLayout() {

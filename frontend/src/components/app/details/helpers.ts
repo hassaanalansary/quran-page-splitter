@@ -8,6 +8,7 @@ import type {
   PageSummary,
   Rect,
   Run,
+  WordCoverage,
 } from "@/lib/api";
 
 // ── Status pill (top chrome) ─────────────────────────────────────────────────
@@ -221,13 +222,43 @@ export function activityMeta(event: ActivityEvent): { dot: string; text: string 
         dot: "var(--navy-light)",
         text: i18n.t("details.act_linesExported", { page: p.page_number, lines: p.exported }),
       };
+    case "words_detected": {
+      // A cancelled run still wrote everything it finished — it settles, it does
+      // not fail — so it reads as a partial result rather than an error.
+      const span = `${p.from ?? "?"} → ${p.to ?? "?"}`;
+      if (p.cancelled) {
+        return {
+          dot: "var(--text-muted)",
+          text: i18n.t("details.act_wordsStopped", { span, lines: Number(p.lines ?? 0) }),
+        };
+      }
+      return {
+        dot: Number(p.unresolved ?? 0) > 0 ? "var(--warning)" : "var(--success)",
+        text: i18n.t("details.act_wordsDetected", {
+          span,
+          words: Number(p.words ?? 0),
+          lines: Number(p.lines ?? 0),
+        }),
+      };
+    }
+    case "words_edited":
+      return {
+        dot: "var(--orange)",
+        text: i18n.t("details.act_wordsEdited", {
+          page: p.page_number,
+          lines: Number(p.lines ?? 0),
+        }),
+      };
     default:
       return { dot: "var(--text-muted)", text: event.type };
   }
 }
 
 // ── Pipeline derivation ──────────────────────────────────────────────────────
-export type StepSlug = "setup" | "templates" | "process" | "review" | "finalize";
+/** The slug is the URL and the i18n key, and `finalize` keeps both even though
+ * that step now reads "Lines" — it stopped being the final one when Words landed
+ * after it, and renaming the route would break every saved link for a label. */
+export type StepSlug = "setup" | "templates" | "process" | "review" | "finalize" | "words";
 
 export type StepInfo = {
   slug: StepSlug;
@@ -243,6 +274,7 @@ export function pipelineSteps(
   templatesReady: boolean,
   stats: MushafStats | undefined,
   abortPage: number | null,
+  wordCoverage?: WordCoverage,
 ): StepInfo[] {
   const logical = mushaf.logical_page_count;
   const processed = mushaf.processed_page_count;
@@ -319,6 +351,33 @@ export function pipelineSteps(
             detail: i18n.t("details.step_pngsProgress", { done: exported, total: linesCut }),
           };
 
+  // Words is the one step with no "how far through" to report until it has run at
+  // all: coverage lists only pages that hold Line rows, so an empty list means the
+  // engine has never been over this mushaf, not that it found nothing.
+  const wordPages = wordCoverage?.pages.filter((p) => p.lines_with_words > 0) ?? [];
+  const flaggedLines = wordPages.reduce((n, p) => n + p.needs_review, 0);
+  const words: StepInfo =
+    wordPages.length === 0
+      ? {
+          slug: "words",
+          label: i18n.t("header.steps.words"),
+          state: "todo",
+          detail: i18n.t("details.step_wordsTodo"),
+        }
+      : flaggedLines === 0 && wordCoverage?.complete
+        ? {
+            slug: "words",
+            label: i18n.t("header.steps.words"),
+            state: "done",
+            detail: i18n.t("details.step_wordsDone", { pages: wordPages.length }),
+          }
+        : {
+            slug: "words",
+            label: i18n.t("header.steps.words"),
+            state: "active",
+            detail: i18n.t("details.step_wordsFlagged", { count: flaggedLines }),
+          };
+
   return [
     {
       slug: "setup",
@@ -340,6 +399,7 @@ export function pipelineSteps(
     process,
     review,
     finalize,
+    words,
   ];
 }
 
@@ -349,6 +409,7 @@ export function continueTarget(
   templatesReady: boolean,
   summaries: PageSummary[] | undefined,
   stats: MushafStats | undefined,
+  wordCoverage?: WordCoverage,
 ): { slug: StepSlug; sub: string; reviewPage?: number } {
   const processed = mushaf.processed_page_count;
   const reviewed = mushaf.reviewed_page_count;
@@ -369,6 +430,19 @@ export function continueTarget(
     };
   }
   const exported = stats?.exported_pngs ?? 0;
+  if (exported === 0)
+    return { slug: "finalize", sub: i18n.t("details.cta_finalize", { count: 0 }) };
+
+  // Words comes last, and only once the lines are out: the engine reads a line
+  // image with Finalize's erase strokes already punched out of it (see
+  // export.render_line_image), so running before that is reading the wrong ink.
+  const flagged = (wordCoverage?.pages ?? []).find((p) => p.needs_review > 0);
+  if (flagged) {
+    return { slug: "words", sub: i18n.t("details.cta_wordsReview", { page: flagged.page }) };
+  }
+  if (!wordCoverage?.pages.some((p) => p.lines_with_words > 0)) {
+    return { slug: "words", sub: i18n.t("details.cta_wordsRun") };
+  }
   return { slug: "finalize", sub: i18n.t("details.cta_finalize", { count: exported }) };
 }
 
@@ -378,4 +452,5 @@ export const STEP_ROUTES = {
   process: "/mushafs/$mushafId/process",
   review: "/mushafs/$mushafId/review",
   finalize: "/mushafs/$mushafId/finalize",
+  words: "/mushafs/$mushafId/words",
 } as const satisfies Record<StepSlug, string>;

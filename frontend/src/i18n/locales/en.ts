@@ -215,7 +215,10 @@ export const en = {
       templates: "Templates",
       process: "Process",
       review: "Review",
-      finalize: "Finalize",
+      // The label, not the slug: this stopped being the last step when Words
+      // landed after it, and the route stays /finalize so links keep working.
+      finalize: "Lines",
+      words: "Words",
     },
   },
   home: {
@@ -608,6 +611,100 @@ export const en = {
     viewerOpen: "Open line {{n}}",
     lineAlt: "Line {{n}}",
   },
+  words: {
+    // The run
+    runTitle: "Run detection",
+    suraLabel: "Sura",
+    wholeSura: "Whole sura",
+    fromAya: "From aya",
+    toAya: "To aya",
+    runButton: "Run word detection",
+    running: "Running…",
+    runNote:
+      "Roughly 50 ms a line — a sura is about 20 seconds, al-Baqara about 90. It runs in the background; you can leave this page.",
+    runStarted: "Reading {{lines}} lines…",
+    runDone: "Word detection finished — {{lines}} lines.",
+    runCancelled: "Stopped. {{lines}} lines were kept.",
+    runFailed: "Could not start word detection.",
+    runRefreshHeld:
+      "This page has unsaved cuts, so it was left as it is. Save or discard them, then reopen the page to see what the run found.",
+    progress: "{{done}} / {{total}} lines",
+    stopRun: "Stop run",
+    stopping: "Stopping…",
+    cancelFailed: "Could not stop the run.",
+    cancelSaved: "Lines already written",
+    cancelRemaining: "Lines left to read",
+    cancelBody:
+      "It stops at the next chunk boundary, never inside one, so no line is left holding half its words. Everything already written stays. To pick up where it left off, run the remaining ayat.",
+
+
+    // Triage
+    triageTitle: "Lines to check · {{count}} of {{total}}",
+    prevFlagged: "‹ Previous",
+    nextFlagged: "Next ›",
+    noMoreFlagged: "No more flagged lines in that direction.",
+    linePosition: "Line {{n}}",
+    selectLine: "Select a line on the page.",
+    lineCount: "{{count}} text lines",
+    status_exact: "Exact — the engine had no doubts",
+    status_scored: "Scored — worth a look",
+    status_partial: "Partial — only part of the line resolved",
+    status_unresolved: "Unresolved — the engine could not read it",
+    status_none: "Never run over this line",
+    editedChip: "edited by hand",
+
+    // The cuts
+    cutsTitle: "Words on line {{line}} · {{count}}",
+    noCuts: "No words on this line yet.",
+    unlabelled: "(no word in the text)",
+    toggleUnlabelled: "Mark as a word the stored text does not have",
+    removeCut: "Remove this word — its box goes to the word beside it",
+    boxSpan: "starts at {{start}}, ends at {{end}}",
+    insertAfter: "Insert the next word of the text after this one",
+    moveUp: "Move this word up to the end of the line above",
+    moveDown: "Move this word down to the start of the line below",
+    extraAdded: "Added a word the stored text does not have.",
+    countMismatch:
+      "{{count}} stretch(es) hold a different number of cuts than their ayat have words. Add or remove one, or mark the extra as unlabelled.",
+
+    // Saving
+    savePage: "Save page",
+    savedToast: "Saved {{count}} line(s).",
+    saveFailed: "Save failed.",
+    leaveConfirm: "You have unsaved word cuts. Leave without saving?",
+    unsavedStatus: "{{count}} line(s) unsaved",
+    flaggedStatus: "{{count}} line(s) still to look at",
+    cleanStatus: "Every line on this page is settled",
+
+    // Issues
+    issuesTitle: "Coherence · {{count}}",
+    issuesNote:
+      "Reported, never refused — fixing one line before its neighbour passes through a broken state on purpose.",
+    issue_gap: "Gap",
+    issue_overlap: "Overlap",
+    issue_outsideAya: "Outside its aya",
+    issue_outOfSequence: "Out of sequence",
+    issue_unknownWord: "Unknown word",
+    issue_other: "Issue",
+    onLine: "line {{n}}",
+
+    // Canvas
+    undo: "Undo",
+    redo: "Redo",
+    canvasEmpty: "Loading the page…",
+    noWords: "Page {{page}} has no word cuts yet — run detection over the sura it holds.",
+
+    // The gate
+    gateStatus: "Page {{page}} is not ready for word detection",
+    gateHint:
+      "Page {{page}} has to be processed and reviewed first — the engine anchors on the aya separators you settle in Review.",
+    gateUnprocessed:
+      "Page {{page}} has not been processed yet, so it has no lines to cut into words.",
+    gateUnreviewed:
+      "Page {{page}} has not been reviewed yet. Word detection anchors on the aya separators, and Review is where their positions are settled — running before that puts every cut in the wrong place.",
+    gateToProcess: "Go to Process",
+    gateToReview: "Review page {{page}}",
+  },
   details: {
     tab_overview: "Overview",
     tab_pages: "Pages",
@@ -672,12 +769,17 @@ export const en = {
     step_awaiting: "awaiting pages",
     step_pngsOut: "{{count}} PNGs out",
     step_pngsProgress: "{{done}} / {{total}} PNGs",
+    step_wordsTodo: "not run yet",
+    step_wordsDone: "{{pages}} pages cut",
+    step_wordsFlagged: "{{count}} lines to check",
     // Continue CTA sublabels
     cta_setup: "Setup · mark Quran range",
     cta_templates: "Templates · capture both",
     cta_process: "Process · 0/{{total}}",
     cta_review: "Review · p.{{page}}/{{total}}",
-    cta_finalize: "Finalize · {{count}} PNGs out",
+    cta_finalize: "Lines · {{count}} PNGs out",
+    cta_wordsRun: "Words · run the boundary engine",
+    cta_wordsReview: "Words · check p.{{page}}",
     // Activity feed
     act_uploaded: "{{name}} uploaded",
     act_pdfFallback: "PDF",
@@ -692,6 +794,9 @@ export const en = {
     act_runCancelled: "Run {{num}} stopped — {{saved}} pages saved",
     act_reviewRange: "Review saved — pages {{start}}–{{end}} ({{shown}})",
     act_reviewPage: "Review saved — page {{page}}",
+    act_wordsDetected: "Words {{span}} — {{words}} cuts on {{lines}} lines",
+    act_wordsStopped: "Word run {{span}} stopped — {{lines}} lines kept",
+    act_wordsEdited: "Word cuts edited on p.{{page}} ({{lines}} lines)",
     act_linesExported: "Line PNGs exported — page {{page}} ({{lines}} lines)",
     // Run status
     runStatus_completed: "Completed",
@@ -932,6 +1037,15 @@ export const en = {
       s4: "Save the cuts, then export the page to transparent line images.",
       s5: "Download the images as a zip once you're happy with them — ready to copy into the app.",
     },
+    words: {
+      s1: "Pick a sura and run the engine over it. It reads every line's ink and works out where each word ends.",
+      s2: "The gutter beside each line says how much the engine trusted itself: green is exact, amber is worth a look, red it could not read.",
+      s3: "Step only through the lines it flagged — the ‹ › buttons walk them, and roll on to the next page that has any.",
+      s4: "Each word is a box over its own ink. Drag an edge to move that side, or the middle to slide the whole word — dragging never changes which word it is, only where it sits.",
+      s5: "Double-click inside a box to split it there, and the line takes the next word of the text, shifting the rest along. Removing a word hands its box to the word beside it.",
+      s6: "Where the engine missed a word in the gap *between* two boxes there is nothing to double-click, so + in the word list inserts one after the word you name. A word this riwaya prints and the stored text does not is then one ∅ away: that gives its label back to the sequence.",
+      s7: "Save the page. Coherence breaks are reported, not refused — fixing one line before its neighbour is meant to pass through a broken state.",
+    },
   },
   tips: {
     firstPage:
@@ -960,6 +1074,10 @@ export const en = {
       "Breathing room kept above and below every line of this page, in one go. Raise it if the cuts clip tails or dots.",
     lineBox:
       "Y and H trim the line's top and bottom. X and W are locked to the shared page column.",
+    wordsSpan:
+      "A run is addressed by aya, not by page — the engine walks one cursor through the words, and an aya is the only place it can start from.",
+    wordsWholeSura:
+      "Off, you pick a range of ayat within the sura. The end defaults to the sura's last aya in this mushaf's own counting.",
   },
   coach: {
     dismiss: "Dismiss hint",
@@ -974,6 +1092,8 @@ export const en = {
       "Step lines with ▲▼ · double-click a text line to add a separator ۝ · click a separator, then Delete removes it.",
     finalize:
       "Drag a line's top or bottom edge to trim it · hold Shift to erase · hold Space to pan.",
+    words:
+      "Drag a box edge or its middle · double-click inside a box to split it · select a word, then × or Delete removes it · + in the list inserts a word, ∅ marks one the text does not have.",
   },
   tour: {
     next: "Next",
@@ -1048,6 +1168,20 @@ export const en = {
       t3_body:
         "Save the cuts, export the page to transparent images, then download them as a zip. Exporting the whole mushaf lives in the details Export tab.",
     },
+    words: {
+      t1_title: "Run the engine",
+      t1_body:
+        "Pick a sura and run it. A run is addressed by aya rather than by page, because the engine walks one cursor through the Quran text and an aya is the only place it can start from. It runs in the background — about 20 seconds for a sura.",
+      t2_title: "Canvas tools",
+      t2_body:
+        "Zoom with the buttons or Ctrl+wheel, and undo or redo an edit. Every word is a box, so what you drag is an edge or a whole word, never a bare line with nothing between it and the next.",
+      t3_title: "One line per strip",
+      t3_body:
+        "Each text line is cut from the page and laid out here, with a box over every word — which is the highlight a reader will eventually see. Arabic runs right to left, so a word starts at its right edge and ends at its left, and boxes may overlap where a tail sweeps under its neighbour.",
+      t4_title: "Only the lines that need you",
+      t4_body:
+        "The engine records how much it trusted each line, so you read the handful it flagged instead of every word on the page. The ‹ › buttons step through those, and roll on to the next page that has any.",
+    },
   },
   stepStatus: {
     setupLocked: "Range locked — pages are already processed.",
@@ -1064,5 +1198,8 @@ export const en = {
     reviewUnsaved: "{{count}} unsaved change(s) — save when ready.",
     reviewClean: "All changes saved.",
     finalizeReady: "Trim and erase, then save or export the page.",
+    wordsTodo: "Run word detection over a sura to begin.",
+    wordsFlagged: "{{count}} line(s) the engine wants a second opinion on.",
+    wordsClean: "Every cut on this page is settled.",
   },
 };
