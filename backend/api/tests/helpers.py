@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import tempfile
+from pathlib import Path
 from typing import Any
 
 import fitz  # PyMuPDF
@@ -32,31 +33,46 @@ def make_png_bytes(size: tuple[int, int] = (20, 20)) -> bytes:
     return buffer.getvalue()
 
 
-class _MediaIsolation:
-    """Points MEDIA_ROOT at a throwaway directory for the life of the class."""
+class _FilesystemIsolation:
+    """Points MEDIA_ROOT and LOG_DIR at throwaway directories for the class.
+
+    MEDIA_ROOT keeps uploads out of the working tree. LOG_DIR matters for a
+    different reason: starting a run **prunes** the run-log directory down to
+    ``RUN_LOG_RETENTION`` (see ``services.run_logs.allocate``), so a test that
+    drives a real run would otherwise delete the developer's own recent logs —
+    quietly, and exactly the ones they had just been reading.
+    """
 
     _media_dir: tempfile.TemporaryDirectory[str]
-    _media_override: override_settings
+    _log_dir: tempfile.TemporaryDirectory[str]
+    _fs_override: override_settings
 
     @classmethod
     def setUpClass(cls) -> None:
         super().setUpClass()  # type: ignore[misc]
-        cls._media_dir = tempfile.TemporaryDirectory()
-        cls._media_override = override_settings(MEDIA_ROOT=cls._media_dir.name)
-        cls._media_override.enable()
+        # ``ignore_cleanup_errors`` because Windows refuses to unlink a file that is
+        # still open, and a streamed response the test client never closed leaves one.
+        # Without it a single leaked handle fails tearDownClass, which on a Django
+        # TestCase leaves the connection broken and errors every test after it — a
+        # cascade with nothing in it about the thing that actually went wrong.
+        cls._media_dir = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
+        cls._log_dir = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
+        cls._fs_override = override_settings(MEDIA_ROOT=cls._media_dir.name, LOG_DIR=Path(cls._log_dir.name))
+        cls._fs_override.enable()
 
     @classmethod
     def tearDownClass(cls) -> None:
-        cls._media_override.disable()
+        cls._fs_override.disable()
         cls._media_dir.cleanup()
+        cls._log_dir.cleanup()
         super().tearDownClass()  # type: ignore[misc]
 
 
-class MediaTestCase(_MediaIsolation, TestCase):
-    """TestCase that isolates uploaded files into a throwaway MEDIA_ROOT."""
+class MediaTestCase(_FilesystemIsolation, TestCase):
+    """TestCase that isolates uploaded files and run logs into throwaway directories."""
 
 
-class MediaTransactionTestCase(_MediaIsolation, TransactionTestCase):
+class MediaTransactionTestCase(_FilesystemIsolation, TransactionTestCase):
     """Same isolation, but **without** wrapping each test in a transaction.
 
     Needed by anything that starts a real worker thread. A plain ``TestCase``

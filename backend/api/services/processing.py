@@ -19,8 +19,7 @@ import json
 import logging
 import shutil
 import uuid
-from collections.abc import Callable, Iterable, Iterator
-from datetime import datetime
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import fitz  # PyMuPDF
@@ -32,12 +31,17 @@ from PIL import Image
 
 from api import i18n, validators
 from api.models import ActivityTypeChoices, Mushaf, Page, ProcessingRun, RunStatusChoices, Template
-from api.services import activity, coordinates, pdf
-from core.page_detection.aya_separator import AyaSeparatorConfig, AyaSeparatorProcessor
-from core.page_detection.builder import build_pipeline, init_configs
-from core.page_detection.config import ExportConfig
-from core.page_detection.pipeline import PageOutcome, setup_file_logging, teardown_file_logging
-from core.page_detection.sura_header import IgnoreRect, SuraHeaderLocator
+from api.services import activity, coordinates, pdf, run_logs
+from core.imaging import IgnoreRect
+from core.page_detection import (
+    AyaSeparatorConfig,
+    AyaSeparatorProcessor,
+    ExportConfig,
+    PageOutcome,
+    SuraHeaderLocator,
+    build_pipeline,
+    init_configs,
+)
 
 #: ``on_progress(phase, current_page, pages_saved)`` — ``phase`` is one of
 #: ``rendering`` / ``detecting`` / ``saving``, ``current_page`` is a LOGICAL page
@@ -109,11 +113,8 @@ def process(
         Page.objects.filter(mushaf=mushaf, page_number__in=page_numbers).values_list("page_number", "source_pdf_page")
     )
 
-    token = datetime.now().strftime("%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:6]
-    log_rel = f"runs/{token}.log"
-    log_path = settings.LOG_DIR / log_rel
-    log_path.parent.mkdir(parents=True, exist_ok=True)
-    prune_run_logs(log_path.parent)
+    log_rel, log_path = run_logs.allocate()
+    token = log_path.stem
     # Line-detection debug PNGs live under MEDIA_ROOT so they can be served and
     # shown in the abort diagnostics (see ``_media_url``).
     results_dir = Path(settings.MEDIA_ROOT) / "run_debug" / token
@@ -176,7 +177,7 @@ def process(
         saved += 1
         report("saving", page_number)
 
-    handler = setup_file_logging(str(log_path))
+    handler = run_logs.attach(log_path)
     try:
         with pdf.open_document(mushaf.pdf_file.path) as doc:
             images = _render_pages(doc, mushaf.first_quran_pdf_page, page_numbers, overrides, report)
@@ -191,7 +192,7 @@ def process(
         ProcessingRun.objects.filter(id=run.id).update(status=RunStatusChoices.ERROR)
         raise
     finally:
-        teardown_file_logging(handler)
+        run_logs.detach(handler)
 
     abort_at = output.get("abort_at")
     if isinstance(abort_at, dict):
@@ -283,34 +284,13 @@ def _render_pages(
         yield pdf.render_page_from(doc, pdf_index), f"{n}.png"
 
 
-def _retention(keep: int | None) -> int:
-    if keep is None:
-        keep = int(getattr(settings, "RUN_LOG_RETENTION", 30))
-    return keep
-
-
-def _stale_entries(listing: Callable[[], Iterable[Path]], keep: int) -> list[Path]:
-    """Everything past the newest ``keep`` entries, by modification time.
-
-    ``listing`` is deferred so the directory read happens inside the guard:
-    filesystem errors leave the directory alone rather than failing the run that
-    triggered the sweep. (``Path.iterdir`` scans eagerly, so passing an iterator
-    would raise before ever getting here.)
-    """
-    try:
-        ordered = sorted(listing(), key=lambda path: path.stat().st_mtime, reverse=True)
-    except OSError:
-        return []
-    return ordered[keep:]
-
-
 def prune_run_debug(debug_root: Path, keep: int | None = None) -> int:
     """Keep the newest ``keep`` run-debug directories; delete the rest.
 
     These hold the per-line PNGs written when a page fails line detection —
     far heavier than the logs, and only ever of interest for a recent run.
     """
-    keep = _retention(keep)
+    keep = run_logs.retention(keep)
     if keep < 0:
         return 0
 
@@ -318,7 +298,7 @@ def prune_run_debug(debug_root: Path, keep: int | None = None) -> int:
         return [path for path in debug_root.iterdir() if path.is_dir()]
 
     removed = 0
-    for stale in _stale_entries(directories, keep):
+    for stale in run_logs.stale_entries(directories, keep):
         shutil.rmtree(stale, ignore_errors=True)
         if not stale.exists():
             removed += 1
@@ -330,35 +310,11 @@ def prune_run_debug(debug_root: Path, keep: int | None = None) -> int:
 def prune_run_logs(runs_dir: Path, keep: int | None = None) -> int:
     """Keep the newest ``keep`` run logs under *runs_dir*; delete the rest.
 
-    Called when a run starts, so the directory stays bounded without a separate
-    cleanup job. A whole-mushaf run logs several MB, which is the storage this
-    reclaims — the ``ProcessingRun`` rows themselves are a few hundred bytes and
-    are kept, so pruned runs still appear in the history.
-
-    Rows that pointed at a deleted file have ``log_path`` cleared, which is what
-    makes the UI honest: ``list_runs`` then reports ``log_url: null`` and the
-    "view the log" affordances disappear instead of offering a dead link.
-
-    Best-effort on the filesystem side: failing to delete an old log is never a
-    reason to fail the run that triggered the sweep.
+    Both engines mint from the same directory, so the sweep itself lives in
+    ``services.run_logs`` and clears the pointer on whichever table held it. This
+    is the name detection has always called it by.
     """
-    keep = _retention(keep)
-    if keep < 0:
-        return 0
-
-    pruned: list[str] = []
-    for stale in _stale_entries(lambda: runs_dir.glob("*.log"), keep):
-        try:
-            stale.unlink()
-        except OSError:
-            continue
-        # Stored form is the POSIX-style path relative to LOG_DIR (see ``process``).
-        pruned.append(f"{runs_dir.name}/{stale.name}")
-
-    if pruned:
-        ProcessingRun.objects.filter(log_path__in=pruned).update(log_path="")
-        logger.info("Pruned %d old run log(s) from %s", len(pruned), runs_dir)
-    return len(pruned)
+    return run_logs.prune(runs_dir, keep)
 
 
 def _settle_stale_runs(mushaf: Mushaf) -> int:
@@ -443,7 +399,7 @@ def _media_url(path: str) -> str:
 
 #: Bytes served per tail request. A poll never returns an unbounded blob; a
 #: viewer opened on a long finished run simply catches up over a few polls.
-RUN_LOG_CHUNK_BYTES = 256 * 1024
+RUN_LOG_CHUNK_BYTES = run_logs.CHUNK_BYTES
 
 
 def read_run_log_tail(
@@ -452,46 +408,8 @@ def read_run_log_tail(
     offset: int = 0,
     limit: int = RUN_LOG_CHUNK_BYTES,
 ) -> dict:
-    """Read a run log forward from ``offset``, for a client that polls as it grows.
-
-    Returns the text read plus the offset to resume from. Only whole lines are
-    emitted: a chunk boundary must not split a UTF-8 sequence, and a reader
-    tailing a file being written to must not be handed half a line it would
-    then see repeated. Any remainder is picked up by the next call.
-
-    ``reset`` says the file is shorter than the offset asked for — it was
-    replaced or truncated — so the caller should clear what it has and start over.
-    """
-    path = run_log_file(mushaf, run_id)
-    size = path.stat().st_size
-
-    start = max(0, int(offset))
-    reset = start > size
-    if reset:
-        start = 0
-
-    limit = max(0, int(limit))
-    with path.open("rb") as handle:
-        handle.seek(start)
-        chunk = handle.read(limit)
-
-    if chunk and not chunk.endswith(b"\n"):
-        cut = chunk.rfind(b"\n")
-        if cut != -1:
-            chunk = chunk[: cut + 1]
-        elif len(chunk) < limit:
-            # A partial line still being written, and no newline to fall back
-            # on. Leave it for the next poll rather than emitting a fragment.
-            chunk = b""
-        # else: one line longer than the whole chunk — send it as-is, otherwise
-        # the reader would never advance past it.
-
-    return {
-        "offset": start + len(chunk),
-        "size": size,
-        "text": chunk.decode("utf-8", errors="replace"),
-        "reset": reset,
-    }
+    """Read a run log forward from ``offset``, for a client that polls as it grows."""
+    return run_logs.tail(run_log_file(mushaf, run_id), offset, limit)
 
 
 def run_log_file(mushaf: Mushaf, run_id: uuid.UUID) -> Path:
@@ -499,8 +417,7 @@ def run_log_file(mushaf: Mushaf, run_id: uuid.UUID) -> Path:
     log_rel = mushaf.processing_runs.filter(id=run_id).values_list("log_path", flat=True).first()
     if not log_rel:
         raise HttpError(404, i18n.t("run_no_log"))
-    log_dir = Path(settings.LOG_DIR).resolve()
-    path = (log_dir / log_rel).resolve()
-    if log_dir not in path.parents or not path.is_file():
+    path = run_logs.resolve(log_rel)
+    if path is None:
         raise HttpError(404, i18n.t("log_not_found"))
     return path

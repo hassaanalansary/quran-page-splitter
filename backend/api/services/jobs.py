@@ -393,6 +393,9 @@ def _word_runner(mushaf: Mushaf, plan: word_runs.RunPlan, user: User | None) -> 
             user=user,
             on_progress=on_progress,
             cancelled=lambda: cancel_requested(job.id),
+            # What turns the log on: the job row is where its path is recorded, so
+            # a run with no job has nowhere to point and keeps no file.
+            job_id=job.id,
         )
         state = ProcessJobStateChoices.CANCELLED if report.cancelled else ProcessJobStateChoices.COMPLETED
         settle(job.id, state, lines_done=report.lines_done)

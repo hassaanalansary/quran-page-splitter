@@ -10,7 +10,7 @@ is how a person works through a mushaf.
 
 import uuid
 
-from django.http import HttpRequest
+from django.http import FileResponse, HttpRequest
 from ninja import Router, Schema
 from pydantic import Field
 
@@ -20,7 +20,7 @@ from api.services import activity as activity_service
 from api.services import jobs as jobs_service
 from api.services import mushaf as mushaf_service
 from api.services import word_coordinates, word_inputs, word_runs
-from api.views.processing import JobOut, JobStatusOut
+from api.views.processing import JobOut, JobStatusOut, RunLogTailOut
 from quran.models import CountingSystem
 
 router = Router(tags=["words"])
@@ -179,6 +179,53 @@ def cancel_words(request: HttpRequest, mushaf_id: uuid.UUID) -> dict:
     """
     job = jobs_service.request_cancel(mushaf_id, kind=ProcessJobKindChoices.WORDS, message="no_active_word_run")
     return jobs_service.to_dict(job)
+
+
+@router.get("/{mushaf_id}/words/jobs/{job_id}/log")
+def words_log(request: HttpRequest, mushaf_id: uuid.UUID, job_id: uuid.UUID) -> FileResponse:
+    """A word run's detailed log as plain text — the whole file.
+
+    Addressed by **job**, not by a run row: a word run creates none. It writes
+    ``LineWord`` rows straight onto lines that already exist, so the job is the only
+    thing that exists for exactly the life of the run.
+
+    Streamed rather than read into memory, which detection's equivalent can afford
+    and this one cannot: a whole-sura trace is a few MB and al-Baqara around 17.
+    """
+    mushaf = mushaf_service.get_mushaf(mushaf_id, user=current_user(request), write=False)
+    path = word_runs.log_file(mushaf, job_id)
+    return FileResponse(path.open("rb"), content_type="text/plain; charset=utf-8")
+
+
+@router.get("/{mushaf_id}/words/jobs/{job_id}/log/tail", response=RunLogTailOut)
+def words_log_tail(
+    request: HttpRequest,
+    mushaf_id: uuid.UUID,
+    job_id: uuid.UUID,
+    offset: int = 0,
+) -> dict:
+    """Read a word run's log forward from ``offset`` — what the live viewer polls.
+
+    Separate from ``/log`` (a whole-file download) because a viewer watching a run in
+    flight wants only what it has not seen yet. Byte-for-byte the same contract
+    detection's tail endpoint offers, so one component reads either.
+    """
+    mushaf = mushaf_service.get_mushaf(mushaf_id, user=current_user(request), write=False)
+    return word_runs.read_log_tail(mushaf, job_id, offset)
+
+
+@router.get("/{mushaf_id}/words/jobs/{job_id}/report")
+def words_report(request: HttpRequest, mushaf_id: uuid.UUID, job_id: uuid.UUID) -> FileResponse:
+    """The run as JSON: every line, its verdict, and every word the engine placed.
+
+    The log's machine-readable twin, written when the run settles — so this is a 404
+    while one is still going, which is the honest answer rather than a partial file.
+    Served as an attachment because it is an artefact to keep and compare, not a page
+    to read in a browser.
+    """
+    mushaf = mushaf_service.get_mushaf(mushaf_id, user=current_user(request), write=False)
+    path = word_runs.report_file(mushaf, job_id)
+    return FileResponse(path.open("rb"), as_attachment=True, filename=path.name, content_type="application/json")
 
 
 @router.get("/{mushaf_id}/words/coverage", response=CoverageOut)

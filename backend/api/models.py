@@ -327,6 +327,16 @@ class ProcessJob(BaseModel):
         null=True, blank=True, help_text="Word runs only: lines written so far. Detection counts pages instead."
     )
     log_url = models.CharField(max_length=255, blank=True, default="")
+    #: Word runs only. Detection hangs its log off the ``ProcessingRun`` it
+    #: creates; a word run creates no such row — it writes ``LineWord`` rows
+    #: directly — so the job itself is what points at the file. Same directory,
+    #: same format, same viewer; see ``services.run_logs``.
+    log_path = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text="Path (relative to settings.LOG_DIR) of this run's detailed log file.",
+    )
 
     class Meta:
         db_table = "process_job"

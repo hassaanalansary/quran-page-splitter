@@ -301,6 +301,18 @@ LOG_DIR.mkdir(parents=True, exist_ok=True)
 #: normally — fetching it just 404s.
 RUN_LOG_RETENTION = 30
 
+#: Detail level of a run's own log file. DEBUG is the whole trace, including the
+#: per-component evidence behind every role the word engine argued about — which
+#: is the level at which a single wrong cut can actually be diagnosed, and the
+#: reason it is the default.
+#:
+#: It is not free. Measured, the word engine's DEBUG trace runs to roughly 17 KB
+#: per mushaf line, so a sura is a few MB and al-Baqara around 17; detection's is
+#: an order smaller. Multiply by ``RUN_LOG_RETENTION``. Set this to INFO on a box
+#: where that matters: the phase headings, every line's verdict and every reason
+#: survive — only the per-component and per-word evidence goes.
+RUN_LOG_LEVEL = env("RUN_LOG_LEVEL", default="DEBUG")
+
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
