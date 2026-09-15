@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, useBlocker, useNavigate, useParams } from "@tanstack/react-router";
-import { OctagonX, Play } from "lucide-react";
+import { OctagonX, Play, ScrollText } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -9,6 +9,7 @@ import { CanvasHelp } from "@/components/app/CanvasHelp";
 import { InfoTip } from "@/components/app/InfoTip";
 import { Aside, Field, Hint, PanelCard, Section, StatusLine } from "@/components/app/Panel";
 import { ProcessCancelDialog } from "@/components/app/ProcessCancelDialog";
+import { RunLogDialog } from "@/components/app/RunLogDialog";
 import { TourOverlay } from "@/components/app/tour/TourOverlay";
 import { useStepTour, type TourStep } from "@/components/app/tour/useStepTour";
 import { WordsCanvas } from "@/components/canvas/WordsCanvas";
@@ -90,6 +91,7 @@ function WordsPage() {
   const [fromAya, setFromAya] = useState(1);
   const [toAya, setToAya] = useState(1);
   const [cancelOpen, setCancelOpen] = useState(false);
+  const [logOpen, setLogOpen] = useState(false);
   const [issues, setIssues] = useState<CoherenceIssue[]>([]);
 
   // Latest model, for handlers that outlive the render they were created in —
@@ -598,6 +600,15 @@ function WordsPage() {
               <Play size={14} />
               {running ? t("words.running") : t("words.runButton")}
             </Button>
+            {/* `log_url` rather than the job's mere existence: a run started
+                before this feature, or one whose log the retention sweep has
+                since deleted, has nothing to open. */}
+            {job?.log_url && (
+              <Button variant="outline" className="w-full" onClick={() => setLogOpen(true)}>
+                <ScrollText size={14} />
+                {running ? t("words.logWatch") : t("words.logView")}
+              </Button>
+            )}
             <p className="text-[10.5px] leading-snug text-text-muted">{t("words.runNote")}</p>
           </div>
         </Section>
@@ -709,6 +720,17 @@ function WordsPage() {
           </>
         )}
       </Aside>
+
+      {job?.log_url && (
+        <RunLogDialog
+          open={logOpen}
+          onOpenChange={setLogOpen}
+          mushafId={mushafId}
+          runId={job.id}
+          kind="words"
+          live={running}
+        />
+      )}
 
       {job && (
         <ProcessCancelDialog

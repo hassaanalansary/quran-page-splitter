@@ -12,6 +12,7 @@ import type {
   PageWords,
   PageWordsSave,
   ProcessJob,
+  RunLogTail,
   WordCoverage,
 } from "./types";
 
@@ -65,3 +66,33 @@ export function savePageWords(
   return apiJson<PageWords>("PUT", `/api/mushafs/${id}/pages/${pageNumber}/words`, data);
 }
 
+// ── the run's log ────────────────────────────────────────────────────────────
+//
+// Addressed by JOB, where detection's is addressed by run: a word run creates no
+// `ProcessingRun` row — it writes cuts onto lines that already exist — so the job is
+// the only thing that lives exactly as long as the run. The tail contract is
+// byte-for-byte detection's, which is what lets one viewer read either.
+
+/** One poll of the live viewer: whole lines only, resumed by byte offset. */
+export function getWordsLogTail(
+  id: string,
+  jobId: string,
+  offset = 0,
+  signal?: AbortSignal,
+): Promise<RunLogTail> {
+  return apiGet<RunLogTail>(
+    `/api/mushafs/${id}/words/jobs/${jobId}/log/tail?offset=${Math.max(0, Math.trunc(offset))}`,
+    signal,
+  );
+}
+
+/** Whole-file URL for the download link (and the browser's own viewer). */
+export function wordsLogUrl(id: string, jobId: string): string {
+  return `/api/mushafs/${id}/words/jobs/${jobId}/log`;
+}
+
+/** The log's machine-readable twin: every line, its verdict, every word placed.
+ * Written when the run settles, so this 404s while one is still going. */
+export function wordsReportUrl(id: string, jobId: string): string {
+  return `/api/mushafs/${id}/words/jobs/${jobId}/report`;
+}

@@ -637,6 +637,13 @@ export const en = {
     cancelBody:
       "It stops at the next chunk boundary, never inside one, so no line is left holding half its words. Everything already written stays. To pick up where it left off, run the remaining ayat.",
 
+    // The log
+    logWatch: "Watch the log",
+    logView: "View the log",
+    logDialogTitle: "Word detection log",
+    logLead:
+      "Every step of the run: each line cropped and measured, its writing band, every blob of ink and what it was read as, each ornament and how it was found, and what every word cost to place. This is where to look when a line came out wrong.",
+    logReport: "Report (JSON)",
 
     // Triage
     triageTitle: "Lines to check · {{count}} of {{total}}",

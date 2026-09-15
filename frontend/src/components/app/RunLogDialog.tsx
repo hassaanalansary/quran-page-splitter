@@ -1,4 +1,4 @@
-import { Download, ScrollText } from "lucide-react";
+import { Download, FileJson, ScrollText } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -10,7 +10,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { API_BASE, getRunLogTail, runLogUrl } from "@/lib/api";
+import {
+  API_BASE,
+  getRunLogTail,
+  getWordsLogTail,
+  runLogUrl,
+  wordsLogUrl,
+  wordsReportUrl,
+} from "@/lib/api";
 
 /** How long to wait before asking again once we're level with the file. */
 const POLL_MS = 1000;
@@ -19,27 +26,44 @@ const RETRY_MS = 3000;
 /** Treat "within this many px of the bottom" as following the tail. */
 const STICK_PX = 40;
 
+/** Which engine wrote the log — the only thing that differs between the two.
+ *
+ * Detection hangs its log off the `ProcessingRun` it creates; a word run creates
+ * no such row, so its log is addressed by the job. Both serve the same tail
+ * contract, which is why this is one component and not two. */
+export type RunLogKind = "detection" | "words";
+
 type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   mushafId: string;
+  /** Detection: the ProcessingRun id. Words: the ProcessJob id. */
   runId: string;
+  kind?: RunLogKind;
   /** The run is still going, so keep polling after catching up. */
   live: boolean;
 };
 
-/** The detection trace, readable while it is still being written.
+/** An engine's trace, readable while it is still being written.
  *
- * The engine's per-page log is the only place that says *why* a page came out
- * the way it did — every band with its match score, every line, every cut. It
- * used to be reachable only as a download link on an aborted run, which is the
- * one case where it is already too late to change anything. Here it is a
- * window onto the run in flight.
+ * The per-run log is the only place that says *why* a run came out the way it
+ * did — for detection every band with its match score, every line, every cut;
+ * for words every component of ink, what it was read as, and what each word cost
+ * to place. It used to be reachable only as a download link on an aborted run,
+ * which is the one case where it is already too late to change anything. Here it
+ * is a window onto the run in flight.
  *
  * Polls forward by byte offset rather than re-fetching, so a 600-page run costs
  * one small request per second instead of re-sending megabytes.
  */
-export function RunLogDialog({ open, onOpenChange, mushafId, runId, live }: Props) {
+export function RunLogDialog({
+  open,
+  onOpenChange,
+  mushafId,
+  runId,
+  kind = "detection",
+  live,
+}: Props) {
   const { t } = useTranslation();
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -57,7 +81,7 @@ export function RunLogDialog({ open, onOpenChange, mushafId, runId, live }: Prop
     setText("");
     setError(null);
     setBehind(false);
-  }, [open, runId]);
+  }, [open, runId, kind]);
 
   useEffect(() => {
     if (!open) return;
@@ -68,7 +92,10 @@ export function RunLogDialog({ open, onOpenChange, mushafId, runId, live }: Prop
 
     async function pump() {
       try {
-        const tail = await getRunLogTail(mushafId, runId, offsetRef.current, controller.signal);
+        const tail =
+          kind === "words"
+            ? await getWordsLogTail(mushafId, runId, offsetRef.current, controller.signal)
+            : await getRunLogTail(mushafId, runId, offsetRef.current, controller.signal);
         if (stopped) return;
         offsetRef.current = tail.offset;
         if (tail.reset) setText(tail.text);
@@ -94,7 +121,7 @@ export function RunLogDialog({ open, onOpenChange, mushafId, runId, live }: Prop
       controller.abort();
       if (timer !== undefined) window.clearTimeout(timer);
     };
-  }, [open, mushafId, runId, live]);
+  }, [open, mushafId, runId, kind, live]);
 
   useEffect(() => {
     const el = bodyRef.current;
@@ -112,7 +139,7 @@ export function RunLogDialog({ open, onOpenChange, mushafId, runId, live }: Prop
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <ScrollText size={18} />
-            {t("process.logDialogTitle")}
+            {t(kind === "words" ? "words.logDialogTitle" : "process.logDialogTitle")}
             {live && (
               <span className="flex items-center gap-1.5 text-[11.5px] font-normal text-text-muted">
                 <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-orange" />
@@ -122,7 +149,9 @@ export function RunLogDialog({ open, onOpenChange, mushafId, runId, live }: Prop
           </DialogTitle>
         </DialogHeader>
 
-        <p className="text-[12.5px] leading-[1.6] text-text-secondary">{t("process.logLead")}</p>
+        <p className="text-[12.5px] leading-[1.6] text-text-secondary">
+          {t(kind === "words" ? "words.logLead" : "process.logLead")}
+        </p>
 
         {error && (
           <div className="rounded-md border border-error-border bg-error-bg px-3 py-2 text-[12px] text-error">
@@ -140,8 +169,27 @@ export function RunLogDialog({ open, onOpenChange, mushafId, runId, live }: Prop
         </pre>
 
         <DialogFooter>
+          {/* Only for a word run, and only once it has settled: the report is
+              written when the run ends, so offering it mid-run would hand the
+              reader a 404. */}
+          {kind === "words" && !live && (
+            <Button asChild variant="outline">
+              <a
+                href={`${API_BASE}${wordsReportUrl(mushafId, runId)}`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                <FileJson size={14} />
+                {t("words.logReport")}
+              </a>
+            </Button>
+          )}
           <Button asChild variant="outline">
-            <a href={`${API_BASE}${runLogUrl(mushafId, runId)}`} target="_blank" rel="noreferrer">
+            <a
+              href={`${API_BASE}${kind === "words" ? wordsLogUrl(mushafId, runId) : runLogUrl(mushafId, runId)}`}
+              target="_blank"
+              rel="noreferrer"
+            >
               <Download size={14} />
               {t("process.logDownload")}
             </a>
