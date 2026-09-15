@@ -18,12 +18,15 @@ ambiguity rather than enumerated.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 
 from core.word_boundary.calibration import COUNT_SLACK, COUNT_WEIGHT, MAX_LIVE_STATES
 from core.word_boundary.ink import Blob, LineInk, attach_marks
 from core.word_boundary.inputs import WordInput
 from core.word_boundary.results import WordBox
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -259,9 +262,19 @@ def _parse_segment(
     """
     labels = {event.blob.label for event in events if event.blob is not None}
     if start_word is None:
+        logger.info("      no cursor to start from — segment left unresolved")
         return SegmentParse("unresolved", "upstream-unresolved", None, None, None, 0, labels=labels)
 
+    logger.info(
+        "      %d blob(s), cursor at word %d%s; text from here: %s",
+        len(events),
+        start_word,
+        f", must finish on word {require_end}" if require_end is not None else ", open end",
+        _text_preview(words, start_word, require_end),
+    )
+
     states: dict[tuple[int, int], ParseRecord] = {(start_word, 0): ParseRecord(0, (), (), (), 0)}
+    peak_states = 1
     for event in events:
         next_states: dict[tuple[int, int], ParseRecord] = {}
         assert event.blob is not None
@@ -271,7 +284,14 @@ def _parse_segment(
             for key, produced in _with_body(record, blob, words, state):
                 _merge_record(next_states, key, produced)
         states = next_states
+        peak_states = max(peak_states, len(states))
         if len(states) > MAX_LIVE_STATES:
+            logger.warning(
+                "      search budget spent: %d live states past blob #%d (ceiling %d) — segment abandoned",
+                len(states),
+                blob.label,
+                MAX_LIVE_STATES,
+            )
             return SegmentParse("unresolved", "search-budget-exceeded", start_word, None, None, 0, labels=labels)
 
     finals = [
@@ -285,7 +305,14 @@ def _parse_segment(
         # reading anyway and flag it, rather than discarding the whole stretch.
         missed_boundary = True
         finals = [(state, record) for state, record in states.items() if state[1] == 0]
+        logger.info(
+            "      no reading finished on word %d as the ornament demands; "
+            "taking the best of %d that closed a word instead",
+            require_end,
+            len(finals),
+        )
     if not finals:
+        logger.info("      no reading closed a word over %d blob(s) — segment unresolved", len(events))
         return SegmentParse("unresolved", "no-parse", start_word, None, None, 0, labels=labels)
 
     minimum_rank = min(record.rank for _, record in finals)
@@ -310,7 +337,37 @@ def _parse_segment(
     if end_sequences > 1:
         concerns.append(f"{end_sequences} equal-cost readings")
     if not _ijam_floor_ok(record, words, start_word, ink):
+        # A word whose dot was eaten as a letter. The floor is a hard fact about
+        # the spelling, so this is the one concern that is never a matter of taste.
+        logger.info("      i'jam floor short: a word lost a dot to the reading")
         concerns.append("i'jam short")
+
+    logger.info(
+        "      → %s  cost=%d  words %d..%d (%d)  deviations=%d  readings=%d  peak states=%d%s",
+        "exact" if not concerns else "scored",
+        minimum,
+        start_word,
+        state[0],
+        len(record.groups),
+        record.deviations,
+        end_sequences,
+        peak_states,
+        f"  [{', '.join(concerns)}]" if concerns else "",
+    )
+    if logger.isEnabledFor(logging.DEBUG):
+        for offset, group in enumerate(record.groups):
+            word = words[start_word + offset]
+            logger.debug(
+                "        word %-5d %-14s paws want %d got %d%s  i'jam %d↑/%d↓  blobs %s",
+                start_word + offset,
+                word.text,
+                word.paws,
+                len(group),
+                " OFF" if len(group) != word.paws else "    ",
+                word.ijam_above,
+                word.ijam_below,
+                list(group),
+            )
 
     max_label = max((blob.label for blob in ink.components), default=0)
     return SegmentParse(
@@ -326,6 +383,21 @@ def _parse_segment(
         body_labels={label for label in range(1, max_label + 1) if record.body_mask & (1 << label)},
         role_ambiguous_labels={label for label in range(1, max_label + 1) if record.role_ambiguous_mask & (1 << label)},
     )
+
+
+def _text_preview(words: list[WordInput], start: int, end: int | None, limit: int = 6) -> str:
+    """The first few words a segment may spend, for a reader following the trace.
+
+    The log is read to answer "which words did it think were here", and word
+    indices alone cannot answer that. Bounded because a long stretch would bury
+    the line it belongs to.
+    """
+    stop = min(end if end is not None else start + limit, start + limit, len(words))
+    shown = [word.text for word in words[start:stop]]
+    if not shown:
+        return "(none left)"
+    more = (end if end is not None else len(words)) - stop
+    return " ".join(shown) + (f" … (+{more})" if more > 0 else "")
 
 
 def _aya_end_after(cursor: int, aya_starts: list[int]) -> int:
@@ -374,6 +446,14 @@ def parse_line(
         else:
             stretches[-1].append(event)
 
+    logger.info(
+        "    parsing %s: %d stretch(es) split by %d ornament(s), cursor in at %s",
+        ink.label,
+        len(stretches),
+        len(stretches) - 1,
+        start_word if start_word is not None else "lost",
+    )
+
     segments: list[SegmentParse] = []
     cursor = start_word
     closed_so_far = ornaments_before
@@ -392,7 +472,9 @@ def parse_line(
                 # An ornament opening a line closes an aya whose words all sat on
                 # the line above, and must not consume an aya of its own.
                 require_end = _aya_end_after(cursor, aya_starts)
+        logger.info("    stretch %d/%d%s", index + 1, len(stretches), " (closed by an ornament)" if closed else "")
         if not stretch:
+            logger.info("      no ink — the ornament opens the line, so it takes no aya of its own")
             segments.append(SegmentParse("empty", None, cursor, cursor, 0, 1))
         else:
             segment = _parse_segment(stretch, ink, words, cursor, require_end)
@@ -402,6 +484,8 @@ def parse_line(
             # The ornament is absolute: whatever the stretch made of its ink, the
             # aya ends here and the next word opens the one after it.
             if require_end is not None:
+                if cursor != require_end:
+                    logger.info("      ornament overrides the cursor: %s → %s", cursor, require_end)
                 cursor = require_end
             closed_so_far += 1
 
@@ -428,6 +512,17 @@ def parse_line(
         status, reason = "scored", "; ".join(concerns)
     else:
         status, reason = "exact", None
+
+    log = logger.warning if status == "unresolved" else logger.info
+    log(
+        "    %s → %s%s: %d word(s) placed, cursor %s → %s",
+        ink.label,
+        status.upper() if status in ("unresolved", "partial") else status,
+        f" ({reason})" if reason else "",
+        len(groups),
+        start_word if start_word is not None else "lost",
+        segments[-1].next_word if segments else None,
+    )
 
     return LineParse(
         status,

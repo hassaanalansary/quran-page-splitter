@@ -27,10 +27,12 @@ stream, assembled into a ``WordBoundaryInput``. The other adapter reads the
 database instead — see ``api.services.word_inputs`` — and the engine cannot tell
 which one it was handed.
 
-*Out*: ``render`` draws the boxes and cuts, ``report`` prints the table, and
-``as_dict`` serialises it. All three read the result and nothing else. Where the
-``--cut`` choice lands is decided here on purpose: the engine says where a word
-ends, and drawing that as an edge or as a midpoint is a rendering opinion.
+*Out*: ``render`` draws the boxes and cuts and ``report`` prints the table; both
+read the result and nothing else. ``--json`` writes the package's own
+``as_dict``, the same artefact a run through the web app leaves beside its log,
+so reports from either side compare. Where the ``--cut`` choice lands is decided
+here on purpose: the engine says where a word ends, and drawing that as an edge
+or as a midpoint is a rendering opinion.
 
 For how the alignment actually works, read ``core.word_boundary`` — the package
 docstring first, then ``alignment.py``.
@@ -41,6 +43,7 @@ from __future__ import annotations
 import argparse
 import glob
 import json
+import logging
 import re
 import sys
 from pathlib import Path
@@ -52,12 +55,13 @@ from PIL import Image, ImageDraw
 # need this; running ``python script/word_lines.py`` does.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from core.text.tanzil import Aya, load_ayat, span
+from core.text import Aya, load_ayat, span
 from core.word_boundary import (
     InkComponent,
     LineImage,
     WordBoundaryInput,
     WordLine,
+    as_dict,
     detect_words,
     images_from_paths,
     words_from_ayat,
@@ -223,53 +227,6 @@ def report(ayat: list[Aya], lines: list[WordLine]) -> bool:
     return ok
 
 
-def as_dict(ayat: list[Aya], lines: list[WordLine]) -> dict:
-    return {
-        "span": {"from": ayat[0].key, "to": ayat[-1].key, "ayat": len(ayat)},
-        "method": "sequential-paw",
-        "separators_found": sum(len(line.ornaments) for line in lines),
-        "lines": [
-            {
-                "index": i,
-                "image": line.source,
-                "separators": len(line.ornaments),
-                "status": line.status,
-                "unresolved_reason": line.reason,
-                "minimum_flips": line.cost,
-                "end_sequences": line.end_sequences,
-                "segments": [
-                    {
-                        "status": s.status,
-                        "reason": s.reason,
-                        "words": s.words,
-                        "end_sequences": s.end_sequences,
-                        "deviations": s.deviations,
-                    }
-                    for s in line.segments
-                ],
-                "component_roles": {
-                    "bodies": sum(c.role == "body" for c in line.components),
-                    "marks": sum(c.role == "mark" for c in line.components),
-                    "role_ambiguous": sum(c.ambiguous for c in line.components),
-                },
-                "words": [
-                    {
-                        "word": box.text,
-                        "aya": box.aya,
-                        "expected_paws": box.expected_paws,
-                        "blobs": len(box.components),
-                        "merged": box.merged,
-                        "bbox": {"x": box.x, "y": box.y, "w": box.w, "h": box.h},
-                        "end_x": box.end_x,
-                    }
-                    for box in line.words
-                ],
-            }
-            for i, line in enumerate(lines)
-        ],
-    }
-
-
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
@@ -310,7 +267,42 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--keep-basmala", action="store_true", help="Do not strip Tanzil's prepended basmala.")
     parser.add_argument("--json", type=Path, help="Write a machine-readable report here.")
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="count",
+        default=0,
+        help="Print the engine trace: -v for the per-line story, -vv for per-component evidence.",
+    )
+    parser.add_argument(
+        "--log",
+        type=Path,
+        help="Write the full trace here, at full detail, whatever -v prints. The same file the web app keeps per run.",
+    )
     return parser
+
+
+def setup_logging(verbose: int, log_file: Path | None) -> None:
+    """Send the engine's trace to the console, to a file, or to neither.
+
+    The engine narrates through ``logging`` and configures nothing itself, so a
+    caller that wants none of it pays only for the level check. Console and file
+    are independent on purpose: ``-v --log`` follows a run while keeping the full
+    DEBUG trace on disk to read afterwards.
+    """
+    root = logging.getLogger()
+    root.setLevel(logging.DEBUG)
+    if verbose:
+        console = logging.StreamHandler()
+        console.setLevel(logging.DEBUG if verbose > 1 else logging.INFO)
+        console.setFormatter(logging.Formatter("%(message)s"))
+        root.addHandler(console)
+    if log_file is not None:
+        log_file.parent.mkdir(parents=True, exist_ok=True)
+        handler = logging.FileHandler(log_file, mode="w", encoding="utf-8")
+        handler.setLevel(logging.DEBUG)
+        handler.setFormatter(logging.Formatter("%(asctime)s  %(name)-30s  %(levelname)-8s  %(message)s"))
+        root.addHandler(handler)
 
 
 _WILDCARDS = ("*", "?", "[")
@@ -366,6 +358,7 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if not args.no_render and not args.out:
         raise SystemExit("--out is required unless --no-render is given.")
+    setup_logging(args.verbose, args.log)
 
     start = parse_point(args.start)
     end = parse_point(args.end, default_sura=start[0])
@@ -410,9 +403,11 @@ def main(argv: list[str] | None = None) -> int:
     ok = report(ayat, result.lines)
     if args.json:
         args.json.parent.mkdir(parents=True, exist_ok=True)
-        payload = as_dict(ayat, result.lines)
+        payload = as_dict(source, result)
         args.json.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
         print(f"report -> {args.json}")
+    if args.log:
+        print(f"log    -> {args.log}")
     return 0 if ok else 1
 
 

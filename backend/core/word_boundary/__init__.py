@@ -32,7 +32,10 @@ from core.word_boundary.inputs import (
     images_from_paths,
     words_from_ayat,
 )
+from core.word_boundary.report import as_dict
 from core.word_boundary.results import (
+    FLAGGED_STATUSES,
+    STATUSES,
     InkComponent,
     Ornament,
     WordBoundaryResult,
@@ -42,6 +45,8 @@ from core.word_boundary.results import (
 )
 
 __all__ = [
+    "FLAGGED_STATUSES",
+    "STATUSES",
     "InkComponent",
     "LineImage",
     "Ornament",
@@ -51,6 +56,7 @@ __all__ = [
     "WordInput",
     "WordLine",
     "WordSegment",
+    "as_dict",
     "aya_starts",
     "detect_words",
     "images_from_paths",

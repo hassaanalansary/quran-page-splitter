@@ -17,6 +17,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+#: Every verdict a line can come back with, worst last — the order a summary reads
+#: in, and the order a reviewer works through. ``exact`` needs no look; ``scored``
+#: drew boundaries worth checking; ``partial`` resolved some stretches and not
+#: others; ``unresolved`` drew nothing.
+STATUSES = ("exact", "scored", "partial", "unresolved")
+#: The three that a reviewer is asked to look at.
+FLAGGED_STATUSES = STATUSES[1:]
+
 
 @dataclass(frozen=True)
 class InkComponent:

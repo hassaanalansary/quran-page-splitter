@@ -29,8 +29,7 @@ from pathlib import Path
 
 from PIL import Image
 
-from core.text.arabic import ijam_groups, paw_count
-from core.text.tanzil import Aya
+from core.text import Aya, ijam_groups, paw_count
 
 
 @dataclass(frozen=True)

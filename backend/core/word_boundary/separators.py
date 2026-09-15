@@ -17,15 +17,16 @@ PNGs always says. Both paths must keep working.
 
 from __future__ import annotations
 
-import sys
+import logging
 
 import cv2
 import numpy as np
 from PIL import Image
 
-from core.imaging.accel import match_template_ccoeff_normed
-from core.imaging.utils import find_content_bbox
+from core.imaging import find_content_bbox, match_template_ccoeff_normed
 from core.word_boundary.ink import Blob, LineInk
+
+logger = logging.getLogger(__name__)
 
 #: A blob must enclose a hole at least this share of its own box to read as the
 #: separator ring. Measured: real ornaments score 0.38, while the worst letter
@@ -61,12 +62,22 @@ def split_separators(
         # and stores the result, so paying for it twice is waste. Its spans are in
         # image coordinates; everything below works in the tight crop.
         spans = _merge_spans([(left - ink.offset_x, right - ink.offset_x) for left, right in ink.supplied_separators])
+        logger.info(
+            "    ornaments: %d supplied by the caller, detectors skipped — %s",
+            len(spans),
+            _spans_text(spans, ink.offset_x) or "none",
+        )
     else:
-        spans = []
-        if template is not None:
-            spans += _separator_spans_by_template(ink, template, match_threshold)
-        spans += _separator_spans_by_shape(ink)
-        spans = _merge_spans(spans)
+        by_template = _separator_spans_by_template(ink, template, match_threshold) if template is not None else []
+        by_shape = _separator_spans_by_shape(ink)
+        spans = _merge_spans([*by_template, *by_shape])
+        logger.info(
+            "    ornaments: template found %d, shape found %d, %d after merging — %s",
+            len(by_template),
+            len(by_shape),
+            len(spans),
+            _spans_text(spans, ink.offset_x) or "none",
+        )
     if not spans:
         return
 
@@ -100,6 +111,29 @@ def split_separators(
     ink.components = kept
     ink.bodies = [b for b in kept if b.preferred == "body"]
     ink.marks = [b for b in kept if b.preferred != "body"]
+    for index, (pieces, after) in enumerate(zip(ink.separators, ink.separator_after, strict=True), start=1):
+        logger.info(
+            "      ornament %d/%d x=%d..%d, %d piece(s) %s, after %d body(ies) of this line",
+            index,
+            len(ink.separators),
+            min(b.x for b in pieces) + ink.offset_x,
+            max(b.right for b in pieces) + ink.offset_x,
+            len(pieces),
+            [b.label for b in pieces],
+            after,
+        )
+    logger.info(
+        "      text ink left: %d component(s), %d body / %d mark (was %d)",
+        len(kept),
+        len(ink.bodies),
+        len(ink.marks),
+        len(kept) + sum(len(pieces) for pieces in ink.separators),
+    )
+
+
+def _spans_text(spans: list[tuple[int, int]], offset_x: int) -> str:
+    """Spans as the caller would name them: image coordinates, not the tight crop."""
+    return " ".join(f"{left + offset_x}..{right + offset_x}" for left, right in spans)
 
 
 def _merge_spans(spans: list[tuple[int, int]]) -> list[tuple[int, int]]:
@@ -138,6 +172,7 @@ def prepare_template(im: Image.Image) -> np.ndarray:
     if box is None:
         raise ValueError("the aya separator template has no ink in it.")
     x, y, w, h = box
+    logger.info("Separator template: %dx%d supplied, %dx%d after trimming to its ink", im.width, im.height, w, h)
     # Rendered the same way as the line below, so the correlation compares like
     # with like instead of a binary mask against a greyscale scan.
     return np.where(binary[y : y + h, x : x + w] > 0, np.uint8(0), np.uint8(255))
@@ -157,12 +192,15 @@ def _separator_spans_by_template(
     if template.shape[0] > line.shape[0] or template.shape[1] > line.shape[1]:
         if not _OVERSIZE_REPORTED:
             _OVERSIZE_REPORTED = True
-            print(
-                f"warning: the separator template is {template.shape[1]}x{template.shape[0]} even after "
-                f"trimming, larger than a {line.shape[1]}x{line.shape[0]} line. Template matching is "
-                f"skipped on such lines — re-cut the template from this mushaf.",
-                file=sys.stderr,
+            logger.warning(
+                "The separator template is %dx%d even after trimming, larger than a %dx%d line. "
+                "Template matching is skipped on such lines — re-cut the template from this mushaf.",
+                template.shape[1],
+                template.shape[0],
+                line.shape[1],
+                line.shape[0],
             )
+        logger.info("      template %dx%d does not fit this line; shape detector alone", *template.shape[::-1])
         return []
 
     # Pinned to the CPU kernel. TM_CCOEFF_NORMED fabricates perfect scores under
@@ -175,13 +213,31 @@ def _separator_spans_by_template(
     scores = result.max(axis=0) if result.ndim == 2 else result
     spans: list[tuple[int, int]] = []
     taken = np.zeros(scores.shape[0], dtype=bool)
+    best_rejected = None
     while not taken.all():
         masked = np.where(taken, -np.inf, scores)
         idx = int(np.argmax(masked))
         if masked[idx] < threshold:
+            best_rejected = (idx, float(masked[idx]))
             break
+        logger.debug(
+            "      template hit at x=%d..%d score %.3f (threshold %.2f)",
+            idx + ink.offset_x,
+            idx + width + ink.offset_x,
+            float(scores[idx]),
+            threshold,
+        )
         spans.append((idx, idx + width))
         taken[max(0, idx - width) : min(scores.shape[0], idx + width)] = True
+    if best_rejected is not None and logger.isEnabledFor(logging.DEBUG):
+        # The near miss is the useful number when a run finds no ornament where
+        # the eye sees one: it says whether to move the threshold or the template.
+        logger.debug(
+            "      best rejected template score %.3f at x=%d (threshold %.2f)",
+            best_rejected[1],
+            best_rejected[0] + ink.offset_x,
+            threshold,
+        )
     return spans
 
 
@@ -204,12 +260,30 @@ def _separator_spans_by_shape(ink: LineInk) -> list[tuple[int, int]]:
     the ornament. That ratio is what separates them.
     """
     if len(ink.bodies) < 3:
+        logger.debug("      shape detector needs 3 bodies to judge a median height; this line has %d", len(ink.bodies))
         return []
     median_height = float(np.median([b.h for b in ink.bodies]))
     spans: list[tuple[int, int]] = []
     for blob in ink.bodies:
         aspect = blob.w / max(1, blob.h)
-        if blob.h >= 1.25 * median_height and 0.55 <= aspect <= 1.9 and _hole_fraction(ink, blob) >= HOLE_FRACTION:
+        tall = blob.h >= 1.25 * median_height
+        square = 0.55 <= aspect <= 1.9
+        if not (tall and square):
+            continue
+        # Measured last: findContours on a patch is the expensive half of this test.
+        hole = _hole_fraction(ink, blob)
+        logger.debug(
+            "      shape candidate #%d x=%d..%d h=%d (median %.0f) aspect %.2f hole %.2f → %s",
+            blob.label,
+            blob.x + ink.offset_x,
+            blob.right + ink.offset_x,
+            blob.h,
+            median_height,
+            aspect,
+            hole,
+            "ornament" if hole >= HOLE_FRACTION else f"letter (needs {HOLE_FRACTION})",
+        )
+        if hole >= HOLE_FRACTION:
             spans.append((blob.x, blob.right))
     return spans
 

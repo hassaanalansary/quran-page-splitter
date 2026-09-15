@@ -16,6 +16,7 @@ rarely zero — a line arrives cut to the page column, with its ink tight inside
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 
 import cv2
@@ -31,6 +32,8 @@ from core.word_boundary.calibration import (
     SCORE_RELATIVE_HEIGHT,
 )
 from core.word_boundary.inputs import LineImage
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -155,6 +158,7 @@ def analyse_line(
     rows = np.where(mask.any(axis=1))[0]
     cols = np.where(mask.any(axis=0))[0]
     if rows.size == 0 or cols.size == 0:
+        logger.info("  %s: no ink at all (%dx%d) — nothing to measure", line.label, *line.image.size)
         return LineInk(
                 label=line.label,
             source=line.source,
@@ -172,6 +176,17 @@ def analyse_line(
     offset_y, offset_x = int(rows[0]), int(cols[0])
     tight = mask[rows[0] : rows[-1] + 1, cols[0] : cols[-1] + 1]
     height = tight.shape[0]
+    logger.info(
+        "  %s: %dx%d → tight crop %dx%d at offset (%d,%d), %d ink px",
+        line.label,
+        mask.shape[1],
+        mask.shape[0],
+        tight.shape[1],
+        tight.shape[0],
+        offset_x,
+        offset_y,
+        int(tight.sum()),
+    )
 
     # Baseline band: densest row, grown out while density holds up.
     profile = tight.sum(axis=1)
@@ -183,6 +198,16 @@ def analyse_line(
     bottom = peak
     while bottom < height - 1 and profile[bottom + 1] >= floor:
         bottom += 1
+    logger.info(
+        "    writing band y=%d..%d (h=%d of %d), peak row %d holding %d px, density floor %.1f",
+        top,
+        bottom,
+        bottom - top + 1,
+        height,
+        peak,
+        int(profile[peak]),
+        float(floor),
+    )
     # ``connectivity`` by name: positionally that slot is ``labels``, and while
     # OpenCV's overload dispatch sorts an int out at run time, the stubs cannot.
     count, _, stats, _ = cv2.connectedComponentsWithStats(tight.astype(np.uint8), connectivity=8)
@@ -220,6 +245,38 @@ def analyse_line(
     components.sort(key=lambda b: -b.right)  # right-to-left
     bodies = [b for b in components if b.preferred == "body"]
     marks = [b for b in components if b.preferred != "body"]
+    logger.info(
+        "    %d component(s): %d prefer body, %d mark, %d clear of the band; "
+        "typical body area %.0f px, smallest crossing %d px",
+        len(components),
+        len(bodies),
+        sum(1 for b in components if b.preferred == "mark"),
+        sum(1 for b in components if b.preferred == "mark-only"),
+        typical_area,
+        smallest_crossing,
+    )
+    if logger.isEnabledFor(logging.DEBUG):
+        # The evidence behind every role the parser will later argue about. Only
+        # ever read when a specific line went wrong, which is why it is DEBUG —
+        # but that is exactly when nothing less than per-component will do.
+        for blob in components:
+            logger.debug(
+                "      #%-3d x=%-5d y=%-4d %3dx%-3d area=%-5d fill=%.2f  prefers %-9s "
+                "score=%2d/%d (body %2d, mark %d)%s",
+                blob.label,
+                blob.x + offset_x,
+                blob.y + offset_y,
+                blob.w,
+                blob.h,
+                blob.area,
+                blob.fill,
+                blob.preferred,
+                blob.body_score,
+                BODY_SCORE_MAX,
+                blob.cost_as_body,
+                blob.cost_as_mark,
+                "  small-for-body" if blob.small_for_body else "",
+            )
     return LineInk(
         label=line.label,
         source=line.source,
