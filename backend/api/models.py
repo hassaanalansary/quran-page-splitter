@@ -438,17 +438,37 @@ class LineWord(BaseModel):
     حرف جر — and a reviewer adding that cut has no row to point at. So it is nullable,
     and a null means "there is a word here that the text does not name".
 
-    **Only the end is stored.** A word's right edge is the previous word's ``end_x``,
-    and the first word's is the line's own right edge — so storing it as well would
-    only create a second thing to keep true. The same argument as
-    :class:`quran.models.Aya`, which stores where an aya starts and never where it
-    ends.
+    **Both edges are stored.** The end alone used to be enough: a word's right edge
+    was taken to be the previous word's ``end_x``, which needs no second column to
+    keep true. But that span is not the word — measured over sura 7 the printed gap
+    between two words runs to a median of 13px, so a highlight drawn that way covers
+    the whitespace before the word as well as the word. People reading a mushaf want
+    the word lit, so the right edge is now measured and kept.
+
+    **``start_x`` is the LARGER number.** Arabic runs right to left, so a word starts
+    at its right edge and ends at its left one: ``start_x > end_x`` for every sane
+    row, and anything walking from one to the other has to count down. Both come from
+    the same place — the word's letter bodies, marks excluded, so a tashkeel leaning
+    past its letter moves neither edge.
+
+    Boxes do **not** tile the line, and they may overlap. The gap between two words is
+    real, and about 7% of words have ink reaching under a neighbour — a tail sweeping
+    left below the next word — so its box genuinely starts inside that neighbour's.
+    Both are stored as measured.
 
     **No sura or aya column**, for the reason :class:`quran.models.Word` has none:
     that question has six different answers, one per counting system, and a single
     stored answer would bake one of them in. Ask ``quran.Aya`` for the word range of
     an aya and filter on ``word`` instead — reference data that has been reviewed,
     rather than ``Segment.aya_number``, which is a cache of a derivation.
+
+    **Reading order is stored, not measured.** These rows used to be ordered by
+    ``-end_x``: right to left, no rank to renumber, and defined for a word with no
+    label. That argument only holds while the engine's x is right, and the engine is
+    predicted to be wrong — a badly read line comes back with its words out of
+    order along the page, and sorting by geometry then reports the mushaf as reading
+    in an order it does not. So ``position`` carries the sequence, the engine's x is
+    a suggestion about placement, and a human's correction is the final word on both.
     """
 
     line = models.ForeignKey(Line, on_delete=models.CASCADE, related_name="words")
@@ -460,6 +480,14 @@ class LineWord(BaseModel):
         help_text="Which word of the Quran this is, by its global index. Null where this mushaf "
         "carries a word the stored text does not have.",
     )
+    position = models.PositiveSmallIntegerField(
+        help_text="Where this word falls in the line's reading order, from 0. The sequence the "
+        "words table gives, not the order the cuts happen to sit in.",
+    )
+    start_x = models.PositiveIntegerField(
+        help_text="Page x where the word starts — its RIGHT edge, since Arabic runs right to "
+        "left, so this is the LARGER of the two.",
+    )
     end_x = models.PositiveIntegerField(
         help_text="Page x where the word ends — its LEFT edge, since Arabic runs right to left."
     )
@@ -468,17 +496,25 @@ class LineWord(BaseModel):
         db_table = "line_word"
         verbose_name = "Line Word"
         verbose_name_plural = "Line Words"
-        # Right to left: the largest x is the line's first word. Ordering by the
-        # geometry rather than by a stored rank means nothing has to be renumbered
-        # when a word is added, deleted or moved to a neighbouring line — and it is
-        # defined for a word with no label, which an index-based order would not be.
-        ordering = ("-end_x",)
+        ordering = ("position",)
         constraints = (
             # Repeated NULLs are allowed by a unique index, so added words are
             # unaffected while a labelled word still cannot appear twice on a line.
             models.UniqueConstraint(fields=["line", "word"], name="unique_line_word"),
-            # Makes the ordering total. Two words cannot end at the same pixel.
-            models.UniqueConstraint(fields=["line", "end_x"], name="unique_line_word_end"),
+            # One word to a slot. Nothing constrains end_x any more: two words of a
+            # badly read line may land on the same pixel, and that is a thing to show
+            # the reviewer stacked up and let them pull apart, not a write to refuse.
+            #
+            # Deferred, because renumbering a line is a permutation and Postgres
+            # checks a unique constraint per ROW as an UPDATE runs, not at the end of
+            # the statement: moving 0→1 while 1→0 collides halfway through even
+            # though the settled state is sound. What must be unique is where the
+            # transaction lands, which is exactly what deferring says.
+            models.UniqueConstraint(
+                fields=["line", "position"],
+                name="unique_line_word_position",
+                deferrable=models.Deferrable.DEFERRED,
+            ),
         )
 
     def __str__(self) -> str:

@@ -21,8 +21,12 @@ from quran.models import Word
 from quran.services.suras import seed_reference_data
 
 
-def _box(index: int, end_x: int, word_id: int) -> WordBox:
-    """One placed word. Only index, word_id and end_x are read by the service."""
+def _box(index: int, end_x: int, word_id: int, *, w: int = 30) -> WordBox:
+    """One placed word, `w` wide from its own left edge.
+
+    The service reads index, word_id, end_x and `right` (= x + w) — the word's right
+    edge, which is where its highlight starts.
+    """
     return WordBox(
         index=index,
         text=f"w{index}",
@@ -32,7 +36,7 @@ def _box(index: int, end_x: int, word_id: int) -> WordBox:
         components=[index + 1],
         x=end_x,
         y=0,
-        w=30,
+        w=w,
         h=20,
         end_x=end_x,
     )
@@ -74,9 +78,7 @@ class WordCoordinateTests(TestCase):
             [Word(id=n, text=f"w{n}", paw_count=1, ijam_above=0, ijam_below=0) for n in range(1, 11)]
         )
         cls.mushaf = bare_mushaf("Coordinates")
-        cls.page = Page.objects.create(
-            mushaf=cls.mushaf, page_number=1, bbox_x=100, bbox_y=0, bbox_w=900, bbox_h=500
-        )
+        cls.page = Page.objects.create(mushaf=cls.mushaf, page_number=1, bbox_x=100, bbox_y=0, bbox_w=900, bbox_h=500)
         cls.line1 = Line.objects.create(
             page=cls.page, line_number=1, type=LineTypeChoices.TEXT, bbox_x=100, bbox_y=0, bbox_w=900, bbox_h=50
         )
@@ -112,6 +114,20 @@ class WordCoordinateTests(TestCase):
         self._run()
         self.assertEqual([w.end_x for w in self.line1.words.all()], [350, 220])
 
+    def test_a_word_starts_at_its_own_right_edge_not_its_neighbours_end(self):
+        """The reason both edges are stored.
+
+        Line 1's words are 30 wide at image x 250 and 120, so word 1 runs 250..280 and
+        word 2 runs 120..150 — a 100px gap between them. Taking word 2's start to be
+        word 1's end would give it a box 130 wide instead of 30, and a highlight that
+        covers the whitespace before the word as well as the word.
+        """
+        self._run()
+        rows = list(self.line1.words.all())
+        self.assertEqual([(r.start_x, r.end_x) for r in rows], [(380, 350), (250, 220)])
+        # start is the LARGER number: Arabic starts on the right.
+        self.assertTrue(all(r.start_x > r.end_x for r in rows))
+
     def test_each_line_uses_its_own_origin(self):
         """The load-bearing case. Line 2's image starts 300px right of line 1's.
 
@@ -121,11 +137,11 @@ class WordCoordinateTests(TestCase):
         self._run()
         self.assertEqual([w.end_x for w in self.line2.words.all()], [450])
 
-    def test_words_come_back_right_to_left(self):
-        """Ordering is geometry, not a stored rank: -end_x is reading order.
-
-        Nothing has to be renumbered when a word is added, deleted or moved to a
-        neighbouring line, and it stays defined for a word with no label.
+    def test_words_come_back_in_the_order_the_text_reads_them(self):
+        """Order is a stored rank, not the geometry. It used to be ``-end_x``, which
+        is reading order only while the engine's placement is right — and a badly read
+        line comes back with its cuts out of order along the page, which sorting by x
+        then reports as the order the mushaf reads in.
         """
         self._run()
         self.assertEqual([w.end_x for w in self.line1.words.all()], [350, 220])
@@ -209,6 +225,33 @@ class WordCoordinateTests(TestCase):
                 word_range=(1, 3),
             )
 
+    def test_two_words_on_one_pixel_are_both_kept(self):
+        """A badly read line can end two words on the same x — a mark stacked over a
+        body, each taken for a word of its own. ``unique(line, end_x)`` used to refuse
+        that, and refused inside ``bulk_create`` it rolled back the whole chunk: sixty
+        lines lost to one pixel on one of them. Order no longer comes from the
+        geometry, so nothing needs x to be unique. Both cuts are stored, in sequence,
+        for the reviewer to pull apart.
+        """
+        placements = [self._placed(self.line1, 100), self._placed(self.line2, 400)]
+        result = WordBoundaryResult(
+            lines=[
+                _outcome("line-01", [_box(0, 250, 1), _box(1, 250, 2)], status="scored"),
+                _outcome("line-02", [_box(2, 50, 3)]),
+            ],
+            words_consumed=3,
+            complete=True,
+        )
+        report = word_coordinates.save_word_coordinates(result, placements, word_range=(1, 3))
+
+        rows = list(self.line1.words.all())
+        self.assertEqual([r.end_x for r in rows], [350, 350])
+        self.assertEqual([r.word_id for r in rows], [1, 2])
+        self.assertEqual([r.position for r in rows], [0, 1])
+        self.assertEqual(LineWordStatus.objects.get(line=self.line1).status, "scored")
+        self.assertEqual(report.unresolved, [])
+        self.assertEqual(report.lines_written, 2)
+
     def test_deleting_a_line_takes_its_words(self):
         self._run()
         self.line2.delete()
@@ -235,9 +278,7 @@ class ChunkSeamTests(TestCase):
             [Word(id=n, text=f"w{n}", paw_count=1, ijam_above=0, ijam_below=0) for n in range(1, 11)]
         )
         cls.mushaf = bare_mushaf("Seam")
-        cls.page = Page.objects.create(
-            mushaf=cls.mushaf, page_number=1, bbox_x=100, bbox_y=0, bbox_w=900, bbox_h=500
-        )
+        cls.page = Page.objects.create(mushaf=cls.mushaf, page_number=1, bbox_x=100, bbox_y=0, bbox_w=900, bbox_h=500)
         cls.lines = [
             Line.objects.create(
                 page=cls.page,
@@ -328,9 +369,7 @@ class AddedWordTests(TestCase):
             [Word(id=n, text=f"w{n}", paw_count=1, ijam_above=0, ijam_below=0) for n in range(1, 11)]
         )
         cls.mushaf = bare_mushaf("Added")
-        cls.page = Page.objects.create(
-            mushaf=cls.mushaf, page_number=1, bbox_x=100, bbox_y=0, bbox_w=900, bbox_h=500
-        )
+        cls.page = Page.objects.create(mushaf=cls.mushaf, page_number=1, bbox_x=100, bbox_y=0, bbox_w=900, bbox_h=500)
         cls.line = Line.objects.create(
             page=cls.page, line_number=1, type=LineTypeChoices.TEXT, bbox_x=100, bbox_y=0, bbox_w=900, bbox_h=50
         )
@@ -356,27 +395,35 @@ class AddedWordTests(TestCase):
 
     def test_an_added_cut_survives_a_re_run(self):
         self._run()
-        LineWord.objects.create(line=self.line, word=None, end_x=280)
+        # Appended at the free slot, as a person adding a cut would leave it;
+        # the re-run is what has to sort it back into place by its x.
+        LineWord.objects.create(line=self.line, word=None, position=2, start_x=310, end_x=280)
         self._run()
         rows = list(self.line.words.all())
-        # 350, 280 (added), 220 — right to left, with the unlabelled one in place.
+        # 350, 280 (added), 220 — the run's two words in the sequence the text gives,
+        # and the human's cut spliced back between them by the x they chose.
         self.assertEqual([row.end_x for row in rows], [350, 280, 220])
+        self.assertEqual([row.position for row in rows], [0, 1, 2])
         self.assertIsNone(rows[1].word_id)
 
     def test_the_line_is_still_marked_as_touched_by_a_person(self):
         self._run()
-        LineWord.objects.create(line=self.line, word=None, end_x=280)
+        # Appended at the free slot, as a person adding a cut would leave it;
+        # the re-run is what has to sort it back into place by its x.
+        LineWord.objects.create(line=self.line, word=None, position=2, start_x=310, end_x=280)
         self._run()
         self.assertTrue(LineWordStatus.objects.get(line=self.line).edited)
 
     def test_a_cut_the_engine_later_claims_is_displaced_rather_than_crashing(self):
-        """The run moves onto a human's x. unique(line, end_x) would refuse the write.
-
-        The run wins that tie: it found a word where the person had put a cut, which
-        is the very thing they were compensating for.
+        """The run moves onto a human's x. Nothing forbids two cuts on one pixel any
+        more, but there is no sense showing them stacked: the run found a word exactly
+        where the person had put a cut, which is the very thing they were
+        compensating for, so the run wins that tie and the extra goes.
         """
         self._run()
-        LineWord.objects.create(line=self.line, word=None, end_x=280)
+        # Appended at the free slot, as a person adding a cut would leave it;
+        # the re-run is what has to sort it back into place by its x.
+        LineWord.objects.create(line=self.line, word=None, position=2, start_x=310, end_x=280)
         # Word 2 now lands on page x 280 — exactly where the added cut sits.
         report = self._run(second_at=180)
         self.assertEqual(report.displaced, 1)

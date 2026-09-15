@@ -31,7 +31,7 @@ from dataclasses import dataclass
 from PIL import Image
 
 from api.models import Line, LineTypeChoices, Mushaf, Page, Segment
-from api.services import coordinates, pdf
+from api.services import pdf
 from api.services.export import render_line_image
 from core.word_boundary import LineImage
 
@@ -41,12 +41,11 @@ class PlacedLine:
     """One line's picture, and where on the page that picture sits.
 
     ``origin_x`` is the page x that image x 0 corresponds to. It is **not** derivable
-    from ``line`` alone: a line's image starts at the page column
-    (``render_line_image`` cuts every line there), and the first and last line of a
-    span are then cut again at an aya boundary, which moves the zero further right.
-    That second shift depends on which line is first and last *in this run*, so it is
-    a property of the run rather than of the row — a writer holding only a ``Line``
-    cannot know whether its image was cropped, or by how much.
+    from ``line`` alone: a line's image starts at that line's own left edge, and the
+    first and last line of a span are then cut again at an aya boundary, which moves
+    the zero further right. That shift depends on which line is first and last *in
+    this run*, so it is a property of the run rather than of the row — a writer
+    holding only a ``Line`` cannot know whether its image was cropped, or by how much.
 
     So it travels with the picture. ``LineImage`` stays what the engine sees, knowing
     nothing about pages or rows; this is the caller's own bookkeeping, on the
@@ -100,12 +99,15 @@ def line_images(
     *,
     start: tuple[int, int],
     end: tuple[int, int],
-    refresh: bool = False,
 ) -> list[PlacedLine]:
     """Every text line from the start aya through the end aya, in reading order.
 
     Sura headers and besmella lines are left out: they are not text, and the
     engine has never accepted them.
+
+    Every line is cut fresh from the PDF — see ``_image_for`` for why an exported
+    PNG cannot stand in. There used to be a ``refresh`` flag to force that; it is
+    now what always happens, so the flag went rather than lie about being optional.
     """
     first_segment = locate(mushaf, *start)
     last_segment = locate(mushaf, *end, last=True)
@@ -128,17 +130,16 @@ def line_images(
     out: list[PlacedLine] = []
     for page in pages:
         rendered_page: Image.Image | None = None
-        column = coordinates.page_column(page)
         for line in sorted(page.lines.all(), key=lambda line: line.line_number):
             if line.type != LineTypeChoices.TEXT:
                 continue
             if not (_line_key(first_line) <= _line_key(line) <= _line_key(last_line)):
                 continue
 
-            crop = _crop_for(line, first_line, last_line, first_segment, last_segment, column)
-            if rendered_page is None and _needs_render(mushaf, line, crop, refresh):
+            crop = _crop_for(line, first_line, last_line, first_segment, last_segment)
+            if rendered_page is None:
                 rendered_page = _render_page(mushaf, page)
-            image, origin_x = _image_for(mushaf, line, page, column, rendered_page, crop, refresh)
+            image, origin_x = _image_for(line, rendered_page, crop)
             out.append(
                 PlacedLine(
                     image=LineImage(
@@ -161,9 +162,18 @@ def _line_key(line: Line) -> tuple[int, int]:
     return (line.page.page_number, line.line_number)
 
 
-def _origin_x(column: dict | None, line: Line) -> int:
-    """Page x that image x 0 corresponds to, matching ``render_line_image``."""
-    return max(0, column["x"] if column else line.bbox_x)
+def _origin_x(line: Line) -> int:
+    """Page x that image x 0 corresponds to, matching ``render_line_image``.
+
+    The **line's own** left edge, not the page column's. A column is as wide as the
+    widest thing on the page — a sura header, and on a framed page the frame itself —
+    so cutting every line there hands the engine ink that belongs to no word. It reads
+    a printed border as letters, and because that ink touches image x 0 the tight crop
+    can never trim it: al-Fatiha's lines came back with every word placed outside the
+    line it was on. ``Line.bbox_x/bbox_w`` track the line's actual content, so they
+    are the honest crop.
+    """
+    return max(0, line.bbox_x)
 
 
 def _crop_for(
@@ -172,7 +182,6 @@ def _crop_for(
     last_line: Line,
     first_segment: Segment,
     last_segment: Segment,
-    column: dict | None,
 ) -> tuple[int, int | None] | None:
     """Where to cut this line, in image x, or None to keep all of it.
 
@@ -189,14 +198,10 @@ def _crop_for(
     its final line would keep every later aya on that line, and the engine would be
     handed ink for words it was never given.
     """
-    origin = _origin_x(column, line)
+    origin = _origin_x(line)
     segments = sorted(line.segments.all(), key=lambda s: s.segment_order)
     left, right = 0, None
-    if (
-        _line_key(line) == _line_key(last_line)
-        and segments
-        and last_segment.segment_order < segments[-1].segment_order
-    ):
+    if _line_key(line) == _line_key(last_line) and segments and last_segment.segment_order < segments[-1].segment_order:
         left = max(0, last_segment.bbox_x - origin)
     if (
         _line_key(line) == _line_key(first_line)
@@ -209,17 +214,6 @@ def _crop_for(
     return (left, right)
 
 
-def _needs_render(mushaf: Mushaf, line: Line, crop: tuple[int, int | None] | None, refresh: bool) -> bool:
-    """A stored PNG will not do when page coordinates have to line up.
-
-    ``export._pad_to`` *centres* each line on a page-sized canvas when
-    ``export_uniform_size`` is on, so a stored PNG then carries a per-line offset
-    that cannot be mapped back to page x — which breaks both the crop and the
-    separator positions. Rendering puts image x 0 back on the column edge.
-    """
-    return refresh or crop is not None or mushaf.export_uniform_size or not line.line_png
-
-
 def _render_page(mushaf: Mushaf, page: Page) -> Image.Image:
     index = pdf.logical_to_pdf_index(mushaf.first_quran_pdf_page, page.page_number, page.source_pdf_page)
     image = Image.open(io.BytesIO(pdf.render_page(mushaf.pdf_file.path, index)))
@@ -228,23 +222,23 @@ def _render_page(mushaf: Mushaf, page: Page) -> Image.Image:
 
 
 def _image_for(
-    mushaf: Mushaf,
     line: Line,
-    page: Page,
-    column: dict | None,
-    rendered_page: Image.Image | None,
+    rendered_page: Image.Image,
     crop: tuple[int, int | None] | None,
-    refresh: bool,
 ) -> tuple[Image.Image, int]:
-    """One line's picture, and the page x its left edge sits on."""
-    origin = _origin_x(column, line)
-    if _needs_render(mushaf, line, crop, refresh):
-        assert rendered_page is not None
-        image = render_line_image(rendered_page, line, column)
-    else:
-        with line.line_png.open("rb") as handle:
-            image = Image.open(io.BytesIO(handle.read()))
-            image.load()
+    """One line's picture, and the page x its left edge sits on.
+
+    **Always cut fresh**, never read back from ``line.line_png``. An exported PNG is
+    cut at the page column and may have been centred on a page-sized canvas
+    (``export._pad_to``, when ``export_uniform_size`` is on); either way its image x 0
+    is not this line's left edge, so reusing one would quietly undo the crop that
+    ``_origin_x`` explains. Rendering costs one page per page, not one per line — the
+    caller renders once and passes it in.
+    """
+    origin = _origin_x(line)
+    # column=None: cut at the line's own box. The export path passes a real column and
+    # keeps its uniform width; only the engine wants the tight cut.
+    image = render_line_image(rendered_page, line, None)
     if crop is None:
         return image, origin
     left, right = crop

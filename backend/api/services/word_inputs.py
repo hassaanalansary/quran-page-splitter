@@ -65,7 +65,6 @@ def prepare_engine_input(
     user: User | None,
     start: tuple[int, int],
     end: tuple[int, int] | None = None,
-    refresh: bool = False,
 ) -> EngineRun:
     """Line images and the word stream for one span, ready for the engine.
 
@@ -73,16 +72,15 @@ def prepare_engine_input(
     ``end`` defaults to the last aya of the sura the run starts in — a whole sura
     is the natural unit, and a caller that wants less says so.
 
-    ``refresh`` forces every line to be re-cut from the PDF rather than read from
-    its exported PNG, which is the answer when erase strokes were edited after the
-    last export.
+    Lines are always cut fresh from the PDF, so an erase stroke edited after the last
+    export is picked up without asking.
     """
     mushaf = mushaf_service.get_mushaf(mushaf_id, user=user, write=False)
     system = counting_system_for(mushaf)
     if end is None:
         end = (start[0], words_service.sura_last_aya(system, start[0]))
 
-    placements = line_images_service.line_images(mushaf, start=start, end=end, refresh=refresh)
+    placements = line_images_service.line_images(mushaf, start=start, end=end)
     stream = words_service.word_stream(system, start=start, end=end)
     return EngineRun(
         source=WordBoundaryInput(

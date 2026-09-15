@@ -15,11 +15,13 @@ from ninja import Router, Schema
 from pydantic import Field
 
 from api.auth import current_user
-from api.models import ProcessJobKindChoices
+from api.models import ActivityTypeChoices, Mushaf, ProcessJobKindChoices
+from api.services import activity as activity_service
 from api.services import jobs as jobs_service
 from api.services import mushaf as mushaf_service
 from api.services import word_coordinates, word_inputs, word_runs
 from api.views.processing import JobOut, JobStatusOut
+from quran.models import CountingSystem
 
 router = Router(tags=["words"])
 
@@ -47,11 +49,40 @@ class DetectWordsOut(Schema):
     warnings: list[str] = Field(default_factory=list)
 
 
-class WordOut(Schema):
+class WordIn(Schema):
+    """One cut as a client sends it: where it falls, and who it belongs to.
+
+    There is no ``position`` here on purpose. A line's words arrive as a list, and
+    **that list's order is the reading order** — saying it twice would only create a
+    second thing to keep true. See ``replace_page_words``.
+    """
+
     #: Null where this mushaf carries a word the stored text does not have. The cut
     #: is the product; the label is optional.
     word_id: int | None = None
+    #: The word's RIGHT edge, and so the LARGER of the two — Arabic runs right to
+    #: left, and a word starts where it starts being read.
+    start_x: int
     end_x: int
+
+
+class WordOut(WordIn):
+    """One cut as it goes out, with enough to judge it by.
+
+    ``text`` and ``aya`` are display only and deliberately absent from ``WordIn``:
+    they are derived from ``word_id``, so accepting them back would create a second
+    place the same fact is written. Both are empty for an unlabelled row, and for a
+    mushaf with no riwaya set — which has no answer to "which aya is this".
+
+    ``position`` is the stored slot. The list is already in that order, so it is here
+    to be *shown* — a reviewer looking at a line whose cuts sit out of order needs to
+    see which word is which.
+    """
+
+    position: int = 0
+    text: str = ""
+    #: "7:82".
+    aya: str = ""
 
 
 class LineWordsOut(Schema):
@@ -81,7 +112,7 @@ class PageWordsOut(Schema):
 
 class LineWordsIn(Schema):
     line_id: uuid.UUID
-    words: list[WordOut]
+    words: list[WordIn]
 
 
 class PageWordsIn(Schema):
@@ -163,17 +194,31 @@ def coverage(request: HttpRequest, mushaf_id: uuid.UUID) -> dict:
     return {"pages": pages, "complete": bool(pages) and all(page["complete"] for page in pages)}
 
 
+def _counting_system(mushaf: Mushaf) -> CountingSystem | None:
+    """This mushaf's counting system, or None when it has no riwaya set.
+
+    Reading a page is not running one. ``counting_system_for`` raises so that a
+    *run* is refused rather than started blind, but both page endpoints hand the
+    result to functions that already take ``None`` — so letting it out here would
+    turn "no riwaya yet" into a 500 on a page that is otherwise perfectly readable.
+    The aya labels and the anchor check are simply absent.
+    """
+    try:
+        return word_inputs.counting_system_for(mushaf)
+    except LookupError:
+        return None
+
+
 @router.get("/{mushaf_id}/pages/{page_number}/words", response=PageWordsOut)
 def page_words(request: HttpRequest, mushaf_id: uuid.UUID, page_number: int) -> dict:
     """One page's lines, their cuts in reading order, and the engine's verdict."""
     mushaf = mushaf_service.get_mushaf(mushaf_id, user=current_user(request), write=False)
     page = mushaf_service.get_page(mushaf, page_number)
+    system = _counting_system(mushaf)
     return {
         "page": page.page_number,
-        "lines": word_coordinates.page_words(page),
-        "issues": [
-            issue.__dict__ for issue in word_coordinates.coherence(page, word_inputs.counting_system_for(mushaf))
-        ],
+        "lines": word_coordinates.page_words(page, system),
+        "issues": [issue.__dict__ for issue in word_coordinates.coherence(page, system)],
     }
 
 
@@ -191,14 +236,26 @@ def save_page_words(request: HttpRequest, mushaf_id: uuid.UUID, page_number: int
     """
     mushaf = mushaf_service.get_mushaf(mushaf_id, user=current_user(request))
     page = mushaf_service.get_page(mushaf, page_number)
-    system = word_inputs.counting_system_for(mushaf)
+    system = _counting_system(mushaf)
     report = word_coordinates.replace_page_words(
         page,
         [line.model_dump() for line in data.lines],
         counting_system=system,
     )
+    # After the write, so the feed never claims an edit the transaction rolled back.
+    activity_service.emit(
+        mushaf,
+        ActivityTypeChoices.WORDS_EDITED,
+        {
+            "page_number": page.page_number,
+            "lines": report.lines_written,
+            "words": report.words_written,
+            "issues": len(report.issues),
+        },
+        actor=current_user(request),
+    )
     return {
         "page": page.page_number,
-        "lines": word_coordinates.page_words(page),
+        "lines": word_coordinates.page_words(page, system),
         "issues": [issue.__dict__ for issue in report.issues],
     }

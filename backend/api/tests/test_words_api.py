@@ -38,9 +38,15 @@ from quran.services import suras
 AYA_STARTS = {5: 1, 6: 5, 7: 9}
 
 
-def _cuts(word_ids: list[int], first_x: int, step: int) -> list[dict]:
-    """Evenly spaced cuts, right to left, for a line's payload."""
-    return [{"word_id": word_id, "end_x": first_x - step * i} for i, word_id in enumerate(word_ids)]
+def _cuts(word_ids: list[int], first_x: int, step: int, *, width: int = 80) -> list[dict]:
+    """Evenly spaced word boxes, right to left, for a line's payload.
+
+    `start_x` is the larger number: a word starts at its right edge.
+    """
+    return [
+        {"word_id": word_id, "start_x": first_x - step * i + width, "end_x": first_x - step * i}
+        for i, word_id in enumerate(word_ids)
+    ]
 
 
 class WordsApiTestCase(ApiTestCase):
@@ -71,9 +77,7 @@ class WordsApiTestCase(ApiTestCase):
         self.mushaf.rawi = Rawi.objects.get(name="Hafs")
         self.mushaf.save(update_fields=["rawi"])
 
-        self.page = Page.objects.create(
-            mushaf=self.mushaf, page_number=1, bbox_x=100, bbox_y=0, bbox_w=600, bbox_h=400
-        )
+        self.page = Page.objects.create(mushaf=self.mushaf, page_number=1, bbox_x=100, bbox_y=0, bbox_w=600, bbox_h=400)
         self.lines = []
         for number in (1, 2, 3, 4):
             line = Line.objects.create(
@@ -97,9 +101,15 @@ class WordsApiTestCase(ApiTestCase):
         return f"/api/mushafs/{self.mushaf.id}/words{suffix}"
 
     def _store(self, line: Line, words: list[tuple[int | None, int]]) -> None:
-        """Put cuts on a line directly, as a finished run would have left them."""
+        """Put cuts on a line directly, as a finished run would have left them.
+
+        Listed in reading order, which is what ``position`` records.
+        """
         LineWord.objects.bulk_create(
-            [LineWord(line=line, word_id=word_id, end_x=end_x) for word_id, end_x in words]
+            [
+                LineWord(line=line, word_id=word_id, position=index, start_x=end_x + 80, end_x=end_x)
+                for index, (word_id, end_x) in enumerate(words)
+            ]
         )
         LineWordStatus.objects.update_or_create(line=line, defaults={"status": "exact", "reason": ""})
 
@@ -278,9 +288,61 @@ class ManualFixTests(WordsApiTestCase):
         self._store(self.lines[1], [(6, 640), (7, 480), (8, 320)])
 
     def _put(self, payload: dict):
-        return self.client.put(
-            f"/api/mushafs/{self.mushaf.id}/pages/1/words", payload, content_type="application/json"
+        return self.client.put(f"/api/mushafs/{self.mushaf.id}/pages/1/words", payload, content_type="application/json")
+
+    def test_the_order_words_are_sent_in_is_the_order_they_are_stored_in(self):
+        """The engine's x is a suggestion; the list is the edit.
+
+        Here the reviewer has dragged word 2's cut left of word 3's — a thing a bad
+        reading makes them do — and the words must still come back 1, 2, 3, 4. Sorting
+        by x would report the mushaf as reading 1, 3, 2, 4, which it does not.
+        """
+        response = self._put(
+            {
+                "lines": [
+                    {
+                        "line_id": str(self.lines[0].id),
+                        "words": [
+                            {"word_id": 1, "start_x": 720, "end_x": 640},
+                            {"word_id": 2, "start_x": 380, "end_x": 300},
+                            {"word_id": 3, "start_x": 480, "end_x": 400},
+                            {"word_id": 4, "start_x": 360, "end_x": 280},
+                        ],
+                    }
+                ]
+            }
         )
+        self.assertEqual(response.status_code, 200)
+        words = response.json()["lines"][0]["words"]
+        self.assertEqual([w["word_id"] for w in words], [1, 2, 3, 4])
+        self.assertEqual([w["position"] for w in words], [0, 1, 2, 3])
+        self.assertEqual([w["end_x"] for w in words], [640, 300, 400, 280])
+
+    def test_words_stored_out_of_the_texts_order_are_reported(self):
+        """Sorting used to hide this: a line whose words are stored in the wrong
+        sequence reads correctly once sorted, so the check said nothing while the
+        mushaf claimed an order it does not have."""
+        response = self._put(
+            {
+                "lines": [
+                    {
+                        "line_id": str(self.lines[0].id),
+                        "words": [
+                            {"word_id": 1, "start_x": 720, "end_x": 640},
+                            {"word_id": 3, "start_x": 600, "end_x": 520},
+                            {"word_id": 2, "start_x": 480, "end_x": 400},
+                            {"word_id": 4, "start_x": 360, "end_x": 280},
+                        ],
+                    }
+                ]
+            }
+        )
+        self.assertEqual(response.status_code, 200)
+        kinds = [issue["kind"] for issue in response.json()["issues"]]
+        self.assertIn("out_of_sequence", kinds)
+        issue = next(i for i in response.json()["issues"] if i["kind"] == "out_of_sequence")
+        self.assertEqual(issue["line_number"], 1)
+        self.assertEqual(issue["words"], [3])
 
     def test_a_word_moves_between_lines_in_one_call(self):
         response = self._put(
@@ -289,19 +351,19 @@ class ManualFixTests(WordsApiTestCase):
                     {
                         "line_id": str(self.lines[0].id),
                         "words": [
-                            {"word_id": 1, "end_x": 640},
-                            {"word_id": 2, "end_x": 520},
-                            {"word_id": 3, "end_x": 400},
-                            {"word_id": 4, "end_x": 280},
+                            {"word_id": 1, "start_x": 720, "end_x": 640},
+                            {"word_id": 2, "start_x": 600, "end_x": 520},
+                            {"word_id": 3, "start_x": 480, "end_x": 400},
+                            {"word_id": 4, "start_x": 360, "end_x": 280},
                         ],
                     },
                     {
                         "line_id": str(self.lines[1].id),
                         "words": [
-                            {"word_id": 5, "end_x": 660},
-                            {"word_id": 6, "end_x": 640},
-                            {"word_id": 7, "end_x": 480},
-                            {"word_id": 8, "end_x": 320},
+                            {"word_id": 5, "start_x": 740, "end_x": 660},
+                            {"word_id": 6, "start_x": 720, "end_x": 640},
+                            {"word_id": 7, "start_x": 560, "end_x": 480},
+                            {"word_id": 8, "start_x": 400, "end_x": 320},
                         ],
                     },
                 ]
@@ -332,9 +394,9 @@ class ManualFixTests(WordsApiTestCase):
                     {
                         "line_id": str(self.lines[0].id),
                         "words": [
-                            {"word_id": 1, "end_x": 640},
-                            {"word_id": None, "end_x": 580},
-                            {"word_id": 2, "end_x": 520},
+                            {"word_id": 1, "start_x": 720, "end_x": 640},
+                            {"word_id": None, "start_x": 660, "end_x": 580},
+                            {"word_id": 2, "start_x": 600, "end_x": 520},
                         ],
                     }
                 ]
@@ -352,11 +414,11 @@ class ManualFixTests(WordsApiTestCase):
                     {
                         "line_id": str(self.lines[0].id),
                         "words": [
-                            {"word_id": 1, "end_x": 640},
-                            {"word_id": None, "end_x": 580},
-                            {"word_id": 2, "end_x": 520},
-                            {"word_id": 3, "end_x": 400},
-                            {"word_id": 4, "end_x": 280},
+                            {"word_id": 1, "start_x": 720, "end_x": 640},
+                            {"word_id": None, "start_x": 660, "end_x": 580},
+                            {"word_id": 2, "start_x": 600, "end_x": 520},
+                            {"word_id": 3, "start_x": 480, "end_x": 400},
+                            {"word_id": 4, "start_x": 360, "end_x": 280},
                         ],
                     },
                     {"line_id": str(self.lines[1].id), "words": _cuts([5, 6, 7, 8], 660, 100)},
@@ -367,13 +429,15 @@ class ManualFixTests(WordsApiTestCase):
         self.assertEqual([issue for issue in issues if issue["kind"] == "gap"], [])
 
     def test_the_line_is_marked_as_touched_by_a_person(self):
-        self._put({"lines": [{"line_id": str(self.lines[0].id), "words": [{"word_id": 1, "end_x": 640}]}]})
+        self._put(
+            {"lines": [{"line_id": str(self.lines[0].id), "words": [{"word_id": 1, "start_x": 720, "end_x": 640}]}]}
+        )
         self.assertTrue(LineWordStatus.objects.get(line=self.lines[0]).edited)
 
     def test_a_break_is_saved_and_reported_rather_than_refused(self):
         """A reviewer fixing line 1 before line 2 passes through this on purpose."""
         response = self._put(
-            {"lines": [{"line_id": str(self.lines[0].id), "words": [{"word_id": 1, "end_x": 640}]}]}
+            {"lines": [{"line_id": str(self.lines[0].id), "words": [{"word_id": 1, "start_x": 720, "end_x": 640}]}]}
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(self.lines[0].words.count(), 1)

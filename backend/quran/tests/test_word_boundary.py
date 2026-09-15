@@ -72,9 +72,7 @@ def _assert_pure(case: SimpleTestCase, value: object, path: str) -> None:
 
 class ResultIsPureDataTests(SimpleTestCase):
     def setUp(self):
-        self.result = detect_words(
-            WordBoundaryInput(lines=[_line([50, 100, 150, 200])], words=_words([1, 2, 1]))
-        )
+        self.result = detect_words(WordBoundaryInput(lines=[_line([50, 100, 150, 200])], words=_words([1, 2, 1])))
 
     def test_nothing_but_data_comes_back(self):
         """No PIL image, no numpy array, no LineInk — the next phase writes rows."""
@@ -189,9 +187,9 @@ class SuppliedSeparatorTests(SimpleTestCase):
 
         They run and find nothing, which is right — a rectangle is not a ring.
         """
-        line = detect_words(
-            WordBoundaryInput(lines=[_line(self.XS, separators=None)], words=_words([1, 2, 1]))
-        ).lines[0]
+        line = detect_words(WordBoundaryInput(lines=[_line(self.XS, separators=None)], words=_words([1, 2, 1]))).lines[
+            0
+        ]
         self.assertEqual(line.ornaments, [])
         self.assertNotIn("ornament", {component.role for component in line.components})
 
@@ -215,9 +213,35 @@ class MultipleLineTests(SimpleTestCase):
 
     def test_an_unconsumed_span_is_not_reported_as_a_reading(self):
         """Too many words for the ink: the last line's cuts are withdrawn."""
-        result = detect_words(
-            WordBoundaryInput(lines=[_line([50, 100])], words=_words([1, 1, 1, 1, 1, 1]))
-        )
+        result = detect_words(WordBoundaryInput(lines=[_line([50, 100])], words=_words([1, 1, 1, 1, 1, 1])))
         self.assertFalse(result.complete)
         self.assertEqual(result.lines[0].status, "unresolved")
         self.assertEqual(result.lines[0].words, [])
+
+    def test_ink_the_stream_never_reached_is_not_reported_as_exact(self):
+        """Too few words for the ink: the mirror case, and the one that hid.
+
+        A run over al-Baqara drifted a whole aya ahead, spent every word of its span
+        by page 10 line 11, and handed the next nineteen lines of real ink back as
+        ``exact`` with nothing on them — green dots, nothing to review. A line the
+        stream never reached is a finding, not a clean parse of nothing. A line with
+        no ink at all is still nothing, and stays so.
+        """
+        result = detect_words(
+            WordBoundaryInput(
+                lines=[
+                    _line([50, 100], label="line-01.png"),
+                    _line([50, 100], label="line-02.png"),
+                    _line([], label="line-03.png"),
+                ],
+                words=_words([1, 1]),
+            )
+        )
+        self.assertTrue(result.complete)
+        self.assertEqual(result.lines[0].status, "exact")
+        self.assertEqual(len(result.lines[0].words), 2)
+        self.assertEqual(result.lines[1].status, "unresolved")
+        self.assertEqual(result.lines[1].reason, "words-exhausted")
+        self.assertEqual(result.lines[1].words, [])
+        self.assertEqual(result.lines[2].status, "exact")
+        self.assertEqual(result.lines[2].words, [])

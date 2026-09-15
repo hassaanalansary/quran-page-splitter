@@ -30,9 +30,7 @@ class LineImageGeometryTests(TestCase):
         cls.mushaf = bare_mushaf("Geometry")
         cls.mushaf.rawi = Rawi.objects.get(name="Hafs")
         cls.mushaf.save(update_fields=["rawi"])
-        cls.page = Page.objects.create(
-            mushaf=cls.mushaf, page_number=1, bbox_x=100, bbox_y=0, bbox_w=900, bbox_h=500
-        )
+        cls.page = Page.objects.create(mushaf=cls.mushaf, page_number=1, bbox_x=100, bbox_y=0, bbox_w=900, bbox_h=500)
         cls.line = Line.objects.create(
             page=cls.page, line_number=1, type=LineTypeChoices.TEXT, bbox_x=100, bbox_y=0, bbox_w=900, bbox_h=50
         )
@@ -44,18 +42,25 @@ class LineImageGeometryTests(TestCase):
             )
         cls.line.sura_id = 2
         cls.line.save(update_fields=["sura"])
-        cls.column = {"x": 100, "y": 0, "w": 900, "h": 500}
+        # A short line inside the same column — the last line of a sura, or one of
+        # al-Fatiha's. The column is as wide as the widest thing on the page; this
+        # line is not, and that difference is the whole point of _origin_x.
+        cls.short_line = Line.objects.create(
+            page=cls.page, line_number=2, type=LineTypeChoices.TEXT, bbox_x=400, bbox_y=50, bbox_w=300, bbox_h=50
+        )
 
     def _segment(self, order):
         return self.line.segments.get(segment_order=order)
 
-    def test_image_x_zero_is_the_column_edge(self):
-        self.assertEqual(line_images._origin_x(self.column, self.line), 100)
+    def test_image_x_zero_is_the_lines_own_left_edge(self):
+        """Not the column's. A column spans the widest thing on the page — a sura
+        header, and on a framed page the frame — so cutting a short line there hands
+        the engine ink no word owns, and it reads the border as letters."""
+        self.assertEqual(line_images._origin_x(self.short_line), 400)
+        self.assertEqual(line_images._origin_x(self.line), 100)
 
     def test_a_line_that_already_starts_the_aya_is_not_cropped(self):
-        crop = line_images._crop_for(
-            self.line, self.line, self.line, self._segment(1), self._segment(3), self.column
-        )
+        crop = line_images._crop_for(self.line, self.line, self.line, self._segment(1), self._segment(3))
         self.assertIsNone(crop)
 
     def test_starting_mid_line_crops_away_the_words_to_the_right(self):
@@ -64,16 +69,12 @@ class LineImageGeometryTests(TestCase):
         Aya 5 sits to its right and is not ours, so the cut keeps image x up to
         that segment's right edge: 400 + 300 - 100 = 600.
         """
-        crop = line_images._crop_for(
-            self.line, self.line, self.line, self._segment(2), self._segment(3), self.column
-        )
+        crop = line_images._crop_for(self.line, self.line, self.line, self._segment(2), self._segment(3))
         self.assertEqual(crop, (0, 600))
 
     def test_ending_mid_line_crops_away_the_words_to_the_left(self):
         """End at aya 6: aya 7 lies to its left, so keep from x 400 - 100 = 300."""
-        crop = line_images._crop_for(
-            self.line, self.line, self.line, self._segment(1), self._segment(2), self.column
-        )
+        crop = line_images._crop_for(self.line, self.line, self.line, self._segment(1), self._segment(2))
         self.assertEqual(crop, (300, None))
 
     def test_ending_on_the_rightmost_aya_still_cuts_the_rest_of_the_line(self):
@@ -83,15 +84,11 @@ class LineImageGeometryTests(TestCase):
         go. This used to be skipped by a guard testing the wrong end of the line, and
         the engine was handed two ayat of ink it had no words for.
         """
-        crop = line_images._crop_for(
-            self.line, self.line, self.line, self._segment(1), self._segment(1), self.column
-        )
+        crop = line_images._crop_for(self.line, self.line, self.line, self._segment(1), self._segment(1))
         self.assertEqual(crop, (600, None))
 
     def test_both_ends_on_one_line(self):
-        crop = line_images._crop_for(
-            self.line, self.line, self.line, self._segment(2), self._segment(2), self.column
-        )
+        crop = line_images._crop_for(self.line, self.line, self.line, self._segment(2), self._segment(2))
         self.assertEqual(crop, (300, 600))
 
     def test_ornament_spans_come_from_the_segment_left_edge(self):
@@ -110,25 +107,6 @@ class LineImageGeometryTests(TestCase):
 
     def test_no_template_means_find_them_yourself(self):
         self.assertIsNone(line_images._separators(self.line, origin_x=100, width=900, template_width=0))
-
-    def test_an_exported_png_is_used_as_it_is(self):
-        # Only the field's truthiness is read here, so a name is enough; the bytes
-        # would only matter once something opened it.
-        self.line.line_png.name = "mushafs/x/lines/page-0001/line-01.png"
-        self.assertFalse(line_images._needs_render(self.mushaf, self.line, None, refresh=False))
-
-    def test_uniform_export_forces_a_render(self):
-        """A padded stored PNG is centred, so page x cannot be mapped onto it."""
-        self.line.line_png.name = "mushafs/x/lines/page-0001/line-01.png"
-        self.mushaf.export_uniform_size = True
-        self.assertTrue(line_images._needs_render(self.mushaf, self.line, None, refresh=False))
-
-    def test_a_crop_forces_a_render_too(self):
-        self.line.line_png.name = "mushafs/x/lines/page-0001/line-01.png"
-        self.assertTrue(line_images._needs_render(self.mushaf, self.line, (0, 600), refresh=False))
-
-    def test_a_line_never_exported_must_be_rendered(self):
-        self.assertTrue(line_images._needs_render(self.mushaf, self.line, None, refresh=False))
 
 
 class LocateTests(TestCase):
@@ -184,10 +162,13 @@ class PlacedLineTests(MediaTestCase):
 
     ``origin_x`` is the page x that image x 0 corresponds to, and it is the number
     every stored word coordinate is measured from. It is not a constant: a line's
-    image is cut at the page column, and the far end of a span is cut again at an aya
-    boundary, which moves the zero further right. Nothing about the ``Line`` row
-    records that second shift — it depends on where the run stops — so it has to
+    image is cut at that line's own left edge, and the far end of a span is cut again
+    at an aya boundary, which moves the zero further right. Nothing about the ``Line``
+    row records that second shift — it depends on where the run stops — so it has to
     travel out with the picture.
+
+    The crop box here is deliberately **wider than the line**, so a picture cut at the
+    column would be a different picture from one cut at the line.
     """
 
     def setUp(self):
@@ -210,22 +191,24 @@ class PlacedLineTests(MediaTestCase):
             page_range_end=1,
             status="completed",
         )
-        # One text line across a column at page x 100, carrying two ayat: aya 5 on
-        # the right (x 400..700) and aya 6 to its left (x 100..400).
+        # One text line at page x 200..800, inside a wider column at 100..900. It
+        # carries two ayat: aya 5 on the right (x 500..800) and aya 6 to its left
+        # (x 200..500).
         coordinates.write_coords_to_page(
             mushaf=self.mushaf,
             page_number=1,
             run=run,
             coord_page={
-                "crop_box": {"x": 100, "y": 0, "w": 600, "h": 200},
+                # The column runs page x 100..900; the line only 200..800.
+                "crop_box": {"x": 100, "y": 0, "w": 800, "h": 200},
                 "lines": [
                     {
                         "line_number": 1,
                         "type": "text",
-                        "line_bbox": {"x": 100, "y": 0, "w": 600, "h": 40},
+                        "line_bbox": {"x": 200, "y": 0, "w": 600, "h": 40},
                         "segments": [
-                            {"bbox": {"x": 400, "w": 300}, "has_separator": True},
-                            {"bbox": {"x": 100, "w": 300}, "has_separator": False},
+                            {"bbox": {"x": 500, "w": 300}, "has_separator": True},
+                            {"bbox": {"x": 200, "w": 300}, "has_separator": False},
                         ],
                     }
                 ],
@@ -237,22 +220,40 @@ class PlacedLineTests(MediaTestCase):
         for order, aya in ((1, 5), (2, 6)):
             self.line.segments.filter(segment_order=order).update(aya_number=aya)
 
-    def test_an_uncropped_line_starts_at_the_column_edge(self):
+    def test_an_uncropped_line_starts_at_its_own_left_edge(self):
+        """Page x 200, where the line begins — not 100, where the column does.
+
+        The 100px between them is column, not line: on a real page it holds the
+        printed frame, and handing it to the engine is what put al-Fatiha's words
+        outside the lines they were on.
+        """
         placed = line_images.line_images(self.mushaf, start=(2, 5), end=(2, 6))
-        self.assertEqual([p.origin_x for p in placed], [100])
-        self.assertIs(placed[0].line, placed[0].line)
+        self.assertEqual([p.origin_x for p in placed], [200])
+        self.assertEqual(placed[0].image.image.width, 600)
         self.assertEqual(placed[0].line.pk, self.line.pk)
 
     def test_ending_mid_line_moves_the_origin_by_the_crop(self):
         """The span ends at aya 5, so aya 6 — at smaller x — is cut away.
 
-        The cut is at page x 400, which is image x 300; the surviving image now
-        begins at page x 400, not 100. A word at image x 50 is page x 450.
+        The cut is at page x 500, which is image x 300 now that zero is the line's
+        own edge; the surviving image begins at page x 500. A word at image x 50 is
+        page x 550.
         """
         placed = line_images.line_images(self.mushaf, start=(2, 5), end=(2, 5))
-        self.assertEqual(placed[0].origin_x, 400)
-        # And the picture really is the narrower one, not the whole column.
+        self.assertEqual(placed[0].origin_x, 500)
+        # And the picture really is the narrower one.
         self.assertEqual(placed[0].image.image.width, 300)
+
+    def test_an_exported_png_is_never_reused(self):
+        """A stored PNG is cut at the column and may be centred on a page-sized
+        canvas, so its image x 0 is not this line's left edge. Reusing one would
+        silently undo the crop above, so the line is always cut fresh."""
+        self.line.line_png.name = "mushafs/x/lines/page-0001/line-01.png"
+        self.line.save(update_fields=["line_png"])
+        placed = line_images.line_images(self.mushaf, start=(2, 5), end=(2, 6))
+        # The named file does not exist; had it been opened this would have raised.
+        self.assertEqual(placed[0].origin_x, 200)
+        self.assertEqual(placed[0].image.image.width, 600)
 
     def test_the_engine_still_sees_only_a_picture(self):
         """PlacedLine is the caller's bookkeeping; LineImage stays what it was."""
