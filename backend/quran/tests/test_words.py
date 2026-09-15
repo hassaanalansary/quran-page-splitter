@@ -7,7 +7,7 @@ matter here compare two systems.
 
 from django.test import TestCase
 
-from core.quran_text import load_ayat
+from core.text import load_ayat
 from core.word_boundary import words_from_ayat
 from quran.models import CountingSystem
 from quran.services import words
@@ -60,7 +60,7 @@ class WordStreamTests(TestCase):
     def test_agrees_with_the_file_backed_adapter(self):
         """The database and ``words_from_ayat`` must not drift apart.
 
-        Both fill these counts from ``core.arabic``; if they ever disagree, the CLI
+        Both fill these counts from ``core.text.arabic``; if they ever disagree, the CLI
         and the app would align the same page against different expectations.
         """
         ayat = [a for a in load_ayat(DEFAULT_QURAN_TEXT_PATH) if a.sura == 1]

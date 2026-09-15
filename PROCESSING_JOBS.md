@@ -14,7 +14,7 @@ verify and debug *this* codebase, and to reuse the pattern elsewhere.
 Three layers, each independently useful:
 
 ```
-core/pipeline.py          steerable engine     should_cancel / on_page_start / on_page_done
+core/page_detection/pipeline.py          steerable engine     should_cancel / on_page_start / on_page_done
         ▲                                       + lazy image source
 api/services/processing.py  run orchestration   lazy render, per-page persist, run row lifecycle
         ▲
@@ -35,7 +35,7 @@ run's state lives in the job registry; the client discovers it by polling.
 There is no safe way to kill a thread mid-write, so cancellation is **cooperative**:
 
 1. `POST /process/cancel` sets a `threading.Event` on the job. It returns immediately.
-2. `core/pipeline.py` polls that Event once per page — **before pulling the next page**.
+2. `core/page_detection/pipeline.py` polls that Event once per page — **before pulling the next page**.
 3. If set: stop the loop, mark the remaining pages `skipped_cancelled`, return
    `status="cancelled"` with `cancel_at = {page_index, filename}` naming the first page
    that was *not* processed.
@@ -247,7 +247,7 @@ useQuery<ProcessJob | null>({ ... })   // the explicit type argument is required
 
 | File | Change |
 |---|---|
-| `core/pipeline.py` | `should_cancel` / `on_page_start` / `on_page_done` / `filenames`; `cancelled` status + `cancel_at`; `PageOutcome`; `_append_skipped`; log helpers moved to module level so one handler can span a whole run |
+| `core/page_detection/pipeline.py` | `should_cancel` / `on_page_start` / `on_page_done` / `filenames`; `cancelled` status + `cancel_at`; `PageOutcome`; `_append_skipped`; log helpers moved out to `core/trace.py` so one handler can span a whole run |
 | `api/services/pdf.py` | `open_document()` + `render_page_from()`; `render_page()` is now a wrapper |
 | `api/services/processing.py` | `preflight()`; lazy `_render_pages()`; run row created up front; per-page persist; `_settle_stale_runs()`; returns `pages_saved` / `stopped_on_page` / `cancel_info` |
 | `api/services/jobs.py` | **new** — registry, worker thread, cancel Event, `ensure_idle` |
@@ -274,7 +274,7 @@ useQuery<ProcessJob | null>({ ... })   // the explicit type argument is required
 ### Bug found in passing
 
 `runAbortPage()` in `details/helpers.ts` computed `page_range_start + page_index`, but
-`page_index` is **1-based** (`core/pipeline.py` enumerates from 1). The details Runs tab
+`page_index` is **1-based** (`core/page_detection/pipeline.py` enumerates from 1). The details Runs tab
 reported the abort page one too high, and its **Resume** link therefore started one page
 late — silently skipping the page that failed. Fixed to `+ page_index - 1`. The Process
 page always had this right, so only the Runs tab was affected. `PROJECT_HANDOFF.md`
@@ -328,13 +328,13 @@ This is the whole feature in ten stops:
 | 1 | `services/processing.py` → `preflight()` | The checks that must fail the *request*. Runs before any job exists. |
 | 2 | `services/processing.py` → `_settle_stale_runs()` | Orphaned `running` rows from a previous crash being closed. |
 | 3 | `services/processing.py` → `ProcessingRun.objects.create(... RUNNING)` | The row exists *before* any page. This is what lets pages be saved one at a time. |
-| 4 | `core/pipeline.py` → `for page_index, filename in enumerate(names, start=1)` | Top of the page loop. `names` is the full range; the images are not rendered yet. |
-| 5 | `core/pipeline.py` → `if should_cancel is not None and should_cancel()` | **The cancel check.** Step over it and watch it return False, False, then True. |
-| 6 | `core/pipeline.py` → `raw_bytes, _ = next(pages_iter)` | Step **into** this. You land inside `_render_pages` in `processing.py` — the generator body runs *now*, on demand. This is why a cancel costs no render. |
+| 4 | `core/page_detection/pipeline.py` → `for page_index, filename in enumerate(names, start=1)` | Top of the page loop. `names` is the full range; the images are not rendered yet. |
+| 5 | `core/page_detection/pipeline.py` → `if should_cancel is not None and should_cancel()` | **The cancel check.** Step over it and watch it return False, False, then True. |
+| 6 | `core/page_detection/pipeline.py` → `raw_bytes, _ = next(pages_iter)` | Step **into** this. You land inside `_render_pages` in `processing.py` — the generator body runs *now*, on demand. This is why a cancel costs no render. |
 | 7 | `services/processing.py` → `_render_pages()` `yield` | One page rendered, one page in memory. Come back here per page. |
-| 8 | `core/pipeline.py` → `result = self.processor.process(...)` | The actual detection for this page. Step over unless you want the engine. |
+| 8 | `core/page_detection/pipeline.py` → `result = self.processor.process(...)` | The actual detection for this page. Step over unless you want the engine. |
 | 9 | `services/processing.py` → `persist()` | The page being written in **its own transaction**, and `saved += 1`. This is the durability. |
-| 10 | `core/pipeline.py` → the `cancelled = True` branch | The stop. Inspect `cancel_detail` — `page_index` here is what becomes `stopped_on_page`. |
+| 10 | `core/page_detection/pipeline.py` → the `cancelled = True` branch | The stop. Inspect `cancel_detail` — `page_index` here is what becomes `stopped_on_page`. |
 
 Then let it run out and read the summary the command prints: `status`, `pages_saved`,
 `stopped_on_page`. Check the arithmetic yourself — `stopped_on_page` should be

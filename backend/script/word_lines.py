@@ -52,7 +52,7 @@ from PIL import Image, ImageDraw
 # need this; running ``python script/word_lines.py`` does.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from core.quran_text import Aya, load_ayat, span
+from core.text.tanzil import Aya, load_ayat, span
 from core.word_boundary import (
     InkComponent,
     LineImage,

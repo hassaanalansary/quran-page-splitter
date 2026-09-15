@@ -1,4 +1,14 @@
-"""Shared image utilities used by both the server pipeline and the CLI."""
+"""Binarise, find the ink, cut it out, make it transparent.
+
+The four things every engine here does to a picture before it can say anything
+about it, and the reason they live together: ``find_content_bbox`` in particular is
+called by the page pipeline, by the word engine and by the ornament template
+preparer, each of which would otherwise grow its own slightly different version.
+
+None of them knows what the picture is. Hand one an array and it answers about the
+array — which is the line that keeps this module out of any engine and every engine
+out of it.
+"""
 
 import cv2
 import numpy as np

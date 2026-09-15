@@ -39,9 +39,8 @@ from pathlib import Path
 
 from django.db import transaction
 
-from core.arabic import ijam_groups, paw_count
-from core.quran_text import Aya as TextAya
-from core.quran_text import load_ayat
+from core.text import Aya as TextAya
+from core.text import ijam_groups, load_ayat, paw_count
 from quran.models import Aya, CountingSystem, Sura, SuraAyaCount, Word
 from quran.services.quran_text import DEFAULT_QURAN_TEXT_PATH
 
@@ -96,7 +95,7 @@ def index_words(quran_path: Path = DEFAULT_QURAN_TEXT_PATH) -> WordIndex:
 def seed_words(index: WordIndex, *, batch_size: int = 2000) -> int:
     """Replace the word table with the text, numbered from 1.
 
-    ``paw_count`` and the i'jam counts come from ``core.arabic`` — the same
+    ``paw_count`` and the i'jam counts come from ``core.text.arabic`` — the same
     functions the boundary engine runs on the ink side, so what is stored and what
     is computed cannot disagree.
     """

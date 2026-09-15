@@ -17,7 +17,7 @@ care, so it never sees a filename it could open.
 
 **Numbers, not spelling.** ``WordInput`` carries the PAW count and the i'jam counts
 rather than leaving the engine to derive them from the text. Everything Arabic
-happens on this side of the line, in ``core.arabic``; the engine does arithmetic on
+happens on this side of the line, in ``core.text.arabic``; the engine does arithmetic on
 ink and alignment on counts.
 """
 
@@ -29,8 +29,8 @@ from pathlib import Path
 
 from PIL import Image
 
-from core.arabic import ijam_groups, paw_count
-from core.quran_text import Aya
+from core.text.arabic import ijam_groups, paw_count
+from core.text.tanzil import Aya
 
 
 @dataclass(frozen=True)
@@ -96,7 +96,7 @@ def words_from_ayat(ayat: Iterable[Aya]) -> list[WordInput]:
     """Flatten Tanzil ayat into the word stream, counting PAWs and i'jam.
 
     The counterpart of the database's ``word_stream``, and it must agree with it:
-    both call ``core.arabic``, which is why that module exists.
+    both call ``core.text.arabic``, which is why that module exists.
     """
     stream: list[WordInput] = []
     for aya in ayat:

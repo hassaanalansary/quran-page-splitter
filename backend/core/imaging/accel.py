@@ -16,7 +16,7 @@ which kernel actually produced its scores.
 Per-run and per-template overrides are separate concerns: this module answers
 "what did the environment ask for", while a caller that must not touch OpenCL
 for a particular match passes ``force_cpu=True`` (see
-``core.template_matching``).
+``core.imaging.template_matching``).
 """
 
 from __future__ import annotations

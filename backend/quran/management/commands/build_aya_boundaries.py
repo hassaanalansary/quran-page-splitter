@@ -47,7 +47,7 @@ from typing import Any
 
 from django.core.management.base import BaseCommand, CommandParser
 
-from core.arabic import letters_of
+from core.text import letters_of
 from quran.services.quran_text import DEFAULT_QURAN_TEXT_PATH, load_ayat
 
 #: Their counting-system ids -> the names in our ``counting_system`` table.
@@ -96,13 +96,13 @@ OCCURRENCE_OVERRIDES = {
 
 #: Every alef form written as a letter, folded to a bare alef — and the alef
 #: maqsura folded to a plain yeh, which is the same skeleton with the dots put
-#: back: imlaei ends ``عبادي`` where Uthmani ends ``عِبَٰدِى``. (``core.arabic`` must
+#: back: imlaei ends ``عبادي`` where Uthmani ends ``عِبَٰدِى``. (``core.text.arabic`` must
 #: keep them apart, because one joins to what follows and the other does not. Here
 #: they are the same letter.)
 _ALEF_FOLD = str.maketrans({**dict.fromkeys("أإآٱٲٳٵ", "ا"), "ى": "ي"})
 
 #: The dagger alef, promoted to a letter *before* the marks are stripped. To
-#: ``core.arabic`` it is a mark and rightly vanishes — it is no part of any ink
+#: ``core.text.arabic`` it is a mark and rightly vanishes — it is no part of any ink
 #: blob — but to a word search it is the letter the other spelling shows.
 _DAGGER_TO_ALEF = str.maketrans({chr(0x0670): chr(0x0627)})
 

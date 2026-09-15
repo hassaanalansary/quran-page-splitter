@@ -1,4 +1,4 @@
-"""Tests for core.arabic — what a word's spelling says about its ink.
+"""Tests for core.text.arabic — what a word's spelling says about its ink.
 
 These rules decide how many blobs the boundary engine expects a word to make, and
 they fill ``Word.paw_count``, so a change here moves every word cut in the mushaf.
@@ -6,7 +6,7 @@ they fill ``Word.paw_count``, so a change here moves every word cut in the musha
 
 from django.test import SimpleTestCase
 
-from core.arabic import ijam_groups, letters_of, paw_count, paws
+from core.text import ijam_groups, letters_of, paw_count, paws
 
 
 class PawCountTests(SimpleTestCase):

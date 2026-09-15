@@ -19,14 +19,15 @@ from datetime import UTC, datetime
 
 from PIL import Image
 
-from core.config import ExportConfig
-from core.context import QuranTracker
-from core.opencv_accel import configure_opencv_acceleration
-from core.page_processor import (
+from core.imaging import configure_opencv_acceleration
+from core.page_detection.config import ExportConfig
+from core.page_detection.context import QuranTracker
+from core.page_detection.page_processor import (
     PageProcessor,
     create_context,
     is_line_geometry_failure,
 )
+from core.trace import setup_file_logging, teardown_file_logging
 
 logger = logging.getLogger(__name__)
 
@@ -240,27 +241,3 @@ class Pipeline:
         """Record the untouched tail of the batch, from 1-based ``from_index`` on."""
         for name in names[from_index - 1 :]:
             page_results.append({"filename": name, "status": status, "message": message})
-
-
-# ----------------------------------------------------------------------
-# Optional file-logging helpers
-# ----------------------------------------------------------------------
-
-
-def setup_file_logging(log_path: str) -> logging.FileHandler:
-    """Attach a DEBUG file handler to the root logger; returns it for teardown.
-
-    Exposed at module level because a caller that drives several pipeline runs
-    into one log file owns the handler for the whole span, not per run.
-    """
-    file_handler = logging.FileHandler(log_path, mode="w", encoding="utf-8")
-    file_handler.setLevel(logging.DEBUG)
-    file_handler.setFormatter(logging.Formatter("%(asctime)s  %(name)-30s  %(levelname)-8s  %(message)s"))
-    logging.getLogger().addHandler(file_handler)
-    return file_handler
-
-
-def teardown_file_logging(file_handler: logging.FileHandler) -> None:
-    """Detach and close a handler from :func:`setup_file_logging`."""
-    logging.getLogger().removeHandler(file_handler)
-    file_handler.close()

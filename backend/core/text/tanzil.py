@@ -1,6 +1,6 @@
 """Read a Tanzil ``sura|aya|text`` file into ayat and words.
 
-Pure text, like ``core.arabic``: no Django, no cv2. The ``quran`` app seeds
+Pure text, like ``core.text.arabic``: no Django, no cv2. The ``quran`` app seeds
 ``Word`` and ``Aya`` from this, so the word numbering the database hands out and
 the numbering the boundary builder resolves against are produced by one function.
 
@@ -15,7 +15,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from core.arabic import letters_of
+from core.text.arabic import letters_of
 
 BASMALA_LETTERS = "بسماللهالرحمنالرحيم"
 

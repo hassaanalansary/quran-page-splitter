@@ -27,8 +27,7 @@ from api import i18n
 from api.models import ActivityTypeChoices, Line, Page, Segment
 from api.services import activity, coordinates, pdf
 from api.services import mushaf as mushaf_service
-from core.cut_review import _apply_eraser_stroke
-from core.image_utils import make_transparent
+from core.imaging import apply_eraser_stroke, make_transparent
 
 #: Keep small archives in RAM; larger ones spill to a temp file on disk.
 _ZIP_SPOOL_BYTES = 16 * 1024 * 1024
@@ -224,7 +223,7 @@ def render_line_image(image: Image.Image, line: Line, column: dict | None) -> Im
         alpha = rgba.getchannel("A")
         draw = ImageDraw.Draw(alpha)
         for stroke in strokes:
-            _apply_eraser_stroke(
+            apply_eraser_stroke(
                 draw,
                 {"brush_size": stroke.brush_size, "points": stroke.points},
                 left,

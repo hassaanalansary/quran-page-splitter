@@ -1,6 +1,6 @@
 """Where this app's copy of the Quran text lives, and how to read it.
 
-The reading itself is ``core.quran_text`` — Django-free, and shared so the word
+The reading itself is ``core.text.tanzil`` — Django-free, and shared so the word
 numbering the database hands out is produced by the same code that resolves the
 aya boundaries against it.
 
@@ -11,7 +11,7 @@ keep the notice, and the file carries it.
 
 from pathlib import Path
 
-from core.quran_text import Aya, load_ayat
+from core.text import Aya, load_ayat
 
 #: The committed Tanzil Uthmani text. Attribution: Tanzil Project, tanzil.net.
 DEFAULT_QURAN_TEXT_PATH = Path(__file__).resolve().parents[1] / "data" / "quran-uthmani.txt"

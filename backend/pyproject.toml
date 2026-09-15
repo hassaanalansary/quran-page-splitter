@@ -52,8 +52,8 @@ known-first-party = ["api", "config", "core", "quran"]
 # Files that work on Arabic text. RUF001 flags letters that resemble Latin ones
 # (ا like l, ه like o) — a real hazard in an English identifier, and pure noise in
 # a table of Arabic letters, which is all these files contain.
-"core/arabic.py" = ["RUF001"]
-"core/quran_text.py" = ["RUF001"]
+"core/text/arabic.py" = ["RUF001"]
+"core/text/tanzil.py" = ["RUF001"]
 "quran/tests/test_arabic.py" = ["RUF001"]
 "quran/tests/test_quran_text.py" = ["RUF001"]
 "quran/management/commands/build_aya_boundaries.py" = ["RUF001"]

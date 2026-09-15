@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from core.image_utils import clean_image, find_content_bbox
+from core.imaging import clean_image, find_content_bbox
 
 #: Moving-average width, as a fraction of one line's nominal height.
 #:

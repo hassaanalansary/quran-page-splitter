@@ -19,15 +19,9 @@ import numpy as np
 from django.test import SimpleTestCase
 from PIL import Image
 
-from core import sura_header as sura_header_module
-from core import template_matching
-from core.sura_header import SuraHeaderLocator
-from core.template_matching import (
-    cpu_score_at,
-    locate_x_matches,
-    make_template_spec,
-    needs_cpu_verification,
-)
+from core.imaging import cpu_score_at, locate_x_matches, make_template_spec, needs_cpu_verification, template_matching
+from core.page_detection import SuraHeaderLocator
+from core.page_detection import sura_header as sura_header_module
 
 TEMPLATE_SIZE = 40
 PAGE_W, PAGE_H = 400, 600

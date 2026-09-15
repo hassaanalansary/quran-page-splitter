@@ -16,8 +16,11 @@ nothing.
 Everything below the two contract modules is internal. ``ink``, ``separators`` and
 ``alignment`` are how the engine thinks, not what it promises; import from here.
 
-The layout is meant to be copied — the line detector and the aya separator get the
-same treatment, one directory per engine, each owning its own contract.
+**Independent** is what makes this a package of its own and the page pipeline a
+single one. ``page_detection``'s stages hand each other a shared ``PageContext``,
+so they are steps rather than engines; nothing here is handed anything but its own
+input. Splitting a package out is worth it when a piece answers on its own — not
+because it happens to be a separate concern.
 """
 
 from core.word_boundary.engine import detect_words

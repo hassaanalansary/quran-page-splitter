@@ -1,7 +1,19 @@
-"""Static metadata for all 114 suras of the Quran.
+"""The 114 suras: number, Arabic name, transliteration, aya count.
 
-Each sura entry contains its number (1-based), Arabic name,
-transliterated name, and total aya count.
+A literal table rather than a query, because ``core`` reads no database — the page
+pipeline needs a sura's name and length while it is numbering segments, long before
+anything has been saved.
+
+The ``quran`` app holds the same facts in its ``Sura`` model, seeded from
+``quran/data/reference_data.json``. **Nothing keeps the two in step**: they are
+independent copies that happen to agree, so an edit to either is an edit to half
+the project's idea of what sura 7 is called. Only the page pipeline reads this one
+(see ``page_detection.coordinate_exporter``); everything that can reach the
+database should use the model.
+
+The aya counts here are the **Kufi** ones. Riwayat that count differently are the
+``quran`` app's business — it keeps a count per counting system, which is a thing a
+static table cannot express.
 """
 
 from __future__ import annotations

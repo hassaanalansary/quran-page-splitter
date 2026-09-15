@@ -140,7 +140,7 @@ class Word(models.Model):
 
     ``paw_count`` and the i'jam counts are pure functions of ``text``, cached
     here because the boundary engine asks for them 77,433 times. They are filled
-    by ``core.arabic`` — the same functions the engine itself uses, so a stored
+    by ``core.text.arabic`` — the same functions the engine itself uses, so a stored
     count and a computed one cannot drift apart.
     """
 

@@ -15,7 +15,7 @@ class QuietEngineTrace(logging.Filter):
     server actually needs to see.
 
     This is attached to the console handler alone. ``core`` keeps propagating to
-    the root logger, which matters — ``core.pipeline.setup_file_logging``
+    the root logger, which matters — ``core.trace.setup_file_logging``
     attaches each run's own file handler there, and silencing propagation would
     empty every run log.
     """

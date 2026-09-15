@@ -8,7 +8,7 @@ from dataclasses import dataclass
 import numpy as np
 from PIL import Image
 
-from core.template_matching import (
+from core.imaging import (
     MAX_VERIFICATIONS,
     IgnoreRect,
     cpu_score_at,

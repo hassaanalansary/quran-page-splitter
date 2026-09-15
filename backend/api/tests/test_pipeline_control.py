@@ -1,6 +1,6 @@
 """Tests for the pipeline's steering hooks: cancellation, progress, laziness.
 
-These drive ``core.pipeline`` with a stub page processor — no detection, no DB —
+These drive ``core.page_detection.pipeline`` with a stub page processor — no detection, no DB —
 so the control flow is checked on its own: what stops a run, what it reports, and
 crucially how much work it does *not* do once cancelled.
 """
@@ -10,9 +10,7 @@ from __future__ import annotations
 from django.test import SimpleTestCase
 
 from api.tests.helpers import make_png_bytes
-from core.config import ExportConfig
-from core.page_processor import STATUS_LINE_COUNT_MISMATCH
-from core.pipeline import PageOutcome, Pipeline
+from core.page_detection import STATUS_LINE_COUNT_MISMATCH, ExportConfig, PageOutcome, Pipeline
 
 
 class StubProcessor:

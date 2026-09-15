@@ -33,11 +33,11 @@ from PIL import Image
 from api import i18n, validators
 from api.models import ActivityTypeChoices, Mushaf, Page, ProcessingRun, RunStatusChoices, Template
 from api.services import activity, coordinates, pdf
-from core.aya_separator import AyaSeparatorConfig, AyaSeparatorProcessor
-from core.builder import build_pipeline, init_configs
-from core.config import ExportConfig
-from core.pipeline import PageOutcome, setup_file_logging, teardown_file_logging
-from core.sura_header import IgnoreRect, SuraHeaderLocator
+from core.page_detection.aya_separator import AyaSeparatorConfig, AyaSeparatorProcessor
+from core.page_detection.builder import build_pipeline, init_configs
+from core.page_detection.config import ExportConfig
+from core.page_detection.pipeline import PageOutcome, setup_file_logging, teardown_file_logging
+from core.page_detection.sura_header import IgnoreRect, SuraHeaderLocator
 
 #: ``on_progress(phase, current_page, pages_saved)`` — ``phase`` is one of
 #: ``rendering`` / ``detecting`` / ``saving``, ``current_page`` is a LOGICAL page

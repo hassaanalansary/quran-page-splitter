@@ -5,11 +5,11 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from core.config import CropConfig, DetectionConfig, ProcessingConfig
-from core.context import BBox, LineResult, PageContext
-from core.image_utils import find_content_bbox
-from core.line_cutter import split_by_valleys
-from core.sura_header import SuraHeaderLocator, SuraHeaderSpec
+from core.imaging import find_content_bbox
+from core.page_detection.config import CropConfig, DetectionConfig, ProcessingConfig
+from core.page_detection.context import BBox, LineResult, PageContext
+from core.page_detection.line_cutter import split_by_valleys
+from core.page_detection.sura_header import SuraHeaderLocator, SuraHeaderSpec
 
 logger = logging.getLogger(__name__)
 

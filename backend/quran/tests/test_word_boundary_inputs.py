@@ -10,7 +10,7 @@ from pathlib import Path
 from django.test import SimpleTestCase
 from PIL import Image
 
-from core.quran_text import Aya
+from core.text import Aya
 from core.word_boundary import LineImage, aya_starts, images_from_paths, words_from_ayat
 
 

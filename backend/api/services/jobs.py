@@ -13,7 +13,7 @@ Here the request only *starts* the work. A worker thread owns the run; the
     POST   /process/cancel  -> set the job's cancel flag
 
 Cancellation is cooperative — the flag is polled by the pipeline between pages
-(see core/pipeline.py) — because there is no safe way to kill a thread mid-write.
+(see core/page_detection/pipeline.py) — because there is no safe way to kill a thread mid-write.
 The cost is latency of at most one page; the benefit is that a cancelled run
 settles cleanly with everything it finished already persisted.
 

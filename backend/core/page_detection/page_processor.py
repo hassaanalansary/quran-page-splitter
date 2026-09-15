@@ -9,11 +9,11 @@ from pathlib import Path
 
 from PIL import Image
 
-from core.aya_separator import AyaSeparatorProcessor
-from core.context import PageContext, QuranTracker
-from core.coordinate_exporter import collect_page_coordinates, track_positions
-from core.image_utils import binarize_image, make_transparent
-from core.line_detector import LineDetector
+from core.imaging import binarize_image, make_transparent
+from core.page_detection.aya_separator import AyaSeparatorProcessor
+from core.page_detection.context import PageContext, QuranTracker
+from core.page_detection.coordinate_exporter import collect_page_coordinates, track_positions
+from core.page_detection.line_detector import LineDetector
 
 logger = logging.getLogger(__name__)
 

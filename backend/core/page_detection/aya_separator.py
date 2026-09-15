@@ -12,9 +12,8 @@ from dataclasses import dataclass
 
 from PIL import Image
 
-from core.context import BBox, LineResult, PageContext, SegmentResult
-from core.image_utils import find_content_bbox
-from core.template_matching import IgnoreRect, locate_x_matches, make_template_spec
+from core.imaging import IgnoreRect, find_content_bbox, locate_x_matches, make_template_spec
+from core.page_detection.context import BBox, LineResult, PageContext, SegmentResult
 
 logger = logging.getLogger(__name__)
 

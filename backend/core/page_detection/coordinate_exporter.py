@@ -11,9 +11,9 @@ import json
 import logging
 from pathlib import Path
 
-from core.context import BBox, LineResult, PageContext, QuranTracker
-from core.image_utils import find_content_bbox
-from core.quran_metadata import get_aya_count, get_sura
+from core.imaging import find_content_bbox
+from core.page_detection.context import BBox, LineResult, PageContext, QuranTracker
+from core.text import get_aya_count, get_sura
 
 logger = logging.getLogger(__name__)
 

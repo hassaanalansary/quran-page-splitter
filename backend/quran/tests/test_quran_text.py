@@ -1,4 +1,4 @@
-"""Tests for core.quran_text — reading Tanzil into ayat and words.
+"""Tests for core.text.tanzil — reading Tanzil into ayat and words.
 
 The word numbering the whole app hangs off starts here, so the basmala rule is
 worth pinning: get it wrong by four words in one sura and every word index after
@@ -7,8 +7,7 @@ it is wrong too.
 
 from django.test import SimpleTestCase
 
-from core.arabic import letters_of
-from core.quran_text import BASMALA_LETTERS, drop_leading_basmala, load_ayat, span
+from core.text import BASMALA_LETTERS, drop_leading_basmala, letters_of, load_ayat, span
 from quran.services.quran_text import DEFAULT_QURAN_TEXT_PATH
 
 BASMALA = ["بِسْمِ", "ٱللَّهِ", "ٱلرَّحْمَٰنِ", "ٱلرَّحِيمِ"]

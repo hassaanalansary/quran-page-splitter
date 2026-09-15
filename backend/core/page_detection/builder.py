@@ -6,12 +6,12 @@ this module stays free of any web-framework or storage concerns.
 
 from pathlib import Path
 
-from core.aya_separator import AyaSeparatorProcessor
-from core.config import CropConfig, DetectionConfig, ExportConfig, ProcessingConfig
-from core.line_detector import LineDetector
-from core.page_processor import PageProcessor
-from core.pipeline import Pipeline
-from core.sura_header import SuraHeaderLocator
+from core.page_detection.aya_separator import AyaSeparatorProcessor
+from core.page_detection.config import CropConfig, DetectionConfig, ExportConfig, ProcessingConfig
+from core.page_detection.line_detector import LineDetector
+from core.page_detection.page_processor import PageProcessor
+from core.page_detection.pipeline import Pipeline
+from core.page_detection.sura_header import SuraHeaderLocator
 
 
 def init_configs(

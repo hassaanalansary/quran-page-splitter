@@ -23,8 +23,8 @@ import cv2
 import numpy as np
 from PIL import Image
 
-from core.image_utils import find_content_bbox
-from core.opencv_accel import match_template_ccoeff_normed
+from core.imaging.accel import match_template_ccoeff_normed
+from core.imaging.utils import find_content_bbox
 from core.word_boundary.ink import Blob, LineInk
 
 #: A blob must enclose a hole at least this share of its own box to read as the

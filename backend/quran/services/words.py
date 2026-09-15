@@ -2,7 +2,7 @@
 
 The file-backed counterpart is ``core.word_boundary.words_from_ayat``; both produce
 the same ``WordInput`` records, and they must agree — the counts here were written
-by ``core.arabic`` at seed time, which is the same code that one calls live.
+by ``core.text.arabic`` at seed time, which is the same code that one calls live.
 
 **Everything is asked of a counting system, never of "the Quran".** A mushaf is
 printed in a rawi, whose qiraa fixes a counting system, and that is what decides

@@ -1,4 +1,18 @@
-"""Shared grayscale template matching helpers."""
+"""Find a small greyscale picture inside a bigger one.
+
+Two engines search for a stored crop on a page — the sura header down the column,
+the aya ornament across a line — and both want the same three things: mask out the
+parts of the template that are background, score every position, and keep the
+non-overlapping peaks.
+
+**The scores cannot simply be believed.** Under this project's OpenCL path
+``TM_CCOEFF_NORMED`` fabricates perfect 1.0 matches on blank regions, which is how
+a phantom sura header once split a page into nine lines instead of fifteen. So a
+candidate is re-scored on the CPU *before* it is accepted, never after —
+``needs_cpu_verification`` says when that is necessary and ``cpu_score_at`` does it.
+Accepting first and pruning later would let a phantom suppress the genuine match
+beside it and take both down together.
+"""
 
 from __future__ import annotations
 
@@ -8,7 +22,7 @@ from dataclasses import dataclass
 import numpy as np
 from PIL import Image
 
-from core.opencv_accel import (
+from core.imaging.accel import (
     acceleration_is_opencl,
     match_template_ccoeff_normed,
     upload_gray_for_matching,
