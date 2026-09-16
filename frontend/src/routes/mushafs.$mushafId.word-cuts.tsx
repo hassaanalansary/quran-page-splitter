@@ -1,41 +1,33 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, useBlocker, useNavigate, useParams } from "@tanstack/react-router";
-import { OctagonX, Play, ScrollText } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
 import { CanvasHelp } from "@/components/app/CanvasHelp";
-import { Aside, Field, Hint, PanelCard, Section, StatusLine } from "@/components/app/Panel";
-import { ProcessCancelDialog } from "@/components/app/ProcessCancelDialog";
-import { RunLogDialog } from "@/components/app/RunLogDialog";
+import { Aside, Hint, PanelCard, StatusLine } from "@/components/app/Panel";
 import { TourOverlay } from "@/components/app/tour/TourOverlay";
+import { WordRunProgress } from "@/components/app/WordRunProgress";
 import { useStepTour, type TourStep } from "@/components/app/tour/useStepTour";
 import { WordsCanvas } from "@/components/canvas/WordsCanvas";
 import { revealInScroller } from "@/lib/reveal";
 import { Button } from "@/components/ui/button";
 import {
   ApiError,
-  cancelWordDetection,
   isJobRunning,
   isJobSettled,
   pageImageUrl,
   queryKeys,
   savePageWords,
-  startWordDetection,
   useMushaf,
   usePage,
   usePageWords,
   useProcessedPages,
-  useSuras,
   useWordsCoverage,
   useWordsJob,
-  useWordsSpan,
   type CoherenceIssue,
-  type DetectWordsRequest,
   type PageWords,
   type ProcessJob,
-  type WordSpanGap,
 } from "@/lib/api";
 import {
   addCut,
@@ -60,7 +52,7 @@ import {
   type WordsModel,
 } from "@/lib/words/model";
 
-export const Route = createFileRoute("/mushafs/$mushafId/words")({
+export const Route = createFileRoute("/mushafs/$mushafId/word-cuts")({
   validateSearch: (s: Record<string, unknown>) => ({ page: Math.max(1, Number(s.page) || 1) }),
   component: WordsPage,
 });
@@ -68,26 +60,16 @@ export const Route = createFileRoute("/mushafs/$mushafId/words")({
 const HISTORY_LIMIT = 100;
 const EMPTY: WordsModel = { lines: [], labels: new Map(), pins: [] };
 
-/** How much of the mushaf one run covers.
- *
- * Three named cases rather than a pair of ayat and a checkbox, because the three
- * are asked for differently and only one of them is the user's to fill in: a sura
- * run leaves the end to the server (a sura's last aya is not the same number in
- * every riwaya), a mushaf run leaves both ends to it, and only `range` is typed. */
-type RunScope = "sura" | "range" | "mushaf";
-
 function WordsPage() {
-  const { mushafId } = useParams({ from: "/mushafs/$mushafId/words" });
+  const { mushafId } = useParams({ from: "/mushafs/$mushafId/word-cuts" });
   const { page } = Route.useSearch();
-  const navigate = useNavigate({ from: "/mushafs/$mushafId/words" });
+  const navigate = useNavigate({ from: "/mushafs/$mushafId/word-cuts" });
   const queryClient = useQueryClient();
   const { t, i18n } = useTranslation();
 
   const { data: mushaf } = useMushaf(mushafId);
   const { data: pages } = useProcessedPages(mushafId);
-  const { data: suras } = useSuras(mushaf?.qiraa);
   const { data: coverage } = useWordsCoverage(mushafId);
-  const { data: span } = useWordsSpan(mushafId);
   const { data: job } = useWordsJob(mushafId);
 
   const ready = !!pages?.processed.has(page) && !!pages.reviewed.has(page);
@@ -98,22 +80,7 @@ function WordsPage() {
   const [baseline, setBaseline] = useState<Map<string, string>>(new Map());
   const [selectedLine, setSelectedLine] = useState<string | null>(null);
   const [selectedCut, setSelectedCut] = useState<string | null>(null);
-  // The three ways a run is asked for. `sura` is the common one and stays the
-  // default; `range` spans any two ayat, in one sura or across many; `mushaf` is
-  // whatever the server says this mushaf actually holds — see `useWordsSpan`.
-  const [scope, setScope] = useState<RunScope>("sura");
-  const [fromSura, setFromSura] = useState(1);
-  const [fromAya, setFromAya] = useState(1);
-  const [toSura, setToSura] = useState(1);
-  const [toAya, setToAya] = useState(1);
-  const [cancelOpen, setCancelOpen] = useState(false);
-  const [logOpen, setLogOpen] = useState(false);
   const [issues, setIssues] = useState<CoherenceIssue[]>([]);
-  /** Breaks the last run started here stepped over. Kept on screen rather than
-   * toasted: on a whole-mushaf run this is the list of what was NOT read, and it
-   * is the thing to go and fix. Cleared when a new run is asked for. */
-  const [gaps, setGaps] = useState<WordSpanGap[]>([]);
-
   // Latest model, for handlers that outlive the render they were created in —
   // see `onMoveCommit`.
   const modelRef = useRef(model);
@@ -343,55 +310,6 @@ function WordsPage() {
     onError: (e) => toast.error(e instanceof ApiError ? e.message : t("words.saveFailed")),
   });
 
-  // ── the run ────────────────────────────────────────────────────────────────
-  const ayaCountOf = useCallback(
-    (n: number) => suras?.find((s) => s.number === n)?.aya_count ?? 1,
-    [suras],
-  );
-  const fromAyaCount = ayaCountOf(fromSura);
-  const toAyaCount = ayaCountOf(toSura);
-
-  /** The request this panel is currently describing, or null when it cannot yet.
-   *
-   * Only `mushaf` can be null, and only until `useWordsSpan` answers: the whole
-   * mushaf is the one span this screen does not know the ends of. A mushaf nothing
-   * has renumbered has no ends at all, and the button says so rather than sending a
-   * request the server would refuse. */
-  const request = useMemo((): DetectWordsRequest | null => {
-    if (scope === "sura") return { from_sura: fromSura };
-    if (scope === "range") {
-      return { from_sura: fromSura, from_aya: fromAya, to_sura: toSura, to_aya: toAya };
-    }
-    if (!span?.start || !span.end) return null;
-    return {
-      from_sura: span.start.sura,
-      from_aya: span.start.aya,
-      to_sura: span.end.sura,
-      to_aya: span.end.aya,
-    };
-  }, [scope, fromSura, fromAya, toSura, toAya, span]);
-
-  const runMutation = useMutation({
-    mutationFn: () => {
-      if (!request) throw new Error(t("words.spanUnknown"));
-      return startWordDetection(mushafId, request);
-    },
-    onSuccess: (result) => {
-      // Seed the cache with the job the POST returned so progress shows at once,
-      // rather than after the first poll.
-      queryClient.setQueryData(queryKeys.wordsJob(mushafId), result.job);
-      // Gaps are the one warning worth holding on screen: on a long span they say
-      // which part of the mushaf was skipped, and a toast that fades takes the
-      // answer with it. The rest still pass through as toasts.
-      setGaps(result.gaps);
-      result.warnings
-        .filter((w) => !result.gaps.some((gap) => w.includes(gap.after) && w.includes(gap.before)))
-        .forEach((w) => toast.warning(w));
-      toast.info(t("words.runStarted", { lines: result.total_lines }));
-    },
-    onError: (e) => toast.error(e instanceof ApiError ? e.message : t("words.runFailed")),
-  });
-
   // Announce a settled run once, and refresh what it changed.
   //
   // Only a run this page actually watched finish: `/words/job` answers with the
@@ -472,18 +390,29 @@ function WordsPage() {
   };
 
   const tourSteps: TourStep[] = [
-    { target: "words-run", title: t("tour.words.t1_title"), body: t("tour.words.t1_body") },
-    { target: "canvas-toolbar", title: t("tour.words.t2_title"), body: t("tour.words.t2_body") },
-    { target: "words-canvas", title: t("tour.words.t3_title"), body: t("tour.words.t3_body") },
-    { target: "words-triage", title: t("tour.words.t4_title"), body: t("tour.words.t4_body") },
+    {
+      target: "canvas-toolbar",
+      title: t("tour.wordCuts.t1_title"),
+      body: t("tour.wordCuts.t1_body"),
+    },
+    {
+      target: "words-canvas",
+      title: t("tour.wordCuts.t2_title"),
+      body: t("tour.wordCuts.t2_body"),
+    },
+    {
+      target: "words-triage",
+      title: t("tour.wordCuts.t3_title"),
+      body: t("tour.wordCuts.t3_body"),
+    },
   ];
-  const tour = useStepTour("words", tourSteps, !coverage?.complete);
+  const tour = useStepTour("word-cuts", tourSteps, !coverage?.complete);
 
   if (!mushaf) return null;
   const logicalCount = mushaf.logical_page_count;
 
   const status = running ? (
-    <RunProgress job={job!} />
+    <WordRunProgress job={job!} />
   ) : !ready ? (
     <StatusLine tone="warning">{t("words.gateStatus", { page })}</StatusLine>
   ) : dirty.length ? (
@@ -495,13 +424,13 @@ function WordsPage() {
   );
 
   const guideItems = [
-    t("guide.words.s1"),
-    t("guide.words.s2"),
-    t("guide.words.s3"),
-    t("guide.words.s4"),
-    t("guide.words.s5"),
-    t("guide.words.s6"),
-    t("guide.words.s7"),
+    t("guide.wordCuts.s1"),
+    t("guide.wordCuts.s2"),
+    t("guide.wordCuts.s3"),
+    t("guide.wordCuts.s4"),
+    t("guide.wordCuts.s5"),
+    t("guide.wordCuts.s6"),
+    t("guide.wordCuts.s7"),
   ];
 
   return (
@@ -548,7 +477,7 @@ function WordsPage() {
         )}
         <CanvasHelp
           guideItems={guideItems}
-          coachText={t("coach.words")}
+          coachText={t("coach.wordCuts")}
           onReplayTour={tour.start}
         />
       </div>
@@ -556,200 +485,23 @@ function WordsPage() {
       <Aside
         status={status}
         footer={
-          <div className="flex gap-2">
-            {running ? (
-              <Button
-                variant="outline"
-                className="flex-1"
-                onClick={() => setCancelOpen(true)}
-                disabled={job?.cancel_requested}
-              >
-                <OctagonX size={14} />
-                {job?.cancel_requested ? t("words.stopping") : t("words.stopRun")}
-              </Button>
-            ) : (
-              <Button
-                className="flex-1"
-                onClick={() => saveMutation.mutate()}
-                disabled={!dirty.length || saveMutation.isPending}
-              >
-                {saveMutation.isPending ? t("common.saving") : t("words.savePage")}
-              </Button>
-            )}
+          <div data-tour="wordcuts-save" className="flex flex-col gap-2">
+            <Button
+              onClick={() => saveMutation.mutate()}
+              disabled={!dirty.length || saveMutation.isPending}
+            >
+              {saveMutation.isPending ? t("common.saving") : t("words.savePage")}
+            </Button>
+            {/* Back rather than forward: this is the last step, and the run page
+                is where you go to cover more of the mushaf. */}
+            <Button asChild variant="outline">
+              <Link to="/mushafs/$mushafId/word-run" params={{ mushafId }} search={{ page }}>
+                {t("words.backToRun")}
+              </Link>
+            </Button>
           </div>
         }
       >
-        <Section title={t("words.runTitle")} defaultOpen={!coverage?.pages.length}>
-          <div data-tour="words-run" className="flex flex-col gap-3">
-            <Field label={t("words.scopeLabel")} info={t("tips.wordsSpan")}>
-              <select
-                className={selectClass}
-                value={scope}
-                disabled={running}
-                onChange={(e) => {
-                  const next = e.target.value as RunScope;
-                  setScope(next);
-                  // Open the range on the whole of the sura already picked, so
-                  // switching to it starts from something valid and shrinks,
-                  // rather than from 1:1..1:1 and having to be built up.
-                  if (next === "range") {
-                    setFromAya(1);
-                    setToSura(fromSura);
-                    setToAya(ayaCountOf(fromSura));
-                  }
-                }}
-              >
-                <option value="sura">{t("words.scopeSura")}</option>
-                <option value="range">{t("words.scopeRange")}</option>
-                <option value="mushaf">{t("words.scopeMushaf")}</option>
-              </select>
-            </Field>
-
-            {scope !== "mushaf" && (
-              <Field label={scope === "sura" ? t("words.suraLabel") : t("words.fromSura")}>
-                <select
-                  className={selectClass}
-                  value={fromSura}
-                  disabled={running}
-                  onChange={(e) => {
-                    const n = Number(e.target.value);
-                    setFromSura(n);
-                    setFromAya(1);
-                    // A range can only run forwards. Dragging the start past the
-                    // end takes the end with it rather than leaving a span the
-                    // server would refuse.
-                    if (toSura < n) {
-                      setToSura(n);
-                      setToAya(ayaCountOf(n));
-                    }
-                  }}
-                >
-                  {(suras ?? []).map((s) => (
-                    <option key={s.number} value={s.number}>
-                      {s.number}. {s.transliteration}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-            )}
-
-            {scope === "range" && (
-              <>
-                <Field label={t("words.fromAya")}>
-                  <input
-                    type="number"
-                    min={1}
-                    max={fromAyaCount}
-                    value={fromAya}
-                    disabled={running}
-                    onChange={(e) => setFromAya(clamp(Number(e.target.value), 1, fromAyaCount))}
-                    className={numberClass}
-                  />
-                </Field>
-                <Field label={t("words.toSura")}>
-                  <select
-                    className={selectClass}
-                    value={toSura}
-                    disabled={running}
-                    onChange={(e) => {
-                      const n = Number(e.target.value);
-                      setToSura(n);
-                      // Through the end of the sura just picked, which is what
-                      // someone choosing a new end sura nearly always means.
-                      setToAya(ayaCountOf(n));
-                    }}
-                  >
-                    {(suras ?? [])
-                      .filter((s) => s.number >= fromSura)
-                      .map((s) => (
-                        <option key={s.number} value={s.number}>
-                          {s.number}. {s.transliteration}
-                        </option>
-                      ))}
-                  </select>
-                </Field>
-                <Field label={t("words.toAya")}>
-                  <input
-                    type="number"
-                    min={toSura === fromSura ? fromAya : 1}
-                    max={toAyaCount}
-                    value={toAya}
-                    disabled={running}
-                    onChange={(e) =>
-                      setToAya(
-                        clamp(
-                          Number(e.target.value),
-                          toSura === fromSura ? fromAya : 1,
-                          toAyaCount,
-                        ),
-                      )
-                    }
-                    className={numberClass}
-                  />
-                </Field>
-              </>
-            )}
-
-            {/* What a whole-mushaf run will actually cover. Shown rather than
-                assumed to be 1:1 .. 114:6, because a mushaf part way through
-                review holds less, and that is the number worth seeing before
-                starting something that runs for a quarter of an hour. */}
-            {scope === "mushaf" && (
-              <Hint tone={span?.start && span.end ? undefined : "warning"}>
-                {span?.start && span.end
-                  ? t("words.mushafSpan", {
-                      from: `${span.start.sura}:${span.start.aya}`,
-                      to: `${span.end.sura}:${span.end.aya}`,
-                    })
-                  : t("words.spanUnknown")}
-              </Hint>
-            )}
-
-            <Button
-              variant="outline"
-              className="w-full"
-              disabled={running || runMutation.isPending || !request}
-              onClick={() => {
-                setGaps([]);
-                runMutation.mutate();
-              }}
-            >
-              <Play size={14} />
-              {running ? t("words.running") : t("words.runButton")}
-            </Button>
-            {/* `log_url` rather than the job's mere existence: a run started
-                before this feature, or one whose log the retention sweep has
-                since deleted, has nothing to open. */}
-            {job?.log_url && (
-              <Button variant="outline" className="w-full" onClick={() => setLogOpen(true)}>
-                <ScrollText size={14} />
-                {running ? t("words.logWatch") : t("words.logView")}
-              </Button>
-            )}
-            {/* Kept until the next run is asked for. These name the pages the run
-                could NOT read, which on a long span is the only place that answer
-                exists — a toast would carry it off screen in four seconds. */}
-            {gaps.length > 0 && (
-              <Hint tone="warning">
-                <span className="font-medium">{t("words.gapsTitle", { count: gaps.length })}</span>
-                <ul className="mt-1 list-disc ps-4">
-                  {gaps.map((gap) => (
-                    <li key={`${gap.after}-${gap.before}`}>
-                      {t("words.gapLine", {
-                        after: gap.after,
-                        afterPage: gap.after_page,
-                        before: gap.before,
-                        beforePage: gap.before_page,
-                      })}
-                    </li>
-                  ))}
-                </ul>
-              </Hint>
-            )}
-            <p className="text-[10.5px] leading-snug text-text-muted">{t("words.runNote")}</p>
-          </div>
-        </Section>
-
         {!ready ? (
           <Hint tone="warning">{t("words.gateHint", { page })}</Hint>
         ) : (
@@ -858,29 +610,6 @@ function WordsPage() {
         )}
       </Aside>
 
-      {job?.log_url && (
-        <RunLogDialog
-          open={logOpen}
-          onOpenChange={setLogOpen}
-          mushafId={mushafId}
-          runId={job.id}
-          kind="words"
-          live={running}
-        />
-      )}
-
-      {job && (
-        <ProcessCancelDialog
-          open={cancelOpen}
-          onOpenChange={setCancelOpen}
-          job={job}
-          onConfirm={() => {
-            setCancelOpen(false);
-            cancelWordDetection(mushafId).catch(() => toast.error(t("words.cancelFailed")));
-          }}
-        />
-      )}
-
       <TourOverlay tour={tour} />
     </div>
   );
@@ -915,23 +644,6 @@ function GateNotice({
           {processed ? t("words.gateToReview") : t("words.gateToProcess")}
         </Link>
       </div>
-    </div>
-  );
-}
-
-/** A word run counts lines, not pages — `pages_saved` stays zero for the whole
- * run, so reading it here would show a bar that never moves. */
-function RunProgress({ job }: { job: ProcessJob }) {
-  const { t } = useTranslation();
-  const pct = job.total > 0 ? Math.round((job.lines_done / job.total) * 100) : 0;
-  return (
-    <div className="flex flex-col gap-1">
-      <div className="h-1.5 w-full overflow-hidden rounded-full bg-bg-muted">
-        <div className="h-full rounded-full bg-orange" style={{ width: `${pct}%` }} />
-      </div>
-      <span className="text-[11.5px] text-text-muted">
-        {t("words.progress", { done: job.lines_done, total: job.total })}
-      </span>
     </div>
   );
 }

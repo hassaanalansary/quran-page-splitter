@@ -18,7 +18,8 @@ import { Route as AuthSignupRouteImport } from './routes/auth.signup'
 import { Route as AuthLoginRouteImport } from './routes/auth.login'
 import { Route as AuthForgotRouteImport } from './routes/auth.forgot'
 import { Route as MushafsMushafIdIndexRouteImport } from './routes/mushafs.$mushafId.index'
-import { Route as MushafsMushafIdWordsRouteImport } from './routes/mushafs.$mushafId.words'
+import { Route as MushafsMushafIdWordRunRouteImport } from './routes/mushafs.$mushafId.word-run'
+import { Route as MushafsMushafIdWordCutsRouteImport } from './routes/mushafs.$mushafId.word-cuts'
 import { Route as MushafsMushafIdTemplatesRouteImport } from './routes/mushafs.$mushafId.templates'
 import { Route as MushafsMushafIdSetupRouteImport } from './routes/mushafs.$mushafId.setup'
 import { Route as MushafsMushafIdReviewRouteImport } from './routes/mushafs.$mushafId.review'
@@ -72,9 +73,14 @@ const MushafsMushafIdIndexRoute = MushafsMushafIdIndexRouteImport.update({
   path: '/',
   getParentRoute: () => MushafsMushafIdRoute,
 } as any)
-const MushafsMushafIdWordsRoute = MushafsMushafIdWordsRouteImport.update({
-  id: '/words',
-  path: '/words',
+const MushafsMushafIdWordRunRoute = MushafsMushafIdWordRunRouteImport.update({
+  id: '/word-run',
+  path: '/word-run',
+  getParentRoute: () => MushafsMushafIdRoute,
+} as any)
+const MushafsMushafIdWordCutsRoute = MushafsMushafIdWordCutsRouteImport.update({
+  id: '/word-cuts',
+  path: '/word-cuts',
   getParentRoute: () => MushafsMushafIdRoute,
 } as any)
 const MushafsMushafIdTemplatesRoute =
@@ -130,7 +136,8 @@ export interface FileRoutesByFullPath {
   '/mushafs/$mushafId/review': typeof MushafsMushafIdReviewRoute
   '/mushafs/$mushafId/setup': typeof MushafsMushafIdSetupRoute
   '/mushafs/$mushafId/templates': typeof MushafsMushafIdTemplatesRoute
-  '/mushafs/$mushafId/words': typeof MushafsMushafIdWordsRoute
+  '/mushafs/$mushafId/word-cuts': typeof MushafsMushafIdWordCutsRoute
+  '/mushafs/$mushafId/word-run': typeof MushafsMushafIdWordRunRoute
   '/mushafs/$mushafId/': typeof MushafsMushafIdIndexRoute
 }
 export interface FileRoutesByTo {
@@ -147,7 +154,8 @@ export interface FileRoutesByTo {
   '/mushafs/$mushafId/review': typeof MushafsMushafIdReviewRoute
   '/mushafs/$mushafId/setup': typeof MushafsMushafIdSetupRoute
   '/mushafs/$mushafId/templates': typeof MushafsMushafIdTemplatesRoute
-  '/mushafs/$mushafId/words': typeof MushafsMushafIdWordsRoute
+  '/mushafs/$mushafId/word-cuts': typeof MushafsMushafIdWordCutsRoute
+  '/mushafs/$mushafId/word-run': typeof MushafsMushafIdWordRunRoute
   '/mushafs/$mushafId': typeof MushafsMushafIdIndexRoute
 }
 export interface FileRoutesById {
@@ -167,7 +175,8 @@ export interface FileRoutesById {
   '/mushafs/$mushafId/review': typeof MushafsMushafIdReviewRoute
   '/mushafs/$mushafId/setup': typeof MushafsMushafIdSetupRoute
   '/mushafs/$mushafId/templates': typeof MushafsMushafIdTemplatesRoute
-  '/mushafs/$mushafId/words': typeof MushafsMushafIdWordsRoute
+  '/mushafs/$mushafId/word-cuts': typeof MushafsMushafIdWordCutsRoute
+  '/mushafs/$mushafId/word-run': typeof MushafsMushafIdWordRunRoute
   '/mushafs/$mushafId/': typeof MushafsMushafIdIndexRoute
 }
 export interface FileRouteTypes {
@@ -188,7 +197,8 @@ export interface FileRouteTypes {
     | '/mushafs/$mushafId/review'
     | '/mushafs/$mushafId/setup'
     | '/mushafs/$mushafId/templates'
-    | '/mushafs/$mushafId/words'
+    | '/mushafs/$mushafId/word-cuts'
+    | '/mushafs/$mushafId/word-run'
     | '/mushafs/$mushafId/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -205,7 +215,8 @@ export interface FileRouteTypes {
     | '/mushafs/$mushafId/review'
     | '/mushafs/$mushafId/setup'
     | '/mushafs/$mushafId/templates'
-    | '/mushafs/$mushafId/words'
+    | '/mushafs/$mushafId/word-cuts'
+    | '/mushafs/$mushafId/word-run'
     | '/mushafs/$mushafId'
   id:
     | '__root__'
@@ -224,7 +235,8 @@ export interface FileRouteTypes {
     | '/mushafs/$mushafId/review'
     | '/mushafs/$mushafId/setup'
     | '/mushafs/$mushafId/templates'
-    | '/mushafs/$mushafId/words'
+    | '/mushafs/$mushafId/word-cuts'
+    | '/mushafs/$mushafId/word-run'
     | '/mushafs/$mushafId/'
   fileRoutesById: FileRoutesById
 }
@@ -304,11 +316,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MushafsMushafIdIndexRouteImport
       parentRoute: typeof MushafsMushafIdRoute
     }
-    '/mushafs/$mushafId/words': {
-      id: '/mushafs/$mushafId/words'
-      path: '/words'
-      fullPath: '/mushafs/$mushafId/words'
-      preLoaderRoute: typeof MushafsMushafIdWordsRouteImport
+    '/mushafs/$mushafId/word-run': {
+      id: '/mushafs/$mushafId/word-run'
+      path: '/word-run'
+      fullPath: '/mushafs/$mushafId/word-run'
+      preLoaderRoute: typeof MushafsMushafIdWordRunRouteImport
+      parentRoute: typeof MushafsMushafIdRoute
+    }
+    '/mushafs/$mushafId/word-cuts': {
+      id: '/mushafs/$mushafId/word-cuts'
+      path: '/word-cuts'
+      fullPath: '/mushafs/$mushafId/word-cuts'
+      preLoaderRoute: typeof MushafsMushafIdWordCutsRouteImport
       parentRoute: typeof MushafsMushafIdRoute
     }
     '/mushafs/$mushafId/templates': {
@@ -382,7 +401,8 @@ interface MushafsMushafIdRouteChildren {
   MushafsMushafIdReviewRoute: typeof MushafsMushafIdReviewRoute
   MushafsMushafIdSetupRoute: typeof MushafsMushafIdSetupRoute
   MushafsMushafIdTemplatesRoute: typeof MushafsMushafIdTemplatesRoute
-  MushafsMushafIdWordsRoute: typeof MushafsMushafIdWordsRoute
+  MushafsMushafIdWordCutsRoute: typeof MushafsMushafIdWordCutsRoute
+  MushafsMushafIdWordRunRoute: typeof MushafsMushafIdWordRunRoute
   MushafsMushafIdIndexRoute: typeof MushafsMushafIdIndexRoute
 }
 
@@ -392,7 +412,8 @@ const MushafsMushafIdRouteChildren: MushafsMushafIdRouteChildren = {
   MushafsMushafIdReviewRoute: MushafsMushafIdReviewRoute,
   MushafsMushafIdSetupRoute: MushafsMushafIdSetupRoute,
   MushafsMushafIdTemplatesRoute: MushafsMushafIdTemplatesRoute,
-  MushafsMushafIdWordsRoute: MushafsMushafIdWordsRoute,
+  MushafsMushafIdWordCutsRoute: MushafsMushafIdWordCutsRoute,
+  MushafsMushafIdWordRunRoute: MushafsMushafIdWordRunRoute,
   MushafsMushafIdIndexRoute: MushafsMushafIdIndexRoute,
 }
 

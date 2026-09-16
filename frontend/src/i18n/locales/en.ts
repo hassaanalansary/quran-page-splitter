@@ -218,7 +218,11 @@ export const en = {
       // The label, not the slug: this stopped being the last step when Words
       // landed after it, and the route stays /finalize so links keep working.
       finalize: "Lines",
-      words: "Words",
+      // Two steps where there was one: starting a run over a span of the mushaf
+      // and correcting the cuts page by page are a different job done at a
+      // different time, exactly as Process and Review are.
+      "word-run": "Words",
+      "word-cuts": "Cuts",
     },
   },
   home: {
@@ -636,6 +640,13 @@ export const en = {
     gapLine: "{{after}} (page {{afterPage}}) to {{before}} (page {{beforePage}})",
     runButton: "Run word detection",
     running: "Running…",
+    backToRun: "Back to the run",
+    continueCuts: "Continue → Cuts",
+    runFinishedStatus: "Run finished — {{lines}} lines. Review the cuts next.",
+    reviewNextStatus: "Words are stored. Review the cuts, or run another span.",
+    notRunStatus: "Pick what to cover, then run word detection.",
+    runGateHint:
+      "No page has been reviewed yet. Word detection anchors on the aya ornaments that Review is where you confirm, so run it after reviewing at least the pages you want covered.",
     runNote:
       "Roughly 50 ms a line — a sura is about 20 seconds, al-Baqara about 90, the whole mushaf 15 to 20 minutes. It runs in the background; you can leave this page.",
     runStarted: "Reading {{lines}} lines…",
@@ -1062,7 +1073,13 @@ export const en = {
       s4: "Save the cuts, then export the page to transparent line images.",
       s5: "Download the images as a zip once you're happy with them — ready to copy into the app.",
     },
-    words: {
+    wordRun: {
+      s1: "Choose what this run covers: one sura, a range of ayat that may cross suras, or the whole mushaf.",
+      s2: "A run is addressed by aya, never by page — the engine walks one cursor through the Quran text and an aya is the only place it can start from.",
+      s3: "Roughly 50 ms a line: a sura is about 20 seconds, al-Baqara about 90, the whole mushaf 15 to 20 minutes. It runs in the background.",
+      s4: "Breaks it had to step over are listed when it starts — those are pages it could not read, and they stay on screen until the next run.",
+    },
+    wordCuts: {
       s1: "Pick a sura and run the engine over it. It reads every line's ink and works out where each word ends.",
       s2: "The gutter beside each line says how much the engine trusted itself: green is exact, amber is worth a look, red it could not read.",
       s3: "Step only through the lines it flagged — the ‹ › buttons walk them, and roll on to the next page that has any.",
@@ -1115,7 +1132,9 @@ export const en = {
       "Step lines with ▲▼ · double-click a text line to add a separator ۝ · click a separator, then Delete removes it.",
     finalize:
       "Drag a line's top or bottom edge to trim it · hold Shift to erase · hold Space to pan.",
-    words:
+    wordRun:
+      "Choose a span and run the engine. It works in the background — you can leave this page.",
+    wordCuts:
       "Drag a box edge or its middle · double-click inside a box to split it · select a word, then × or Delete removes it · + in the list inserts a word, ∅ marks one the text does not have.",
   },
   tour: {
@@ -1191,18 +1210,23 @@ export const en = {
       t3_body:
         "Save the cuts, export the page to transparent images, then download them as a zip. Exporting the whole mushaf lives in the details Export tab.",
     },
-    words: {
-      t1_title: "Run the engine",
+    wordRun: {
+      t1_title: "What to cover",
       t1_body:
-        "Pick a sura and run it. A run is addressed by aya rather than by page, because the engine walks one cursor through the Quran text and an aya is the only place it can start from. It runs in the background — about 20 seconds for a sura.",
-      t2_title: "Canvas tools",
+        "One sura, a range of ayat that may cross as many suras as you like, or the whole mushaf. A run is addressed by aya rather than by page, because the engine walks one cursor through the Quran text and an aya is the only place it can start from.",
+      t2_title: "Start it and leave",
       t2_body:
+        "It runs on the server, so you can close this page and come back. The rail marks which pages hold words as each chunk lands, and the log is readable while it is still being written.",
+    },
+    wordCuts: {
+      t1_title: "Canvas tools",
+      t1_body:
         "Zoom with the buttons or Ctrl+wheel, and undo or redo an edit. Every word is a box, so what you drag is an edge or a whole word, never a bare line with nothing between it and the next.",
-      t3_title: "One line per strip",
-      t3_body:
+      t2_title: "One line per strip",
+      t2_body:
         "Each text line is cut from the page and laid out here, with a box over every word — which is the highlight a reader will eventually see. Arabic runs right to left, so a word starts at its right edge and ends at its left, and boxes may overlap where a tail sweeps under its neighbour.",
-      t4_title: "Only the lines that need you",
-      t4_body:
+      t3_title: "Only the lines that need you",
+      t3_body:
         "The engine records how much it trusted each line, so you read the handful it flagged instead of every word on the page. The ‹ › buttons step through those, and roll on to the next page that has any.",
     },
   },

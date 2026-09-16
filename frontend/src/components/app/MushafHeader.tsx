@@ -14,7 +14,15 @@ import {
 
 import { pipelineSteps, STATUS_META, STEP_ROUTES, type StepSlug } from "./details/helpers";
 
-const STEP_SLUGS: StepSlug[] = ["setup", "templates", "process", "review", "finalize", "words"];
+const STEP_SLUGS: StepSlug[] = [
+  "setup",
+  "templates",
+  "process",
+  "review",
+  "finalize",
+  "word-run",
+  "word-cuts",
+];
 
 /** Unified top bar for every mushaf page (workspace steps + the details hub):
  * breadcrumb → hub, status pill, a status-aware 6-step nav, and quick actions. */
@@ -108,7 +116,8 @@ export function MushafHeader({
         <Link
           to={STEP_ROUTES[cta.slug]}
           params={{ mushafId: mushaf.id }}
-          search={cta.slug === "review" && cta.reviewPage ? { page: cta.reviewPage } : undefined}
+          // Both page-addressed steps carry it now: review, and the word cuts.
+          search={cta.reviewPage ? { page: cta.reviewPage } : undefined}
           className="flex h-12 flex-col p-6 cursor-pointer justify-center rounded-[7px] bg-orange px-3 text-white transition-colors hover:bg-orange-hover"
         >
           <span className="text-[15px] font-bold leading-[1.1]">{t("header.continue")}</span>

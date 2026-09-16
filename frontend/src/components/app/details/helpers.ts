@@ -258,7 +258,14 @@ export function activityMeta(event: ActivityEvent): { dot: string; text: string 
 /** The slug is the URL and the i18n key, and `finalize` keeps both even though
  * that step now reads "Lines" — it stopped being the final one when Words landed
  * after it, and renaming the route would break every saved link for a label. */
-export type StepSlug = "setup" | "templates" | "process" | "review" | "finalize" | "words";
+export type StepSlug =
+  | "setup"
+  | "templates"
+  | "process"
+  | "review"
+  | "finalize"
+  | "word-run"
+  | "word-cuts";
 
 export type StepInfo = {
   slug: StepSlug;
@@ -354,29 +361,42 @@ export function pipelineSteps(
   // Words is the one step with no "how far through" to report until it has run at
   // all: coverage lists only pages that hold Line rows, so an empty list means the
   // engine has never been over this mushaf, not that it found nothing.
+  //
+  // Split in two the way the pages are: the run is done once anything has been
+  // read, and the cuts are done once nothing is left flagged. Reading "Words done,
+  // Cuts active" is the honest state of a mushaf the engine has covered and nobody
+  // has checked — which one combined step could not say.
   const wordPages = wordCoverage?.pages.filter((p) => p.lines_with_words > 0) ?? [];
   const flaggedLines = wordPages.reduce((n, p) => n + p.needs_review, 0);
-  const words: StepInfo =
-    wordPages.length === 0
+  const hasWords = wordPages.length > 0;
+  const wordRun: StepInfo = {
+    slug: "word-run",
+    label: i18n.t("header.steps.word-run"),
+    state: hasWords ? "done" : "todo",
+    detail: hasWords
+      ? i18n.t("details.step_wordsDone", { pages: wordPages.length })
+      : i18n.t("details.step_wordsTodo"),
+  };
+  const wordCuts: StepInfo = !hasWords
+    ? {
+        slug: "word-cuts",
+        label: i18n.t("header.steps.word-cuts"),
+        state: "todo",
+        detail: i18n.t("details.step_wordsTodo"),
+      }
+    : flaggedLines === 0 && wordCoverage?.complete
       ? {
-          slug: "words",
-          label: i18n.t("header.steps.words"),
-          state: "todo",
-          detail: i18n.t("details.step_wordsTodo"),
+          slug: "word-cuts",
+          label: i18n.t("header.steps.word-cuts"),
+          state: "done",
+          detail: i18n.t("details.step_wordsDone", { pages: wordPages.length }),
         }
-      : flaggedLines === 0 && wordCoverage?.complete
-        ? {
-            slug: "words",
-            label: i18n.t("header.steps.words"),
-            state: "done",
-            detail: i18n.t("details.step_wordsDone", { pages: wordPages.length }),
-          }
-        : {
-            slug: "words",
-            label: i18n.t("header.steps.words"),
-            state: "active",
-            detail: i18n.t("details.step_wordsFlagged", { count: flaggedLines }),
-          };
+      : {
+          slug: "word-cuts",
+          label: i18n.t("header.steps.word-cuts"),
+          state: "active",
+          detail: i18n.t("details.step_wordsFlagged", { count: flaggedLines }),
+        };
 
   return [
     {
@@ -399,7 +419,8 @@ export function pipelineSteps(
     process,
     review,
     finalize,
-    words,
+    wordRun,
+    wordCuts,
   ];
 }
 
@@ -436,12 +457,18 @@ export function continueTarget(
   // Words comes last, and only once the lines are out: the engine reads a line
   // image with Finalize's erase strokes already punched out of it (see
   // export.render_line_image), so running before that is reading the wrong ink.
+  // A flagged page sends you to the cuts, with the page; nothing read yet sends
+  // you to the run. The two used to be one destination because they were one page.
   const flagged = (wordCoverage?.pages ?? []).find((p) => p.needs_review > 0);
   if (flagged) {
-    return { slug: "words", sub: i18n.t("details.cta_wordsReview", { page: flagged.page }) };
+    return {
+      slug: "word-cuts",
+      sub: i18n.t("details.cta_wordsReview", { page: flagged.page }),
+      reviewPage: flagged.page,
+    };
   }
   if (!wordCoverage?.pages.some((p) => p.lines_with_words > 0)) {
-    return { slug: "words", sub: i18n.t("details.cta_wordsRun") };
+    return { slug: "word-run", sub: i18n.t("details.cta_wordsRun") };
   }
   return { slug: "finalize", sub: i18n.t("details.cta_finalize", { count: exported }) };
 }
@@ -452,5 +479,6 @@ export const STEP_ROUTES = {
   process: "/mushafs/$mushafId/process",
   review: "/mushafs/$mushafId/review",
   finalize: "/mushafs/$mushafId/finalize",
-  words: "/mushafs/$mushafId/words",
+  "word-run": "/mushafs/$mushafId/word-run",
+  "word-cuts": "/mushafs/$mushafId/word-cuts",
 } as const satisfies Record<StepSlug, string>;
