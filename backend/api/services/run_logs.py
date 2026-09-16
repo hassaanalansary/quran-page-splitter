@@ -178,7 +178,7 @@ def tail(path: Path, offset: int = 0, limit: int = CHUNK_BYTES) -> dict:
     }
 
 
-def attach(path: Path) -> logging.FileHandler:
+def attach(path: Path, *, level: str | None = None) -> logging.FileHandler:
     """Attach this run's file handler to the root logger; returns it for ``detach``.
 
     Literally the handler ``core.trace`` installs, so one viewer reads either
@@ -189,8 +189,19 @@ def attach(path: Path) -> logging.FileHandler:
 
     DEBUG unless ``RUN_LOG_LEVEL`` says otherwise — the setting is where the
     detail-against-disk trade-off is documented.
+
+    ``level`` lets one run override that for itself, which is what a very long span
+    does: the per-line trade-off the setting makes for a sura stops being a trade-off
+    at 9,000 lines. It only ever narrows what a run records — a caller asking for
+    less than the configured level gets less, never more.
     """
-    return setup_file_logging(str(path), getattr(settings, "RUN_LOG_LEVEL", "DEBUG"))
+    configured = getattr(settings, "RUN_LOG_LEVEL", "DEBUG")
+    if level is None:
+        return setup_file_logging(str(path), configured)
+    names = logging.getLevelNamesMapping()
+    wanted = names.get(level.upper(), logging.DEBUG)
+    floor = names.get(str(configured).upper(), logging.DEBUG)
+    return setup_file_logging(str(path), max(wanted, floor))
 
 
 def detach(handler: logging.FileHandler) -> None:

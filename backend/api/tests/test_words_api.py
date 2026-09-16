@@ -13,6 +13,8 @@ geometry is arithmetic a reader can check.
 
 import itertools
 import uuid
+from contextlib import contextmanager
+from unittest import mock
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 
@@ -36,6 +38,21 @@ from quran.services import suras
 #: Words 1..12, split into three ayat of four. Enough for a page, small enough to
 #: check by eye.
 AYA_STARTS = {5: 1, 6: 5, 7: 9}
+
+
+@contextmanager
+def no_worker():
+    """Register the job the POST creates, but let no worker loose on it.
+
+    These tests ask what the *view* resolves a span to, which is settled by the time
+    the job row exists. A real worker would then go looking for a mushaf that lives
+    only inside this test's uncommitted transaction — on its own thread, with its own
+    connection — and leave a traceback in the output for a run nobody wanted.
+    """
+    from api.services import jobs as jobs_service
+
+    with mock.patch.object(jobs_service, "_launch", lambda job, work, inline: job):
+        yield
 
 
 def _cuts(word_ids: list[int], first_x: int, step: int, *, width: int = 80) -> list[dict]:
@@ -192,6 +209,166 @@ class ChunkTests(WordsApiTestCase):
         # Contiguous: every chunk starts where the last one left off, plus one aya.
         for earlier, later in itertools.pairwise(spans):
             self.assertEqual(later[0], (earlier[1][0], earlier[1][1] + 1))
+
+
+class MultiSuraTestCase(WordsApiTestCase):
+    """The one-page fixture, plus two more pages carrying sura 3.
+
+    Page 1 is sura 2 ayat 5-7 (inherited); page 2 is 3:1-3 and page 3 is 3:4-6. The
+    word stream runs on unbroken from word 1 to word 24, so the three pages read as
+    one continuous span — which is what a run crossing a sura boundary needs, and
+    what removing a page's numbering then breaks on purpose.
+    """
+
+    def setUp(self):
+        super().setUp()
+        Word.objects.bulk_create(
+            [Word(id=n, text=f"w{n}", paw_count=1, ijam_above=0, ijam_below=0) for n in range(13, 25)]
+        )
+        Aya.objects.bulk_create(
+            [
+                Aya(counting_system=self.kufi, sura_id=3, number=number, start_word_id=start)
+                for number, start in {1: 13, 2: 15, 3: 17, 4: 19, 5: 21, 6: 23}.items()
+            ]
+        )
+        self.pages = {1: self.page}
+        self.sura3_lines: dict[int, list[Line]] = {}
+        for page_number, ayat in ((2, (1, 2, 3)), (3, (4, 5, 6))):
+            page = Page.objects.create(
+                mushaf=self.mushaf, page_number=page_number, bbox_x=100, bbox_y=0, bbox_w=600, bbox_h=400
+            )
+            self.pages[page_number] = page
+            self.sura3_lines[page_number] = []
+            for index, aya in enumerate(ayat, start=1):
+                line = Line.objects.create(
+                    page=page,
+                    line_number=index,
+                    type=LineTypeChoices.TEXT,
+                    sura_id=3,
+                    bbox_x=100,
+                    bbox_y=50 * index,
+                    bbox_w=600,
+                    bbox_h=40,
+                )
+                Segment.objects.create(
+                    line=line, segment_order=1, bbox_x=100, bbox_w=600, has_separator=True, aya_number=aya
+                )
+                self.sura3_lines[page_number].append(line)
+
+
+class MultiSuraSpanTests(MultiSuraTestCase):
+    """A span is (sura, aya) at each end, and the two ends are independent.
+
+    Nothing about a sura boundary is special to the engine — it is handed lines and
+    the words they hold, and a sura end is one more ornament — so the only thing that
+    has to be true is that the plan carries the span it was asked for.
+    """
+
+    def test_a_span_may_cross_suras(self):
+        plan = word_runs.preflight(self.mushaf, (2, 5), (3, 6))
+        self.assertEqual((plan.start, plan.end), ((2, 5), (3, 6)))
+        self.assertEqual((plan.first_page, plan.last_page), (1, 3))
+        # Nine numbered lines, plus page 1's line 4, which carries no aya and is
+        # inside the span all the same — `_span_lines` is bounded by lines, not ayat.
+        self.assertEqual(plan.total_lines, 10)
+        self.assertEqual(plan.gaps, [])
+
+    def test_an_end_sura_with_no_aya_runs_to_that_suras_end(self):
+        """The bug this fixes ran ONE sura and said nothing.
+
+        ``to_sura`` without ``to_aya`` used to fall through to "no end given", which
+        the planner reads as "the end of the sura the run starts in" — so asking for
+        2:5 through sura 3 quietly detected sura 2 and stopped.
+        """
+        plan = word_runs.preflight(self.mushaf, (2, 5), (3, None))
+        self.assertEqual(plan.end, (3, 6))
+
+    def test_the_endpoint_honours_an_end_sura_with_no_aya(self):
+        with no_worker():
+            response = self.client.post(
+                self.url(), {"from_sura": 2, "from_aya": 5, "to_sura": 3}, content_type="application/json"
+            )
+        self.assertEqual(response.status_code, 202)
+        job = response.json()["job"]
+        self.assertEqual((job["start_sura"], job["start_aya"]), (2, 5))
+        self.assertEqual((job["end_sura"], job["end_aya"]), (3, 6))
+
+    def test_from_aya_defaults_to_one(self):
+        with no_worker():
+            response = self.client.post(self.url(), {"from_sura": 3}, content_type="application/json")
+        self.assertEqual(response.status_code, 202)
+        job = response.json()["job"]
+        self.assertEqual((job["start_sura"], job["start_aya"]), (3, 1))
+
+    def test_chunks_roll_from_one_sura_into_the_next(self):
+        spans = word_runs.chunks(self.mushaf, (2, 5), (3, 6), target_lines=1)
+        self.assertGreater(len(spans), 1)
+        self.assertEqual(spans[0][0], (2, 5))
+        self.assertEqual(spans[-1][1], (3, 6))
+        # The successor of the last aya of a sura is aya 1 of the next, so the chunk
+        # that follows 2:7 starts at 3:1 and no aya is skipped or read twice.
+        starts = [span[0] for span in spans]
+        ends = [span[1] for span in spans]
+        self.assertIn((2, 7), ends)
+        self.assertEqual(starts[ends.index((2, 7)) + 1], (3, 1))
+
+    def test_the_available_span_is_what_the_pages_hold(self):
+        response = self.client.get(self.url("/span"))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"start": {"sura": 2, "aya": 5}, "end": {"sura": 3, "aya": 6}})
+
+    def test_a_mushaf_with_nothing_numbered_has_no_span(self):
+        Segment.objects.update(aya_number=None)
+        self.assertEqual(self.client.get(self.url("/span")).json(), {"start": None, "end": None})
+
+
+class SpanGapTests(MultiSuraTestCase):
+    """A hole in the middle of a span must break the run, not be walked through.
+
+    The engine carries one cursor through one word stream. Words whose pages are
+    missing have no ink to land on, so it would go on placing them — on the lines of
+    the *next* page, confidently and wrongly, for the rest of the span. The plan cuts
+    either side of the hole instead and reports it.
+    """
+
+    def _lose_page_two(self):
+        """Page 2 is there, but nothing on it is numbered — the unrenumbered case."""
+        Segment.objects.filter(line__page=self.pages[2]).update(aya_number=None)
+
+    def test_a_hole_splits_the_run_rather_than_failing_it(self):
+        self._lose_page_two()
+        plan = word_runs.preflight(self.mushaf, (2, 5), (3, 6))
+        self.assertEqual(len(plan.gaps), 1)
+        gap = plan.gaps[0]
+        self.assertEqual((gap.after, gap.before), ((2, 7), (3, 4)))
+        self.assertEqual((gap.after_page, gap.before_page), (1, 3))
+        # Page 1's line 4 and all three of page 2's lines lie inside the break.
+        self.assertEqual(gap.unnumbered_lines, 4)
+
+    def test_neither_chunk_spans_the_hole(self):
+        self._lose_page_two()
+        spans = word_runs.chunks(self.mushaf, (2, 5), (3, 6))
+        self.assertEqual(spans, [((2, 5), (2, 7)), ((3, 4), (3, 6))])
+
+    def test_the_gap_is_reported_to_the_caller(self):
+        self._lose_page_two()
+        with no_worker():
+            response = self.client.post(
+                self.url(), {"from_sura": 2, "from_aya": 5, "to_sura": 3, "to_aya": 6}, content_type="application/json"
+            )
+        self.assertEqual(response.status_code, 202)
+        body = response.json()
+        self.assertEqual(len(body["gaps"]), 1)
+        self.assertEqual(body["gaps"][0]["after"], "2:7")
+        self.assertEqual(body["gaps"][0]["before"], "3:4")
+        self.assertTrue(any("2:7" in warning and "3:4" in warning for warning in body["warnings"]))
+
+    def test_an_unbroken_span_reports_none(self):
+        with no_worker():
+            response = self.client.post(
+                self.url(), {"from_sura": 2, "from_aya": 5, "to_sura": 3, "to_aya": 6}, content_type="application/json"
+            )
+        self.assertEqual(response.json()["gaps"], [])
 
 
 class JobTests(WordsApiTestCase):

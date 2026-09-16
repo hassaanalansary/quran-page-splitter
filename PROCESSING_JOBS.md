@@ -156,7 +156,13 @@ The whole requested range is **a single pipeline run**: one tracker, one log fil
 
 `JobOut`: `id, mushaf_id, state, phase, page_range_start/end, total, pages_saved,
 current_page, cancel_requested, started_at, ended_at, run_id, log_url, stopped_on_page,
-abort_info, error, end_sura, end_aya`.
+abort_info, error, kind, start_sura, start_aya, end_sura, end_aya, lines_done`.
+
+The last four are for the **word** run, which shares this table (`kind="words"`) and
+counts lines rather than pages: `pages_saved` stays zero for the whole of it and
+`lines_done` is its progress. Detection *reports* where it ended up and so fills only
+`end_sura`/`end_aya`; a word run is *asked* for a span and fills both ends, which a
+span that may cross suras needs — see `backend/api/views/words.py`.
 
 - `state` — `running` | `completed` | `aborted_line_detection` | `cancelled` | `error`
 - `phase` — `starting` | `rendering` | `detecting` | `saving` | `finished`

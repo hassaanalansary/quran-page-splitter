@@ -97,7 +97,10 @@ def to_dict(job: ProcessJob) -> dict:
         "end_sura": job.end_sura,
         "end_aya": job.end_aya,
         "kind": job.kind,
-        "lines_done": job.lines_done,
+        # Null on the column means "not applicable" — a detection run counts pages —
+        # and the client has one number to show either way. Zero says the same thing
+        # without making every reader of it check for null first.
+        "lines_done": job.lines_done or 0,
     }
 
 
@@ -411,6 +414,11 @@ def _word_runner(mushaf: Mushaf, plan: word_runs.RunPlan, user: User | None) -> 
                 "words": report.words_written,
                 "unresolved": len(report.unresolved),
                 "cancelled": report.cancelled,
+                # Only meaningful on a long span, and only these two say what a run
+                # over a whole mushaf actually covered: where it stopped, and which
+                # stretches it stepped over because no pages stand behind them.
+                "resume_at": f"{report.resume_at[0]}:{report.resume_at[1]}" if report.resume_at else None,
+                "gaps": len(plan.gaps),
             },
             actor=user,
         )

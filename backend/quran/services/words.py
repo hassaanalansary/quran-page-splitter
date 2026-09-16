@@ -11,6 +11,8 @@ start on different words and carry different aya labels. That is the whole reaso
 the ``Aya`` table exists.
 """
 
+from django.db.models import Max
+
 from core.word_boundary import WordInput
 from quran.models import Aya, CountingSystem, Word
 
@@ -109,3 +111,31 @@ def sura_last_aya(counting_system: CountingSystem, sura: int) -> int:
     if number is None:
         raise LookupError(f"sura {sura} has no ayat in the {counting_system.name} counting system")
     return number
+
+
+def sura_last_ayat(counting_system: CountingSystem) -> dict[int, int]:
+    """Every sura's last aya number in this system, as one map, in one query.
+
+    The same answer :func:`sura_last_aya` gives, asked for all 114 at once. A caller
+    walking a span has to ask "does this aya end its sura" at every step, and over a
+    whole mushaf that is thousands of round trips for a table of 114 rows.
+    """
+    rows = Aya.objects.filter(counting_system=counting_system).values("sura_id").annotate(last=Max("number"))
+    return {row["sura_id"]: row["last"] for row in rows}
+
+
+def next_aya(last_ayat: dict[int, int], aya: tuple[int, int]) -> tuple[int, int] | None:
+    """The aya that follows this one, rolling into the next sura at a sura's end.
+
+    ``None`` at the end of the book, which is a real answer: it is what tells a
+    walker that there is nothing missing after the last aya it read.
+
+    Takes the map from :func:`sura_last_ayat` rather than a counting system, because
+    the only callers are loops — see there.
+    """
+    last = last_ayat.get(aya[0])
+    if last is None:
+        return None
+    if aya[1] < last:
+        return (aya[0], aya[1] + 1)
+    return (aya[0] + 1, 1) if (aya[0] + 1) in last_ayat else None

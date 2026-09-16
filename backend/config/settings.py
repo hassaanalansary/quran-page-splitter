@@ -313,6 +313,16 @@ RUN_LOG_RETENTION = 30
 #: survive — only the per-component and per-word evidence goes.
 RUN_LOG_LEVEL = env("RUN_LOG_LEVEL", default="DEBUG")
 
+#: Above this many lines, a word run keeps a summary instead of the full evidence:
+#: its log drops to INFO and its JSON report keeps every line's verdict without the
+#: per-word boxes. At 17 KB a line, a whole mushaf (~9,000 lines) would otherwise
+#: write a log of well over 100 MB — thirty of them under ``RUN_LOG_RETENTION`` —
+#: and a report the worker has to hold in memory before it can serialise it.
+#:
+#: 1500 is a little over the longest sura, so the spans people actually debug keep
+#: everything and only genuinely long runs give it up. Set to 0 to never summarise.
+WORD_RUN_FULL_DETAIL_LINES = env.int("WORD_RUN_FULL_DETAIL_LINES", default=1500)
+
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,

@@ -29,15 +29,39 @@ router = Router(tags=["words"])
 class DetectWordsIn(Schema):
     """The span to read, as ``(sura, aya)`` at each end.
 
-    ``to_*`` may be omitted: a sura is the natural unit of a run, so the end defaults
-    to that sura's last aya *in this mushaf's counting system* — which is not the same
-    aya number in every riwaya, and is exactly why it is resolved server-side.
+    **Any span, up to the whole mushaf.** The two ends are independent, so a run may
+    cover part of a sura, a sura, or every sura the mushaf holds — nothing about a
+    sura boundary is special to the engine, and the chunking is the same either way.
+
+    Both halves of the end may be omitted, and each omission means something
+    different, because only the server knows this mushaf's counting system:
+
+    * no ``to_*`` — through the end of the sura the run starts in, the old default
+      and still the common case;
+    * ``to_sura`` alone — through the end of *that* sura;
+    * both — exactly that aya.
+
+    ``from_aya`` defaults to 1, so ``{"from_sura": 2, "to_sura": 5}`` is "al-Baqara
+    through al-Ma'ida". For the whole mushaf, ask ``GET /words/span`` what it holds
+    and send those two ends: a mushaf in progress rarely runs 1:1 .. 114:6, and a span
+    whose ends are not on a page cannot be located.
     """
 
     from_sura: int = Field(ge=1, le=114)
-    from_aya: int = Field(ge=1)
+    from_aya: int = Field(default=1, ge=1)
     to_sura: int | None = Field(default=None, ge=1, le=114)
     to_aya: int | None = Field(default=None, ge=1)
+
+
+class SpanGapOut(Schema):
+    """A break the run steps over rather than through — see ``word_runs.SpanGap``."""
+
+    #: "2:281" — the last aya read before the break, and the first one after it.
+    after: str
+    before: str
+    after_page: int
+    before_page: int
+    unnumbered_lines: int
 
 
 class DetectWordsOut(Schema):
@@ -47,6 +71,27 @@ class DetectWordsOut(Schema):
     total_lines: int
     #: Not reasons to refuse; things the user would want to know anyway.
     warnings: list[str] = Field(default_factory=list)
+    #: Stretches of the span with no pages behind them. Empty for the ordinary case;
+    #: on a long span this is what says *which* part of the mushaf was skipped, and
+    #: the run did everything else.
+    gaps: list[SpanGapOut] = Field(default_factory=list)
+
+
+class SpanPointOut(Schema):
+    sura: int
+    aya: int
+
+
+class MushafSpanOut(Schema):
+    """The widest span this mushaf can be asked for — what "whole mushaf" means here.
+
+    ``null`` at both ends when nothing on the mushaf is numbered yet, which is the
+    state of a mushaf that has been processed but never renumbered. Offering
+    ``1:1 .. 114:6`` there would only produce a run whose ends cannot be located.
+    """
+
+    start: SpanPointOut | None = None
+    end: SpanPointOut | None = None
 
 
 class WordIn(Schema):
@@ -145,7 +190,10 @@ def detect_words(request: HttpRequest, mushaf_id: uuid.UUID, data: DetectWordsIn
     """
     mushaf = mushaf_service.get_mushaf(mushaf_id, user=current_user(request))
     start = (data.from_sura, data.from_aya)
-    end = (data.to_sura, data.to_aya) if data.to_sura and data.to_aya else None
+    # ``to_sura`` alone is a span through the end of that sura, not a span of the
+    # start sura — the older reading of this line dropped a multi-sura request on
+    # the floor and ran one sura instead, silently.
+    end = (data.to_sura, data.to_aya) if data.to_sura else None
 
     # Busy first, then the span: "a run is already going" is the more useful answer
     # even when the request is also wrong, and it is the cheaper check.
@@ -157,6 +205,27 @@ def detect_words(request: HttpRequest, mushaf_id: uuid.UUID, data: DetectWordsIn
         "chunks": len(plan.spans),
         "total_lines": plan.total_lines,
         "warnings": plan.warnings,
+        "gaps": [gap.as_dict() for gap in plan.gaps],
+    }
+
+
+@router.get("/{mushaf_id}/words/span", response=MushafSpanOut)
+def words_span(request: HttpRequest, mushaf_id: uuid.UUID) -> dict:
+    """The first and last aya this mushaf holds — what a "whole mushaf" run resolves to.
+
+    Asked of the pages rather than of the counting system, because a mushaf in
+    progress is a few juz and a test file is one sura. The client turns this into an
+    ordinary ``from``/``to`` request, so the job row still records a real span and the
+    server keeps no second meaning for an empty one.
+    """
+    mushaf = mushaf_service.get_mushaf(mushaf_id, user=current_user(request), write=False)
+    span = word_runs.available_span(mushaf)
+    if span is None:
+        return {"start": None, "end": None}
+    (first_sura, first_aya), (last_sura, last_aya) = span
+    return {
+        "start": {"sura": first_sura, "aya": first_aya},
+        "end": {"sura": last_sura, "aya": last_aya},
     }
 
 

@@ -63,8 +63,20 @@ class JobOut(Schema):
     stopped_on_page: int | None = None
     abort_info: dict | None = None
     error: str | None = None
+    #: Which engine this run drives — ``detection`` or ``words``. The client reads
+    #: it to know whether the counter below or ``pages_saved`` is the real progress.
+    kind: str = ProcessJobKindChoices.DETECTION
+    #: A word run's span. Detection *reports* where it ended up and so fills only the
+    #: end; a word run is *asked* for both, and a span that may now cross suras is
+    #: not described by its end alone.
+    start_sura: int | None = None
+    start_aya: int | None = None
     end_sura: int | None = None
     end_aya: int | None = None
+    #: Word runs only: lines written so far. Detection counts pages and leaves this
+    #: at zero. It is what the word run's progress bar and its cancel dialog read,
+    #: and on a whole-mushaf run it is the only sign of life for twenty minutes.
+    lines_done: int = 0
 
 
 class JobStatusOut(Schema):
