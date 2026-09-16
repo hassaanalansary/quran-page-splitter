@@ -92,6 +92,9 @@ def prepare_engine_input(
             # dotting convention and a Maghribi printing does not follow it — see
             # `core.word_boundary.inputs.IjamMode`.
             ijam=cast(IjamMode, mushaf.ijam_mode),
+            # Matched per line by the engine, because nothing upstream looked for
+            # them — see `line_images.symbol_templates`.
+            symbol_templates=line_images_service.symbol_templates(mushaf),
         ),
         counting_system=system,
         placements=placements,

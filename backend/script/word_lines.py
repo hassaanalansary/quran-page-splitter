@@ -247,6 +247,17 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--lines", type=Path, help="File of ordered image paths, one per line.")
     parser.add_argument("--separator-template", type=Path, help="Aya separator template PNG.")
     parser.add_argument(
+        "--sajda-template",
+        type=Path,
+        help="Sajda symbol PNG. Its ink is removed from every line it matches, so the engine "
+        "does not read it as letters. Unlike the aya separator it closes nothing.",
+    )
+    parser.add_argument(
+        "--rub-template",
+        type=Path,
+        help="Rub' al-hizb symbol PNG. Same treatment as --sajda-template.",
+    )
+    parser.add_argument(
         "--ijam",
         choices=("report", "ignore"),
         default="report",
@@ -387,6 +398,11 @@ def main(argv: list[str] | None = None) -> int:
         words=words_from_ayat(ayat),
         separator_template=template,
         ijam=args.ijam,
+        symbol_templates={
+            name: _open_template(path)
+            for name, path in (("sajda", args.sajda_template), ("rub_hizb", args.rub_template))
+            if path is not None
+        },
     )
 
     try:

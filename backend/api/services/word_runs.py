@@ -194,10 +194,23 @@ def preflight(mushaf: Mushaf, start: tuple[int, int], end: tuple[int, int | None
         span_lines=lines,
     )
     warnings: list[str] = []
+    symbols = line_images_service.symbol_templates(mushaf)
     if line_images_service.separator_template(mushaf) is None:
         warnings.append(
             "This mushaf has no aya separator template, so ornaments are found by shape alone. "
             "Cutting one from a page will make the anchors more reliable."
+        )
+    missing_symbols = sorted(set(line_images_service.SYMBOL_TEMPLATE_TYPES) - set(symbols))
+    if missing_symbols:
+        # A warning and not a refusal: most pages carry neither symbol, and a
+        # mushaf processed before these templates existed must keep working. The
+        # cost of running without one is confined to the lines that print it —
+        # there the engine reads the symbol as letters and every word after it on
+        # that line lands wrong.
+        warnings.append(
+            f"No {' or '.join(name.replace('_', ' ') for name in missing_symbols)} template is saved. "
+            f"Lines printing that symbol will have its ink read as letters; capture it in the "
+            f"Templates step and run those pages again."
         )
     if gaps:
         warnings.append(

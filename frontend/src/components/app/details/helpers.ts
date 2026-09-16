@@ -1,6 +1,7 @@
 // Shared formatting + derivation helpers for the mushaf details page.
 import i18n from "@/i18n/config";
 import type {
+  TemplateType,
   ActivityEvent,
   MushafDetail,
   MushafStats,
@@ -170,10 +171,9 @@ export function activityMeta(event: ActivityEvent): { dot: string; text: string 
       return {
         dot: "var(--success)",
         text: i18n.t("details.act_templateSaved", {
-          type:
-            p.template_type === "aya_separator"
-              ? i18n.t("details.act_tplAya")
-              : i18n.t("details.act_tplSura"),
+          // Named from the shared per-type strings. This was a binary ternary and
+          // would have called a sajda a sura header.
+          type: i18n.t(`templates.name_${p.template_type as TemplateType}`),
         }),
       };
     case "run_finished": {

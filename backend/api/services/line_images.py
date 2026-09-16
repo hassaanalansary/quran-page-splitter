@@ -68,6 +68,33 @@ def separator_template(mushaf: Mushaf) -> Image.Image | None:
     return image
 
 
+#: Template types that are neither text nor an aya end — printed among the words
+#: and meaning nothing to the reading order. Named here rather than inlined at the
+#: call site so adding a third is one entry.
+SYMBOL_TEMPLATE_TYPES = ("sajda", "rub_hizb")
+
+
+def symbol_templates(mushaf: Mushaf) -> dict[str, Image.Image]:
+    """The mushaf's non-word symbols, by type, for the ones it has saved.
+
+    Unlike the aya ornament these are *not* supplied as spans: the process phase
+    located ornaments and stored them on each segment, and never looked for these.
+    So the engine is handed the pictures and matches them itself — see
+    ``core.word_boundary.separators.split_symbols``.
+
+    Missing ones are simply absent from the map. A mushaf with neither still runs;
+    it just reads the ink of any sajda or rub' it prints as though it were letters,
+    which is what ``word_runs.preflight`` warns about.
+    """
+    found: dict[str, Image.Image] = {}
+    for template in mushaf.templates.filter(type__in=SYMBOL_TEMPLATE_TYPES):
+        with template.image.open("rb") as handle:
+            image = Image.open(io.BytesIO(handle.read()))
+            image.load()
+        found[template.type] = image
+    return found
+
+
 def locate(mushaf: Mushaf, sura: int, aya: int, *, last: bool = False) -> Segment:
     """The segment where an aya starts on the page — or ends, with ``last``.
 

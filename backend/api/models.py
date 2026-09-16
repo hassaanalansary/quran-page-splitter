@@ -8,6 +8,13 @@ from django.utils import timezone
 class TemplateTypeChoices(models.TextChoices):
     SURA_HEADER = "sura_header", "Sura Header"
     AYA_SEPARATOR = "aya_separator", "Aya Separator"
+    #: Printed inline among the words and meaning nothing to the reading order.
+    #: Word detection matches them only to take their ink *out* of the line; unlike
+    #: an aya separator they close nothing, and nothing about them is stored.
+    #: Optional — a mushaf without them still processes, it just misreads the lines
+    #: that carry one. Slugs stay within `Template.type`'s max_length of 16.
+    SAJDA = "sajda", "Sajda Symbol"
+    RUB_HIZB = "rub_hizb", "Rub' al-Hizb Symbol"
 
 
 class LineTypeChoices(models.TextChoices):

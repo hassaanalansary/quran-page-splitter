@@ -36,7 +36,7 @@ from core.word_boundary.results import (
     WordLine,
     WordSegment,
 )
-from core.word_boundary.separators import prepare_template, split_separators
+from core.word_boundary.separators import prepare_template, split_separators, split_symbols
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +70,11 @@ def detect_words(
         "supplied" if source.separator_template is not None else "none — shape detector alone",
         separator_threshold,
     )
+    if source.symbol_templates:
+        logger.info(
+            "  symbols: %s — removed from the text ink wherever they match",
+            ", ".join(source.symbol_templates),
+        )
     logger.info(
         "  i'jam: %s",
         {
@@ -80,6 +85,9 @@ def detect_words(
     logger.info("═" * 72)
 
     template = prepare_template(source.separator_template) if source.separator_template is not None else None
+    # Prepared once for the whole run, as the ornament's is: the arrays are never
+    # mutated, and trimming each one per line would cost more than the matching.
+    symbols = {name: prepare_template(image, name) for name, image in source.symbol_templates.items()}
 
     # One pass, not two: a line's ink and the ornaments pulled out of it belong
     # together in the trace, and nothing about the second step reads across lines.
@@ -88,6 +96,10 @@ def detect_words(
     for index, line in enumerate(source.lines, start=1):
         logger.info("  [%d/%d] %s", index, len(source.lines), line.label)
         ink = analyse_line(line)
+        # Symbols first. The ornament pass records how many text bodies precede
+        # each cut point, and a rosette still in `components` would be counted as
+        # one; the shape detector's median body height would be skewed by it too.
+        split_symbols(ink, symbols)
         split_separators(ink, template, match_threshold=separator_threshold)
         inks.append(ink)
 
@@ -241,6 +253,24 @@ def _line_result(
         )
         for ornament in ink.separators
         for blob in ornament
+    ]
+    # Same treatment for the non-word symbols, and for the same reason: they left
+    # `components` before the parse and would otherwise vanish from the result
+    # entirely, so a reader of the report or a debug render would see ink on the
+    # page with nothing in the data to account for it. A separate role, because
+    # they are not ornaments — they close no aya. See `separators.split_symbols`.
+    components += [
+        InkComponent(
+            id=blob.label,
+            x=blob.x + dx,
+            y=blob.y + dy,
+            w=blob.w,
+            h=blob.h,
+            role="symbol",
+            body_score=blob.body_score,
+        )
+        for _name, symbol in ink.symbols
+        for blob in symbol
     ]
     ornaments = [
         Ornament(

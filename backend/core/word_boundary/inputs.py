@@ -23,8 +23,8 @@ ink and alignment on counts.
 
 from __future__ import annotations
 
-from collections.abc import Iterable
-from dataclasses import dataclass
+from collections.abc import Iterable, Mapping
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
@@ -109,6 +109,17 @@ class WordBoundaryInput:
     #: What this mushaf's script guarantees about i'jam — see :data:`IjamMode`.
     #: Defaults to the reading that is safe for a mushaf nobody has characterised.
     ijam: IjamMode = "report"
+    #: Symbols this mushaf prints *inside* its text lines that are not words — the
+    #: sajda marker and the rub'-al-hizb rosette — keyed by a name for the trace.
+    #:
+    #: They have to be given rather than found, because nothing in the text
+    #: predicts them: unlike an aya ornament, which the process phase already
+    #: located and hands over, these were never looked for. And they have to be
+    #: *removed*, because the alternative is the engine reading them as letters and
+    #: every word after one landing in the wrong place.
+    #:
+    #: Fixed across a mushaf, which is what makes one template each enough.
+    symbol_templates: Mapping[str, Image.Image] = field(default_factory=dict)
 
 
 def images_from_paths(paths: Iterable[Path]) -> list[LineImage]:

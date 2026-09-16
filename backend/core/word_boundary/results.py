@@ -38,7 +38,8 @@ class InkComponent:
     w: int
     h: int
     #: "body" — a letter; "mark" — tashkeel or i'jam; "ornament" — part of an aya
-    #: separator, which is not text at all.
+    #: separator, which is not text at all; "symbol" — a sajda marker or a rub'
+    #: rosette, which is not text either and, unlike an ornament, closes nothing.
     role: str
     #: The two cheapest readings disagreed about this component's role.
     ambiguous: bool = False

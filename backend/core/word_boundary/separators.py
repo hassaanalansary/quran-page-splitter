@@ -18,6 +18,7 @@ PNGs always says. Both paths must keep working.
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 
 import cv2
 import numpy as np
@@ -35,6 +36,14 @@ logger = logging.getLogger(__name__)
 #: and hollow-looking (aspect 1.01, fill 0.17) and would be dropped as a phantom
 #: separator on a line that has none.
 HOLE_FRACTION = 0.12
+
+#: Score a symbol template must reach to be believed. Higher than the ornament's
+#: 0.35 because the two fail in opposite directions: a missed ornament merely
+#: leaves the engine to its shape detector, while a false symbol **deletes real
+#: ink** from the line and no review step would ever show it. An ornament is also
+#: routinely broken or overlapped, which is what forces its threshold down; a
+#: sajda marker printed inline is not.
+SYMBOL_MATCH_THRESHOLD = 0.5
 
 
 def split_separators(
@@ -81,33 +90,12 @@ def split_separators(
     if not spans:
         return
 
-    def containing(blob: Blob) -> tuple[int, int] | None:
-        centre = blob.x + blob.w / 2
-        for span in spans:
-            if span[0] <= centre <= span[1]:
-                return span
-        return None
-
+    # The ring, its digits, and any attached marks share a span, so the parser
+    # sees one explicit ornament event rather than several text components.
     ink.separator_spans = spans
-    kept: list[Blob] = []
-    current: tuple[int, int] | None = None
-    preferred_bodies = 0
-    for blob in ink.components:
-        span = containing(blob)
-        if span is None:
-            kept.append(blob)
-            if blob.preferred == "body":
-                preferred_bodies += 1
-            current = None
-            continue
-        # The ring, its digits, and any attached marks share a span, so the
-        # parser sees one explicit ornament event rather than text components.
-        if span != current:
-            ink.separators.append([])
-            ink.separator_after.append(preferred_bodies)
-            current = span
-        ink.separators[-1].append(blob)
-
+    kept, groups, befores = _partition(ink.components, spans)
+    ink.separators = groups
+    ink.separator_after = befores
     ink.components = kept
     ink.bodies = [b for b in kept if b.preferred == "body"]
     ink.marks = [b for b in kept if b.preferred != "body"]
@@ -150,8 +138,106 @@ def _merge_spans(spans: list[tuple[int, int]]) -> list[tuple[int, int]]:
     return sorted(merged, key=lambda s: -s[1])
 
 
-def prepare_template(im: Image.Image) -> np.ndarray:
-    """The ornament as black ink on white, trimmed to its ink.
+def _partition(
+    components: list[Blob],
+    spans: list[tuple[int, int]],
+) -> tuple[list[Blob], list[list[Blob]], list[int]]:
+    """Split components into those outside every span and those grouped by span.
+
+    Membership is by **centre**, not overlap: a letter whose tail reaches under an
+    ornament still belongs to the text, and a dot sitting inside one does not.
+
+    The third return is, for each group, how many text bodies precede it — which
+    only the ornament caller needs, since that is what turns a span into a cut
+    point once every line's bodies are concatenated. A symbol is not a cut point
+    and throws it away.
+    """
+    kept: list[Blob] = []
+    groups: list[list[Blob]] = []
+    befores: list[int] = []
+    current: tuple[int, int] | None = None
+    bodies_before = 0
+    for blob in components:
+        centre = blob.x + blob.w / 2
+        span = next((s for s in spans if s[0] <= centre <= s[1]), None)
+        if span is None:
+            kept.append(blob)
+            if blob.preferred == "body":
+                bodies_before += 1
+            current = None
+            continue
+        if span != current:
+            groups.append([])
+            befores.append(bodies_before)
+            current = span
+        groups[-1].append(blob)
+    return kept, groups, befores
+
+
+def split_symbols(
+    ink: LineInk,
+    templates: Mapping[str, np.ndarray],
+    *,
+    match_threshold: float = SYMBOL_MATCH_THRESHOLD,
+) -> None:
+    """Take non-word symbols out of the ink — a sajda marker, a rub' rosette.
+
+    **Like an ornament in one way and unlike it in every other.** The engine must
+    not read either as letters, and the removal is the same partition. But an
+    ornament also *closes an aya*: ``parse_line`` cuts the line at every entry in
+    ``separator_spans`` and forces the stretch before the cut onto that aya's
+    boundary. A sajda closes nothing. Push one through that path and it would not
+    merely be skipped — it would end the aya there and skip every word the aya had
+    left, which is worse than the misreading it was meant to fix.
+
+    So this registers **no span** in ``separator_spans`` and emits no parser event.
+    The blobs simply stop existing as far as the alignment is concerned, exactly as
+    if the symbol had not been printed.
+
+    **Run before ``split_separators``**, so the ornament pass counts only real text
+    bodies when it records where each cut point falls — and so the shape detector's
+    median body height is not skewed by a rosette.
+
+    Detected here rather than supplied, because nothing upstream looked: the
+    process phase locates aya ornaments and stores them, and knows nothing about
+    these. That also means the aya path's supplied-spans short-circuit must not
+    swallow this pass, which is why it is its own function and not a branch of
+    ``split_separators``.
+    """
+    if not templates:
+        return
+    spans: list[tuple[int, int]] = []
+    found: list[tuple[str, tuple[int, int]]] = []
+    for name, template in templates.items():
+        for span in _separator_spans_by_template(ink, template, match_threshold):
+            spans.append(span)
+            found.append((name, span))
+    if not spans:
+        return
+    spans = _merge_spans(spans)
+
+    kept, groups, _ = _partition(ink.components, spans)
+    ink.symbol_spans = spans
+    # Name each group by whichever template's hit it overlaps, for the trace only.
+    ink.symbols = [
+        (next((n for n, s in found if s[0] <= group[0].x + group[0].w / 2 <= s[1]), "symbol"), group)
+        for group in groups
+    ]
+    ink.components = kept
+    ink.bodies = [b for b in kept if b.preferred == "body"]
+    ink.marks = [b for b in kept if b.preferred != "body"]
+    logger.info(
+        "    symbols: %d removed from the text ink — %s",
+        len(ink.symbols),
+        ", ".join(
+            f"{name} x={group[0].x + ink.offset_x}..{max(b.right for b in group) + ink.offset_x} ({len(group)} blob(s))"
+            for name, group in ink.symbols
+        ),
+    )
+
+
+def prepare_template(im: Image.Image, name: str = "aya separator") -> np.ndarray:
+    """A template as black ink on white, trimmed to its ink.
 
     Trimmed for the same reason the line is. The saved template carries white
     margin, and matchTemplate needs somewhere for that margin to sit; an ornament
@@ -170,9 +256,11 @@ def prepare_template(im: Image.Image) -> np.ndarray:
     _, binary = cv2.threshold(grey, 0, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)
     box = find_content_bbox(binary)
     if box is None:
-        raise ValueError("the aya separator template has no ink in it.")
+        raise ValueError(f"the {name} template has no ink in it.")
     x, y, w, h = box
-    logger.info("Separator template: %dx%d supplied, %dx%d after trimming to its ink", im.width, im.height, w, h)
+    logger.info(
+        "%s template: %dx%d supplied, %dx%d after trimming to its ink", name.capitalize(), im.width, im.height, w, h
+    )
     # Rendered the same way as the line below, so the correlation compares like
     # with like instead of a binary mask against a greyscale scan.
     return np.where(binary[y : y + h, x : x + w] > 0, np.uint8(0), np.uint8(255))

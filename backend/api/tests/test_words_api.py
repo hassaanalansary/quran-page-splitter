@@ -28,10 +28,11 @@ from api.models import (
     ProcessJobKindChoices,
     ProcessJobStateChoices,
     Segment,
+    Template,
 )
 from api.services import mushaf as mushaf_service
 from api.services import word_coordinates, word_runs
-from api.tests.helpers import ApiTestCase, default_user, make_pdf_bytes
+from api.tests.helpers import ApiTestCase, default_user, make_pdf_bytes, make_png_bytes
 from quran.models import Aya, CountingSystem, Rawi, Word
 from quran.services import suras
 
@@ -176,6 +177,28 @@ class PreflightTests(WordsApiTestCase):
     def test_a_missing_ornament_template_warns_rather_than_refuses(self):
         plan = word_runs.preflight(self.mushaf, (2, 5), (2, 7))
         self.assertTrue(any("separator template" in warning for warning in plan.warnings))
+
+    def test_missing_symbol_templates_warn_rather_than_refuse(self):
+        """Sajda and rub' are optional, and saying so is the point.
+
+        Most pages carry neither, and a mushaf processed before these templates
+        existed has to keep working. The cost of running without one is confined to
+        the lines that print it, so it is worth a warning and not a refusal.
+        """
+        plan = word_runs.preflight(self.mushaf, (2, 5), (2, 7))
+        warned = [w for w in plan.warnings if "sajda" in w and "rub hizb" in w]
+        self.assertEqual(len(warned), 1, plan.warnings)
+
+    def test_a_saved_symbol_template_stops_the_warning_naming_it(self):
+        Template.objects.create(
+            mushaf=self.mushaf,
+            type="sajda",
+            image=SimpleUploadedFile("sajda.png", make_png_bytes((12, 12)), "image/png"),
+        )
+        plan = word_runs.preflight(self.mushaf, (2, 5), (2, 7))
+        warned = [w for w in plan.warnings if "sajda" in w]
+        self.assertEqual(warned, [], "the one that is saved should not still be asked for")
+        self.assertTrue(any("rub hizb" in w for w in plan.warnings), plan.warnings)
 
     def test_a_detection_run_in_flight_blocks_a_word_run(self):
         """The two must not overlap: re-processing deletes lines, and their words go

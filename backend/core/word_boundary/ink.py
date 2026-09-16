@@ -118,6 +118,13 @@ class LineInk:
     #: Ornament spans the caller already knew, in image coordinates. When present
     #: the detectors do not run at all — see ``split_separators``.
     supplied_separators: list[tuple[int, int]] | None = None
+    #: Blobs making up each non-word symbol found on this line — a sajda marker, a
+    #: rub' rosette — one list per symbol, with the name it was matched by.
+    symbols: list[tuple[str, list[Blob]]] = field(default_factory=list)
+    #: Their horizontal spans. Deliberately **not** merged into
+    #: ``separator_spans``: a span there becomes a parser event, and a parser event
+    #: closes an aya. See ``split_symbols``.
+    symbol_spans: list[tuple[int, int]] = field(default_factory=list)
 
 
 def load_ink(im: Image.Image, alpha_threshold: int = 40) -> np.ndarray:

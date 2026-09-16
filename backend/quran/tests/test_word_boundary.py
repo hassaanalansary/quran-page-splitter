@@ -396,3 +396,86 @@ class IjamModeTests(SimpleTestCase):
     def test_report_is_the_default(self):
         """A caller that says nothing gets the check, which is what it always did."""
         self.assertEqual(WordBoundaryInput(lines=[], words=[]).ijam, "report")
+
+
+def _symbol_template(size: int = 24) -> Image.Image:
+    """A hollow ring — a shape the plain bars standing in for words cannot be.
+
+    Deliberately not a filled square: the words here are solid rectangles, and a
+    solid template correlates perfectly with any part of one, so it would match
+    right across the line. A real sajda marker is distinguishable from a letter
+    for the same reason this is.
+    """
+    image = Image.new("RGBA", (size, size), (255, 255, 255, 255))
+    ImageDraw.Draw(image).rectangle([2, 2, size - 3, size - 3], outline=(0, 0, 0, 255), width=3)
+    return image
+
+
+def _line_with_symbol(*, xs: list[int], symbol_x: int, size: int = 24) -> LineImage:
+    """Words at ``xs``, with one non-word symbol printed among them."""
+    image = Image.new("RGBA", (500, 60), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(image)
+    for x in xs:
+        draw.rectangle([x, TOP, x + 29, BOTTOM], fill=(0, 0, 0, 255))
+    draw.rectangle(
+        [symbol_x + 2, TOP + 2, symbol_x + size - 3, TOP + size - 3],
+        outline=(0, 0, 0, 255),
+        width=3,
+    )
+    return LineImage(image=image, label="line-01.png", source="test:line-01.png")
+
+
+class SymbolTests(SimpleTestCase):
+    """A sajda marker or a rub' rosette: ink that is not a word and not an aya end.
+
+    The distinction is the whole point. An ornament is removed from the text *and*
+    closes an aya — ``parse_line`` cuts the line at every separator span and forces
+    the stretch before it onto that aya's boundary. A symbol must be removed and
+    close nothing; routed through the ornament path it would end the aya early and
+    skip every word that aya had left, which is worse than the misreading it is
+    there to prevent.
+    """
+
+    def _run(self, *, with_template: bool):
+        line = _line_with_symbol(xs=[380, 300, 150, 70], symbol_x=225)
+        return detect_words(
+            WordBoundaryInput(
+                lines=[line],
+                words=_words([1, 1, 1, 1]),
+                symbol_templates={"sajda": _symbol_template()} if with_template else {},
+            )
+        ).lines[0]
+
+    def test_without_the_template_it_is_just_more_text_ink(self):
+        """The state this fixes: nothing tells the engine the shape is not a letter.
+
+        Whether it then spends it as a word or discards it is the DP's business —
+        what matters is that nothing in the result says "this is not text", so
+        there is no way for anything downstream to know either.
+        """
+        line = self._run(with_template=False)
+        self.assertEqual([c for c in line.components if c.role == "symbol"], [])
+
+    def test_with_the_template_the_symbol_leaves_the_text_ink(self):
+        line = self._run(with_template=True)
+        self.assertEqual(line.status, "exact")
+        self.assertEqual(len(line.words), 4)
+        placed = {component for word in line.words for component in word.components}
+        symbols = [c for c in line.components if c.role == "symbol"]
+        self.assertTrue(symbols, "the symbol should be reported, not silently dropped")
+        self.assertFalse(
+            placed & {c.id for c in symbols},
+            "no word may be built out of a symbol's ink",
+        )
+
+    def test_a_symbol_is_not_an_aya_boundary(self):
+        """The regression that matters most.
+
+        A symbol registers no separator span, so it cuts no stretch and forces no
+        ``require_end``. If it ever did, this line would report an ornament and the
+        aya would end in the middle of it.
+        """
+        line = self._run(with_template=True)
+        self.assertEqual(line.ornaments, [])
+        self.assertEqual(len(line.segments), 1, "a symbol must not split the line into stretches")
+        self.assertNotIn("aya-boundary", line.reason or "")

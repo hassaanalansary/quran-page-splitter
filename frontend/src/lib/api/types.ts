@@ -104,7 +104,22 @@ export type MushafPatch = Partial<{
 }>;
 
 // ── Templates ───────────────────────────────────────────────────────────────
-export type TemplateType = "sura_header" | "aya_separator";
+
+/** Every template a mushaf can carry, in the order the capture step offers them.
+ *
+ * One list, because it was three: the capture step, the details rail and the
+ * activity feed each hardcoded the same two types, and the last two did it as a
+ * binary ternary that would have labelled anything new "Sura header". Anything
+ * that needs to enumerate template types reads this. */
+export const TEMPLATE_TYPES = ["sura_header", "aya_separator", "sajda", "rub_hizb"] as const;
+
+export type TemplateType = (typeof TEMPLATE_TYPES)[number];
+
+/** The two a mushaf cannot be processed without — `_required_templates` refuses
+ * a run lacking either. The symbols are deliberately *not* here: they only affect
+ * the lines that print them, and requiring them would mark every mushaf captured
+ * before they existed incomplete. */
+export const REQUIRED_TEMPLATE_TYPES = ["sura_header", "aya_separator"] as const;
 
 export type Template = {
   id: string;

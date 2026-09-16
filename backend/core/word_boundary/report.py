@@ -64,6 +64,7 @@ def _line(index: int, line: WordLine) -> dict:
             "bodies": sum(c.role == "body" for c in line.components),
             "marks": sum(c.role == "mark" for c in line.components),
             "ornament": sum(c.role == "ornament" for c in line.components),
+            "symbol": sum(c.role == "symbol" for c in line.components),
             "role_ambiguous": sum(c.ambiguous for c in line.components),
         },
         "segments": [
