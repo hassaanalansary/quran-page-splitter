@@ -310,3 +310,89 @@ class MergeTieBreakTests(SimpleTestCase):
         _merge_record(target, self.KEY, self._record(10, 5, 0b01))
         _merge_record(target, self.KEY, self._record(12, 0, 0b10))
         self.assertEqual(target[self.KEY].cost, 10)
+
+
+#: Bodies right to left: two for the dotted word, then one each for four fillers.
+#: The dot sits between the first two, so it falls inside the dotted word's span
+#: and can satisfy its i'jam — or be eaten by it.
+_IJAM_BODIES = (520, 460, 380, 300, 220, 140)
+_IJAM_DOT_X = 505
+#: An ornament past the left end. It closes the stretch, which pins `require_end`
+#: on the last word — see `_ijam_line` for why the test needs that.
+_IJAM_ORNAMENT = (80, 120)
+
+
+def _ijam_line(label: str = "line-01.png") -> LineImage:
+    """A line whose cheapest reading spends a dot as a letter.
+
+    Six bodies and a dot for seven PAWs of text, so the *only* reading that gets
+    every word to its exact count is the one that reads the dot as a letter. Every
+    reading that keeps the dot has to close a word a PAW short, and that costs
+    COUNT_WEIGHT — twenty against the thirteen the dot costs as a body. So the
+    floor is the one thing that can refuse it, which is the case under test.
+
+    **The ornament is load-bearing.** Without it the cheapest reading of all is to
+    stop one word early: unplaced words are free when no ink is left over, so a
+    reading that quietly drops the last word beats both of the ones we care about.
+    An ornament closes the stretch, which pins ``require_end`` on the final word
+    and removes every early stop from the running.
+    """
+    image = Image.new("RGBA", (700, 60), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(image)
+    for x in _IJAM_BODIES:
+        draw.rectangle([x, TOP, x + 39, BOTTOM], fill=(0, 0, 0, 255))
+    draw.rectangle([_IJAM_DOT_X, BOTTOM + 6, _IJAM_DOT_X + 7, BOTTOM + 13], fill=(0, 0, 0, 255))
+    return LineImage(image=image, label=label, source=f"test:{label}", separators=[_IJAM_ORNAMENT])
+
+
+def _ijam_words() -> list[WordInput]:
+    """A three-PAW word carrying one dot below, then four plain one-PAW words."""
+    return [
+        WordInput(text="ببب", paws=3, ijam_above=0, ijam_below=1, aya="7:82", id=100),
+        *[WordInput(text=f"w{i}", paws=1, ijam_above=0, ijam_below=0, aya="7:82", id=101 + i) for i in range(4)],
+    ]
+
+
+class IjamModeTests(SimpleTestCase):
+    """Whether a word's expected dots are worth checking against this page at all.
+
+    ``core.text.arabic.IJAM`` describes one dotting convention, not a universal
+    fact: Maghribi puts ف's dot below where that table puts it above, and a mushaf
+    may leave final ي undotted. On such a mushaf every word containing them reads
+    as short, so the check is not merely useless but misleading — hence a mode
+    that turns it off, declared per mushaf rather than guessed.
+    """
+
+    def _dotted(self, ijam: str):
+        line = detect_words(WordBoundaryInput(lines=[_ijam_line()], words=_ijam_words(), ijam=ijam)).lines[0]
+        return line, line.words[0]
+
+    def test_report_flags_the_word_that_lost_its_dot(self):
+        line, dotted = self._dotted("report")
+        # Three blobs: the dot was spent as a letter, which is the cheapest reading
+        # of this ink and the thing the flag is there to tell a reviewer about.
+        self.assertEqual(len(dotted.components), 3)
+        self.assertIn("i'jam", line.reason or "")
+
+    def test_ignore_says_nothing_about_it(self):
+        line, dotted = self._dotted("ignore")
+        self.assertEqual(len(dotted.components), 3)
+        self.assertNotIn("i'jam", line.reason or "")
+
+    def test_the_mode_never_changes_the_reading(self):
+        """Reporting is not a soft constraint — it costs the parse nothing.
+
+        Worth pinning separately: if the check ever started influencing the
+        outcome, a Maghribi mushaf would silently get different word boundaries
+        from a Hafs one purely because of a table that does not describe it.
+        """
+        reported, _ = self._dotted("report")
+        ignored, _ = self._dotted("ignore")
+        self.assertEqual(
+            [(w.text, w.x, w.end_x) for w in reported.words],
+            [(w.text, w.x, w.end_x) for w in ignored.words],
+        )
+
+    def test_report_is_the_default(self):
+        """A caller that says nothing gets the check, which is what it always did."""
+        self.assertEqual(WordBoundaryInput(lines=[], words=[]).ijam, "report")

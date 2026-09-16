@@ -25,6 +25,7 @@ because it happens to be a separate concern.
 
 from core.word_boundary.engine import detect_words
 from core.word_boundary.inputs import (
+    IjamMode,
     LineImage,
     WordBoundaryInput,
     WordInput,
@@ -47,6 +48,7 @@ from core.word_boundary.results import (
 __all__ = [
     "FLAGGED_STATUSES",
     "STATUSES",
+    "IjamMode",
     "InkComponent",
     "LineImage",
     "Ornament",

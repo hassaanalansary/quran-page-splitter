@@ -869,6 +869,11 @@ export const en = {
     set_countingFollows: "Counting system follows the qiraa",
     set_countingDetail: " — {{name}} · {{total}} ayat",
     set_qiraatAvailable: ". {{count}} qiraat available.",
+    set_ijam: "Letter dots (i'jam)",
+    set_ijamReport: "Flag a word that lost a dot",
+    set_ijamIgnore: "Do not check dots",
+    set_ijamHint:
+      "Word detection expects the dots a word's spelling implies. Maghribi script puts fa's dot below rather than above, and some mushafs leave a final ya undotted — set this to \"Do not check\" there, or every such word is reported short.",
     set_saveChanges: "Save changes",
     set_updated: "Mushaf updated.",
     set_updateFailed: "Failed to update mushaf.",

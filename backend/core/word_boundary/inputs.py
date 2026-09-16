@@ -26,6 +26,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 from PIL import Image
 
@@ -65,6 +66,37 @@ class WordInput:
     id: int | None = None
 
 
+#: Whether a word's expected dots are worth checking against this mushaf's page.
+#:
+#: The distinction the engine got wrong once, and must not get wrong again: the
+#: Quran text says which letters are conventionally distinguished by dots, and says
+#: nothing whatever about whether a given mushaf draws them. Those are two
+#: questions, and only the first is settled by knowing the text.
+#:
+#: * ``report`` — expect them. Every word's floor is checked and a shortfall is
+#:   flagged for review. The default, and what the engine has always done.
+#: * ``ignore`` — do not check at all, for a script whose dotting this table does
+#:   not describe. On such a mushaf the check is not merely useless but actively
+#:   misleading, flagging lines that are perfectly correct.
+#:
+#: Maghribi is the case that forces the choice: ``ف`` takes its dot **below**
+#: there, and a mushaf may leave final ``ي`` undotted altogether, so every word
+#: containing them would be reported short. Differences of dot *number* are
+#: already absorbed — ``ijam_groups`` counts groups, so Maghribi's one-dot ``ق``
+#: and this table's two agree at one group.
+#:
+#: **There is deliberately no "enforce".** A mode that let the floor *reject* a
+#: reading was built and removed: it cannot bite where it would matter. An
+#: ornament-closed stretch pins ``require_end``, the DP keys on
+#: ``(word_index, blobs_taken)``, and equal-rank readings are merged — so by the
+#: time any filter runs there is exactly one candidate left, and the reading that
+#: preserved the dot was discarded when the word closed. Offering a setting that
+#: claims a strength the engine does not have would be worse than not offering it.
+#: ``IjamModeTests`` pins that, and it becomes possible only if the DP is ever
+#: taught to keep i'jam-distinct alternatives.
+IjamMode = Literal["report", "ignore"]
+
+
 @dataclass(frozen=True)
 class WordBoundaryInput:
     """Everything one run of the engine needs."""
@@ -74,6 +106,9 @@ class WordBoundaryInput:
     #: The mushaf's aya ornament, for lines whose separators were not supplied.
     #: ``None`` is fine — the shape detector runs either way.
     separator_template: Image.Image | None = None
+    #: What this mushaf's script guarantees about i'jam — see :data:`IjamMode`.
+    #: Defaults to the reading that is safe for a mushaf nobody has characterised.
+    ijam: IjamMode = "report"
 
 
 def images_from_paths(paths: Iterable[Path]) -> list[LineImage]:

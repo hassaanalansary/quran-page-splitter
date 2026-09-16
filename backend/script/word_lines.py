@@ -247,6 +247,17 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--lines", type=Path, help="File of ordered image paths, one per line.")
     parser.add_argument("--separator-template", type=Path, help="Aya separator template PNG.")
     parser.add_argument(
+        "--ijam",
+        choices=("report", "ignore"),
+        default="report",
+        help=(
+            "Whether to check each word against the dots its spelling expects. "
+            "The bundled text describes one convention; pass 'ignore' for a "
+            "Maghribi printing, where fa takes its dot below and a final ya may "
+            "carry none, and every such word would otherwise read as short."
+        ),
+    )
+    parser.add_argument(
         "--separator-threshold",
         type=float,
         default=0.35,
@@ -375,6 +386,7 @@ def main(argv: list[str] | None = None) -> int:
         lines=images_from_paths(paths),
         words=words_from_ayat(ayat),
         separator_template=template,
+        ijam=args.ijam,
     )
 
     try:

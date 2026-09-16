@@ -175,6 +175,9 @@ class ReadDeleteTests(MediaTestCase):
 
 
 class UpdateMushafTests(MediaTestCase):
+    def _detail(self, mushaf_id) -> dict:
+        return mushaf_service.get_mushaf_detail(mushaf_id, user=default_user())
+
     def test_updates_name_and_bounds(self):
         created = _create("Up", pages=10)
         updated = mushaf_service.update_mushaf(
@@ -190,6 +193,37 @@ class UpdateMushafTests(MediaTestCase):
         updated = mushaf_service.update_mushaf(created["id"], {"first_quran_pdf_page": 2}, user=default_user())
         self.assertEqual(updated["first_quran_pdf_page"], 2)
         self.assertEqual(updated["last_quran_pdf_page"], 10)
+
+    def test_ijam_mode_round_trips_and_defaults_to_report(self):
+        """Whether the dots a spelling expects are checked against this printing.
+
+        Declared, never inferred — `core.text.arabic.IJAM` describes one dotting
+        convention and a Maghribi mushaf does not follow it, so guessing would
+        report every word containing fa as short.
+        """
+        created = _create("Ijam", pages=4)
+        # Read off the detail serializer, which is where the per-mushaf settings
+        # live — `update_mushaf` answers with the lighter list shape, as it does
+        # for `export_uniform_size`.
+        self.assertEqual(self._detail(created["id"])["ijam_mode"], "report")
+        mushaf_service.update_mushaf(created["id"], {"ijam_mode": "ignore"}, user=default_user())
+        self.assertEqual(self._detail(created["id"])["ijam_mode"], "ignore")
+
+    def test_an_unknown_ijam_mode_is_ignored_rather_than_stored(self):
+        created = _create("IjamBad", pages=4)
+        mushaf_service.update_mushaf(created["id"], {"ijam_mode": "enforce"}, user=default_user())
+        # "enforce" was built and removed — the engine cannot honour it, so the
+        # column must not start carrying it. See core.word_boundary.inputs.IjamMode.
+        self.assertEqual(self._detail(created["id"])["ijam_mode"], "report")
+
+    def test_ijam_mode_is_not_locked_once_pages_exist(self):
+        """Unlike the riwaya. It changes nothing already written, and the only way
+        to tell whether it fits a mushaf is to run once and read the report."""
+        created = _create("IjamLate", pages=4)
+        mushaf = Mushaf.objects.get(pk=created["id"])
+        Page.objects.create(mushaf=mushaf, page_number=1, bbox_x=0, bbox_y=0, bbox_w=10, bbox_h=10)
+        mushaf_service.update_mushaf(created["id"], {"ijam_mode": "ignore"}, user=default_user())
+        self.assertEqual(self._detail(created["id"])["ijam_mode"], "ignore")
 
     def test_qiraa_relink_then_clear(self):
         Rawi.objects.create(name="hafs", name_arabic="حفص")

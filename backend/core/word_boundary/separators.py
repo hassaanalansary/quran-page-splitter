@@ -286,4 +286,3 @@ def _separator_spans_by_shape(ink: LineInk) -> list[tuple[int, int]]:
         if hole >= HOLE_FRACTION:
             spans.append((blob.x, blob.right))
     return spans
-

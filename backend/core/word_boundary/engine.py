@@ -70,6 +70,13 @@ def detect_words(
         "supplied" if source.separator_template is not None else "none — shape detector alone",
         separator_threshold,
     )
+    logger.info(
+        "  i'jam: %s",
+        {
+            "report": "checked and flagged where a word loses one, never acted on",
+            "ignored": "not checked — this mushaf's script is not assumed to draw them",
+        }["report" if source.ijam == "report" else "ignored"],
+    )
     logger.info("═" * 72)
 
     template = prepare_template(source.separator_template) if source.separator_template is not None else None
@@ -111,7 +118,14 @@ def detect_words(
             )
             parsed = LineParse("unresolved", "words-exhausted", cursor, None, 0)
         else:
-            parsed = parse_line(ink, words, cursor, aya_starts=starts, ornaments_before=seen_ornaments)
+            parsed = parse_line(
+                ink,
+                words,
+                cursor,
+                aya_starts=starts,
+                ornaments_before=seen_ornaments,
+                ijam=source.ijam,
+            )
         cursor = parsed.next_word
         seen_ornaments += len(ink.separator_spans)
         apply_parse_roles(ink, parsed)

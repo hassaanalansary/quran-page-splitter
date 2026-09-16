@@ -18,13 +18,14 @@ API calls ``detect_words`` and then ``services.word_coordinates`` to store the a
 
 import uuid
 from dataclasses import dataclass
+from typing import cast
 
 from accounts.models import User
 from api.models import Mushaf
 from api.services import line_images as line_images_service
 from api.services import mushaf as mushaf_service
 from api.services.line_images import PlacedLine
-from core.word_boundary import WordBoundaryInput
+from core.word_boundary import IjamMode, WordBoundaryInput
 from quran.models import CountingSystem
 from quran.services import words as words_service
 
@@ -87,6 +88,10 @@ def prepare_engine_input(
             lines=[placed.image for placed in placements],
             words=stream,
             separator_template=line_images_service.separator_template(mushaf),
+            # Declared per mushaf, never inferred. The stored text describes one
+            # dotting convention and a Maghribi printing does not follow it — see
+            # `core.word_boundary.inputs.IjamMode`.
+            ijam=cast(IjamMode, mushaf.ijam_mode),
         ),
         counting_system=system,
         placements=placements,

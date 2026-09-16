@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 
 from core.word_boundary.calibration import COUNT_SLACK, COUNT_WEIGHT, MAX_LIVE_STATES
 from core.word_boundary.ink import Blob, LineInk, attach_marks
-from core.word_boundary.inputs import WordInput
+from core.word_boundary.inputs import IjamMode, WordInput
 from core.word_boundary.results import WordBox
 
 logger = logging.getLogger(__name__)
@@ -240,16 +240,24 @@ def _with_body(
     return options
 
 
-def _ijam_floor_ok(record: ParseRecord, words: list[WordInput], start_word: int, ink: LineInk) -> bool:
-    """Reject a reading that consumed a letter's dot as a body.
+def _required_marks_present(record: ParseRecord, words: list[WordInput], start_word: int, ink: LineInk) -> bool:
+    """Whether every word kept the mark components its spelling expects.
 
-    Every haraka only ever *adds* to the mark count, so the text gives a valid
-    floor and never a ceiling: at least as many mark components must survive
-    within a word's span as its letters demand dot groups, on the correct side of
-    the writing line. A parse that eats the dot of a ``ب`` leaves that word one
-    below-mark short and is impossible, with no size test and nothing to tune.
+    Named for the question it can actually answer. It was ``_ijam_floor_ok``,
+    which read as "does Arabic orthography require this dot" — it does not ask
+    that, and treating the answer as though it did is what made it unsafe. The
+    real question is *given this mushaf's script*, must these marks be visible;
+    and the script half of that arrives as ``WordBoundaryInput.ijam``, not from
+    here. See :data:`core.word_boundary.inputs.IjamMode`.
 
-    Only dots are constrained. Consuming a *fatha* as a body stays undetectable,
+    Within a script that does draw them, the reasoning is sound and needs nothing
+    tuned: every haraka only ever *adds* to the mark count, so the text gives a
+    valid floor and never a ceiling. At least as many mark components must survive
+    within a word's span as its letters expect dot groups, on the correct side of
+    the writing line; a parse that eats the dot of a ``ب`` leaves that word one
+    below-mark short.
+
+    Only dots are considered. Consuming a *fatha* as a body stays undetectable,
     since nothing predicts harakat — this narrows the ambiguity rather than
     removing it.
     """
@@ -283,6 +291,7 @@ def _parse_segment(
     words: list[WordInput],
     start_word: int | None,
     require_end: int | None,
+    ijam: IjamMode = "report",
 ) -> SegmentParse:
     """Parse one ornament-delimited stretch of a line.
 
@@ -345,44 +354,6 @@ def _parse_segment(
         logger.info("      no reading closed a word over %d blob(s) — segment unresolved", len(events))
         return SegmentParse("unresolved", "no-parse", start_word, None, None, 0, labels=labels)
 
-    # ── the hard constraint, before any of the soft ones ──────────────────────
-    #
-    # A word whose letters demand a dot below cannot be read from ink that has
-    # none. So a reading that eats that dot as a letter body is not a *dearer*
-    # reading, it is an impossible one, and it must be taken out of the running
-    # before cost is consulted rather than ranked alongside and then complained
-    # about. Partition, then let cost choose among the survivors.
-    #
-    # **Why here and not in the DP.** ``_ijam_floor_ok`` asks which components
-    # were left over as marks, which is a fact about the *whole* parse: at any
-    # intermediate state the blobs further left are still undecided, and words
-    # overlap wherever a tail sweeps under its neighbour, so a word's mark census
-    # is not final even when that word closes. The completed readings are the
-    # first point at which the question has an answer. They are also cheap to
-    # test — the DP keys on ``(word_index, blobs_taken)``, so ``finals`` holds at
-    # most one record per word index.
-    #
-    # **What this cannot fix.** Equal-cost readings reaching the same key are
-    # merged by ``_merge_record`` and only the incumbent survives. Where a valid
-    # reading and an invalid one collide there, the valid one may already be gone
-    # before this runs. The filter recovers a valid reading that differs in cost,
-    # in rank or in where it ends — not one that was collapsed into its rival.
-    readable = [pair for pair in finals if _ijam_floor_ok(pair[1], words, start_word, ink)]
-    ijam_short = not readable
-    if ijam_short:
-        logger.info(
-            "      no reading of these %d candidate(s) keeps every letter's dots; "
-            "taking the cheapest that does not, and flagging it",
-            len(finals),
-        )
-    elif len(readable) < len(finals):
-        logger.info(
-            "      %d of %d candidate reading(s) ate a letter's dot and were dropped",
-            len(finals) - len(readable),
-            len(finals),
-        )
-    finals = readable or finals
-
     minimum_rank = min(record.rank for _, record in finals)
     minimum = minimum_rank[0]
     best = [(state, record) for state, record in finals if record.rank == minimum_rank]
@@ -404,28 +375,34 @@ def _parse_segment(
         concerns.append(f"{record.deviations} word(s) off-count")
     if end_sequences > 1:
         concerns.append(f"{end_sequences} equal-cost readings")
+    # ── the expected dots, checked where this mushaf's script warrants it ─────
+    #
+    # ``IJAM`` describes one dotting convention, not a universal fact — Maghribi
+    # puts ف's dot below where that table puts it above, and a mushaf may leave
+    # final ي undotted. So whether the question is worth asking at all is declared
+    # per mushaf and arrives as ``ijam``. See ``inputs.IjamMode``, which also
+    # records why there is no mode that lets this *reject* a reading.
+    #
+    # Asked of the winner, after ranking, because the check needs a *completed*
+    # parse: it counts which components were left over as marks, and at any
+    # intermediate state the blobs further left are undecided while words overlap
+    # wherever a tail sweeps under a neighbour. There is nothing to choose between
+    # by this point anyway — every rival that reached the same key is already gone.
+    ijam_short = ijam != "ignore" and not _required_marks_present(record, words, start_word, ink)
     if ijam_short:
-        # Every reading of this stretch ate a letter's dot, so the constraint could
-        # not be honoured and the cheapest impossible reading was taken instead.
-        # Reported, never silent: this is the one concern that is not a matter of
-        # taste, and it now means "no valid reading existed" rather than "the
-        # winner happened to be invalid".
+        # This reading ate a letter's dot. Two quite different things can be behind
+        # that, and only one of them is a reason to change the algorithm:
         #
-        # Which of two quite different things it means is worth separating, because
-        # only one of them is a reason to change the algorithm:
+        #   mask empty   no equal-rank alternative was ever discarded on this path,
+        #                so the ink really cannot be read without eating a dot.
+        #                Nothing the DP could carry would have helped.
+        #   mask set     ``_merge_record`` dropped a reading that disagreed about
+        #                which blobs are bodies. That one may well have kept the
+        #                dot, and it was gone before anything could prefer it.
         #
-        #   mask empty     no equal-rank alternative was ever discarded on this
-        #                  path, so the ink really cannot be read without eating a
-        #                  dot. Nothing here would have helped.
-        #   mask set       ``_merge_record`` did drop a reading that disagreed
-        #                  about which blobs are bodies. That reading may well have
-        #                  been the valid one, and it was gone before the filter
-        #                  above could see it — the known limit of a DP that keeps
-        #                  one record per key.
-        #
-        # Counting the second kind over a real mushaf is what decides whether the
-        # DP needs to carry more than it does. Saying so in the reason means the
-        # next ordinary run answers that, with no instrumentation to add later.
+        # Counting the second kind over a real mushaf is what would decide whether
+        # the DP should keep i'jam-distinct alternatives. Saying which it is in the
+        # reason means the next ordinary run answers that, with nothing to add.
         concerns.append("i'jam short, alternatives discarded" if record.role_ambiguous_mask else "i'jam short")
 
     logger.info(
@@ -501,6 +478,7 @@ def parse_line(
     *,
     aya_starts: list[int],
     ornaments_before: int = 0,
+    ijam: IjamMode = "report",
 ) -> LineParse:
     """Parse a physical line as independent ornament-delimited segments.
 
@@ -563,7 +541,7 @@ def parse_line(
             logger.info("      no ink — the ornament opens the line, so it takes no aya of its own")
             segments.append(SegmentParse("empty", None, cursor, cursor, 0, 1))
         else:
-            segment = _parse_segment(stretch, ink, words, cursor, require_end)
+            segment = _parse_segment(stretch, ink, words, cursor, require_end, ijam)
             segments.append(segment)
             cursor = segment.next_word
         if closed:

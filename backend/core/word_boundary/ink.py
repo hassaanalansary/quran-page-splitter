@@ -160,7 +160,7 @@ def analyse_line(
     if rows.size == 0 or cols.size == 0:
         logger.info("  %s: no ink at all (%dx%d) — nothing to measure", line.label, *line.image.size)
         return LineInk(
-                label=line.label,
+            label=line.label,
             source=line.source,
             mask=mask,
             offset_x=0,
@@ -311,4 +311,3 @@ def attach_marks(ink: LineInk) -> dict[int, list[Blob]]:
                 best, best_distance = body.label, distance
         owned[best].append(mark)
     return owned
-

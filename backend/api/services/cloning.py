@@ -103,6 +103,9 @@ def duplicate(source: Mushaf, *, owner: User) -> Mushaf:
             first_quran_pdf_page=source.first_quran_pdf_page,
             last_quran_pdf_page=source.last_quran_pdf_page,
             description=source.description,
+            # A property of the printing, so it travels with the copy — the same
+            # reason `rawi` does. A duplicate is the same book.
+            ijam_mode=source.ijam_mode,
             # A copy starts private; publishing it again is the new owner's call.
             visibility=VisibilityChoices.PRIVATE,
             duplicated_from=source,

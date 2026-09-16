@@ -85,6 +85,18 @@ class VisibilityChoices(models.TextChoices):
     PUBLISHED = "published", "Published"
 
 
+class IjamModeChoices(models.TextChoices):
+    """Whether this mushaf's script draws dots the way the stored text expects.
+
+    Mirrors ``core.word_boundary.inputs.IjamMode`` — the engine takes the value,
+    the database is only where a mushaf's answer is kept. See that docstring for
+    why there is no third, enforcing mode.
+    """
+
+    REPORT = "report", "Report a word that lost a dot"
+    IGNORE = "ignore", "Do not check dots"
+
+
 class Mushaf(BaseModel):
     """A table for Mushafs"""
 
@@ -130,6 +142,19 @@ class Mushaf(BaseModel):
         help_text="Published mushafs appear in the public gallery and can be duplicated by anyone.",
     )
     published_at = models.DateTimeField(null=True, blank=True)
+    ijam_mode = models.CharField(
+        max_length=16,
+        choices=IjamModeChoices.choices,
+        default=IjamModeChoices.REPORT,
+        help_text=(
+            "Whether word detection checks each word against the dots its spelling "
+            "expects. The stored text describes one convention: Maghribi puts fa's "
+            "dot below where it puts it above, and a mushaf may leave a final ya "
+            "undotted, so on those every such word reads as short. Set this to "
+            "'ignore' there. It is a fact about the printing, like the riwaya, and "
+            "is not guessed."
+        ),
+    )
     export_uniform_size = models.BooleanField(
         default=False,
         help_text=(

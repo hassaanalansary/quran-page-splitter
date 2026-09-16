@@ -72,7 +72,22 @@ export type MushafDetail = Mushaf & {
   description: string;
   /** Pad every exported line PNG on a page out to that page's tallest line. */
   export_uniform_size: boolean;
+  /** Whether word detection checks a word against the dots its spelling expects.
+   * A fact about the printing, not about the text — see `IjamMode`. */
+  ijam_mode: IjamMode;
 };
+
+/** Whether this mushaf's script draws dots the way the stored text describes.
+ *
+ * The text says which letters are conventionally distinguished by dots and says
+ * nothing about whether a given mushaf draws them. Maghribi puts fa's dot below
+ * where the table puts it above, and a mushaf may leave a final ya undotted — so
+ * on those, every word containing them would be reported short.
+ *
+ * There is no "enforce": a mode that let the expectation *reject* a reading was
+ * built and removed, because by the time the check runs the engine has one
+ * candidate left. See `core/word_boundary/inputs.py`. */
+export type IjamMode = "report" | "ignore";
 
 export type MushafCreateResult = {
   mushaf: Mushaf;
@@ -85,6 +100,7 @@ export type MushafPatch = Partial<{
   first_quran_pdf_page: number;
   last_quran_pdf_page: number;
   export_uniform_size: boolean;
+  ijam_mode: IjamMode;
 }>;
 
 // ── Templates ───────────────────────────────────────────────────────────────

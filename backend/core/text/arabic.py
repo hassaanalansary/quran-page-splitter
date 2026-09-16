@@ -64,11 +64,28 @@ def paw_count(word: str) -> int:
 
 
 #: I'jam — the dots that distinguish one letter skeleton from another, as
-#: (above, below). Unlike tashkeel these are part of letter identity: a ``ب``
-#: carries one dot below in every mushaf and every qiraa, so the text predicts
-#: them exactly. ``ئ`` and ``ؤ`` carry none; the hamza replaces them. Every
-#: skeleton letter in the Uthmani corpus is covered, and an unlisted one
-#: defaults to no dots, which simply imposes no constraint.
+#: (above, below). Unlike tashkeel these belong to letter identity rather than to
+#: a reading, so the text can predict them where a haraka could never be
+#: predicted. ``ئ`` and ``ؤ`` carry none; the hamza replaces them. Every skeleton
+#: letter in the Uthmani corpus is covered, and an unlisted one defaults to no
+#: dots, which simply imposes no constraint.
+#:
+#: **This table is one script's convention, not a universal fact.** An earlier
+#: version of this comment claimed a letter is dotted the same way in every
+#: mushaf and every qiraa. That is false, and anything treating these counts as a
+#: hard constraint has to know it:
+#:
+#: * ``ijam_groups`` counts *groups*, which absorbs every difference of dot
+#:   **number** — Maghribi ``ق`` carries one dot where this table says two, and
+#:   both are one group. ``ت`` and ``ث`` likewise.
+#: * Differences of **side** do not survive. Maghribi ``ف`` takes its dot below,
+#:   where this table puts it above.
+#: * Nor do **omissions**. A mushaf that leaves a letter undotted — final ``ي``
+#:   is the usual one — has fewer groups on the page than the spelling implies.
+#:
+#: So a consumer may read this as "what a Mashriqi-dotted mushaf would show".
+#: Treating it as a floor that *rejects* readings is only sound for a mushaf whose
+#: script actually follows it — see ``word_boundary.alignment._ijam_floor_ok``.
 IJAM = {
     "ب": (0, 1), "ت": (2, 0), "ث": (3, 0), "ج": (0, 1), "خ": (1, 0),
     "ذ": (1, 0), "ز": (1, 0), "ش": (3, 0), "ض": (1, 0), "ظ": (1, 0),

@@ -18,6 +18,7 @@ from accounts.models import User
 from api import i18n, validators
 from api.models import (
     ActivityTypeChoices,
+    IjamModeChoices,
     Line,
     LineTypeChoices,
     Mushaf,
@@ -193,6 +194,7 @@ def get_mushaf_detail(mushaf_id: uuid.UUID, *, user: User) -> dict:
     data["published_at"] = mushaf.published_at
     data["description"] = mushaf.description
     data["export_uniform_size"] = mushaf.export_uniform_size
+    data["ijam_mode"] = mushaf.ijam_mode
     return data
 
 
@@ -357,6 +359,12 @@ def update_mushaf(mushaf_id: uuid.UUID, fields: dict, *, user: User) -> dict:
         qiraa = fields["qiraa"]
         mushaf.rawi = Rawi.objects.filter(name=qiraa).first() if qiraa else None
 
+    if "ijam_mode" in fields and fields["ijam_mode"] in IjamModeChoices.values:
+        # Deliberately not locked behind ``processed_page_count`` the way the riwaya
+        # is: this changes nothing already written, only how the next word run reads
+        # a page — and you want to set it *after* seeing how often a run reports a
+        # word short, which is the whole way of telling whether it fits this script.
+        mushaf.ijam_mode = fields["ijam_mode"]
     if "export_uniform_size" in fields:
         # Affects future exports only — pages already exported keep the size
         # they were written at until they are exported again.

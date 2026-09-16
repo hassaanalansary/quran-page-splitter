@@ -64,4 +64,3 @@ COUNT_SLACK = 2
 #: Blob.cost_as_mark — this is the calibration knob that decides how readily the
 #: parser tolerates a spurious stroke instead of inventing a word to absorb it.
 MAX_UNUSED_COMPONENT_COST = 6
-
