@@ -614,14 +614,24 @@ export const en = {
   words: {
     // The run
     runTitle: "Run detection",
+    scopeLabel: "Cover",
+    scopeSura: "One sura",
+    scopeRange: "A range of ayat",
+    scopeMushaf: "The whole mushaf",
     suraLabel: "Sura",
-    wholeSura: "Whole sura",
+    fromSura: "From sura",
     fromAya: "From aya",
+    toSura: "To sura",
     toAya: "To aya",
+    mushafSpan: "This mushaf runs {{from}} to {{to}}.",
+    spanUnknown:
+      "Nothing on this mushaf is numbered yet, so there is no span to run. Process and review some pages first.",
+    gapsTitle: "{{count}} break(s) were skipped:",
+    gapLine: "{{after}} (page {{afterPage}}) to {{before}} (page {{beforePage}})",
     runButton: "Run word detection",
     running: "Running…",
     runNote:
-      "Roughly 50 ms a line — a sura is about 20 seconds, al-Baqara about 90. It runs in the background; you can leave this page.",
+      "Roughly 50 ms a line — a sura is about 20 seconds, al-Baqara about 90, the whole mushaf 15 to 20 minutes. It runs in the background; you can leave this page.",
     runStarted: "Reading {{lines}} lines…",
     runDone: "Word detection finished — {{lines}} lines.",
     runCancelled: "Stopped. {{lines}} lines were kept.",
@@ -1082,9 +1092,7 @@ export const en = {
     lineBox:
       "Y and H trim the line's top and bottom. X and W are locked to the shared page column.",
     wordsSpan:
-      "A run is addressed by aya, not by page — the engine walks one cursor through the words, and an aya is the only place it can start from.",
-    wordsWholeSura:
-      "Off, you pick a range of ayat within the sura. The end defaults to the sura's last aya in this mushaf's own counting.",
+      "A run is addressed by aya, not by page — the engine walks one cursor through the words, and an aya is the only place it can start from. A sura run ends at that sura's last aya in this mushaf's own counting; a range starts and ends anywhere, in one sura or across many; the whole mushaf runs everything the pages actually hold, skipping any that are not processed and renumbered and naming them afterwards.",
   },
   coach: {
     dismiss: "Dismiss hint",

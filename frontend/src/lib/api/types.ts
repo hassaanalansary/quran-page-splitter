@@ -498,13 +498,34 @@ export type WordCoverage = {
   complete: boolean;
 };
 
-/** The span to read, as (sura, aya) at each end. Omit `to_*` and the server
- * defaults to that sura's last aya IN THIS MUSHAF'S counting system. */
+/** The span to read, as (sura, aya) at each end. The two ends are independent, so a
+ * run may cover part of a sura, a sura, or every sura the mushaf holds.
+ *
+ * Each omission means something different, and all three are resolved server-side
+ * because only it knows this mushaf's counting system: no `to_*` is "through the end
+ * of the sura this starts in", `to_sura` alone is "through the end of THAT sura",
+ * both is that exact aya. `from_aya` defaults to 1. For the whole mushaf, ask
+ * `getWordsSpan` what it holds and send those two ends — a mushaf part way through
+ * review rarely runs 1:1 .. 114:6, and an end that is on no page cannot be located. */
 export type DetectWordsRequest = {
   from_sura: number;
-  from_aya: number;
+  from_aya?: number;
   to_sura?: number;
   to_aya?: number;
+};
+
+/** A stretch of the span with no pages behind it, which the run steps over.
+ *
+ * The engine walks one cursor through one word stream, so it cannot be handed a span
+ * whose middle pages are missing — it would read every later line against the wrong
+ * words. The plan cuts the run either side instead, and reports the hole here. */
+export type WordSpanGap = {
+  /** "2:281" — the last aya read before the break, and the first one after it. */
+  after: string;
+  before: string;
+  after_page: number;
+  before_page: number;
+  unnumbered_lines: number;
 };
 
 export type DetectWordsResult = {
@@ -514,4 +535,13 @@ export type DetectWordsResult = {
   total_lines: number;
   /** Not reasons it was refused; things worth knowing anyway. */
   warnings: string[];
+  /** Empty for the ordinary span. On a long one, which parts were skipped. */
+  gaps: WordSpanGap[];
+};
+
+/** The widest span this mushaf can be asked for — what "whole mushaf" resolves to.
+ * Both ends are null on a mushaf nothing has numbered yet. */
+export type MushafSpan = {
+  start: { sura: number; aya: number } | null;
+  end: { sura: number; aya: number } | null;
 };

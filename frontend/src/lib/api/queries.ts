@@ -12,7 +12,7 @@ import { getProcessJob, listRuns } from "./processing";
 import { listQiraat } from "./qiraat";
 import { DEFAULT_QIRAA, listSuras } from "./suras";
 import { isJobRunning, type ProcessJob } from "./types";
-import { getPageWords, getWordsCoverage, getWordsJob } from "./words";
+import { getPageWords, getWordsCoverage, getWordsJob, getWordsSpan } from "./words";
 
 export const queryKeys = {
   session: ["session"] as const,
@@ -31,6 +31,7 @@ export const queryKeys = {
   page: (mushafId: string, pageNumber: number) => ["mushaf", mushafId, "page", pageNumber] as const,
   wordsJob: (id: string) => ["mushaf", id, "words-job"] as const,
   wordsCoverage: (id: string) => ["mushaf", id, "words-coverage"] as const,
+  wordsSpan: (id: string) => ["mushaf", id, "words-span"] as const,
   pageWords: (mushafId: string, pageNumber: number) =>
     ["mushaf", mushafId, "page", pageNumber, "words"] as const,
 };
@@ -123,6 +124,19 @@ export function useWordsCoverage(id: string) {
     queryKey: queryKeys.wordsCoverage(id),
     queryFn: ({ signal }) => getWordsCoverage(id, signal),
     staleTime: 30_000,
+  });
+}
+
+/** The widest span this mushaf can be asked for, for the "whole mushaf" preset.
+ *
+ * Long-lived because it only moves when pages are processed or renumbered, neither
+ * of which happens on this screen — the words page invalidates it after a detection
+ * run the way it already invalidates coverage. */
+export function useWordsSpan(id: string) {
+  return useQuery({
+    queryKey: queryKeys.wordsSpan(id),
+    queryFn: ({ signal }) => getWordsSpan(id, signal),
+    staleTime: 60_000,
   });
 }
 

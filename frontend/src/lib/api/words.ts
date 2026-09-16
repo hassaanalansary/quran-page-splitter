@@ -9,6 +9,7 @@ import { apiGet, apiJson } from "./http";
 import type {
   DetectWordsRequest,
   DetectWordsResult,
+  MushafSpan,
   PageWords,
   PageWordsSave,
   ProcessJob,
@@ -24,6 +25,16 @@ export function startWordDetection(
   signal?: AbortSignal,
 ): Promise<DetectWordsResult> {
   return apiJson<DetectWordsResult>("POST", `/api/mushafs/${id}/words`, req, signal);
+}
+
+/** The first and last aya this mushaf holds — what "whole mushaf" means for it.
+ *
+ * Asked of the server rather than assumed to be 1:1 .. 114:6, because a mushaf part
+ * way through review holds a few juz and a test file holds one sura, and a span whose
+ * ends are on no page cannot be located. Both ends are null before anything on the
+ * mushaf has been renumbered. */
+export function getWordsSpan(id: string, signal?: AbortSignal): Promise<MushafSpan> {
+  return apiGet<MushafSpan>(`/api/mushafs/${id}/words/span`, signal);
 }
 
 /** The mushaf's current or most recent WORD run; null when it has never run.
