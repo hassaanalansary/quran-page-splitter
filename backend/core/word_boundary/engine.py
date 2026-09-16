@@ -251,7 +251,7 @@ def _line_result(
         source=source,
         status=parsed.status,
         reason=parsed.reason,
-        cost=parsed.minimum_flips,
+        cost=parsed.alignment_cost,
         deviations=parsed.deviations,
         end_sequences=parsed.end_sequences,
         band=(ink.band[0] + dy, ink.band[1] + dy),

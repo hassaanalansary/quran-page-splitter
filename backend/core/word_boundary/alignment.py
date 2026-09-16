@@ -42,8 +42,14 @@ class ParseRecord:
     """Best evidence reading for one compact parser state.
 
     ``ends`` and role masks deliberately live in the value, not the DP key.
-    Equal-cost alternatives reaching the same key are merged and remembered as
-    ambiguity instead of being enumerated exponentially.
+    Alternatives reaching the same key are merged and remembered as ambiguity
+    instead of being enumerated exponentially.
+
+    "Alternatives" means **equal ``rank``**, which is no longer the same as equal
+    cost: since ``rank`` carries ``deviations``, two readings that cost the same
+    but bend the spelling by different amounts are now *ordered*, and only the
+    ones matching on both are recorded as ambiguous. Someone tracing a vanished
+    ambiguity should look there first.
     """
 
     cost: int
@@ -60,13 +66,25 @@ class ParseRecord:
 
     @property
     def rank(self) -> tuple[int, ...]:
-        """Order readings by total evidence cost.
+        """Order readings by evidence cost, then by how much they had to bend.
 
         Size no longer needs a separate lexicographic tier: height, width, area
         and band position are all folded into each component's body score, so a
         single number already carries them.
+
+        ``deviations`` is a tier and not part of the cost because the cost already
+        charges each one ``COUNT_WEIGHT``. What this settles is the *tie* that
+        charge leaves behind — one word off-count plus cheap components can total
+        exactly what a clean reading with dearer components totals, and of those
+        two the clean one is the better answer. Before this, that tie was broken by
+        whichever record the DP happened to reach the key with first.
+
+        i'jam is deliberately **not** a tier here. It is a hard constraint, settled
+        by partitioning the candidates before any of them are ranked — see
+        ``_parse_segment``. A constraint that has already decided which readings
+        are admissible has no business also nudging the order of the ones that are.
         """
-        return (self.cost,)
+        return (self.cost, self.deviations)
 
 
 @dataclass
@@ -77,7 +95,12 @@ class SegmentParse:
     reason: str | None
     start_word: int | None
     next_word: int | None
-    minimum_flips: int | None
+    #: Total evidence cost of the reading that won. Not a count of anything: it
+    #: is every component's distance from the role the ink suggests, plus
+    #: COUNT_WEIGHT for each word read off its spelling's PAW count. It was once
+    #: called ``minimum_flips``, from a model where the parser counted role
+    #: changes; nothing has flipped in it for a long time.
+    alignment_cost: int | None
     end_sequences: int
     deviations: int = 0
     groups: list[list[int]] = field(default_factory=list)
@@ -95,7 +118,8 @@ class LineParse:
     status: str
     reason: str | None
     next_word: int | None
-    minimum_flips: int | None
+    #: The dearest of this line's segments — see ``SegmentParse.alignment_cost``.
+    alignment_cost: int | None
     end_sequences: int
     deviations: int = 0
     groups: list[list[int]] = field(default_factory=list)
@@ -122,7 +146,13 @@ def parser_events(ink: LineInk) -> list[ParseEvent]:
 
 
 def _merge_record(target: dict[tuple[int, int], ParseRecord], key: tuple[int, int], candidate: ParseRecord) -> None:
-    """Retain the least-flip path, preserving equal-cost ambiguity."""
+    """Retain the best-ranked path, preserving genuinely equal-cost ambiguity.
+
+    Now that ``rank`` carries ``deviations``, fewer arrivals here are true ties:
+    two readings that cost the same but bend the spelling different amounts are
+    ordered rather than merged, and only the ones that match on both are recorded
+    as ambiguity. That is the same tie being settled in both places, on purpose.
+    """
     existing = target.get(key)
     if existing is None or candidate.rank < existing.rank:
         target[key] = candidate
@@ -315,6 +345,44 @@ def _parse_segment(
         logger.info("      no reading closed a word over %d blob(s) — segment unresolved", len(events))
         return SegmentParse("unresolved", "no-parse", start_word, None, None, 0, labels=labels)
 
+    # ── the hard constraint, before any of the soft ones ──────────────────────
+    #
+    # A word whose letters demand a dot below cannot be read from ink that has
+    # none. So a reading that eats that dot as a letter body is not a *dearer*
+    # reading, it is an impossible one, and it must be taken out of the running
+    # before cost is consulted rather than ranked alongside and then complained
+    # about. Partition, then let cost choose among the survivors.
+    #
+    # **Why here and not in the DP.** ``_ijam_floor_ok`` asks which components
+    # were left over as marks, which is a fact about the *whole* parse: at any
+    # intermediate state the blobs further left are still undecided, and words
+    # overlap wherever a tail sweeps under its neighbour, so a word's mark census
+    # is not final even when that word closes. The completed readings are the
+    # first point at which the question has an answer. They are also cheap to
+    # test — the DP keys on ``(word_index, blobs_taken)``, so ``finals`` holds at
+    # most one record per word index.
+    #
+    # **What this cannot fix.** Equal-cost readings reaching the same key are
+    # merged by ``_merge_record`` and only the incumbent survives. Where a valid
+    # reading and an invalid one collide there, the valid one may already be gone
+    # before this runs. The filter recovers a valid reading that differs in cost,
+    # in rank or in where it ends — not one that was collapsed into its rival.
+    readable = [pair for pair in finals if _ijam_floor_ok(pair[1], words, start_word, ink)]
+    ijam_short = not readable
+    if ijam_short:
+        logger.info(
+            "      no reading of these %d candidate(s) keeps every letter's dots; "
+            "taking the cheapest that does not, and flagging it",
+            len(finals),
+        )
+    elif len(readable) < len(finals):
+        logger.info(
+            "      %d of %d candidate reading(s) ate a letter's dot and were dropped",
+            len(finals) - len(readable),
+            len(finals),
+        )
+    finals = readable or finals
+
     minimum_rank = min(record.rank for _, record in finals)
     minimum = minimum_rank[0]
     best = [(state, record) for state, record in finals if record.rank == minimum_rank]
@@ -336,11 +404,29 @@ def _parse_segment(
         concerns.append(f"{record.deviations} word(s) off-count")
     if end_sequences > 1:
         concerns.append(f"{end_sequences} equal-cost readings")
-    if not _ijam_floor_ok(record, words, start_word, ink):
-        # A word whose dot was eaten as a letter. The floor is a hard fact about
-        # the spelling, so this is the one concern that is never a matter of taste.
-        logger.info("      i'jam floor short: a word lost a dot to the reading")
-        concerns.append("i'jam short")
+    if ijam_short:
+        # Every reading of this stretch ate a letter's dot, so the constraint could
+        # not be honoured and the cheapest impossible reading was taken instead.
+        # Reported, never silent: this is the one concern that is not a matter of
+        # taste, and it now means "no valid reading existed" rather than "the
+        # winner happened to be invalid".
+        #
+        # Which of two quite different things it means is worth separating, because
+        # only one of them is a reason to change the algorithm:
+        #
+        #   mask empty     no equal-rank alternative was ever discarded on this
+        #                  path, so the ink really cannot be read without eating a
+        #                  dot. Nothing here would have helped.
+        #   mask set       ``_merge_record`` did drop a reading that disagreed
+        #                  about which blobs are bodies. That reading may well have
+        #                  been the valid one, and it was gone before the filter
+        #                  above could see it — the known limit of a DP that keeps
+        #                  one record per key.
+        #
+        # Counting the second kind over a real mushaf is what decides whether the
+        # DP needs to carry more than it does. Saying so in the reason means the
+        # next ordinary run answers that, with no instrumentation to add later.
+        concerns.append("i'jam short, alternatives discarded" if record.role_ambiguous_mask else "i'jam short")
 
     logger.info(
         "      → %s  cost=%d  words %d..%d (%d)  deviations=%d  readings=%d  peak states=%d%s",
@@ -499,7 +585,7 @@ def parse_line(
             word_indices.append(segment.start_word + offset)
         groups.extend(segment.groups)
 
-    flips = [s.minimum_flips for s in segments if s.minimum_flips is not None]
+    costs = [s.alignment_cost for s in segments if s.alignment_cost is not None]
     concerns = [s.reason for s in segments if s.reason]
     status: str
     reason: str | None
@@ -530,7 +616,7 @@ def parse_line(
         # An unresolved final segment can still hand on a cursor when every
         # minimum-cost reading consumed the same number of words.
         segments[-1].next_word if segments else None,
-        max(flips, default=None),
+        max(costs, default=None),
         # Count ties only. A determined segment reports one reading and must
         # contribute nothing, so a clean line stays at 0 and a flagged one
         # carries the depth of its tie — which is what the reason line claims.
@@ -607,4 +693,3 @@ def build_line_boxes(
             )
         )
     return boxes
-

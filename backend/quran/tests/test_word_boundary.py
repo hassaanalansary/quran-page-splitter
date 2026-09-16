@@ -26,6 +26,7 @@ from core.word_boundary import (
     WordInput,
     detect_words,
 )
+from core.word_boundary.alignment import ParseRecord, _merge_record
 
 #: Ink rows. Every blob spans these, so every blob crosses the writing line and
 #: reads as a body — no marks, nothing for the parser to be undecided about.
@@ -245,3 +246,67 @@ class MultipleLineTests(SimpleTestCase):
         self.assertEqual(result.lines[1].words, [])
         self.assertEqual(result.lines[2].status, "exact")
         self.assertEqual(result.lines[2].words, [])
+
+
+class MergeTieBreakTests(SimpleTestCase):
+    """What survives when two readings reach the same DP state.
+
+    Reaching into ``alignment`` for a private on purpose: this is an invariant of
+    the algorithm rather than of the package's surface, and the only honest way to
+    pin it is to drive the merge directly. Going through ``detect_words`` would
+    need a fixture contrived enough that a failure would say nothing about which
+    rule broke.
+    """
+
+    KEY = (3, 0)
+
+    def _record(self, cost: int, deviations: int, body_mask: int) -> ParseRecord:
+        return ParseRecord(
+            cost=cost,
+            ends=(),
+            groups=(),
+            current_group=(),
+            body_mask=body_mask,
+            deviations=deviations,
+        )
+
+    def test_equal_cost_prefers_the_reading_that_bends_the_spelling_less(self):
+        """The tier ``rank`` gained, enforced where it actually bites.
+
+        Cost already charges COUNT_WEIGHT per deviation, so an equal total means a
+        word read off-count paid for by cheaper components. Of the two, the reading
+        that keeps every word on its PAW count is the better answer — and before
+        this it lost or won by which one the DP happened to reach the key with.
+        """
+        target: dict[tuple[int, int], ParseRecord] = {}
+        _merge_record(target, self.KEY, self._record(10, 1, 0b01))
+        _merge_record(target, self.KEY, self._record(10, 0, 0b10))
+        self.assertEqual(target[self.KEY].deviations, 0)
+
+    def test_the_order_they_arrive_in_does_not_decide_it(self):
+        """The same assertion with the arrivals swapped. Without this the test
+        above would pass just as well on a rule of "last one wins"."""
+        target: dict[tuple[int, int], ParseRecord] = {}
+        _merge_record(target, self.KEY, self._record(10, 0, 0b10))
+        _merge_record(target, self.KEY, self._record(10, 1, 0b01))
+        self.assertEqual(target[self.KEY].deviations, 0)
+
+    def test_a_genuine_tie_is_still_kept_as_ambiguity(self):
+        """Equal on *both* tiers is a real tie, and must stay reported.
+
+        ``role_ambiguous_mask`` is what the i'jam diagnostic reads to tell "no
+        valid reading existed" apart from "a valid reading may have been discarded
+        here" — see ``_parse_segment``. If this stopped being set, that split would
+        silently start answering the first for every line.
+        """
+        target: dict[tuple[int, int], ParseRecord] = {}
+        _merge_record(target, self.KEY, self._record(10, 1, 0b01))
+        _merge_record(target, self.KEY, self._record(10, 1, 0b10))
+        self.assertEqual(target[self.KEY].deviations, 1)
+        self.assertTrue(target[self.KEY].role_ambiguous_mask)
+
+    def test_a_dearer_reading_never_displaces_a_cheaper_one(self):
+        target: dict[tuple[int, int], ParseRecord] = {}
+        _merge_record(target, self.KEY, self._record(10, 5, 0b01))
+        _merge_record(target, self.KEY, self._record(12, 0, 0b10))
+        self.assertEqual(target[self.KEY].cost, 10)
