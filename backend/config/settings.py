@@ -340,14 +340,21 @@ LOGGING = {
             "formatter": "console",
             "filters": ["quiet_engine_trace"],
         },
+        # The engine trace is filtered out of this file for the same reason it is
+        # filtered off the console, and with more at stake: the word engine emits
+        # roughly 17 KB per mushaf line, so one sura would fill this 5 MB file
+        # several times over and a whole-mushaf run would roll it thirty times —
+        # duplicating, badly, a trace that already has its own per-run file with
+        # its own retention. Warnings and errors still land here.
         "file": {
-            "class": "logging.handlers.RotatingFileHandler",
+            "class": "config.logging_handlers.SharedRotatingFileHandler",
             "filename": str(LOG_DIR / "quran.log"),
             "maxBytes": 5 * 1024 * 1024,
             "backupCount": 3,
             "encoding": "utf-8",
             "level": "DEBUG",
             "formatter": "detailed",
+            "filters": ["quiet_engine_trace"],
         },
     },
     "root": {"handlers": ["console", "file"], "level": "INFO"},
