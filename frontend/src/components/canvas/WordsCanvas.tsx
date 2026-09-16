@@ -7,6 +7,7 @@ import { PageRail } from "@/components/canvas/PageRail";
 import { useCtrlWheelZoom } from "@/hooks/use-ctrl-wheel-zoom";
 import { useZoomToPointer } from "@/hooks/use-zoom-to-pointer";
 import type { WordLineStatus } from "@/lib/api";
+import { revealInScroller } from "@/lib/reveal";
 import {
   holdsWords,
   type BoxGrab,
@@ -21,7 +22,14 @@ const PAD = 20;
 const GAP = 26;
 /** Status gutter to the left of every strip. */
 const GUTTER = 34;
-const MIN_ZOOM = 1;
+/** Zoom is **fit-relative**: 1 is the column filling the width of the canvas, which
+ * is where every page opens. So zooming out means going below 1, and the floor has
+ * to be under it or the minus button is dead on arrival — which is what it was.
+ *
+ * A quarter of fit is far enough to put a long page on screen at once without the
+ * strips collapsing into unreadable bands. */
+const MIN_ZOOM = 0.25;
+const FIT_ZOOM = 1;
 const MAX_ZOOM = 8;
 const STEP = 1.4;
 /** Screen px of grab band on each edge of a box. Wide enough to hit, narrow enough
@@ -119,7 +127,9 @@ export function WordsCanvas({
   const { t } = useTranslation();
   const scrollRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
-  const [zoom, setZoom] = useState(MIN_ZOOM);
+  /** True for the length of one box drag — see the reveal effect below. */
+  const dragging = useRef(false);
+  const [zoom, setZoom] = useState(FIT_ZOOM);
   const [box, setBox] = useState(0);
   const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);
 
@@ -191,15 +201,55 @@ export function WordsCanvas({
       };
       const up = () => {
         window.removeEventListener("pointermove", move);
+        window.removeEventListener("pointerup", up);
+        window.removeEventListener("pointercancel", up);
+        dragging.current = false;
         // Only a real drag is an edit. Without this every click — including each
         // half of a double-click — would push an identical state onto the history.
         if (moved) onMoveCommit();
       };
+      dragging.current = true;
       window.addEventListener("pointermove", move);
-      window.addEventListener("pointerup", up, { once: true });
+      window.addEventListener("pointerup", up);
+      // `pointercancel` too, and not as a nicety: it is the one end a touch drag can
+      // come to without a `pointerup`, and the flag it would leave set is the flag
+      // that stops the panel ever scrolling this canvas again. The commit belongs
+      // here as well — the boxes have already moved in the model, so skipping it
+      // would leave the edit with no history entry to undo it by.
+      window.addEventListener("pointercancel", up);
     },
     [toPageX, onMoveBox, onMoveCommit],
   );
+
+  /** Bring the selected word into view when the selection came from elsewhere.
+   *
+   * The panel's cut list and this canvas both write `selectedCut`, and neither says
+   * which of them did. It does not need to: `revealInScroller` moves nothing when
+   * the word is already on screen, so a click *here* is a no-op and a click in the
+   * list scrolls to the word it named. One effect covers both directions.
+   *
+   * The drag guard is the one case that is not self-correcting. Grabbing the visible
+   * half of a box selects it, and scrolling the box fully into view would drag the
+   * page out from under the pointer on the first millimetre of the move.
+   */
+  useEffect(() => {
+    if (dragging.current) return;
+    const stage = stageRef.current;
+    // The word when there is one, else the strip holding it. The line is the
+    // coarser half of the same request: "next flagged" moves the selection a line
+    // at a time, and on a zoomed-in page that line is as likely to be off screen as
+    // any word — the reviewer would be looking at the wrong part of the page.
+    if (selectedCut) {
+      const box = stage?.querySelector<HTMLElement>(`[data-cut="${CSS.escape(selectedCut)}"]`);
+      revealInScroller(scrollRef.current, box, { margin: PAD });
+    } else if (selectedLine) {
+      const strip = stage?.querySelector<HTMLElement>(`[data-line="${CSS.escape(selectedLine)}"]`);
+      // Vertically only — a strip is the width of the page column, so both of its
+      // edges are off screen at working zoom and there is no horizontal move that
+      // is not a surprise. See `revealInScroller`.
+      revealInScroller(scrollRef.current, strip, { margin: PAD, axis: "vertical" });
+    }
+  }, [selectedCut, selectedLine]);
 
   const step = (factor: number) =>
     setZoom((z) => Number(Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z * factor)).toFixed(3)));
@@ -229,8 +279,8 @@ export function WordsCanvas({
         </IconButton>
         <IconButton
           label={t("canvas.fit")}
-          disabled={zoom === MIN_ZOOM}
-          onClick={() => setZoom(MIN_ZOOM)}
+          disabled={zoom === FIT_ZOOM}
+          onClick={() => setZoom(FIT_ZOOM)}
         >
           <Maximize2 size={12} />
         </IconButton>
@@ -338,7 +388,11 @@ function Strip({
   const dot = line.status ? STATUS_COLOR[line.status] : "var(--text-muted)";
 
   return (
-    <div className="flex items-start" style={{ marginLeft: (line.bbox.x - column.x) * scale }}>
+    <div
+      data-line={line.line_id}
+      className="flex items-start"
+      style={{ marginLeft: (line.bbox.x - column.x) * scale }}
+    >
       <div
         className="flex flex-none flex-col items-center justify-center gap-1"
         style={{ width: GUTTER, height: dispH }}
@@ -444,6 +498,9 @@ function WordBox({
         // 9px rule — you must not split on top of one — but a box covers the whole
         // word, so that swallowed every double-click before the strip saw it.
         className="absolute top-0"
+        // What `WordsCanvas`'s reveal effect finds this box by. An attribute rather
+        // than a ref threaded down two components for one scroll.
+        data-cut={cut.uid}
         style={{
           left,
           width,

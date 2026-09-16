@@ -12,6 +12,7 @@ import { RunLogDialog } from "@/components/app/RunLogDialog";
 import { TourOverlay } from "@/components/app/tour/TourOverlay";
 import { useStepTour, type TourStep } from "@/components/app/tour/useStepTour";
 import { WordsCanvas } from "@/components/canvas/WordsCanvas";
+import { revealInScroller } from "@/lib/reveal";
 import { Button } from "@/components/ui/button";
 import {
   ApiError,
@@ -955,16 +956,36 @@ function CutList({
   onMoveLine: (cutUid: string, step: -1 | 1) => void;
 }) {
   const { t } = useTranslation();
+  const scroller = useRef<HTMLDivElement>(null);
+  const rows = useRef(new Map<string, HTMLDivElement>());
+
+  // Follow the canvas: clicking a box there names a word here, and on a long line
+  // that row is usually below the fold. Nothing moves when it is already visible,
+  // so this is silent for a reviewer working down the list by hand.
+  useEffect(() => {
+    if (!selectedCut) return;
+    revealInScroller(scroller.current, rows.current.get(selectedCut));
+  }, [selectedCut]);
+
   return (
     <PanelCard title={t("words.cutsTitle", { line: line.line_number, count: line.cuts.length })}>
       {line.cuts.length === 0 ? (
         <p className="text-[12px] text-text-muted">{t("words.noCuts")}</p>
       ) : (
-        <div className="flex max-h-72 flex-col gap-1 overflow-y-auto">
+        // Tall enough for a whole line's words on a normal screen — at 18rem this
+        // showed about nine of the fifteen a mushaf line carries, so the reviewer
+        // was scrolling a list that had room to be whole. Capped against the
+        // viewport as well, since the panel scrolls too and a card taller than the
+        // window would push the run controls out of reach.
+        <div ref={scroller} className="flex max-h-[min(55vh,34rem)] flex-col gap-1 overflow-y-auto">
           {line.cuts.map((cut, i) => (
             <div
               key={cut.uid}
-              className={`flex items-center gap-2 rounded border p-1.5 transition-colors ${
+              ref={(el) => {
+                if (el) rows.current.set(cut.uid, el);
+                else rows.current.delete(cut.uid);
+              }}
+              className={`flex flex-none items-center gap-2 rounded border p-1.5 transition-colors ${
                 cut.uid === selectedCut ? "border-orange bg-orange-tint" : "border-border"
               }`}
             >
