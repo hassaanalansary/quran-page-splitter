@@ -98,3 +98,5 @@ export_reference_data.py
 
 
 frontend/.tanstack/tmp/*
+
+!docs/*.png
