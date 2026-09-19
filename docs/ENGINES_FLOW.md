@@ -163,6 +163,19 @@ It then iterates over the found lines, and splits each line into segments (split
 - For a line whose content does not fill the full line box, separator detection is restricted to its trimmed content region. And if the trimmed content region is empty, skip it.
 
 - Locate the aya_separator with the aya_separator template using `cv2.templateMatch()`. The flow is much the same as that of sura_header, finds the template mositions with scores, filter them by the `aya_threshold`, sort them by score, and filter the overlapping ones.
+![image](aya-cuts-L2.png)
+![image](aya-cuts-L3.png)
+![image](aya-cuts-L4.png)
+![image](aya-cuts-L5.png)
+![image](aya-cuts-L6.png)
+![image](aya-cuts-L7.png)
+![image](aya-cuts-L8.png)
+![image](aya-cuts-L9.png)
+![image](aya-cuts-L10.png)
+![image](aya-cuts-L11.png)
+![image](aya-cuts-L12.png)
+![image](aya-cuts-L13.png)
+![image](aya-cuts-L14.png)
 
 - Then, it splits the line into segments by the found aya_separator positions, and store them in the context `ctx` in `segments` under the line's index.
 
