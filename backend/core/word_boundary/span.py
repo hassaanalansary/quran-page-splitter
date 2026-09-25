@@ -59,6 +59,8 @@ class _Event:
     #: Position in the span's flat blob order. Used as the DP's group entry and
     #: role-mask bit, because ``Blob.label`` is only unique within its own line.
     ident: int = -1
+    #: For an ornament: which aya the caller says it closes, "sura:aya".
+    aya: str | None = None
 
 
 @dataclass
@@ -85,9 +87,12 @@ def _events(inks: list[LineInk]) -> tuple[list[_Event], dict[int, tuple[int, Blo
     by_ident: dict[int, tuple[int, Blob]] = {}
     ident = 0
     for line, ink in enumerate(inks):
+        seen = 0
         for event in parser_events(ink):
             if event.kind == "separator":
-                events.append(_Event("ornament", line))
+                label = ink.separator_ayat[seen] if seen < len(ink.separator_ayat) else None
+                events.append(_Event("ornament", line, aya=label))
+                seen += 1
             else:
                 assert event.blob is not None
                 events.append(_Event("blob", line, event.blob, ident))
@@ -95,6 +100,34 @@ def _events(inks: list[LineInk]) -> tuple[list[_Event], dict[int, tuple[int, Blo
                 ident += 1
         events.append(_Event("line-end", line))
     return events, by_ident
+
+
+def _aya_ends(words: list[WordInput]) -> dict[str, int]:
+    """Where each aya of the stream finishes, by its "sura:aya" label."""
+    ends: dict[str, int] = {}
+    for index, word in enumerate(words):
+        ends[word.aya] = index + 1
+    return ends
+
+
+def _required_end(aya: str | None, ends: dict[str, int], entry: int, starts: list[int]) -> int:
+    """The word index this ornament's aya finishes on.
+
+    Prefer what the caller declared. The alternative — the next boundary after the
+    cursor — is only as good as the cursor, and the cursor is exactly what has gone
+    wrong on the lines this anchor exists to recover. A label names the boundary
+    outright, so a reading that drifted is put back on the right word rather than on
+    the one after wherever it happened to stop.
+
+    Falls back to counting when the caller said nothing, or named an aya outside
+    this span: a chunked run legitimately starts mid-sura, and an ornament closing
+    an aya before the first requested word tells us nothing about where to resume.
+    """
+    if aya is not None:
+        declared = ends.get(aya)
+        if declared is not None:
+            return declared
+    return _aya_end_after(entry, starts)
 
 
 def _fresh(word: int) -> dict[StateKey, ParseRecord]:
@@ -158,6 +191,7 @@ def parse_span(
     the word index the reading finished on."""
     events, by_ident = _events(inks)
     starts = set(aya_starts)
+    aya_ends = _aya_ends(words)
 
     commits: list[_Commit] = []
     states = _fresh(0)
@@ -170,6 +204,26 @@ def parse_span(
 
     def commit(require_end: int | None, stop: int, *, absolute: bool = False) -> None:
         nonlocal states, entry, ink_since_anchor, lines_since_anchor, event_start
+        if absolute and require_end is not None and require_end < entry:
+            # A known boundary disproves placements made past it. Discard the
+            # affected commits before rewinding so later words cannot be duplicated.
+            conflicting = [c for c in commits if c.end_word > require_end]
+            for previous in conflicting:
+                lost.update(previous.lines)
+            commits[:] = [c for c in commits if c.end_word <= require_end]
+            lost.update(lines_since_anchor)
+            logger.warning(
+                "    known aya boundary rewinds cursor %d -> %d; withdrawing %d commit(s)",
+                entry,
+                require_end,
+                len(conflicting),
+            )
+            entry = require_end
+            states = _fresh(entry)
+            ink_since_anchor = False
+            lines_since_anchor = set()
+            event_start = stop
+            return
         settled = _settle(states, require_end)
         if settled is None:
             # Nothing closed a word over this stretch. The lines it covered get no
@@ -269,8 +323,9 @@ def parse_span(
                 commit(None, event_index + 1)
 
         else:  # ornament
-            if ink_since_anchor or entry not in starts:
-                commit(_aya_end_after(entry, aya_starts), event_index, absolute=True)
+            declared = aya_ends.get(event.aya) if event.aya else None
+            if ink_since_anchor or entry not in starts or (declared is not None and declared != entry):
+                commit(_required_end(event.aya, aya_ends, entry, aya_starts), event_index, absolute=True)
             event_start = event_index + 1
             # An ornament opening a line closes an aya whose words all sat on the
             # line above; it takes no aya of its own.
@@ -350,11 +405,14 @@ def _to_lines(
             mask ^= bit
 
     for line, parse in enumerate(parses):
+        if line in lost:
+            concerns[line].append("aya-boundary-missed")
         if not parse.groups and inks[line].components:
             # Ink, but no word placed on it. Never ``exact``: a line reported clean
             # with nothing on it is the failure this whole change exists to stop —
             # it means the reading skipped the line and put its words elsewhere.
-            parses[line] = LineParse("unresolved", "no-parse", None, None, 0)
+            reason = "aya-boundary-missed" if line in lost else "no-parse"
+            parses[line] = LineParse("unresolved", reason, None, None, 0)
             continue
         seen = sorted(set(concerns[line]))
         parse.status = "exact" if not seen else "scored"

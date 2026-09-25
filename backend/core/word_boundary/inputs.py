@@ -47,6 +47,14 @@ class LineImage:
     #: for that twice. ``None`` means "find them yourself", which is what a bare
     #: directory of PNGs will always say.
     separators: list[tuple[int, int]] | None = None
+    #: Which aya each of ``separators`` closes, as "sura:aya", when the caller
+    #: knows. The database does: its segments are numbered and reviewed. An
+    #: ornament is the one place the page states a boundary outright, and a label
+    #: turns that into *which* boundary — so a reading whose cursor has drifted can
+    #: be put back on the right word instead of on the next one after wherever it
+    #: happened to stop. ``None``, or a short list, simply falls back to counting
+    #: from the cursor.
+    separator_ayat: list[str] | None = None
 
 
 @dataclass(frozen=True)

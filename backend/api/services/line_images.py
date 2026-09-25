@@ -167,13 +167,15 @@ def line_images(
             if rendered_page is None:
                 rendered_page = _render_page(mushaf, page)
             image, origin_x = _image_for(line, rendered_page, crop)
+            spans, ayat = _separators(line, origin_x, image.width, template_width)
             out.append(
                 PlacedLine(
                     image=LineImage(
                         image=image,
                         label=f"page-{page.page_number:04d}/line-{line.line_number:02d}",
                         source=f"{mushaf.id}:{page.page_number}:{line.line_number}",
-                        separators=_separators(line, origin_x, image.width, template_width),
+                        separators=spans,
+                        separator_ayat=ayat,
                     ),
                     line=line,
                     origin_x=origin_x,
@@ -274,7 +276,9 @@ def _image_for(
     return image.crop((left, 0, right, image.height)), origin + left
 
 
-def _separators(line: Line, origin_x: int, width: int, template_width: int) -> list[tuple[int, int]] | None:
+def _separators(
+    line: Line, origin_x: int, width: int, template_width: int
+) -> tuple[list[tuple[int, int]] | None, list[str] | None]:
     """Ornament spans on this line, in the image's own coordinates.
 
     The process phase cuts each segment at the ornament's **left** edge, so that
@@ -286,10 +290,16 @@ def _separators(line: Line, origin_x: int, width: int, template_width: int) -> l
 
     ``None`` — meaning "find them yourself" — when there is no template to give a
     width, so the engine falls back to its own detectors.
+
+    The aya each one closes travels with it. That number is already reviewed here,
+    and it is the one thing an ornament can tell the aligner that its own cursor
+    cannot: *which* boundary this is, rather than "the next one after wherever the
+    reading got to". Null where the renumber walk has not run.
     """
     if not template_width:
-        return None
+        return None, None
     spans: list[tuple[int, int]] = []
+    ayat: list[str] = []
     for segment in sorted(line.segments.all(), key=lambda s: s.segment_order):
         if not segment.has_separator:
             continue
@@ -298,4 +308,5 @@ def _separators(line: Line, origin_x: int, width: int, template_width: int) -> l
         # An ornament cut away by the crop is simply not on this image any more.
         if right > 0 and left < width:
             spans.append((max(0, left), min(width, right)))
-    return spans
+            ayat.append(f"{line.sura_id}:{segment.aya_number}" if segment.aya_number else "")
+    return spans, ayat

@@ -97,16 +97,31 @@ class LineImageGeometryTests(TestCase):
         The right edge is rebuilt from the template width, which is the only place
         it ever came from.
         """
-        spans = line_images._separators(self.line, origin_x=100, width=900, template_width=120)
+        spans, ayat = line_images._separators(self.line, origin_x=100, width=900, template_width=120)
         self.assertEqual(spans, [(600, 720), (300, 420)])
+        self.assertEqual(ayat, ["2:5", "2:6"])
 
     def test_spans_shift_with_the_crop(self):
         """After cropping, image x 0 has moved, and the spans move with it."""
-        spans = line_images._separators(self.line, origin_x=400, width=600, template_width=120)
+        spans, ayat = line_images._separators(self.line, origin_x=400, width=600, template_width=120)
         self.assertEqual(spans, [(300, 420), (0, 120)])
+        self.assertEqual(ayat, ["2:5", "2:6"])
 
     def test_no_template_means_find_them_yourself(self):
-        self.assertIsNone(line_images._separators(self.line, origin_x=100, width=900, template_width=0))
+        self.assertEqual(line_images._separators(self.line, origin_x=100, width=900, template_width=0), (None, None))
+
+    def test_cropping_out_an_ornament_also_removes_its_identity(self):
+        spans, ayat = line_images._separators(self.line, origin_x=400, width=300, template_width=120)
+        self.assertEqual(spans, [(0, 120)])
+        self.assertEqual(ayat, ["2:6"])
+
+    def test_unnumbered_separator_keeps_its_parallel_position(self):
+        segment = self._segment(1)
+        segment.aya_number = None
+        segment.save(update_fields=["aya_number"])
+        spans, ayat = line_images._separators(self.line, origin_x=100, width=900, template_width=120)
+        self.assertEqual(len(spans), 2)
+        self.assertEqual(ayat, ["", "2:6"])
 
 
 class LocateTests(TestCase):

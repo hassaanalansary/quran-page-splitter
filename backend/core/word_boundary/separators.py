@@ -93,6 +93,7 @@ def split_separators(
     # The ring, its digits, and any attached marks share a span, so the parser
     # sees one explicit ornament event rather than several text components.
     ink.separator_spans = spans
+    ink.separator_ayat = _label_spans(ink, spans)
     kept, groups, befores = _partition(ink.components, spans)
     ink.separators = groups
     ink.separator_after = befores
@@ -374,3 +375,27 @@ def _separator_spans_by_shape(ink: LineInk) -> list[tuple[int, int]]:
         if hole >= HOLE_FRACTION:
             spans.append((blob.x, blob.right))
     return spans
+
+
+def _label_spans(ink: LineInk, spans: list[tuple[int, int]]) -> list[str | None]:
+    """Which aya each settled span closes, from what the caller supplied.
+
+    Re-attached by position rather than by index: ``_merge_spans`` can fuse two
+    supplied spans into one, so a parallel list would silently desync. Where two
+    are fused the later one wins — that ornament closes the later aya, and the
+    fused span ends where it ends.
+
+    ``None`` throughout when the caller said nothing, which is every path but the
+    database one: a bare directory of PNGs knows no aya numbers.
+    """
+    supplied = ink.supplied_separator_ayat
+    if not supplied or ink.supplied_separators is None:
+        return [None] * len(spans)
+    labels: list[str | None] = [None] * len(spans)
+    for (left, _right), aya in zip(ink.supplied_separators, supplied, strict=False):
+        middle = left - ink.offset_x
+        for index, (span_left, span_right) in enumerate(spans):
+            if span_left <= middle <= span_right:
+                labels[index] = aya
+                break
+    return labels

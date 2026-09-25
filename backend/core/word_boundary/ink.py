@@ -26,8 +26,10 @@ from PIL import Image
 from core.word_boundary.calibration import (
     BODY_SCORE_MAX,
     MAX_UNUSED_COMPONENT_COST,
+    NESTED_AREA_FRACTION,
     SCORE_BAND_OVERLAP,
     SCORE_CROSSES_WRITING_LINE,
+    SCORE_NESTED_IN_A_BODY,
     SCORE_RELATIVE_AREA,
     SCORE_RELATIVE_HEIGHT,
 )
@@ -50,6 +52,9 @@ class Blob:
     preferred: str = "mark-only"
     #: Smaller than the smallest component crossing this line's writing line.
     small_for_body: bool = False
+    #: Box lies wholly inside a much larger component's box — a diacritic in the
+    #: sweep of its own letter, far more often than a letter under a tail.
+    nested_in_a_body: bool = False
     #: Weighted evidence that this is a letter body, 0..BODY_SCORE_MAX. Reading a
     #: component against its evidence costs the distance from that end of the
     #: scale, so nothing is ever forbidden — only priced.
@@ -118,6 +123,11 @@ class LineInk:
     #: Ornament spans the caller already knew, in image coordinates. When present
     #: the detectors do not run at all — see ``split_separators``.
     supplied_separators: list[tuple[int, int]] | None = None
+    #: The aya each supplied span closes, if the caller said.
+    supplied_separator_ayat: list[str] | None = None
+    #: Aligned with ``separator_spans`` once the ornaments are settled. ``None``
+    #: for a span the caller did not label or that the detectors found themselves.
+    separator_ayat: list[str | None] = field(default_factory=list)
     #: Blobs making up each non-word symbol found on this line — a sajda marker, a
     #: rub' rosette — one list per symbol, with the name it was matched by.
     symbols: list[tuple[str, list[Blob]]] = field(default_factory=list)
@@ -178,6 +188,7 @@ def analyse_line(
             components=[],
             band=(0, 0),
             supplied_separators=line.separators,
+            supplied_separator_ayat=line.separator_ayat,
         )
 
     offset_y, offset_x = int(rows[0]), int(cols[0])
@@ -239,14 +250,33 @@ def analyse_line(
     crossing = [b.area for b in components if b.preferred == "body"]
     typical_area = float(np.median(crossing)) if crossing else 1.0
     smallest_crossing = min(crossing, default=0)
+    # Which blobs sit wholly inside a much larger one. Quadratic, but a line holds
+    # under a hundred components and the alternative is an interval tree for nothing.
+    nested = {
+        small.label
+        for small in components
+        for big in components
+        if small is not big
+        and big.x <= small.x
+        and small.right <= big.right
+        and big.y <= small.y
+        and small.bottom <= big.bottom
+        and small.area < NESTED_AREA_FRACTION * big.area
+    }
     for blob in components:
         overlap = max(0, min(blob.bottom, bottom + 1) - max(blob.y, top))
         blob.small_for_body = blob.preferred != "body" and blob.area < smallest_crossing
-        blob.body_score = round(
-            SCORE_CROSSES_WRITING_LINE * (1.0 if blob.preferred == "body" else 0.0)
-            + SCORE_BAND_OVERLAP * min(1.0, overlap / max(1, blob.h))
-            + SCORE_RELATIVE_AREA * min(1.0, blob.area / max(1.0, typical_area))
-            + SCORE_RELATIVE_HEIGHT * min(1.0, blob.h / band_height)
+        blob.nested_in_a_body = blob.label in nested
+        blob.body_score = max(
+            0,
+            round(
+                SCORE_CROSSES_WRITING_LINE * (1.0 if blob.preferred == "body" else 0.0)
+                # Against the band's height, not the blob's: see SCORE_BAND_OVERLAP.
+                + SCORE_BAND_OVERLAP * min(1.0, overlap / band_height)
+                + SCORE_RELATIVE_AREA * min(1.0, blob.area / max(1.0, typical_area))
+                + SCORE_RELATIVE_HEIGHT * min(1.0, blob.h / band_height)
+                - SCORE_NESTED_IN_A_BODY * (1.0 if blob.nested_in_a_body else 0.0)
+            ),
         )
 
     components.sort(key=lambda b: -b.right)  # right-to-left
@@ -296,6 +326,7 @@ def analyse_line(
         components=components,
         band=(top, bottom),
         supplied_separators=line.separators,
+        supplied_separator_ayat=line.separator_ayat,
     )
 
 

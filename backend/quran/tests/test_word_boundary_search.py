@@ -2,14 +2,16 @@
 
 import random
 from dataclasses import replace
+from typing import ClassVar
 
 from django.test import SimpleTestCase
 
-from core.word_boundary import WordBoundaryInput, detect_words
+from core.word_boundary import WordBoundaryInput, WordInput, detect_words
 from core.word_boundary.alignment import _advance, _line_end, _with_body, _with_mark
 from core.word_boundary.ink import Blob, analyse_line
 from core.word_boundary.inputs import aya_starts
-from core.word_boundary.span import _fresh, _settle, parse_span
+from core.word_boundary.separators import split_separators
+from core.word_boundary.span import _events, _fresh, _required_end, _settle, parse_span
 from quran.tests.test_word_boundary import _line, _words
 
 
@@ -98,3 +100,63 @@ class EndpointTests(SimpleTestCase):
         result = detect_words(WordBoundaryInput(lines=[_line([50, 100], separators=[])], words=_words([1] * 6)))
         self.assertFalse(result.complete)
         self.assertEqual(result.words_consumed, 0)
+
+
+class KnownAnchorTests(SimpleTestCase):
+    WORDS: ClassVar[list[WordInput]] = [
+        WordInput(text, 1, 0, 0, aya) for text, aya in [("a0", "2:1"), ("b0", "2:2"), ("c0", "2:3")]
+    ]
+
+    def test_leading_known_separator_recovers_without_preceding_text(self):
+        line = replace(_line([100, 200], separators=[(200, 235)]), separator_ayat=["2:2"])
+        result = detect_words(WordBoundaryInput(lines=[line], words=self.WORDS))
+        self.assertEqual([w.text for w in result.lines[0].words], ["c0"])
+        self.assertEqual(result.words_consumed, 1)
+        self.assertFalse(result.complete)
+
+    def test_known_identity_can_correct_equal_or_ahead_cursor(self):
+        ends = {"2:1": 1, "2:2": 2, "2:3": 3}
+        for entry in (1, 2, 3):
+            self.assertEqual(_required_end("2:1", ends, entry, [0, 1, 2, 3]), 1)
+        for unknown in (None, "", "1:7"):
+            self.assertEqual(_required_end(unknown, ends, 1, [0, 1, 2, 3]), 2)
+
+    def test_repeated_known_separator_does_not_advance_another_aya(self):
+        line = replace(_line([50, 150, 250, 350], separators=[(150, 185), (250, 285)]), separator_ayat=["2:1", "2:1"])
+        result = detect_words(WordBoundaryInput(lines=[line], words=self.WORDS[:2]))
+        self.assertEqual([w.text for w in result.lines[0].words], ["a0", "b0"])
+        self.assertTrue(result.complete)
+
+    def test_backward_recovery_withdraws_conflicting_placements(self):
+        for extra_ink in ([], [200]):
+            line = replace(
+                _line(
+                    [50, 150, 250, 350, 450, 550, *extra_ink],
+                    size=(700, 60),
+                    separators=[(450, 485), (250, 285), (150, 185)],
+                ),
+                separator_ayat=["", "", "2:1"],
+            )
+            result = detect_words(WordBoundaryInput(lines=[line], words=self.WORDS[:2]))
+            with self.subTest(extra_ink=extra_ink):
+                placed = result.lines[0].words
+                self.assertEqual([w.index for w in placed], [0, 1])
+                self.assertEqual(placed[1].end_x, 50)
+                self.assertEqual(result.words_consumed, 2)
+                self.assertTrue(result.complete)
+                self.assertIn("aya-boundary-missed", result.lines[0].reason)
+
+    def test_labels_follow_spans_through_crop_and_reading_order(self):
+        line = replace(_line([50, 150, 250, 350], separators=[(150, 185), (350, 385)]), separator_ayat=["2:2", "2:1"])
+        ink = analyse_line(line)
+        split_separators(ink, None)
+        events, _ = _events([ink])
+        self.assertEqual(ink.offset_x, 50)
+        self.assertEqual([e.aya for e in events if e.kind == "ornament"], ["2:1", "2:2"])
+
+    def test_missing_identity_does_not_take_the_neighboring_label(self):
+        line = replace(_line([50, 150, 250, 350], separators=[(350, 385), (150, 185)]), separator_ayat=["2:1"])
+        ink = analyse_line(line)
+        split_separators(ink, None)
+        events, _ = _events([ink])
+        self.assertEqual([e.aya for e in events if e.kind == "ornament"], ["2:1", None])

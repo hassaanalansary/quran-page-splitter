@@ -22,7 +22,12 @@ MAX_LIVE_STATES = 4096
 #: Spans the densest row — the writing line itself. The strongest single signal:
 #: letters sit on the line, a fatha hangs above it and a kasra below.
 SCORE_CROSSES_WRITING_LINE = 6
-#: Share of the component's height that lies inside the baseline band.
+#: Share of the **band** the component covers — not the share of the component
+#: that lies inside it. Dividing by the component's own height punished a letter
+#: for being tall: an alef 52px high with 12px inside a 16px band scored 0.23 of
+#: this weight while a 16px tashkeel sitting squarely on the line scored 0.94, so
+#: the mark outscored the letter it displaced. Measured on p602:l3, where the
+#: real alef came to 9 and the mark to 11.
 SCORE_BAND_OVERLAP = 3
 #: Area against the typical area of components that do cross the writing line.
 SCORE_RELATIVE_AREA = 3
@@ -64,3 +69,16 @@ COUNT_SLACK = 2
 #: Blob.cost_as_mark — this is the calibration knob that decides how readily the
 #: parser tolerates a spurious stroke instead of inventing a word to absorb it.
 MAX_UNUSED_COMPONENT_COST = 6
+
+#: Taken off a component that sits wholly inside a much larger one's box. Such a
+#: blob is almost always that letter's own diacritic lying in its sweep — the
+#: kasra of ``مِّن`` inside the bowl of its ``ن``, which was read as a letter and
+#: shifted the rest of the line. "Sits on the writing line" says nothing when it
+#: is sitting on it *inside another letter*, so this cancels most of
+#: SCORE_CROSSES_WRITING_LINE rather than forbidding the reading: a small letter
+#: genuinely can sit under a sweeping tail, and containment predicts a misread
+#: line only 2-3x more often than not on measured pages.
+SCORE_NESTED_IN_A_BODY = 4
+#: How much smaller than its container a blob must be to count as nested. A
+#: letter under a tail is comparable in size; a diacritic is not.
+NESTED_AREA_FRACTION = 0.35
