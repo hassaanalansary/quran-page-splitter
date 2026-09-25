@@ -160,8 +160,8 @@ class WordBoundaryResult:
     """One run of the engine over one span of ayat."""
 
     lines: list[WordLine]
-    #: How far through the word stream the run got.
+    #: Number of distinct words with returned boxes, excluding recovery skips.
     words_consumed: int
-    #: The whole stream was accounted for. False means the last line's cuts were
-    #: withdrawn rather than reported as a plausible reading of an incomplete span.
+    #: Every requested word has a returned box. Recovery can leave gaps while
+    #: preserving valid placements in later ayat.
     complete: bool

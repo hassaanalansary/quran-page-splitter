@@ -239,13 +239,113 @@ class MultipleLineTests(SimpleTestCase):
             )
         )
         self.assertTrue(result.complete)
-        self.assertEqual(result.lines[0].status, "exact")
+        # ``scored``, not ``exact``: the two lines are identical and there are two
+        # words, so placing them on either line costs the same. That tie is real and
+        # the span search reports it — per-line parsing could not see it, because it
+        # never compared a reading on one line against the same reading on the next.
+        # The words still land on the first line; see ``_merge_record``, which breaks
+        # an equal-rank tie towards the earliest ink.
+        self.assertEqual(result.lines[0].status, "scored")
+        self.assertIn("equal-cost readings", result.lines[0].reason or "")
         self.assertEqual(len(result.lines[0].words), 2)
         self.assertEqual(result.lines[1].status, "unresolved")
         self.assertEqual(result.lines[1].reason, "words-exhausted")
         self.assertEqual(result.lines[1].words, [])
         self.assertEqual(result.lines[2].status, "exact")
         self.assertEqual(result.lines[2].words, [])
+
+    def test_an_aya_that_cannot_finish_does_not_shift_the_next_one(self):
+        """An ornament is absolute even when no reading reaches it.
+
+        The ink before the ornament holds one word where the text expects three, so
+        no reading can finish on the aya boundary. The parser takes its best partial
+        reading and flags it — but the *next* aya must still open on its own first
+        word, because the ornament is evidence from the page that the aya ended
+        there. Resuming instead from wherever the failed reading stopped lets one
+        short aya shift every aya after it, which is a local failure stopping being
+        local.
+
+        ``parse_line`` had this as ``cursor = require_end``; it was lost in the move
+        to a cross-line search and put back here.
+        """
+        aya = lambda text, name, pk: WordInput(  # noqa: E731 - a fixture, not logic
+            text=text, paws=1, ijam_above=0, ijam_below=0, aya=name, id=pk
+        )
+        result = detect_words(
+            WordBoundaryInput(
+                lines=[_line([100, 170, 250], separators=[(170, 205)])],
+                words=[
+                    aya("a0", "2:1", 1),
+                    aya("a1", "2:1", 2),
+                    aya("a2", "2:1", 3),
+                    aya("b0", "2:2", 4),
+                ],
+            )
+        )
+        placed = [w.text for w in result.lines[0].words]
+        self.assertIn("b0", placed, "the word after the ornament belongs to the next aya")
+        self.assertNotIn("a1", placed, "aya 2:1's unplaced words must not spill past its ornament")
+        self.assertFalse(result.complete)
+        self.assertEqual(result.words_consumed, 2)
+        self.assertIn("aya-boundary-missed", result.lines[0].reason)
+
+    def test_a_reading_whose_cuts_run_backwards_loses_a_tie(self):
+        """Arabic runs right to left, so a later cut sitting further right is impossible.
+
+        Measured on aya 2:17. The correct reading and one that hands ``كَمَثَلِ`` a
+        mark sitting *inside* ``مَثَلُهُمْ``'s ink both come to **cost 250** — the
+        scoring cannot separate them, and whichever the tie-break happens to favour
+        is what ships. The only thing that distinguishes them is that the second
+        one's cuts go backwards, so that is a rank tier rather than a preference.
+        """
+        forward = ParseRecord(cost=250, ends=(1163, 1011), groups=(), current_group=(), body_mask=0)
+        backward = ParseRecord(
+            cost=250, ends=(1163, 1288), groups=(), current_group=(), body_mask=0, inversions=1
+        )
+        self.assertLess(forward.rank, backward.rank)
+        # It settles a tie and nothing more: a cheaper reading still wins outright,
+        # because an inverted cut is impossible while a dearer one is merely dearer.
+        cheaper_but_backwards = ParseRecord(
+            cost=249, ends=(1163, 1288), groups=(), current_group=(), body_mask=0, inversions=1
+        )
+        self.assertLess(cheaper_but_backwards.rank, forward.rank)
+
+    def test_a_line_does_not_defer_its_own_words_to_the_next_one(self):
+        """An ornament on the first line must not let the reading skip that line.
+
+        Found by eye on sura 79, and missed by every test here. The sura's first
+        text line carried ayat 1 and 2, came back holding **no words at all** and
+        reported ``exact``, while its words were cut on the line below at positions
+        belonging to a different aya.
+
+        The cause was the ornament anchor. It asked whether a reading finishes on
+        *an* aya boundary, and the stream's own first word is one — so the reading
+        that had placed nothing satisfied it, cost nothing, and won. The anchor has
+        to be the **exact** next boundary after the committed cursor, which is what
+        the per-line parser always did via ``require_end``.
+        """
+        aya = lambda text, name, pk: WordInput(  # noqa: E731 - a fixture, not logic
+            text=text, paws=1, ijam_above=0, ijam_below=0, aya=name, id=pk
+        )
+        result = detect_words(
+            WordBoundaryInput(
+                lines=[
+                    # a0 a1 ۝ b0   — the ornament closes 79:1 mid-line
+                    _line([100, 150, 200, 250], separators=[(150, 185)], label="line-01.png"),
+                    # b1 ۝
+                    _line([50, 100], separators=[(50, 85)], label="line-02.png"),
+                ],
+                words=[
+                    aya("a0", "79:1", 1),
+                    aya("a1", "79:1", 2),
+                    aya("b0", "79:2", 3),
+                    aya("b1", "79:2", 4),
+                ],
+            )
+        )
+        self.assertTrue(result.complete)
+        self.assertEqual([w.text for w in result.lines[0].words], ["a0", "a1", "b0"])
+        self.assertEqual([w.text for w in result.lines[1].words], ["b1"])
 
 
 class MergeTieBreakTests(SimpleTestCase):
@@ -258,7 +358,7 @@ class MergeTieBreakTests(SimpleTestCase):
     rule broke.
     """
 
-    KEY = (3, 0)
+    KEY = (3, 0, None, None)
 
     def _record(self, cost: int, deviations: int, body_mask: int) -> ParseRecord:
         return ParseRecord(

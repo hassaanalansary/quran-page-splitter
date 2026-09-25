@@ -5,10 +5,11 @@ sits. Nothing is supplied about the layout: not how many words a line holds, not
 where its text starts or stops. All of that is derived, so the same call works on
 any mushaf.
 
-The run, in order: measure each line's ink, pull the ornaments out of it, then walk
-the lines carrying one cursor through the word stream. The cursor is what makes a
-span more than a bag of independent lines — a word cannot straddle a line break, so
-where one line stops is where the next begins.
+The run, in order: measure each line's ink, pull the ornaments out of it, then
+align the whole span in one search. The span is not a bag of independent lines — a
+word cannot straddle a line break, so where one line stops is where the next
+begins, and a reading is only committed where the text says a boundary is certain:
+at an aya's ornament. See `core.word_boundary.span`.
 
 Nothing here draws or prints. The result is dataclasses, and turning them into
 pictures, a report or database rows is somebody else's job.
@@ -23,7 +24,6 @@ from core.word_boundary.alignment import (
     LineParse,
     apply_parse_roles,
     build_line_boxes,
-    parse_line,
 )
 from core.word_boundary.ink import LineInk, analyse_line
 from core.word_boundary.inputs import WordBoundaryInput, WordInput, aya_starts
@@ -37,6 +37,7 @@ from core.word_boundary.results import (
     WordSegment,
 )
 from core.word_boundary.separators import prepare_template, split_separators, split_symbols
+from core.word_boundary.span import parse_span
 
 logger = logging.getLogger(__name__)
 
@@ -110,17 +111,20 @@ def detect_words(
         len(starts) - 1,
     )
 
-    parses: list[LineParse] = []
-    cursor: int | None = 0
-    seen_ornaments = 0
-    for ink in inks:
-        if cursor is not None and cursor >= len(words) and ink.components:
-            # The stream ran dry before the lines did. Ink with no words left to
-            # place is not a clean parse of nothing — it is a line the reading never
-            # reached, which is exactly what a run that drifted ahead looks like
-            # from the far end. The mirror of the prefix-only guard below, and it
-            # has to be a finding for the same reason: reported as ``exact`` these
-            # lines would carry green dots and nothing to review.
+    # One search over the whole span, collapsed only at an aya's ornament, so a
+    # line that comes up a blob short can be paid for by re-reading the line above
+    # instead of starving a word or promoting a mark. See `span.parse_span`.
+    parses, cursor = parse_span(inks, words, aya_starts=starts, ijam=source.ijam)
+    for ink, parsed in zip(inks, parses, strict=True):
+        apply_parse_roles(ink, parsed)
+
+    # The stream ran dry before the lines did. Ink with no words left to place is
+    # not a clean parse of nothing — it is a line the reading never reached, which
+    # is what a run that drifted ahead looks like from the far end.
+    if cursor is not None and cursor >= len(words):
+        for index, (ink, parsed) in enumerate(zip(inks, parses, strict=True)):
+            if parsed.groups or not ink.components:
+                continue
             logger.warning(
                 "    %s: the stream ran out at word %d, but this line still holds %d component(s) "
                 "— the reading never reached it",
@@ -128,25 +132,13 @@ def detect_words(
                 cursor,
                 len(ink.components),
             )
-            parsed = LineParse("unresolved", "words-exhausted", cursor, None, 0)
-        else:
-            parsed = parse_line(
-                ink,
-                words,
-                cursor,
-                aya_starts=starts,
-                ornaments_before=seen_ornaments,
-                ijam=source.ijam,
-            )
-        cursor = parsed.next_word
-        seen_ornaments += len(ink.separator_spans)
-        apply_parse_roles(ink, parsed)
-        parses.append(parsed)
+            parses[index] = LineParse("unresolved", "words-exhausted", cursor, None, 0)
+            apply_parse_roles(ink, parses[index])
 
     # A prefix-only parse cannot claim success: withdraw the final line's cuts
     # rather than return a plausible reading of an incomplete span.
-    complete = cursor is not None and cursor == len(words)
-    if not complete and cursor is not None and parses:
+    reached_end = cursor is not None and cursor == len(words)
+    if not reached_end and cursor is not None and parses:
         last = len(parses) - 1
         logger.warning(
             "    %s: the span stopped at word %d of %d — withdrawing this line's cuts rather than "
@@ -162,10 +154,12 @@ def detect_words(
         _line_result(source.lines[i].label, source.lines[i].source, ink, parsed, words)
         for i, (ink, parsed) in enumerate(zip(inks, parses, strict=True))
     ]
+    placed = {word.index for line in lines for word in line.words}
+    complete = placed == set(range(len(words)))
     _log_summary(lines, words, complete, time.perf_counter() - started)
     return WordBoundaryResult(
         lines=lines,
-        words_consumed=cursor if cursor is not None else 0,
+        words_consumed=len(placed),
         complete=complete,
     )
 

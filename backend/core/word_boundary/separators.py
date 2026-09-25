@@ -184,8 +184,8 @@ def split_symbols(
 
     **Like an ornament in one way and unlike it in every other.** The engine must
     not read either as letters, and the removal is the same partition. But an
-    ornament also *closes an aya*: ``parse_line`` cuts the line at every entry in
-    ``separator_spans`` and forces the stretch before the cut onto that aya's
+    ornament also *closes an aya*: ``span.parse_span`` collapses its live readings
+    at every entry in ``separator_spans`` and keeps only those finishing on an aya
     boundary. A sajda closes nothing. Push one through that path and it would not
     merely be skipped — it would end the aya there and skip every word the aya had
     left, which is worse than the misreading it was meant to fix.

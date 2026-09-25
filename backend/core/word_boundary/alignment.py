@@ -19,7 +19,7 @@ ambiguity rather than enumerated.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from core.word_boundary.calibration import COUNT_SLACK, COUNT_WEIGHT, MAX_LIVE_STATES
 from core.word_boundary.ink import Blob, LineInk, attach_marks
@@ -27,6 +27,8 @@ from core.word_boundary.inputs import IjamMode, WordInput
 from core.word_boundary.results import WordBox
 
 logger = logging.getLogger(__name__)
+
+StateKey = tuple[int, int, int | None, int | None]
 
 
 @dataclass(frozen=True)
@@ -41,9 +43,9 @@ class ParseEvent:
 class ParseRecord:
     """Best evidence reading for one compact parser state.
 
-    ``ends`` and role masks deliberately live in the value, not the DP key.
-    Alternatives reaching the same key are merged and remembered as ambiguity
-    instead of being enumerated exponentially.
+    Full histories and role masks live in the value. The key includes the last
+    same-line cut and the current word's left extent because future geometry
+    rankings depend on them. Only future-equivalent alternatives are merged.
 
     "Alternatives" means **equal ``rank``**, which is no longer the same as equal
     cost: since ``rank`` carries ``deviations``, two readings that cost the same
@@ -63,6 +65,14 @@ class ParseRecord:
     #: The honest quality signal for a line: cost alone cannot be read this way,
     #: since a long line accumulates score cost from every component.
     deviations: int = 0
+    #: Non-decreasing body-left cuts within a line. This is a tie-break signal,
+    #: not a ban on overlapping handwriting or on promoting mark-like bodies.
+    inversions: int = 0
+    #: Geometry needed by future transitions, local to the current physical line.
+    previous_end: int | None = None
+    current_left: int | None = None
+    #: Total missing/extra PAWs, not the number of affected words.
+    paw_errors: int = 0
 
     @property
     def rank(self) -> tuple[int, ...]:
@@ -72,19 +82,19 @@ class ParseRecord:
         and band position are all folded into each component's body score, so a
         single number already carries them.
 
+        ``inversions`` breaks remaining ties using same-line body extents.
+        It neither adds an evidence penalty nor forbids overlapping words.
+
         ``deviations`` is a tier and not part of the cost because the cost already
-        charges each one ``COUNT_WEIGHT``. What this settles is the *tie* that
+        charges each missing/extra PAW ``COUNT_WEIGHT``. What this settles is the *tie* that
         charge leaves behind — one word off-count plus cheap components can total
         exactly what a clean reading with dearer components totals, and of those
         two the clean one is the better answer. Before this, that tie was broken by
         whichever record the DP happened to reach the key with first.
 
-        i'jam is deliberately **not** a tier here. It is a hard constraint, settled
-        by partitioning the candidates before any of them are ranked — see
-        ``_parse_segment``. A constraint that has already decided which readings
-        are admissible has no business also nudging the order of the ones that are.
+        i'jam is checked for reporting after selection, not used as a rank tier.
         """
-        return (self.cost, self.deviations)
+        return (self.cost, self.deviations, self.inversions)
 
 
 @dataclass
@@ -145,7 +155,11 @@ def parser_events(ink: LineInk) -> list[ParseEvent]:
     return [event for _, _, _, event in sorted(positioned)]
 
 
-def _merge_record(target: dict[tuple[int, int], ParseRecord], key: tuple[int, int], candidate: ParseRecord) -> None:
+def _state_key(word: int, done: int, record: ParseRecord) -> StateKey:
+    return word, done, record.previous_end, record.current_left
+
+
+def _merge_record(target: dict[StateKey, ParseRecord], key: tuple, candidate: ParseRecord) -> None:
     """Retain the best-ranked path, preserving genuinely equal-cost ambiguity.
 
     Now that ``rank`` carries ``deviations``, fewer arrivals here are true ties:
@@ -153,6 +167,7 @@ def _merge_record(target: dict[tuple[int, int], ParseRecord], key: tuple[int, in
     ordered rather than merged, and only the ones that match on both are recorded
     as ambiguity. That is the same tie being settled in both places, on purpose.
     """
+    key = _state_key(key[0], key[1], candidate)
     existing = target.get(key)
     if existing is None or candidate.rank < existing.rank:
         target[key] = candidate
@@ -162,8 +177,47 @@ def _merge_record(target: dict[tuple[int, int], ParseRecord], key: tuple[int, in
 
     different_ends = existing.ends != candidate.ends or existing.ambiguous_ends or candidate.ambiguous_ends
     different_roles = existing.body_mask ^ candidate.body_mask
-    existing.ambiguous_ends = different_ends
-    existing.role_ambiguous_mask |= candidate.role_ambiguous_mask | different_roles
+    # Equal rank. Keep the reading that spends the *earliest* ink — ``groups`` holds
+    # blob idents in span order, so the lexicographically smaller one is the reading
+    # that does not push a word onto a later line when it could sit on this one.
+    # Without this the survivor is whichever path the dict happened to reach first,
+    # which was harmless while each line was parsed alone and is not now that a
+    # reading crosses line breaks: the two readings being merged may place the same
+    # word on different lines.
+    winner, loser = (
+        (candidate, existing)
+        if (candidate.groups, candidate.current_group) < (existing.groups, existing.current_group)
+        else (existing, candidate)
+    )
+    winner.ambiguous_ends = different_ends
+    winner.role_ambiguous_mask |= loser.role_ambiguous_mask | different_roles
+    target[key] = winner
+
+
+def _advance(
+    states: dict[StateKey, ParseRecord], blob: Blob, ident: int, words: list[WordInput]
+) -> dict[StateKey, ParseRecord]:
+    """Keep geometry-distinct paths, discarding only primary-score dominance."""
+    nxt: dict[StateKey, ParseRecord] = {}
+    for key, record in states.items():
+        _merge_record(nxt, key, _with_mark(record, blob))
+        for produced_key, produced in _with_body(record, blob, ident, words, key):
+            _merge_record(nxt, produced_key, produced)
+    # Geometry affects only the third rank tier. A worse (cost, deviations)
+    # prefix at the same word/count can never beat the better prefix's suffix.
+    best: dict[tuple[int, int], tuple[int, ...]] = {}
+    for key, record in nxt.items():
+        prefix = key[:2]
+        best[prefix] = min(best.get(prefix, record.rank[:2]), record.rank[:2])
+    return {key: record for key, record in nxt.items() if record.rank[:2] == best[key[:2]]}
+
+
+def _line_end(states: dict[StateKey, ParseRecord]) -> dict[StateKey, ParseRecord]:
+    kept: dict[StateKey, ParseRecord] = {}
+    for key, record in states.items():
+        if key[1] == 0:
+            _merge_record(kept, key, replace(record, previous_end=None, current_left=None))
+    return kept
 
 
 def _with_mark(record: ParseRecord, blob: Blob) -> ParseRecord:
@@ -176,15 +230,20 @@ def _with_mark(record: ParseRecord, blob: Blob) -> ParseRecord:
         role_ambiguous_mask=record.role_ambiguous_mask,
         ambiguous_ends=record.ambiguous_ends,
         deviations=record.deviations,
+        inversions=record.inversions,
+        previous_end=record.previous_end,
+        current_left=record.current_left,
+        paw_errors=record.paw_errors,
     )
 
 
 def _with_body(
     record: ParseRecord,
     blob: Blob,
+    ident: int,
     words: list[WordInput],
-    state: tuple[int, int],
-) -> list[tuple[tuple[int, int], ParseRecord]]:
+    state: tuple,
+) -> list[tuple[StateKey, ParseRecord]]:
     """Every way this component can extend or finish the current word.
 
     A word may close having taken up to COUNT_SLACK blobs more or fewer than its
@@ -192,7 +251,7 @@ def _with_body(
     word from collapsing the line: the merge is charged once, the word still gets
     a boundary, and the next word starts where it should.
     """
-    word_index, done = state
+    word_index, done = state[:2]
     if word_index >= len(words):
         return []
     want = words[word_index].paws
@@ -200,9 +259,14 @@ def _with_body(
     if done > want + COUNT_SLACK:
         return []
 
-    group = (*record.current_group, blob.label)
+    # ``ident`` rather than ``blob.label``: a label is only unique within its own
+    # line, and a reading now runs across line breaks, so groups and the role mask
+    # are keyed by the blob's position in the span's flat reading order.
+    group = (*record.current_group, ident)
     cost = record.cost + blob.cost_as_body
-    body_mask = record.body_mask | (1 << blob.label)
+    body_mask = record.body_mask | (1 << ident)
+    left = min(record.current_left, blob.x) if record.current_left is not None else blob.x
+    backwards = int(record.previous_end is not None and left >= record.previous_end)
     options: list[tuple[tuple[int, int], ParseRecord]] = []
 
     if done >= max(1, want - COUNT_SLACK):
@@ -211,13 +275,16 @@ def _with_body(
                 (word_index + 1, 0),
                 ParseRecord(
                     cost=cost + COUNT_WEIGHT * abs(done - want),
-                    ends=(*record.ends, blob.x),
+                    ends=(*record.ends, left),
                     groups=(*record.groups, group),
                     current_group=(),
                     body_mask=body_mask,
                     role_ambiguous_mask=record.role_ambiguous_mask,
                     ambiguous_ends=record.ambiguous_ends,
                     deviations=record.deviations + (1 if done != want else 0),
+                    inversions=record.inversions + backwards,
+                    previous_end=left,
+                    paw_errors=record.paw_errors + abs(done - want),
                 ),
             )
         )
@@ -234,10 +301,14 @@ def _with_body(
                     role_ambiguous_mask=record.role_ambiguous_mask,
                     ambiguous_ends=record.ambiguous_ends,
                     deviations=record.deviations,
+                    inversions=record.inversions,
+                    previous_end=record.previous_end,
+                    current_left=left,
+                    paw_errors=record.paw_errors,
                 ),
             )
         )
-    return options
+    return [(_state_key(key[0], key[1], candidate), candidate) for key, candidate in options]
 
 
 def _required_marks_present(record: ParseRecord, words: list[WordInput], start_word: int, ink: LineInk) -> bool:
@@ -312,17 +383,12 @@ def _parse_segment(
         _text_preview(words, start_word, require_end),
     )
 
-    states: dict[tuple[int, int], ParseRecord] = {(start_word, 0): ParseRecord(0, (), (), (), 0)}
+    states: dict[StateKey, ParseRecord] = {(start_word, 0, None, None): ParseRecord(0, (), (), (), 0)}
     peak_states = 1
     for event in events:
-        next_states: dict[tuple[int, int], ParseRecord] = {}
         assert event.blob is not None
         blob = event.blob
-        for state, record in states.items():
-            _merge_record(next_states, state, _with_mark(record, blob))
-            for key, produced in _with_body(record, blob, words, state):
-                _merge_record(next_states, key, produced)
-        states = next_states
+        states = _advance(states, blob, blob.label, words)
         peak_states = max(peak_states, len(states))
         if len(states) > MAX_LIVE_STATES:
             logger.warning(
