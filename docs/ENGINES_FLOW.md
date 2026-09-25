@@ -192,3 +192,85 @@ Then, comes the tracker, which is responsible for numbering the swar and the aya
 Finally, the engine exports its results whether to the backend api or to a terminal or to an output file.
 
 ## Word Engine
+
+The function [`detect_words`](../backend/core/word_boundary/engine.py#L44) is responsible for detecting the words in a given line. It takes the an instance of `WordBoundaryInput` and returns an instance of `WordBoundaryResult`.
+
+### The `WordBoundaryInput` contains the following:
+
+1. `lines`: which is a list of `LineImage` objects. which in turn contains the following:
+    - `image`: a pillow image instance of the line.
+    - `label`: the name of the image. Whether it is the image filename or it is generated from the page number and line number, it is used for logging and debugging purposes.
+    - `source`: the source of the line. This could be the database (cut directly from the pdf using the data stored in the database after the page processing), a file, or any other source.
+    - `separators`: a list of the x-positions `(x_start, x_end)` of the separators in the line. This makes use of the results from the line engine, where it already detected the separators positions. But if teh engine is used from different source, the separators attribute should be null, so that the engine knows that it should detect the separators itself.
+
+2. `words`: a list of `WordInput` objects. Each `WordInput` contains the following:
+    - `text`: the quranic uthmani word text itself. I used the one from tanzil.
+    - `paws`: the number of disconnected ink blobs this spelling must produce. This is used to validate the detected words. It stands for "parts of a word". It is used to validate the detected words. For example, the word "الله" has 2 paws, while the word "الرحمن" has 3 paws.
+    - `ijam_above`: the number of dots that floats above this word. For example, the word "الرحمن" has one dot above it, while the word "التين" has three dots above it.
+    - `ijam_below`: the number of dots that floats below this word.
+    - `aya`: the aya number this word belongs to. it takes the format "sura:aya".
+    - `id`: the id of the word if it comes from the database, otherwise it is None. It is used to map the engine's output back to a row in the database.
+
+3. `separator_template`: An instance of `PIL.Image` representing the template for the separators.
+
+4. `ijam`: the ijam mode, which tells the engine whether to check them and report them or not. They may affect the accuracy of the engine later.
+
+5. `symbol_templates`: a dictionary of symbol templates, such as the sajda symbol, and the quarter symbol.
+
+### The flow of the engine is as follows:
+
+1. The engine prepares the tempaltes, similar to the line engine.
+
+2. It iterates over the lines, and for each line, it calls `analyse_line` function:
+
+    - It starts by calling `load_ink` on the line image, which converts the image to a binary np array, where the ink is 255 and the background is 0.
+
+    - Then, it tightens the line to remove any extra whitespace around it keeping only the content area. If the line is empty, it skips it. And stores the difference between the intial origin and the new origin in `offset_y` and `offset_x` to use them again when cutting after detection.
+
+    - It calculates the sum of the pixels in each row, takes the max value and its index. The index is the index of what is called the "baseline" of the line, which is the row that contains the most ink, in other words, the line the writter uses to write the text on. Then, takes max value and calculates the floor value which I took as 30% of the max value. Then, the fucntion finds the row above and the row below of the baseline at which the sum reaches this floor value. The distance between these two rows is the <strong>"baseline band"</strong>.
+
+    - Then, it calls `cv2.connectedComponentsWithStats` to find the connected components in the line returning teh number of found components, and the stats of each component, which contains the x, y, w, h, and area of each component.
+
+    - It iterates over the found components, and creates a `Blob` instance for it. The `Blob` class contains the `x`, `y`, `w`, `h`, a `label`, and finally an attribute callled `preferred`.
+    `preferred` is like a tag that each component get based on some criteria, as follows:
+        - if the component crosses the baseline, it is marked as `preferred = "body"`.
+        - else if it only crosses the band without the baseline itself, it is marked as `preferred = "mark"`
+        - else it is marked as `preferred = "mark-only"`
+
+    - Then, each component gets a score, as follows:
+        - calculates the median of the areas of the components that are marked as `preferred = "body"`.
+        - calculates how much of the component's height crosses the baseline band.
+        - classify the component that are not marked as `preferred = "body"` if it is small for a body or not, by comparing it to the smallest area of the components that are marked as `preferred = "body"`.
+        - Then it calculates the score using the following formula:
+
+        ```python
+          blob.body_score = round(
+              SCORE_CROSSES_WRITING_LINE * (1.0 if blob.preferred == "body" else 0.0)
+              + SCORE_BAND_OVERLAP * min(1.0, overlap / max(1, blob.h))
+              + SCORE_RELATIVE_AREA * min(1.0, blob.area / max(1.0, typical_area))
+              + SCORE_RELATIVE_HEIGHT * min(1.0, blob.h / band_height)
+          )
+          ```
+
+          Where the constants are defined as follows:
+
+          ```python
+          SCORE_CROSSES_WRITING_LINE = 6
+          SCORE_BAND_OVERLAP = 3
+          SCORE_RELATIVE_AREA = 3
+          SCORE_RELATIVE_HEIGHT = 2
+          ```
+
+  Then, it calls `split_symbols` function, which finds `(start_x, end_x)` of each symbol in the line, defines which blobs are actual text and which are marks, and if this is aya_separator, it specifies how many text blobs are before each separator.
+
+  Gets `start_words` which is the indices of the words that begins each aya.
+
+  Starts a cursor that points to the word in order.
+
+  Then it comes the function `parse_line`, which takes `LineInk` instance which holds almost all the data we gathered regarding this line up to this point, `WordInput` isntance, the cursor, `aya_starts`, `ijam`, and `ornaments_before` which is how many ornaments precede this line in the span. It is used only to recover when the cursor has been lost altogether, where counting is the one thing left that still says which aya an ornament closes.
+
+#### `parse_line` function flow:
+
+1. It reads the components in order from right to left, then it splits the line into segments by the separators.
+
+2. 
