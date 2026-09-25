@@ -17,8 +17,24 @@ alignment rather than recognition.
 from __future__ import annotations
 
 #: Letters that never join to the letter that follows them. A word breaks after
-#: each of these and nowhere else, which is what makes the blob count exact.
-NON_JOINERS = frozenset("اأإآٱدذرزوؤةءٲٳٵٶٷىٮۃ")
+#: each of these.
+#:
+#: ``ى`` (U+0649 alef maksura) is deliberately **not** here, though it reads like
+#: a final form. Unicode gives it dual joining and it connects forward like any
+#: other letter — it merely happens to sit word-finally in ordinary Arabic, where
+#: the distinction never shows. Uthmani Quranic text is where it shows: ``ىٰ``
+#: carries a dagger alef mid-word and joins what follows, in ``يَغْشَىٰهَا``,
+#: ``بَنَىٰهَا``, ``ٱلتَّوْرَىٰةِ``, ``أَدْرَىٰكَ``. Counting it as a break demanded
+#: one blob more than those words make, and the parser then had to buy the
+#: difference by reading a haraka as a letter. Measured over the Uthmani text:
+#: 341 tokens, 214 distinct spellings.
+NON_JOINERS = frozenset("اأإآٱدذرزوؤةءٲٳٵٶٷٮۃ")
+
+#: Letters that accept no join from the letter *before* them, so a piece begins at
+#: each one. Only the bare hamza, which joins on neither side — it is in both sets.
+#: Without this, dropping ``ى`` above would fuse ``شَىْءٍ`` into one piece when its
+#: ink plainly makes two.
+NON_RECEIVERS = frozenset("ءٴ")
 
 #: Harakat, tanween, shadda, sukun, dagger alef, small Quranic letters, pause
 #: marks, and the tatweel. None affect joining, so all are dropped before
@@ -50,6 +66,9 @@ def paws(word: str) -> list[str]:
     pieces: list[str] = []
     current = ""
     for ch in core:
+        if ch in NON_RECEIVERS and current:
+            pieces.append(current)
+            current = ""
         current += ch
         if ch in NON_JOINERS:
             pieces.append(current)

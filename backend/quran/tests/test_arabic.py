@@ -37,6 +37,35 @@ class PawCountTests(SimpleTestCase):
     def test_never_zero(self):
         self.assertEqual(paw_count(""), 1)
 
+    def test_a_medial_alef_maksura_joins_what_follows(self):
+        """``ى`` reads like a final form but joins forward like any other letter.
+
+        Found on sura 91. The line demanded 25 blobs where the ink makes 22, so the
+        parser bought the difference by reading three kasras as letters — every word
+        after the first shortfall then took its neighbour's ink. All three missing
+        blobs were this: ``ىٰ`` mid-word, counted as a break it does not make.
+
+        In ordinary Arabic ``ى`` only ever sits word-finally, where the distinction
+        cannot show. Uthmani Quranic text puts it mid-word under a dagger alef.
+        """
+        self.assertEqual(paws("يَغْشَىٰهَا"), ["يغشىها"])
+        self.assertEqual(paw_count("بَنَىٰهَا"), 1)
+        self.assertEqual(paw_count("طَحَىٰهَا"), 1)
+        self.assertEqual(paws("أَدْرَىٰكَ"), ["أ", "د", "ر", "ىك"])
+        # Word-finally it still ends the word, because the word ends.
+        self.assertEqual(paw_count("عَلَىٰ"), 1)
+        self.assertEqual(paws("مُوسَىٰ"), ["مو", "سى"])
+
+    def test_a_bare_hamza_starts_its_own_piece(self):
+        """``ء`` joins on neither side, so it breaks the word before itself too.
+
+        The other half of the rule above: without it, letting ``ى`` join forward
+        would fuse ``شَىْءٍ`` into one piece when its ink plainly makes two.
+        """
+        self.assertEqual(paws("شَىْءٍ"), ["شى", "ء"])
+        self.assertEqual(paws("بَرِىٓءٌ"), ["بر", "ى", "ء"])
+        self.assertEqual(paws("يَشَآءُ"), ["يشآ", "ء"])
+
     def test_tatweel_stretches_a_join_rather_than_breaking_it(self):
         self.assertEqual(paw_count("ٱلْمَشْـَٔمَةِ"), paw_count("ٱلْمَشْئَمَةِ"))
 

@@ -61,7 +61,10 @@ EXPECTED_AYA_TOTALS = {
 
 #: Measured from the Tanzil Uthmani text with the 112 prepended basmalas removed.
 EXPECTED_WORDS = 77_433
-EXPECTED_PAWS = 159_922
+#: Recounted when ``ى`` stopped being treated as a non-joiner: 338 words lost the
+#: break it does not make, and 3 gained the one a bare hamza does. See
+#: ``core.text.arabic.NON_JOINERS`` and migration 0005.
+EXPECTED_PAWS = 159_587
 EXPECTED_KUFI_AYAT = 6_236
 
 
