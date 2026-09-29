@@ -4,8 +4,9 @@ from django.test import TestCase
 from ninja.errors import HttpError
 
 from api.models import EraseStroke, ProcessingRun
-from api.services import coordinates, editing, suras
+from api.services import coordinates, editing
 from api.tests.helpers import bare_mushaf, default_user
+from quran.services import suras
 
 
 class SaveFinalizeTests(TestCase):

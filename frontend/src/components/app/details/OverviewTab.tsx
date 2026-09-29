@@ -50,6 +50,7 @@ export function OverviewTab({
           <PipelineCell
             key={step.slug}
             step={step}
+            index={i + 1}
             mushafId={mushaf.id}
             last={i === steps.length - 1}
           />
@@ -128,10 +129,15 @@ export function OverviewTab({
 
 function PipelineCell({
   step,
+  index,
   mushafId,
   last,
 }: {
   step: StepInfo;
+  /** Position in the pipeline, 1-based. Passed down rather than looked up from
+   * the slug: `pipelineSteps` already fixes the order, and a second copy of it
+   * here silently loses its place the moment a step is added. */
+  index: number;
   mushafId: string;
   last: boolean;
 }) {
@@ -153,7 +159,7 @@ function PipelineCell({
       }
     >
       <div className="flex items-center gap-[7px]">
-        <StepBadge step={step} />
+        <StepBadge step={step} index={index} />
         <span
           className={`text-[11.5px] font-bold ${step.state === "todo" ? "text-text-secondary" : "text-text-primary"}`}
         >
@@ -175,8 +181,7 @@ function PipelineCell({
   );
 }
 
-function StepBadge({ step }: { step: StepInfo }) {
-  const index = { setup: 1, templates: 2, process: 3, review: 4, finalize: 5 }[step.slug];
+function StepBadge({ step, index }: { step: StepInfo; index: number }) {
   if (step.state === "done") {
     return (
       <span className="flex h-[18px] w-[18px] items-center justify-center rounded-full bg-success text-[10px] font-bold text-white">

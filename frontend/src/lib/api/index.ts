@@ -8,4 +8,6 @@ export * from "./suras";
 export * from "./qiraat";
 export * from "./pages";
 export * from "./processing";
+export * from "./words";
 export * from "./queries";
+export * from "./calibration";

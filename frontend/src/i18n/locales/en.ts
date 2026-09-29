@@ -1,7 +1,10 @@
 // English translation catalog. This object's shape is the source of truth for
 // translation keys (see i18next.d.ts) — `ar.ts` must mirror it exactly, which
 // TypeScript enforces via `const ar: typeof en`.
+import { wordPlaybackEn } from "./word-playback.en";
+
 export const en = {
+  wordPlayback: wordPlaybackEn,
   common: {
     appName: "Quran Page Splitter",
     save: "Save",
@@ -215,7 +218,14 @@ export const en = {
       templates: "Templates",
       process: "Process",
       review: "Review",
-      finalize: "Finalize",
+      // The label, not the slug: this stopped being the last step when Words
+      // landed after it, and the route stays /finalize so links keep working.
+      finalize: "Lines",
+      // Two steps where there was one: starting a run over a span of the mushaf
+      // and correcting the cuts page by page are a different job done at a
+      // different time, exactly as Process and Review are.
+      "word-run": "Words",
+      "word-cuts": "Cuts",
     },
   },
   home: {
@@ -455,6 +465,12 @@ export const en = {
   templates: {
     name_sura_header: "Sura header",
     name_aya_separator: "Aya separator",
+    name_sajda: "Sajda symbol",
+    name_rub_hizb: "Rub' al-hizb symbol",
+    hint_sajda: "The prostration marker (۩), printed among the words.",
+    hint_rub_hizb: "The quarter-hizb rosette (۞), printed among the words.",
+    label_sajda: "sajda symbol",
+    label_rub_hizb: "rub' al-hizb symbol",
     hint_sura_header: "The ornamental sura-title band.",
     hint_aya_separator: "A single end-of-aya marker (۝).",
     label_sura_header: "sura header",
@@ -608,6 +624,445 @@ export const en = {
     viewerOpen: "Open line {{n}}",
     lineAlt: "Line {{n}}",
   },
+  words: {
+    // The run
+    runTitle: "Run detection",
+    scopeLabel: "Cover",
+    scopeSura: "One sura",
+    scopeRange: "A range of ayat",
+    scopeMushaf: "The whole mushaf",
+    suraLabel: "Sura",
+    fromSura: "From sura",
+    fromAya: "From aya",
+    toSura: "To sura",
+    toAya: "To aya",
+    mushafSpan: "This mushaf runs {{from}} to {{to}}.",
+    spanUnknown:
+      "Nothing on this mushaf is numbered yet, so there is no span to run. Process and review some pages first.",
+    gapsTitle: "{{count}} break(s) were skipped:",
+    gapLine: "{{after}} (page {{afterPage}}) to {{before}} (page {{beforePage}})",
+    runButton: "Run word detection",
+    running: "Running…",
+    backToRun: "Back to the run",
+    continueCuts: "Continue → Cuts",
+    runFinishedStatus: "Run finished — {{lines}} lines. Review the cuts next.",
+    reviewNextStatus: "Words are stored. Review the cuts, or run another span.",
+    notRunStatus: "Pick what to cover, then run word detection.",
+    runGateHint:
+      "No page has been reviewed yet. Word detection anchors on the aya ornaments that Review is where you confirm, so run it after reviewing at least the pages you want covered.",
+    runNote:
+      "Roughly 50 ms a line — a sura is about 20 seconds, al-Baqara about 90, the whole mushaf 15 to 20 minutes. It runs in the background; you can leave this page.",
+    runStarted: "Reading {{lines}} lines…",
+    runDone: "Word detection finished — {{lines}} lines.",
+    runCancelled: "Stopped. {{lines}} lines were kept.",
+    runFailed: "Could not start word detection.",
+    runRefreshHeld:
+      "This page has unsaved cuts, so it was left as it is. Save or discard them, then reopen the page to see what the run found.",
+    progress: "{{done}} / {{total}} lines",
+    stopRun: "Stop run",
+    stopping: "Stopping…",
+    cancelFailed: "Could not stop the run.",
+    cancelSaved: "Lines already written",
+    cancelRemaining: "Lines left to read",
+    cancelBody:
+      "It stops at the next chunk boundary, never inside one, so no line is left holding half its words. Everything already written stays. To pick up where it left off, run the remaining ayat.",
+
+    // The log
+    logWatch: "Watch the log",
+    logView: "View the log",
+    logDialogTitle: "Word detection log",
+    logLead:
+      "Every step of the run: each line cropped and measured, its writing band, every blob of ink and what it was read as, each ornament and how it was found, and what every word cost to place. This is where to look when a line came out wrong.",
+    logReport: "Report (JSON)",
+
+    // Triage
+    triageTitle: "Lines to check · {{count}} of {{total}}",
+    prevFlagged: "‹ Previous",
+    nextFlagged: "Next ›",
+    noMoreFlagged: "No more flagged lines in that direction.",
+    linePosition: "Line {{n}}",
+    selectLine: "Select a line on the page.",
+    lineCount: "{{count}} text lines",
+    status_exact: "Exact — the engine had no doubts",
+    status_scored: "Scored — worth a look",
+    status_partial: "Partial — only part of the line resolved",
+    status_unresolved: "Unresolved — the engine could not read it",
+    status_none: "Never run over this line",
+    editedChip: "edited by hand",
+
+    // The cuts
+    cutsTitle: "Words on line {{line}} · {{count}}",
+    noCuts: "No words on this line yet.",
+    unlabelled: "(no word in the text)",
+    toggleUnlabelled: "Mark as a word the stored text does not have",
+    removeCut: "Remove this word — its box goes to the word beside it",
+    boxSpan: "starts at {{start}}, ends at {{end}}",
+    insertAfter: "Insert the next word of the text after this one",
+    moveUp: "Move this word up to the end of the line above",
+    moveDown: "Move this word down to the start of the line below",
+    extraAdded: "Added a word the stored text does not have.",
+    countMismatch:
+      "{{count}} stretch(es) hold a different number of cuts than their ayat have words. Add or remove one, or mark the extra as unlabelled.",
+
+    // Saving
+    savePage: "Save page",
+    savedToast: "Saved {{count}} line(s).",
+    saveFailed: "Save failed.",
+    leaveConfirm: "You have unsaved word cuts. Leave without saving?",
+    unsavedStatus: "{{count}} line(s) unsaved",
+    flaggedStatus: "{{count}} line(s) still to look at",
+    cleanStatus: "Every line on this page is settled",
+
+    // Issues
+    issuesTitle: "Coherence · {{count}}",
+    issuesNote:
+      "Reported, never refused — fixing one line before its neighbour passes through a broken state on purpose.",
+    issue_gap: "Gap",
+    issue_overlap: "Overlap",
+    issue_outsideAya: "Outside its aya",
+    issue_outOfSequence: "Out of sequence",
+    issue_unknownWord: "Unknown word",
+    issue_other: "Issue",
+    onLine: "line {{n}}",
+
+    // Canvas
+    undo: "Undo",
+    redo: "Redo",
+    canvasEmpty: "Loading the page…",
+    noWords: "Page {{page}} has no word cuts yet — run detection over the sura it holds.",
+
+    // The gate
+    gateStatus: "Page {{page}} is not ready for word detection",
+    gateHint:
+      "Page {{page}} has to be processed and reviewed first — the engine anchors on the aya separators you settle in Review.",
+    gateUnprocessed:
+      "Page {{page}} has not been processed yet, so it has no lines to cut into words.",
+    gateUnreviewed:
+      "Page {{page}} has not been reviewed yet. Word detection anchors on the aya separators, and Review is where their positions are settled — running before that puts every cut in the wrong place.",
+    gateToProcess: "Go to Process",
+    gateToReview: "Review page {{page}}",
+  },
+  calibration: {
+    // The step switch
+    switchLabel: "How to review this page",
+    switchCuts: "Cuts",
+    switchCalibrate: "Calibrate",
+
+    // The toolbar
+    modeLabel: "What the pointer does",
+    modeBlobs: "Blobs",
+    modeWords: "Words",
+    modeBlobsHelp: "Select ink and say what it is — click, Shift-click to add, or drag a rectangle",
+    modeWordsHelp: "Drag the edges of a word",
+    prevLook: "Previous blob to look at (Shift+N)",
+    nextLook: "Next blob to look at (N)",
+    lookCount: "{{count}} to look at",
+    nothingToLook: "Nothing on this page asks for a look.",
+    dimOn: "Fade every blob that is not asking for a look",
+    dimOff: "Show every blob at full strength",
+
+    // The strips
+    lineLabel: "Line {{n}}",
+    contextLabel: "Page {{page}} · line {{n}}",
+    context: "context",
+    contextConfirmed: "confirmed context",
+    loadingLine: "Loading the line…",
+    maskError: "Could not load this line's ink ({{error}}).",
+    retry: "Retry",
+    loadingPage: "Loading the page…",
+    noLines: "This page has no text lines to show.",
+
+    // Roles, and who decided them
+    role: { body: "Body", mark: "Mark", ornament: "Ornament", symbol: "Symbol" },
+    source: {
+      human: "decided by you",
+      calibration: "locked by calibration",
+      search: "read by the engine",
+    },
+    key: {
+      body: "A letter body — press B",
+      mark: "A mark: a vowel, a dot, a sign — press M",
+      accept: "Give each selected mark its expected type — press A",
+    },
+
+    // The inspector
+    inspectorOne: "Blob {{id}} · line {{line}}",
+    inspectorMany: "{{count}} blobs · line {{line}}",
+    evidence: "Evidence",
+    belongsTo: "Belongs to",
+    exception: "Out of the ordinary",
+    exceptionKind: {
+      none: "Nothing unusual",
+      mixed: "Mixed — a body and a mark in one blob",
+      broken: "Broken — part of a letter",
+      fused: "Fused — letters printed touching",
+      uncertain: "Not sure what this is",
+    },
+    subtypeTitle: "Kind of mark (optional)",
+    types: {
+      title: "Mark types",
+      summary: "{{typed}} of {{marks}} marks typed · {{expected}} expected, {{sure}} of them sure",
+      learnedFrom:
+        "Expected from {{examples}} marks typed on confirmed pages and {{here}} on this one. Type a few more and the rest follow.",
+      nothingYet:
+        "Nothing to learn from yet: type a few marks and every mark like them is expected to match.",
+      acceptSure: "Accept sure types ({{count}})",
+      acceptSureHelp:
+        "Type every mark whose examples agree closely, on the whole page. Undoable; the page still needs your review.",
+      show: "Show each mark's type under its line",
+      untyped: "Not typed, and nothing like it has been typed yet",
+      typedTitle: "{{type}} — typed",
+      sureTitle: "{{type}} — expected, sure. A accepts",
+      likelyTitle: "{{type}} — expected, likely. A accepts",
+      doubtTitle: "{{type}} — typed, but the other pages say {{other}}",
+      doubtful: "{{count}} typed marks look like another type on the other pages.",
+      showDoubtful: "Show them",
+    },
+    // The bar under the lines: what is selected, and the common decisions
+    bar: {
+      empty:
+        "Nothing selected. Click a blob, or press ← to begin. ← → move blob by blob (left is onward, as Arabic reads) · ↑ ↓ line by line · Shift+← → add the next · with a type chosen in the filter the arrows visit only its marks · 1–9, 0 type the selected marks · A accepts the expected type · B body · M mark",
+      typed: "typed",
+      expectedSure: "expected · sure — not typed yet",
+      expectedLikely: "expected · likely — not typed yet",
+      noType: "no type yet — nothing like it has been typed",
+      where: "line {{line}} · #{{id}} · {{w}}×{{h}} px",
+      counts: "{{marks}} marks · {{bodies}} bodies",
+      noWord: "no word",
+      expectedCount: "({{count}} expected)",
+      untypedCount: "{{count}} without a type",
+      doubt: "Typed {{typed}}, but the other pages' examples say {{type}} — worth a second look.",
+      doubtSure:
+        "Typed {{typed}}, but the other pages' examples clearly say {{type}} — a slip of the hand? A wrong type on a confirmed page teaches every page after it.",
+      typeKey: "{{type}} — press {{key}}",
+      moreTypes: "More…",
+      acceptOne: "Accept {{type}}",
+      acceptMany: "Accept expected ({{count}})",
+      evidence: "Nearest typed examples",
+      evidenceElsewhere: "What the other pages say",
+      loadingEvidence: "Finding its nearest typed examples…",
+      noEvidence: "No typed mark is like it yet.",
+      distanceHelp: "How far this type's nearest examples are, on average — smaller is closer",
+      exampleTitle:
+        "Page {{page}}, line {{line}} · distance {{distance}} · ×{{copies}} — opens that page",
+    },
+    // The filter: what may be picked, and which marks are shown
+    filter: {
+      types: "Mark types",
+      count: "{{count}}, {{expected}} expected",
+      untyped: "Not typed yet · {{count}}",
+      doubtful: "Doubtful · {{count}}",
+      help: "What a click, a drag and the arrow keys pick. Choose a type to see its marks in blue — typed or expected — with the rest faded.",
+      shownHelp: "The marks the filter picks out",
+    },
+    unassignMarks: "Unassign marks ({{count}})",
+    selectionFilter: "Selection filter",
+    selectAllBlobs: "All blobs",
+    selectMarks: "Marks only",
+    selectBodies: "Bodies only",
+    subtypeNone: "Not given",
+    subtype: {
+      fatha: "Fatha",
+      damma: "Damma",
+      kasra: "Kasra",
+      sukun: "Sukun",
+      shadda: "Shadda",
+      tanween: "Tanween",
+      madda: "Madda",
+      daggerAlif: "Dagger alif",
+      wasla: "Wasla (hamzat al-wasl)",
+      smallLetter: "Small letter",
+      ijamDot: "I'jam dot",
+      hamza: "Hamza",
+      waqfSili: "Pause sign ۖ (ṣalā)",
+      waqfQili: "Pause sign ۗ (qalā)",
+      waqfJim: "Pause sign ۚ (jīm)",
+      waqfMim: "Pause sign ۘ (mīm)",
+      waqfLa: "Pause sign ۙ (lā)",
+      other: "Other",
+    },
+    assignTitle: "Belongs to word",
+    chooseWord: "Choose a word…",
+    paws: "PAWs",
+    pawsHelp:
+      "How many of the word's connected parts this ink is: 1 usually, 0 for a broken piece of a letter, 2 for two parts printed touching",
+    assign: "Assign",
+    shareWith: "Also part of…",
+    shareHelp:
+      "A body printed touching across a word break belongs to both words; the cut between them is yours to drag",
+    share: "Share",
+    release: "Take back my decisions on these",
+    examplesTitle: "Nearest confirmed examples",
+    proposes: "Calibration would read it as a {{role}}.",
+    noProposal: "Calibration makes no proposal: {{reasons}}.",
+    loadingExamples: "Looking for examples…",
+    noExamples: "No confirmed example is close to it yet.",
+    exampleFrom: "Page {{page}}, line {{line}}",
+
+    // Why a blob asks for a look — signals, never verdicts
+    attention: {
+      uncertain: "Uncertain",
+      searchOverride: "Read against its evidence",
+      calibrationDisagreement: "Calibration disagrees",
+      ambiguous: "Ambiguous",
+      spanBoundary: "At the span's edge",
+      constraintConflict: "Clashes with a decision",
+      releasedLock: "Lock released",
+    },
+    attentionHelp: {
+      uncertain: "Its shape is halfway between a letter body and a mark.",
+      searchOverride:
+        "Its evidence said one thing; the word count made the engine read it as the other.",
+      calibrationDisagreement: "Its nearest confirmed examples say it is the other role.",
+      ambiguous: "Two readings of the line cost the same and disagree about this blob.",
+      spanBoundary:
+        "It sits where the ayat of this page begin or end, and belongs to text outside them.",
+      constraintConflict: "No reading of its aya honours every decision made on it.",
+      releasedLock:
+        "Calibration locked it, and its aya could only be read with the lock taken off.",
+    },
+    // Why calibration makes no proposal
+    reason: {
+      noExamples: "there are no confirmed examples yet",
+      mixedNeighbors: "its nearest examples disagree",
+      insufficientSupport: "too few examples agree about it",
+      insufficientPages: "its examples come from too few pages",
+      tooFar: "its nearest examples are not close enough",
+      missingOpposite: "there is no example of the other role to compare it with",
+      insufficientMargin: "an example of the other role is almost as close",
+      insufficientRatio: "the other role's nearest example is not twice as far away",
+    },
+
+    // The words of a line
+    wordsTitle: "Words on line {{line}} · {{count}}",
+    noWords: "No words were placed on this line.",
+    unlabelledWord: "(a word the text does not have)",
+    selectWordInk: "Select this word's ink",
+    shared: "shared",
+    countHelp: "The PAWs its ink gives it, against what its spelling needs",
+    resetEdges: "Take this word's edges from its ink again",
+
+    // What a confirmation acknowledges
+    exceptionsTitle: "To acknowledge · {{count}}",
+    exceptionsNote: "Allowed — but confirming the page asks you to acknowledge each one.",
+    problem: { flagged: "Flagged", pawCount: "PAW count", unresolved: "Not settled" },
+    moreExceptions: "…and {{count}} more",
+    issuesTitle: "What the last reading reported",
+
+    // The page
+    pageTitle: "Page {{page}}",
+    pageSection: "Page {{page}} · learning",
+    experimentalBadge: "experimental",
+    draft: "Draft",
+    revision: "revision {{revision}}",
+    confirmation: "Confirmed",
+    notConfirmed: "not yet",
+    confirmedAt: "at revision {{revision}}",
+    editedSinceConfirm: "at revision {{revision}}, edited since",
+    learning: "Learns from",
+    learningFrom: "{{count}} confirmed page(s) · {{examples}} examples",
+    learningNone: "no confirmed page before this one yet",
+    shadowNote:
+      "This page was processed in shadow mode: learned role predictions were not applied.",
+    experimentalSwitch: "Apply learning to new pages (experimental)",
+    experimentalTitle: "Apply unvalidated learning?",
+    experimentalWarning:
+      "Confirmed pages will guide body/mark decisions on newly processed later pages, starting with examples from the first confirmed page. Only close, agreeing matches with enough distinct examples apply. Accuracy has not been validated, and confident predictions can be wrong. Continue reviewing every page. Saved drafts do not teach. Existing pages are not rewritten. Turning this off stops application on new pages.",
+    enableExperimental: "Enable for new pages",
+    experimentalNote:
+      "This page used experimental learned role restrictions. Review is still required.",
+    heldHint:
+      "This page changed elsewhere while you were editing it, so saving these edits would be refused. Reload to take the new version — your unsaved edits here are dropped.",
+    staleHint:
+      "The page's lines changed after this draft was made — re-processed, re-reviewed or erased — so the draft is shown read-only. Process the page again: the decisions on its unchanged lines are kept.",
+    contextStaleHint:
+      "A neighbouring page's lines changed after this page was processed, so it cannot be previewed until it is processed again. Saving and confirming still work, and processing again keeps your decisions on this page's unchanged lines — save any unsaved edits first.",
+
+    // Processing
+    process: "Process page {{page}}",
+    processAgain: "Process page {{page}} again",
+    processing: "Processing…",
+    processIntro:
+      "Processing measures every blob of ink on this page's lines, reads the page, and keeps the result as a draft to review. The lines of ayat that run onto the neighbouring pages come along as context.",
+    processStarted: "Processing page {{page}}…",
+    processDone: "Page {{page}} is ready to review.",
+    processCancelled: "Processing stopped. Nothing was stored.",
+    processOther: "Page {{page}} is being processed — one page at a time.",
+    stop: "Stop",
+
+    // Preview, save, confirm
+    preview: "Preview",
+    previewHelp: "Read the page again under your decisions, without storing anything",
+    previewing: "Reading…",
+    previewBanner:
+      "Preview: the page read again under your decisions. Accept stores it as the draft; discard leaves the draft as it was.",
+    acceptPreview: "Accept and save",
+    discardPreview: "Discard",
+    acceptedToast: "Preview accepted and saved.",
+    saveDraft: "Save draft",
+    savedToast: "Draft saved.",
+    confirm: "Confirm page…",
+    confirmedToast: "Page {{page}} confirmed.",
+    requestFailed: "The request failed.",
+    reload: "Reload",
+    leaveConfirm: "You have unsaved calibration edits. Leave without saving?",
+
+    // Status
+    statusNotProcessed: "Process this page to start",
+    statusStale: "The draft no longer matches the page",
+    statusContextStale: "A neighbouring page changed — process again to preview",
+    statusHeld: "Changed elsewhere — reload to continue",
+    statusPreview: "Previewing — accept or discard",
+    statusUnsaved: "Unsaved edits",
+    statusLook: "{{count}} blob(s) to look at",
+    statusConfirmed: "Confirmed",
+    statusClean: "Nothing flagged — confirm when the page reads right",
+
+    // The confirm dialog
+    confirmTitle: "Confirm page {{page}}",
+    confirmIntro: "Confirming approves the whole page — not only what was flagged:",
+    confirmWords: "its words replace the page's word cuts;",
+    confirmExamples: "its blobs become examples for the pages after it.",
+    confirmExceptions: "{{count}} thing(s) still disagree with the text:",
+    confirmAcknowledge: "I have looked at these, and confirm the page as it is",
+    confirmClean: "Nothing disagrees with the text.",
+    confirmButton: "Confirm page",
+    confirming: "Confirming…",
+
+    // The evaluation
+    evaluationTitle: "How calibration would do",
+    evaluationIntro:
+      "{{count}} confirmed page(s), each read three ways and compared with what you confirmed. A page is only ever proposed for from pages confirmed before it.",
+    evaluationLoading: "Reading the confirmed pages again…",
+    evaluationEmpty: "Confirm a page to start measuring.",
+    engine: {
+      frozen: "Old engine",
+      canonical: "Full line",
+      calibrated: "Calibrated",
+      confirmed: "Confirmed",
+    },
+    comparePage: "Compare page {{page}}",
+    comparisonUnavailable: "This reading is unavailable.",
+    metric: {
+      bodyAsMark: "Bodies read as marks",
+      markAsBody: "Marks read as bodies",
+      wordsMoved: "Words moved",
+      wordsWrongLine: "Words on the wrong line",
+      wordsMissing: "Words missing",
+      wordsDuplicated: "Words placed twice",
+      wordsExtra: "Extra words",
+    },
+    proposedBody: "Proposed “body”",
+    proposedMark: "Proposed “mark”",
+    proposalScore: "{{made}} made, {{wrong}} wrong",
+    releasedLocks: "Locks released",
+    evaluationPages: "By page ({{count}})",
+    evaluationPage: "Page",
+    pageErrorsHelp: "Everything this reading got wrong on the page",
+    gateShadow:
+      "These results are not validation approval. Experimental application is a separate opt-in and still requires full review.",
+    gateOpen: "These numbers allow calibration to be switched on.",
+  },
   details: {
     tab_overview: "Overview",
     tab_pages: "Pages",
@@ -624,8 +1079,6 @@ export const en = {
     rail_pngs: "PNGs",
     rail_templates: "Templates",
     rail_edit: "Edit →",
-    rail_suraHeader: "Sura header",
-    rail_ayaSeparator: "Aya separator",
     rail_notCaptured: "not captured",
     rail_record: "Record",
     rail_quranRange: "Quran range",
@@ -672,19 +1125,22 @@ export const en = {
     step_awaiting: "awaiting pages",
     step_pngsOut: "{{count}} PNGs out",
     step_pngsProgress: "{{done}} / {{total}} PNGs",
+    step_wordsTodo: "not run yet",
+    step_wordsDone: "{{pages}} pages cut",
+    step_wordsFlagged: "{{count}} lines to check",
     // Continue CTA sublabels
     cta_setup: "Setup · mark Quran range",
     cta_templates: "Templates · capture both",
     cta_process: "Process · 0/{{total}}",
     cta_review: "Review · p.{{page}}/{{total}}",
-    cta_finalize: "Finalize · {{count}} PNGs out",
+    cta_finalize: "Lines · {{count}} PNGs out",
+    cta_wordsRun: "Words · run the boundary engine",
+    cta_wordsReview: "Words · check p.{{page}}",
     // Activity feed
     act_uploaded: "{{name}} uploaded",
     act_pdfFallback: "PDF",
     act_boundsSet: "Quran bounds set — pp.{{first}}–{{last}}",
     act_templateSaved: "{{type}} template saved",
-    act_tplAya: "Aya-separator",
-    act_tplSura: "Sura-header",
     act_runCompleted: "Run {{num}} completed (pp.{{start}}–{{end}})",
     act_runAborted: "Run {{num}} aborted — line mismatch",
     act_runAbortedAt: "Run {{num}} aborted — line mismatch at p.{{page}}",
@@ -692,6 +1148,9 @@ export const en = {
     act_runCancelled: "Run {{num}} stopped — {{saved}} pages saved",
     act_reviewRange: "Review saved — pages {{start}}–{{end}} ({{shown}})",
     act_reviewPage: "Review saved — page {{page}}",
+    act_wordsDetected: "Words {{span}} — {{words}} cuts on {{lines}} lines",
+    act_wordsStopped: "Word run {{span}} stopped — {{lines}} lines kept",
+    act_wordsEdited: "Word cuts edited on p.{{page}} ({{lines}} lines)",
     act_linesExported: "Line PNGs exported — page {{page}} ({{lines}} lines)",
     // Run status
     runStatus_completed: "Completed",
@@ -747,6 +1206,11 @@ export const en = {
     set_countingFollows: "Counting system follows the qiraa",
     set_countingDetail: " — {{name}} · {{total}} ayat",
     set_qiraatAvailable: ". {{count}} qiraat available.",
+    set_ijam: "Letter dots (i'jam)",
+    set_ijamReport: "Flag a word that lost a dot",
+    set_ijamIgnore: "Do not check dots",
+    set_ijamHint:
+      "Word detection expects the dots a word's spelling implies. Maghribi script puts fa's dot below rather than above, and some mushafs leave a final ya undotted — set this to \"Do not check\" there, or every such word is reported short.",
     set_saveChanges: "Save changes",
     set_updated: "Mushaf updated.",
     set_updateFailed: "Failed to update mushaf.",
@@ -908,6 +1372,7 @@ export const en = {
     templates: {
       s1: "On a clear, ordinary page — never one of the first two — draw a tight box around the sura-title band and capture it.",
       s2: "Do the same for one aya separator (۝).",
+      s2b: "The sajda and rub' al-hizb symbols are optional, and only matter on the lines that print them — capture them and word detection stops reading them as letters.",
       s3: "Optionally, select the variable area for better accuracy.",
       s4: "Save each template — they're matched against every page.",
     },
@@ -931,6 +1396,30 @@ export const en = {
       s3: "Hold Shift and paint to erase ink bleeding in from a neighbouring line — erasing one line never touches another.",
       s4: "Save the cuts, then export the page to transparent line images.",
       s5: "Download the images as a zip once you're happy with them — ready to copy into the app.",
+    },
+    wordRun: {
+      s1: "Choose what this run covers: one sura, a range of ayat that may cross suras, or the whole mushaf.",
+      s2: "A run is addressed by aya, never by page — the engine walks one cursor through the Quran text and an aya is the only place it can start from.",
+      s3: "Roughly 50 ms a line: a sura is about 20 seconds, al-Baqara about 90, the whole mushaf 15 to 20 minutes. It runs in the background.",
+      s4: "Breaks it had to step over are listed when it starts — those are pages it could not read, and they stay on screen until the next run.",
+    },
+    wordCuts: {
+      s1: "Pick a sura and run the engine over it. It reads every line's ink and works out where each word ends.",
+      s2: "The gutter beside each line says how much the engine trusted itself: green is exact, amber is worth a look, red it could not read.",
+      s3: "Step only through the lines it flagged — the ‹ › buttons walk them, and roll on to the next page that has any.",
+      s4: "Each word is a box over its own ink. Drag an edge to move that side, or the middle to slide the whole word — dragging never changes which word it is, only where it sits.",
+      s5: "Double-click inside a box to split it there, and the line takes the next word of the text, shifting the rest along. Removing a word hands its box to the word beside it.",
+      s6: "Where the engine missed a word in the gap *between* two boxes there is nothing to double-click, so + in the word list inserts one after the word you name. A word this riwaya prints and the stored text does not is then one ∅ away: that gives its label back to the sequence.",
+      s7: "Save the page. Coherence breaks are reported, not refused — fixing one line before its neighbour is meant to pass through a broken state.",
+    },
+    calibration: {
+      s1: "Process the page. Every blob of ink on its lines is measured and the page is read; the lines of ayat running onto the neighbouring pages come along as context.",
+      s2: "Bodies are near-black and marks teal. Ornaments are purple, symbols amber. Each word's badge shows assigned / expected PAWs. Selected bodies have solid outlines; selected marks have dashed outlines.",
+      s3: "Step through what asks for a look with N and Shift+N. A flag is a signal, never a verdict — and an unflagged blob is not thereby right.",
+      s4: "In Blobs mode, click a blob — or press ← — and the bar under the lines says what it is, its type, and its word. ← → move blob by blob, ↑ ↓ line by line, Shift adds the next. Under each line every mark shows its type: solid when typed, dashed when only expected. A accepts the expected type, 1–9 and 0 type the selected marks, B sets Body, M sets Mark. Choose a type in the filter to see only its marks, in blue — the quick way to catch one that is not what it says; Doubtful lists typed marks the other pages disagree with.",
+      s5: "Assign ink to a word: its box spans all of its ink, bodies and marks alike — a dragged box too is always wide enough for its own ink. A mark that belongs to no word would stretch its neighbour's box, so Unassign marks leaves it unattached. Shared bodies need per-word PAW contributions and an internal cut.",
+      s6: "In Words mode, drag a word's edges. A dragged edge is kept by every later reading, until you reassign that word's ink.",
+      s7: "Preview recalculates affected ayat without saving; accept or discard it. Save draft keeps unfinished work. Confirm page makes it teach the next page you process. Enable Apply learning to new pages for experimental automatic role decisions. Suggested mark types remain editable and need explicit confirmation to teach their type.",
     },
   },
   tips: {
@@ -960,6 +1449,8 @@ export const en = {
       "Breathing room kept above and below every line of this page, in one go. Raise it if the cuts clip tails or dots.",
     lineBox:
       "Y and H trim the line's top and bottom. X and W are locked to the shared page column.",
+    wordsSpan:
+      "A run is addressed by aya, not by page — the engine walks one cursor through the words, and an aya is the only place it can start from. A sura run ends at that sura's last aya in this mushaf's own counting; a range starts and ends anywhere, in one sura or across many; the whole mushaf runs everything the pages actually hold, skipping any that are not processed and renumbered and naming them afterwards.",
   },
   coach: {
     dismiss: "Dismiss hint",
@@ -974,6 +1465,12 @@ export const en = {
       "Step lines with ▲▼ · double-click a text line to add a separator ۝ · click a separator, then Delete removes it.",
     finalize:
       "Drag a line's top or bottom edge to trim it · hold Shift to erase · hold Space to pan.",
+    wordRun:
+      "Choose a span and run the engine. It works in the background — you can leave this page.",
+    wordCuts:
+      "Drag a box edge or its middle · double-click inside a box to split it · select a word, then × or Delete removes it · + in the list inserts a word, ∅ marks one the text does not have.",
+    calibration:
+      "← → next blob · ↑ ↓ line · B body · M mark · 1–9, 0 type · A accept the expected type · N the next thing to look at · Ctrl+S saves the draft",
   },
   tour: {
     next: "Next",
@@ -1048,6 +1545,25 @@ export const en = {
       t3_body:
         "Save the cuts, export the page to transparent images, then download them as a zip. Exporting the whole mushaf lives in the details Export tab.",
     },
+    wordRun: {
+      t1_title: "What to cover",
+      t1_body:
+        "One sura, a range of ayat that may cross as many suras as you like, or the whole mushaf. A run is addressed by aya rather than by page, because the engine walks one cursor through the Quran text and an aya is the only place it can start from.",
+      t2_title: "Start it and leave",
+      t2_body:
+        "It runs on the server, so you can close this page and come back. The rail marks which pages hold words as each chunk lands, and the log is readable while it is still being written.",
+    },
+    wordCuts: {
+      t1_title: "Canvas tools",
+      t1_body:
+        "Zoom with the buttons or Ctrl+wheel, and undo or redo an edit. Every word is a box, so what you drag is an edge or a whole word, never a bare line with nothing between it and the next.",
+      t2_title: "One line per strip",
+      t2_body:
+        "Each text line is cut from the page and laid out here, with a box over every word — which is the highlight a reader will eventually see. Arabic runs right to left, so a word starts at its right edge and ends at its left, and boxes may overlap where a tail sweeps under its neighbour.",
+      t3_title: "Only the lines that need you",
+      t3_body:
+        "The engine records how much it trusted each line, so you read the handful it flagged instead of every word on the page. The ‹ › buttons step through those, and roll on to the next page that has any.",
+    },
   },
   stepStatus: {
     setupLocked: "Range locked — pages are already processed.",
@@ -1064,5 +1580,8 @@ export const en = {
     reviewUnsaved: "{{count}} unsaved change(s) — save when ready.",
     reviewClean: "All changes saved.",
     finalizeReady: "Trim and erase, then save or export the page.",
+    wordsTodo: "Run word detection over a sura to begin.",
+    wordsFlagged: "{{count}} line(s) the engine wants a second opinion on.",
+    wordsClean: "Every cut on this page is settled.",
   },
 };

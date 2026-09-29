@@ -1,6 +1,7 @@
 // Shared formatting + derivation helpers for the mushaf details page.
 import i18n from "@/i18n/config";
 import type {
+  TemplateType,
   ActivityEvent,
   MushafDetail,
   MushafStats,
@@ -8,6 +9,7 @@ import type {
   PageSummary,
   Rect,
   Run,
+  WordCoverage,
 } from "@/lib/api";
 
 // ── Status pill (top chrome) ─────────────────────────────────────────────────
@@ -169,10 +171,9 @@ export function activityMeta(event: ActivityEvent): { dot: string; text: string 
       return {
         dot: "var(--success)",
         text: i18n.t("details.act_templateSaved", {
-          type:
-            p.template_type === "aya_separator"
-              ? i18n.t("details.act_tplAya")
-              : i18n.t("details.act_tplSura"),
+          // Named from the shared per-type strings. This was a binary ternary and
+          // would have called a sajda a sura header.
+          type: i18n.t(`templates.name_${p.template_type as TemplateType}`),
         }),
       };
     case "run_finished": {
@@ -221,13 +222,50 @@ export function activityMeta(event: ActivityEvent): { dot: string; text: string 
         dot: "var(--navy-light)",
         text: i18n.t("details.act_linesExported", { page: p.page_number, lines: p.exported }),
       };
+    case "words_detected": {
+      // A cancelled run still wrote everything it finished — it settles, it does
+      // not fail — so it reads as a partial result rather than an error.
+      const span = `${p.from ?? "?"} → ${p.to ?? "?"}`;
+      if (p.cancelled) {
+        return {
+          dot: "var(--text-muted)",
+          text: i18n.t("details.act_wordsStopped", { span, lines: Number(p.lines ?? 0) }),
+        };
+      }
+      return {
+        dot: Number(p.unresolved ?? 0) > 0 ? "var(--warning)" : "var(--success)",
+        text: i18n.t("details.act_wordsDetected", {
+          span,
+          words: Number(p.words ?? 0),
+          lines: Number(p.lines ?? 0),
+        }),
+      };
+    }
+    case "words_edited":
+      return {
+        dot: "var(--orange)",
+        text: i18n.t("details.act_wordsEdited", {
+          page: p.page_number,
+          lines: Number(p.lines ?? 0),
+        }),
+      };
     default:
       return { dot: "var(--text-muted)", text: event.type };
   }
 }
 
 // ── Pipeline derivation ──────────────────────────────────────────────────────
-export type StepSlug = "setup" | "templates" | "process" | "review" | "finalize";
+/** The slug is the URL and the i18n key, and `finalize` keeps both even though
+ * that step now reads "Lines" — it stopped being the final one when Words landed
+ * after it, and renaming the route would break every saved link for a label. */
+export type StepSlug =
+  | "setup"
+  | "templates"
+  | "process"
+  | "review"
+  | "finalize"
+  | "word-run"
+  | "word-cuts";
 
 export type StepInfo = {
   slug: StepSlug;
@@ -243,6 +281,7 @@ export function pipelineSteps(
   templatesReady: boolean,
   stats: MushafStats | undefined,
   abortPage: number | null,
+  wordCoverage?: WordCoverage,
 ): StepInfo[] {
   const logical = mushaf.logical_page_count;
   const processed = mushaf.processed_page_count;
@@ -319,6 +358,46 @@ export function pipelineSteps(
             detail: i18n.t("details.step_pngsProgress", { done: exported, total: linesCut }),
           };
 
+  // Words is the one step with no "how far through" to report until it has run at
+  // all: coverage lists only pages that hold Line rows, so an empty list means the
+  // engine has never been over this mushaf, not that it found nothing.
+  //
+  // Split in two the way the pages are: the run is done once anything has been
+  // read, and the cuts are done once nothing is left flagged. Reading "Words done,
+  // Cuts active" is the honest state of a mushaf the engine has covered and nobody
+  // has checked — which one combined step could not say.
+  const wordPages = wordCoverage?.pages.filter((p) => p.lines_with_words > 0) ?? [];
+  const flaggedLines = wordPages.reduce((n, p) => n + p.needs_review, 0);
+  const hasWords = wordPages.length > 0;
+  const wordRun: StepInfo = {
+    slug: "word-run",
+    label: i18n.t("header.steps.word-run"),
+    state: hasWords ? "done" : "todo",
+    detail: hasWords
+      ? i18n.t("details.step_wordsDone", { pages: wordPages.length })
+      : i18n.t("details.step_wordsTodo"),
+  };
+  const wordCuts: StepInfo = !hasWords
+    ? {
+        slug: "word-cuts",
+        label: i18n.t("header.steps.word-cuts"),
+        state: "todo",
+        detail: i18n.t("details.step_wordsTodo"),
+      }
+    : flaggedLines === 0 && wordCoverage?.complete
+      ? {
+          slug: "word-cuts",
+          label: i18n.t("header.steps.word-cuts"),
+          state: "done",
+          detail: i18n.t("details.step_wordsDone", { pages: wordPages.length }),
+        }
+      : {
+          slug: "word-cuts",
+          label: i18n.t("header.steps.word-cuts"),
+          state: "active",
+          detail: i18n.t("details.step_wordsFlagged", { count: flaggedLines }),
+        };
+
   return [
     {
       slug: "setup",
@@ -340,6 +419,8 @@ export function pipelineSteps(
     process,
     review,
     finalize,
+    wordRun,
+    wordCuts,
   ];
 }
 
@@ -349,6 +430,7 @@ export function continueTarget(
   templatesReady: boolean,
   summaries: PageSummary[] | undefined,
   stats: MushafStats | undefined,
+  wordCoverage?: WordCoverage,
 ): { slug: StepSlug; sub: string; reviewPage?: number } {
   const processed = mushaf.processed_page_count;
   const reviewed = mushaf.reviewed_page_count;
@@ -369,6 +451,25 @@ export function continueTarget(
     };
   }
   const exported = stats?.exported_pngs ?? 0;
+  if (exported === 0)
+    return { slug: "finalize", sub: i18n.t("details.cta_finalize", { count: 0 }) };
+
+  // Words comes last, and only once the lines are out: the engine reads a line
+  // image with Finalize's erase strokes already punched out of it (see
+  // export.render_line_image), so running before that is reading the wrong ink.
+  // A flagged page sends you to the cuts, with the page; nothing read yet sends
+  // you to the run. The two used to be one destination because they were one page.
+  const flagged = (wordCoverage?.pages ?? []).find((p) => p.needs_review > 0);
+  if (flagged) {
+    return {
+      slug: "word-cuts",
+      sub: i18n.t("details.cta_wordsReview", { page: flagged.page }),
+      reviewPage: flagged.page,
+    };
+  }
+  if (!wordCoverage?.pages.some((p) => p.lines_with_words > 0)) {
+    return { slug: "word-run", sub: i18n.t("details.cta_wordsRun") };
+  }
   return { slug: "finalize", sub: i18n.t("details.cta_finalize", { count: exported }) };
 }
 
@@ -378,4 +479,6 @@ export const STEP_ROUTES = {
   process: "/mushafs/$mushafId/process",
   review: "/mushafs/$mushafId/review",
   finalize: "/mushafs/$mushafId/finalize",
+  "word-run": "/mushafs/$mushafId/word-run",
+  "word-cuts": "/mushafs/$mushafId/word-cuts",
 } as const satisfies Record<StepSlug, string>;

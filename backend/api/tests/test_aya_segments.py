@@ -18,8 +18,7 @@ import numpy as np
 from django.test import SimpleTestCase
 from PIL import Image
 
-from core.aya_separator import AyaSeparatorProcessor
-from core.context import BBox, LineResult
+from core.page_detection import AyaSeparatorProcessor, BBox, LineResult
 
 LINE_LEFT = 100
 LINE_WIDTH = 1000

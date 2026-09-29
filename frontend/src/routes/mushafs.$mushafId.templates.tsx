@@ -24,14 +24,14 @@ import {
   useTemplates,
   type Rect,
   type Template,
+  REQUIRED_TEMPLATE_TYPES,
+  TEMPLATE_TYPES,
   type TemplateType,
 } from "@/lib/api";
 import { cropUrlToBlob } from "@/lib/image";
 import { getTemplateDraft, setTemplateDraft } from "@/lib/templateDraft";
 
 export const Route = createFileRoute("/mushafs/$mushafId/templates")({ component: TemplatesPage });
-
-const TEMPLATE_TYPES: TemplateType[] = ["sura_header", "aya_separator"];
 
 /** Logical pages whose sura band and aya markers are drawn as a one-off: the
  * Fatiha opening and the start of al-Baqara sit inside an ornamental frame, so
@@ -191,21 +191,24 @@ function TemplatesPage() {
   const logicalCount = mushaf.logical_page_count;
   const pageUrl = pageImageUrl(mushafId, preview, mushaf.updated_at);
 
-  const headerSaved = isSaved("sura_header");
-  const sepSaved = isSaved("aya_separator");
+  // Only the two required ones decide the step's status. The symbols are optional
+  // — they affect just the lines that print them — so a mushaf without them is
+  // not incomplete, and saying otherwise would mark every existing one unfinished.
+  const requiredSaved = REQUIRED_TEMPLATE_TYPES.filter(isSaved).length;
   // Plain instructions, not a checklist: a saved template still gets re-cropped
   // once detection disagrees with it, so "done" was never the whole truth. The
   // card chips already report what is saved.
   const guideItems = [
     t("guide.templates.s1"),
     t("guide.templates.s2"),
+    t("guide.templates.s2b"),
     t("guide.templates.s3"),
     t("guide.templates.s4"),
   ];
   const status =
-    headerSaved && sepSaved ? (
+    requiredSaved === REQUIRED_TEMPLATE_TYPES.length ? (
       <StatusLine tone="success">{t("stepStatus.templatesDone")}</StatusLine>
-    ) : headerSaved || sepSaved ? (
+    ) : requiredSaved > 0 ? (
       <StatusLine>{t("stepStatus.templatesPartial")}</StatusLine>
     ) : (
       <StatusLine>{t("stepStatus.templatesNone")}</StatusLine>

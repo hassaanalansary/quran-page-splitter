@@ -1,0 +1,101 @@
+"""Assemble everything one run of the word-boundary engine needs, from the database.
+
+One call in, a ``WordBoundaryInput`` out. It lives in ``api`` because it is the only
+layer allowed to reach into both apps: the pictures come from a mushaf's pages
+(``api``), the words from the Quran text (``quran``), and the thing that joins them
+is the mushaf's own riwaya.
+
+    mushaf → rawi → qiraa → counting system → which words each aya holds
+
+That chain is the point. Ask for 7:82 on a Hafs mushaf and on a Warsh one and you
+get different words, because the two count their ayat differently — and the engine
+anchors on aya ornaments, so being handed the wrong aya boundaries would put every
+word cut on the page in the wrong place.
+
+Nothing here runs the engine. It assembles what a run needs and hands it over; the
+API calls ``detect_words`` and then ``services.word_coordinates`` to store the answer.
+"""
+
+import uuid
+from dataclasses import dataclass
+from typing import cast
+
+from accounts.models import User
+from api.models import Mushaf
+from api.services import line_images as line_images_service
+from api.services import mushaf as mushaf_service
+from api.services.line_images import PlacedLine
+from core.word_boundary import IjamMode, WordBoundaryInput
+from quran.models import CountingSystem
+from quran.services import words as words_service
+
+
+@dataclass(frozen=True)
+class EngineRun:
+    """One prepared run: what the engine eats, and what it will take to store.
+
+    ``placements`` is parallel to ``source.lines`` — same lines, same order — and
+    carries the row and the page offset each picture came from. The engine answers in
+    image coordinates and has no idea either exists, which is the point; keeping them
+    here is what lets the result be written back afterwards.
+    """
+
+    source: WordBoundaryInput
+    counting_system: CountingSystem
+    placements: list[PlacedLine]
+
+
+def counting_system_for(mushaf: Mushaf) -> CountingSystem:
+    """The counting system this mushaf's ayat are numbered in.
+
+    A mushaf without a riwaya cannot be aligned: there is no way to know where its
+    ayat end, and guessing Kufi would quietly mis-cut every Warsh or Qalun page.
+    """
+    system = mushaf.rawi.counting_system if mushaf.rawi else None
+    if system is None:
+        raise LookupError(
+            f"{mushaf.name} has no riwaya set, so its counting system is unknown — "
+            f"set one before running word detection."
+        )
+    return system
+
+
+def prepare_engine_input(
+    mushaf_id: uuid.UUID,
+    *,
+    user: User | None,
+    start: tuple[int, int],
+    end: tuple[int, int] | None = None,
+) -> EngineRun:
+    """Line images and the word stream for one span, ready for the engine.
+
+    ``start`` and ``end`` are ``(sura, aya)`` in the mushaf's own numbering.
+    ``end`` defaults to the last aya of the sura the run starts in — a whole sura
+    is the natural unit, and a caller that wants less says so.
+
+    Lines are always cut fresh from the PDF, so an erase stroke edited after the last
+    export is picked up without asking.
+    """
+    mushaf = mushaf_service.get_mushaf(mushaf_id, user=user, write=False)
+    system = counting_system_for(mushaf)
+    if end is None:
+        end = (start[0], words_service.sura_last_aya(system, start[0]))
+
+    placements = line_images_service.line_images(mushaf, start=start, end=end)
+    stream = words_service.word_stream(system, start=start, end=end)
+    return EngineRun(
+        source=WordBoundaryInput(
+            lines=[placed.image for placed in placements],
+            words=stream,
+            separator_template=line_images_service.separator_template(mushaf),
+            # Declared per mushaf, never inferred. The stored text describes one
+            # dotting convention and a Maghribi printing does not follow it — see
+            # `core.word_boundary.inputs.IjamMode`.
+            ijam=cast(IjamMode, mushaf.ijam_mode),
+            # Matched per line by the engine, because nothing upstream looked for
+            # them — see `line_images.symbol_templates`.
+            symbol_templates=line_images_service.symbol_templates(mushaf),
+        ),
+        counting_system=system,
+        placements=placements,
+    )

@@ -1,0 +1,173 @@
+"""Aya separator detection and line splitting.
+
+Detects aya separator ornaments within text lines using fixed-size
+grayscale template matching, then splits each line into segments. Mutates
+PageContext by populating line.segments.
+"""
+
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass
+
+from PIL import Image
+
+from core.imaging import IgnoreRect, find_content_bbox, locate_x_matches, make_template_spec
+from core.page_detection.context import BBox, LineResult, PageContext, SegmentResult
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class AyaSeparatorConfig:
+    match_threshold: float = 0.35
+    short_line_ratio: float = 0.98
+    min_segment_width: int = 20
+
+
+class AyaSeparatorProcessor:
+    def __init__(
+        self,
+        template: Image.Image,
+        config: AyaSeparatorConfig | None = None,
+        ignore_rect: IgnoreRect | None = None,
+        *,
+        prefer_acceleration: bool = True,
+    ):
+        self.config = config or AyaSeparatorConfig()
+        self.template = make_template_spec(
+            template,
+            ignore_rect,
+            self.config.match_threshold,
+            "aya_separator",
+            prefer_acceleration=prefer_acceleration,
+        )
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
+    def split_segments(self, ctx: PageContext) -> None:
+        """Detect aya separators in each non-sura line and populate segments.
+
+        Mutates ctx.lines by setting line.segments and line.content_bbox.
+        """
+        for line in ctx.lines:
+            if line.is_sura or line.is_besmella:
+                continue
+
+            line_binary = ctx.line_binary(line)
+
+            # Compute and cache the tight content bounding box
+            content_result = find_content_bbox(line_binary)
+            if content_result is None:
+                # Empty line — single empty segment
+                line.segments.append(SegmentResult(bbox=line.bbox, has_separator=False))
+                continue
+
+            cx, cy, cw, ch = content_result
+            line.content_bbox = BBox(
+                left=line.bbox.left + cx,
+                top=line.bbox.top + cy,
+                right=line.bbox.left + cx + cw,
+                bottom=line.bbox.top + cy + ch,
+            )
+
+            # Determine if line is "short" (content narrower than full line)
+            content_ratio = cw / max(1, line.bbox.width)
+            line_gray = ctx.line_grey(line)
+            if content_ratio < self.config.short_line_ratio:
+                # Use trimmed content region for separator detection
+                detect_offset_x = cx
+                detect_width = cw
+            else:
+                detect_offset_x = 0
+                detect_width = line.bbox.width
+
+            # Detect separator positions
+            boxes = locate_x_matches(line_gray, self.template)
+
+            if not boxes:
+                # No separators — single segment
+                seg_bbox = line.content_bbox if content_ratio < self.config.short_line_ratio else line.bbox
+                line.segments.append(SegmentResult(bbox=seg_bbox, has_separator=False))
+                continue
+
+            # Split at separator positions (RTL order)
+            self._create_segments(line, boxes, detect_offset_x, detect_width)
+
+            sep_count = sum(1 for s in line.segments if s.has_separator)
+            logger.info(
+                "  Line %d: %d segment(s), %d separator(s)",
+                line.line_index,
+                len(line.segments),
+                sep_count,
+            )
+
+    # ------------------------------------------------------------------
+    # Segment creation
+    # ------------------------------------------------------------------
+
+    def _create_segments(
+        self,
+        line: LineResult,
+        boxes: list[tuple[int, int]],
+        detect_offset_x: int,
+        detect_width: int,
+    ) -> None:
+        """Create SegmentResult objects from separator boxes in RTL order.
+
+        Cuts at the LEFT edge of each separator so the separator ornament
+        is included with the aya text to its right (the aya it terminates).
+
+        Everything here is in line-box coordinates — the same space the matcher
+        reported its hits in — and only the content window narrows the result.
+        Matching deliberately runs across the whole line while segments are cut
+        from the content, because a separator sitting at the very end of a line
+        cannot be found inside a region trimmed to the ink: the template carries
+        white padding that has nothing to sit on there. Mixing the two spaces is
+        what used to push a segment's right edge past the content by the width
+        of the left margin, and drop the rightmost segment of a short line.
+
+        Coordinates are translated to original page space.
+        """
+        min_w = self.config.min_segment_width
+        content_left = detect_offset_x
+        content_right = detect_offset_x + detect_width
+        end = content_right
+
+        for sep_left, _ in reversed(boxes):  # right-to-left
+            # A hit out in the margin has no text to cut from; clamping collapses
+            # it to nothing and the width check below discards it.
+            cut = min(max(sep_left, content_left), end)
+            if end - cut >= min_w:
+                line.segments.append(
+                    SegmentResult(
+                        bbox=BBox(
+                            left=line.bbox.left + cut,
+                            top=line.bbox.top,
+                            right=line.bbox.left + end,
+                            bottom=line.bbox.bottom,
+                        ),
+                        has_separator=True,
+                    )
+                )
+                end = cut
+
+        # Leftmost remaining text — no separator
+        if end - content_left >= min_w:
+            line.segments.append(
+                SegmentResult(
+                    bbox=BBox(
+                        left=line.bbox.left + content_left,
+                        top=line.bbox.top,
+                        right=line.bbox.left + end,
+                        bottom=line.bbox.bottom,
+                    ),
+                    has_separator=False,
+                )
+            )
+
+        # Fallback: if no segments were created, use the whole line
+        if not line.segments:
+            line.segments.append(SegmentResult(bbox=line.bbox, has_separator=False))

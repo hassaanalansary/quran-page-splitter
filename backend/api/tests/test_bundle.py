@@ -111,7 +111,7 @@ class ExportTests(MediaTestCase):
         with zipfile.ZipFile(io.BytesIO(_export_bytes(mushaf, self.alice))) as archive:
             manifest = json.loads(archive.read("manifest.json"))
 
-        self.assertEqual(manifest["schema"], "mushaf-work/v1")
+        self.assertEqual(manifest["schema"], "mushaf-work/v2")
         self.assertEqual(manifest["mushaf"]["pdf_sha256"], mushaf.pdf_sha256)
         self.assertEqual(
             manifest["counts"],

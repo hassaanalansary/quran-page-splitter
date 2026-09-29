@@ -18,18 +18,18 @@ from accounts.models import User
 from api import i18n, validators
 from api.models import (
     ActivityTypeChoices,
+    IjamModeChoices,
     Line,
     LineTypeChoices,
     Mushaf,
     Page,
-    Qiraa,
     Segment,
-    SuraAyaCount,
     Template,
     TemplateTypeChoices,
     VisibilityChoices,
 )
 from api.services import activity, pdf
+from quran.models import Rawi, SuraAyaCount
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +58,7 @@ def generate_thumbnail(mushaf: Mushaf) -> None:
 _MUSHAF_VALUES = (
     "id",
     "name",
-    "qiraa__name",
+    "rawi__name",
     "pdf_page_count",
     "first_quran_pdf_page",
     "last_quran_pdf_page",
@@ -87,6 +87,26 @@ def get_mushaf(mushaf_id: uuid.UUID, *, user: User | None, write: bool = True) -
     raise HttpError(404, i18n.t("mushaf_not_found"))
 
 
+def get_page(mushaf: Mushaf, page_number: int, *, message: str = "page_not_found") -> Page:
+    """One of a mushaf's pages, or the 404 that says which way it went wrong.
+
+    Two different failures, and telling them apart is the point. ``validate_page_number``
+    answers "could this mushaf have a page 500?" — bounds, without reading the table.
+    This then answers "has page 3 been processed?" A number can pass the first and fail
+    the second on every mushaf that has not been run yet, so a caller wants both and
+    wants to know which one bit.
+
+    ``message`` is a key rather than a string because the useful half of the second
+    404 is the verb: "no page to export" and "no page to finalize" send a reader
+    somewhere different.
+    """
+    validators.validate_page_number(mushaf, page_number)
+    page = Page.objects.filter(mushaf=mushaf, page_number=page_number).first()
+    if page is None:
+        raise HttpError(404, i18n.t(message, page=page_number))
+    return page
+
+
 def _serialize(row: dict) -> dict:
     """Shape an annotated ``.values()`` row into the API representation."""
     first = row["first_quran_pdf_page"]
@@ -94,7 +114,7 @@ def _serialize(row: dict) -> dict:
     return {
         "id": row["id"],
         "name": row["name"],
-        "qiraa": row["qiraa__name"],
+        "qiraa": row["rawi__name"],
         "pdf_page_count": row["pdf_page_count"],
         "first_quran_pdf_page": first,
         "last_quran_pdf_page": last,
@@ -128,7 +148,7 @@ def list_mushafs(*, user: User, qiraa: str | None = None, pdf_sha256: str | None
     )
     if qiraa is not None:
         qiraa = qiraa.strip().lower()
-        rows = rows.filter(qiraa__name__iexact=qiraa)
+        rows = rows.filter(rawi__name__iexact=qiraa)
     if pdf_sha256:
         rows = rows.filter(pdf_sha256=pdf_sha256)
     return [_serialize(row) for row in rows]
@@ -157,10 +177,10 @@ def get_mushaf_detail(mushaf_id: uuid.UUID, *, user: User) -> dict:
     list endpoint never pays for the counting-system sum or the file stat.
     """
     data = get_mushaf_dict(mushaf_id, user=user)  # 404s if missing or not theirs
-    mushaf = Mushaf.objects.select_related("qiraa__counting_system").get(id=mushaf_id)
+    mushaf = Mushaf.objects.select_related("rawi__qiraa__counting_system").get(id=mushaf_id)
 
     counting_system = None
-    system = mushaf.qiraa.counting_system if mushaf.qiraa else None
+    system = mushaf.rawi.counting_system if mushaf.rawi else None
     if system is not None:
         total = SuraAyaCount.objects.filter(counting_system=system).aggregate(total=Sum("count"))["total"]
         counting_system = {"name": system.name, "name_arabic": system.name_arabic, "total_ayat": total or 0}
@@ -174,6 +194,7 @@ def get_mushaf_detail(mushaf_id: uuid.UUID, *, user: User) -> dict:
     data["published_at"] = mushaf.published_at
     data["description"] = mushaf.description
     data["export_uniform_size"] = mushaf.export_uniform_size
+    data["ijam_mode"] = mushaf.ijam_mode
     return data
 
 
@@ -271,14 +292,14 @@ def create_mushaf(
     last = last_quran_pdf_page or count
     validators.validate_pdf_bounds(first_quran_pdf_page, last, count)
 
-    qiraa_obj = Qiraa.objects.filter(name=qiraa).first() if qiraa else None
+    rawi = Rawi.objects.filter(name=qiraa).first() if qiraa else None
     duplicate_file = Mushaf.objects.filter(pdf_sha256=sha).exists()
     twin = _stored_twin(sha) if duplicate_file else None
 
     mushaf = Mushaf(
         owner=owner,
         name=name,
-        qiraa=qiraa_obj,
+        rawi=rawi,
         pdf_original_name=pdf_file.name or "",
         pdf_sha256=sha,
         pdf_page_count=count,
@@ -336,8 +357,14 @@ def update_mushaf(mushaf_id: uuid.UUID, fields: dict, *, user: User) -> dict:
 
     if "qiraa" in fields:
         qiraa = fields["qiraa"]
-        mushaf.qiraa = Qiraa.objects.filter(name=qiraa).first() if qiraa else None
+        mushaf.rawi = Rawi.objects.filter(name=qiraa).first() if qiraa else None
 
+    if "ijam_mode" in fields and fields["ijam_mode"] in IjamModeChoices.values:
+        # Deliberately not locked behind ``processed_page_count`` the way the riwaya
+        # is: this changes nothing already written, only how the next word run reads
+        # a page — and you want to set it *after* seeing how often a run reports a
+        # word short, which is the whole way of telling whether it fits this script.
+        mushaf.ijam_mode = fields["ijam_mode"]
     if "export_uniform_size" in fields:
         # Affects future exports only — pages already exported keep the size
         # they were written at until they are exported again.

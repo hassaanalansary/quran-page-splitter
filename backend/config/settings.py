@@ -44,6 +44,9 @@ INSTALLED_APPS = [
     # Exposes allauth's flows as JSON under /_allauth/ so the React SPA can drive
     # them; HEADLESS_ONLY below turns off allauth's own HTML views entirely.
     "allauth.headless",
+    # Quranic reference data (suras, qiraat, the word list and the aya maps).
+    # Before "api", which holds foreign keys into it.
+    "quran",
     "api",
 ]
 
@@ -298,6 +301,28 @@ LOG_DIR.mkdir(parents=True, exist_ok=True)
 #: normally — fetching it just 404s.
 RUN_LOG_RETENTION = 30
 
+#: Detail level of a run's own log file. DEBUG is the whole trace, including the
+#: per-component evidence behind every role the word engine argued about — which
+#: is the level at which a single wrong cut can actually be diagnosed, and the
+#: reason it is the default.
+#:
+#: It is not free. Measured, the word engine's DEBUG trace runs to roughly 17 KB
+#: per mushaf line, so a sura is a few MB and al-Baqara around 17; detection's is
+#: an order smaller. Multiply by ``RUN_LOG_RETENTION``. Set this to INFO on a box
+#: where that matters: the phase headings, every line's verdict and every reason
+#: survive — only the per-component and per-word evidence goes.
+RUN_LOG_LEVEL = env("RUN_LOG_LEVEL", default="DEBUG")
+
+#: Above this many lines, a word run keeps a summary instead of the full evidence:
+#: its log drops to INFO and its JSON report keeps every line's verdict without the
+#: per-word boxes. At 17 KB a line, a whole mushaf (~9,000 lines) would otherwise
+#: write a log of well over 100 MB — thirty of them under ``RUN_LOG_RETENTION`` —
+#: and a report the worker has to hold in memory before it can serialise it.
+#:
+#: 1500 is a little over the longest sura, so the spans people actually debug keep
+#: everything and only genuinely long runs give it up. Set to 0 to never summarise.
+WORD_RUN_FULL_DETAIL_LINES = env.int("WORD_RUN_FULL_DETAIL_LINES", default=1500)
+
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
@@ -315,14 +340,21 @@ LOGGING = {
             "formatter": "console",
             "filters": ["quiet_engine_trace"],
         },
+        # The engine trace is filtered out of this file for the same reason it is
+        # filtered off the console, and with more at stake: the word engine emits
+        # roughly 17 KB per mushaf line, so one sura would fill this 5 MB file
+        # several times over and a whole-mushaf run would roll it thirty times —
+        # duplicating, badly, a trace that already has its own per-run file with
+        # its own retention. Warnings and errors still land here.
         "file": {
-            "class": "logging.handlers.RotatingFileHandler",
+            "class": "config.logging_handlers.SharedRotatingFileHandler",
             "filename": str(LOG_DIR / "quran.log"),
             "maxBytes": 5 * 1024 * 1024,
             "backupCount": 3,
             "encoding": "utf-8",
             "level": "DEBUG",
             "formatter": "detailed",
+            "filters": ["quiet_engine_trace"],
         },
     },
     "root": {"handlers": ["console", "file"], "level": "INFO"},

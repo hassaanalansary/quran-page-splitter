@@ -6,9 +6,10 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.utils import timezone
 
 from api.models import ActivityEvent, ActivityTypeChoices, Mushaf
-from api.services import activity, editing, suras
+from api.services import activity, editing
 from api.services import mushaf as mushaf_service
 from api.tests.helpers import MediaTestCase, bare_mushaf, default_user, make_pdf_bytes, make_png_bytes
+from quran.services import suras
 
 
 def _create(name: str = "ActM", pages: int = 5):

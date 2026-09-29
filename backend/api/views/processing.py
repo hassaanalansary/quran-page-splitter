@@ -13,6 +13,7 @@ from pydantic import Field
 
 from api.auth import current_user
 from api.common import RectSchema
+from api.models import ProcessJobKindChoices
 from api.services import jobs as jobs_service
 from api.services import mushaf as mushaf_service
 from api.services import processing as processing_service
@@ -62,8 +63,20 @@ class JobOut(Schema):
     stopped_on_page: int | None = None
     abort_info: dict | None = None
     error: str | None = None
+    #: Which engine this run drives — ``detection`` or ``words``. The client reads
+    #: it to know whether the counter below or ``pages_saved`` is the real progress.
+    kind: str = ProcessJobKindChoices.DETECTION
+    #: A word run's span. Detection *reports* where it ended up and so fills only the
+    #: end; a word run is *asked* for both, and a span that may now cross suras is
+    #: not described by its end alone.
+    start_sura: int | None = None
+    start_aya: int | None = None
     end_sura: int | None = None
     end_aya: int | None = None
+    #: Word runs only: lines written so far. Detection counts pages and leaves this
+    #: at zero. It is what the word run's progress bar and its cancel dialog read,
+    #: and on a whole-mushaf run it is the only sign of life for twenty minutes.
+    lines_done: int = 0
 
 
 class JobStatusOut(Schema):
@@ -122,7 +135,7 @@ def process_job(request: HttpRequest, mushaf_id: uuid.UUID) -> dict:
     Answers after a page reload too: the job is keyed by mushaf, not by a handle
     the browser had to keep.
     """
-    job = jobs_service.latest_for(mushaf_id)
+    job = jobs_service.latest_for(mushaf_id, kind=ProcessJobKindChoices.DETECTION)
     return {"job": jobs_service.to_dict(job) if job else None}
 
 
@@ -133,7 +146,7 @@ def cancel_process(request: HttpRequest, mushaf_id: uuid.UUID) -> dict:
     Returns immediately — the run stops at the next page boundary, so poll
     ``/process/job`` for the settled outcome. Pages already written stay written.
     """
-    job = jobs_service.request_cancel(mushaf_id)
+    job = jobs_service.request_cancel(mushaf_id, kind=ProcessJobKindChoices.DETECTION)
     return jobs_service.to_dict(job)
 
 

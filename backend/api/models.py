@@ -1,6 +1,8 @@
 import uuid
+from typing import Any
 
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
 
@@ -8,6 +10,13 @@ from django.utils import timezone
 class TemplateTypeChoices(models.TextChoices):
     SURA_HEADER = "sura_header", "Sura Header"
     AYA_SEPARATOR = "aya_separator", "Aya Separator"
+    #: Printed inline among the words and meaning nothing to the reading order.
+    #: Word detection matches them only to take their ink *out* of the line; unlike
+    #: an aya separator they close nothing, and nothing about them is stored.
+    #: Optional — a mushaf without them still processes, it just misreads the lines
+    #: that carry one. Slugs stay within `Template.type`'s max_length of 16.
+    SAJDA = "sajda", "Sajda Symbol"
+    RUB_HIZB = "rub_hizb", "Rub' al-Hizb Symbol"
 
 
 class LineTypeChoices(models.TextChoices):
@@ -35,16 +44,12 @@ class ActivityTypeChoices(models.TextChoices):
     RUN_FINISHED = "run_finished", "Run Finished"
     REVIEW_SAVED = "review_saved", "Review Saved"
     LINES_EXPORTED = "lines_exported", "Lines Exported"
-
-
-class CountingSystem(models.Model):
-    """A table for Quran Counting Systems, e.g. Kufi"""
-
-    name = models.CharField(max_length=256, unique=True)
-    name_arabic = models.CharField(max_length=256, unique=True)
-
-    def __str__(self) -> str:
-        return f"{self.name} ({self.name_arabic})"
+    WORDS_DETECTED = "words_detected", "Words Detected"
+    WORDS_EDITED = "words_edited", "Words Edited"
+    CALIBRATION_SAVED = "calibration_saved", "Calibration Saved"
+    CALIBRATION_CONFIRMED = "calibration_confirmed", "Calibration Confirmed"
+    CALIBRATION_PROCESSED = "calibration_processed", "Calibration Processed"
+    CALIBRATION_EVALUATED = "calibration_evaluated", "Calibration Evaluated"
 
 
 class BaseModel(models.Model):
@@ -56,60 +61,6 @@ class BaseModel(models.Model):
 
     class Meta:
         abstract = True
-
-
-class Qiraa(models.Model):
-    """A table for Qiraat"""
-
-    name = models.CharField(max_length=256, unique=True)
-    name_arabic = models.CharField(max_length=256, unique=True)
-    description = models.TextField(blank=True, default="")
-    counting_system = models.ForeignKey(CountingSystem, null=True, on_delete=models.CASCADE, related_name="qiraat")
-
-    class Meta:
-        db_table = "qiraa"
-        verbose_name = "Qiraa"
-        verbose_name_plural = "Qiraat"
-
-    def __str__(self) -> str:
-        return f"{self.name} ({self.name_arabic})"
-
-
-class Sura(models.Model):
-    """A table for the swar"""
-
-    number = models.PositiveSmallIntegerField(primary_key=True)
-    transliteration = models.CharField(max_length=32, unique=True)
-    name_arabic = models.CharField(max_length=32, unique=True)
-
-    class Meta:
-        db_table = "sura"
-        verbose_name = "Sura"
-        verbose_name_plural = "Suras"
-
-    def __str__(self) -> str:
-        return f"{self.number}. {self.transliteration} ({self.name_arabic})"
-
-
-class SuraAyaCount(models.Model):
-    """A table for the number of ayat in each sura"""
-
-    sura = models.ForeignKey(Sura, on_delete=models.CASCADE, related_name="aya_counts")
-    counting_system = models.ForeignKey(
-        CountingSystem, null=True, on_delete=models.CASCADE, related_name="sura_aya_counts"
-    )
-    count = models.PositiveSmallIntegerField()
-
-    class Meta:
-        db_table = "sura_aya_count"
-        verbose_name = "Sura Aya Count"
-        verbose_name_plural = "Sura Aya Counts"
-        constraints = (models.UniqueConstraint(fields=["sura", "counting_system"], name="unique_sura_counting_system"),)
-
-    def __str__(self) -> str:
-        if self.counting_system:
-            return f"{self.sura.transliteration} has {self.count} ayat in {self.counting_system.name}"
-        return f"{self.sura.transliteration} has {self.count} ayat"
 
 
 # ── Media layout ─────────────────────────────────────────────────────────────
@@ -142,9 +93,25 @@ def line_png_path(instance: "Line", filename: str) -> str:
     return f"{mushaf_dir(instance.page.mushaf_id)}/lines/{filename}"
 
 
+def calibration_file_path(instance: "CalibrationSnapshot", filename: str) -> str:
+    return f"{mushaf_dir(instance.mushaf_id)}/calibration/{instance.id}/{filename}"
+
+
 class VisibilityChoices(models.TextChoices):
     PRIVATE = "private", "Private"
     PUBLISHED = "published", "Published"
+
+
+class IjamModeChoices(models.TextChoices):
+    """Whether this mushaf's script draws dots the way the stored text expects.
+
+    Mirrors ``core.word_boundary.inputs.IjamMode`` — the engine takes the value,
+    the database is only where a mushaf's answer is kept. See that docstring for
+    why there is no third, enforcing mode.
+    """
+
+    REPORT = "report", "Report a word that lost a dot"
+    IGNORE = "ignore", "Do not check dots"
 
 
 class Mushaf(BaseModel):
@@ -156,7 +123,11 @@ class Mushaf(BaseModel):
         related_name="mushafs",
         help_text="Who created this mushaf. Deleting the account deletes their mushafs.",
     )
-    qiraa = models.ForeignKey(Qiraa, null=True, on_delete=models.SET_NULL, related_name="mushafs")
+    # The riwaya this mushaf is printed in — Hafs, Warsh, Qalun. It is what fixes
+    # the counting system, and so where every aya ends. The API still calls this
+    # "qiraa" on the wire (``qiraa: "Hafs"``), which is the colloquial name and
+    # the one stored inside exported bundles; services/mushaf.py maps between them.
+    rawi = models.ForeignKey("quran.Rawi", null=True, on_delete=models.SET_NULL, related_name="mushafs")
     # Unique per owner, not globally — two people may each keep their own
     # "مصحف المدينة". See the constraint in Meta.
     name = models.CharField(max_length=256)
@@ -188,6 +159,19 @@ class Mushaf(BaseModel):
         help_text="Published mushafs appear in the public gallery and can be duplicated by anyone.",
     )
     published_at = models.DateTimeField(null=True, blank=True)
+    ijam_mode = models.CharField(
+        max_length=16,
+        choices=IjamModeChoices.choices,
+        default=IjamModeChoices.REPORT,
+        help_text=(
+            "Whether word detection checks each word against the dots its spelling "
+            "expects. The stored text describes one convention: Maghribi puts fa's "
+            "dot below where it puts it above, and a mushaf may leave a final ya "
+            "undotted, so on those every such word reads as short. Set this to "
+            "'ignore' there. It is a fact about the printing, like the riwaya, and "
+            "is not guessed."
+        ),
+    )
     export_uniform_size = models.BooleanField(
         default=False,
         help_text=(
@@ -298,8 +282,16 @@ class ProcessJobStateChoices(models.TextChoices):
     INTERRUPTED = "interrupted", "Interrupted"
 
 
+class ProcessJobKindChoices(models.TextChoices):
+    DETECTION = "detection", "Page detection"
+    WORDS = "words", "Word boundaries"
+    #: One page processed for calibration review. Its own kind so the word-run
+    #: screen, which polls the latest ``words`` job, never mistakes it for a run.
+    CALIBRATION = "calibration", "Calibration page"
+
+
 class ProcessJob(BaseModel):
-    """Live state of one processing run.
+    """Live state of one long-running run, of either kind.
 
     This used to be a dataclass in a module-level dict, which meant a restart
     forgot every running job and a status poll answered by a *different* worker
@@ -309,8 +301,21 @@ class ProcessJob(BaseModel):
 
     The row is written by the worker and read by pollers, so it is deliberately
     small and its updates are single-column where possible.
+
+    **Both kinds of run share this table on purpose.** Word detection could have had
+    its own, and then two things would break: the concurrency caps count CPU-bound
+    work, and two tables would let a box run twice what it was configured for; and
+    ``ensure_idle`` would stop guarding the case that matters most — a *detection*
+    run overlapping a *word* run on one mushaf, where ``write_coords_to_page`` deletes
+    the page's ``Line`` rows and takes every ``LineWord`` with them by cascade.
     """
 
+    kind = models.CharField(
+        max_length=16,
+        choices=ProcessJobKindChoices.choices,
+        default=ProcessJobKindChoices.DETECTION,
+        help_text="Which engine this run drives. Detection walks pages; words walks lines.",
+    )
     mushaf = models.ForeignKey(Mushaf, on_delete=models.CASCADE, related_name="process_jobs")
     run = models.ForeignKey(ProcessingRun, null=True, blank=True, on_delete=models.SET_NULL, related_name="jobs")
     started_by = models.ForeignKey(
@@ -357,9 +362,26 @@ class ProcessJob(BaseModel):
     )
     abort_info = models.JSONField(null=True, blank=True)
     error = models.TextField(blank=True, default="")
+    #: Detection *reports* where it ended up; a word run is *asked* for a span, so it
+    #: fills the start pair too and both ends are known before it begins.
+    start_sura = models.PositiveSmallIntegerField(null=True, blank=True)
+    start_aya = models.PositiveSmallIntegerField(null=True, blank=True)
     end_sura = models.PositiveSmallIntegerField(null=True, blank=True)
     end_aya = models.PositiveSmallIntegerField(null=True, blank=True)
+    lines_done = models.PositiveIntegerField(
+        null=True, blank=True, help_text="Word runs only: lines written so far. Detection counts pages instead."
+    )
     log_url = models.CharField(max_length=255, blank=True, default="")
+    #: Word runs only. Detection hangs its log off the ``ProcessingRun`` it
+    #: creates; a word run creates no such row — it writes ``LineWord`` rows
+    #: directly — so the job itself is what points at the file. Same directory,
+    #: same format, same viewer; see ``services.run_logs``.
+    log_path = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text="Path (relative to settings.LOG_DIR) of this run's detailed log file.",
+    )
 
     class Meta:
         db_table = "process_job"
@@ -409,7 +431,7 @@ class Line(BaseModel):
         choices=LineTypeChoices.choices,
         default=LineTypeChoices.TEXT,
     )
-    sura = models.ForeignKey(Sura, null=True, on_delete=models.SET_NULL, related_name="lines")
+    sura = models.ForeignKey("quran.Sura", null=True, on_delete=models.SET_NULL, related_name="lines")
     line_png = models.ImageField(
         upload_to=line_png_path, null=True, help_text="Final PNG path after coordinates + erase; set on export"
     )
@@ -456,6 +478,292 @@ class Segment(BaseModel):
         verbose_name = "Segment"
         verbose_name_plural = "Segments"
         ordering = ("segment_order",)
+
+
+class LineWord(BaseModel):
+    """Where one word ends on one line of a mushaf. **The cut is the product.**
+
+    Written by ``services.word_coordinates`` from the boundary engine's output, and
+    corrected by hand through the page-words endpoint. The one number this project
+    wants from the engine is ``end_x``.
+
+    **``word`` is a label, not the identity.** The Quran text is supplied to help the
+    engine align ink to spelling; it is not a claim about what this mushaf prints. A
+    riwaya other than Hafs may carry a word the stored text does not have — an added
+    حرف جر — and a reviewer adding that cut has no row to point at. So it is nullable,
+    and a null means "there is a word here that the text does not name".
+
+    **Both edges are stored.** The end alone used to be enough: a word's right edge
+    was taken to be the previous word's ``end_x``, which needs no second column to
+    keep true. But that span is not the word — measured over sura 7 the printed gap
+    between two words runs to a median of 13px, so a highlight drawn that way covers
+    the whitespace before the word as well as the word. People reading a mushaf want
+    the word lit, so the right edge is now measured and kept.
+
+    **``start_x`` is the LARGER number.** Arabic runs right to left, so a word starts
+    at its right edge and ends at its left one: ``start_x > end_x`` for every sane
+    row, and anything walking from one to the other has to count down. Both come from
+    the same place — the word's letter bodies, marks excluded, so a tashkeel leaning
+    past its letter moves neither edge.
+
+    Boxes do **not** tile the line, and they may overlap. The gap between two words is
+    real, and about 7% of words have ink reaching under a neighbour — a tail sweeping
+    left below the next word — so its box genuinely starts inside that neighbour's.
+    Both are stored as measured.
+
+    **No sura or aya column**, for the reason :class:`quran.models.Word` has none:
+    that question has six different answers, one per counting system, and a single
+    stored answer would bake one of them in. Ask ``quran.Aya`` for the word range of
+    an aya and filter on ``word`` instead — reference data that has been reviewed,
+    rather than ``Segment.aya_number``, which is a cache of a derivation.
+
+    **Reading order is stored, not measured.** These rows used to be ordered by
+    ``-end_x``: right to left, no rank to renumber, and defined for a word with no
+    label. That argument only holds while the engine's x is right, and the engine is
+    predicted to be wrong — a badly read line comes back with its words out of
+    order along the page, and sorting by geometry then reports the mushaf as reading
+    in an order it does not. So ``position`` carries the sequence, the engine's x is
+    a suggestion about placement, and a human's correction is the final word on both.
+    """
+
+    line = models.ForeignKey(Line, on_delete=models.CASCADE, related_name="words")
+    word = models.ForeignKey(
+        "quran.Word",
+        null=True,
+        on_delete=models.PROTECT,
+        related_name="+",
+        help_text="Which word of the Quran this is, by its global index. Null where this mushaf "
+        "carries a word the stored text does not have.",
+    )
+    position = models.PositiveSmallIntegerField(
+        help_text="Where this word falls in the line's reading order, from 0. The sequence the "
+        "words table gives, not the order the cuts happen to sit in.",
+    )
+    start_x = models.PositiveIntegerField(
+        help_text="Page x where the word starts — its RIGHT edge, since Arabic runs right to "
+        "left, so this is the LARGER of the two.",
+    )
+    end_x = models.PositiveIntegerField(
+        help_text="Page x where the word ends — its LEFT edge, since Arabic runs right to left."
+    )
+
+    class Meta:
+        db_table = "line_word"
+        verbose_name = "Line Word"
+        verbose_name_plural = "Line Words"
+        ordering = ("position",)
+        constraints = (
+            # Repeated NULLs are allowed by a unique index, so added words are
+            # unaffected while a labelled word still cannot appear twice on a line.
+            models.UniqueConstraint(fields=["line", "word"], name="unique_line_word"),
+            # One word to a slot. Nothing constrains end_x any more: two words of a
+            # badly read line may land on the same pixel, and that is a thing to show
+            # the reviewer stacked up and let them pull apart, not a write to refuse.
+            #
+            # Deferred, because renumbering a line is a permutation and Postgres
+            # checks a unique constraint per ROW as an UPDATE runs, not at the end of
+            # the statement: moving 0→1 while 1→0 collides halfway through even
+            # though the settled state is sound. What must be unique is where the
+            # transaction lands, which is exactly what deferring says.
+            models.UniqueConstraint(
+                fields=["line", "position"],
+                name="unique_line_word_position",
+                deferrable=models.Deferrable.DEFERRED,
+            ),
+        )
+
+    def __str__(self) -> str:
+        return f"word {self.word_id or '?'} ends at x={self.end_x}"
+
+
+class LineWordStatusChoices(models.TextChoices):
+    EXACT = "exact", "Exact"
+    SCORED = "scored", "Scored"
+    PARTIAL = "partial", "Partial"
+    UNRESOLVED = "unresolved", "Unresolved"
+
+
+class LineWordStatus(BaseModel):
+    """How much the boundary engine trusted its own reading of one line.
+
+    Its own table rather than columns on :class:`Line`, because ``Line`` belongs to
+    the detection pipeline and this is a different engine's opinion of it.
+
+    The point is triage. A sura-7 run comes back with 136 of 388 lines ``scored``, so
+    a reviewer who can see this checks 136 lines instead of eyeballing 3,320 words.
+    """
+
+    line = models.OneToOneField(Line, on_delete=models.CASCADE, related_name="word_status")
+    status = models.CharField(max_length=16, choices=LineWordStatusChoices.choices)
+    reason = models.TextField(
+        blank=True, default="", help_text="Why it is not exact, e.g. '2 word(s) off-count; 3 equal-cost readings'."
+    )
+    deviations = models.PositiveSmallIntegerField(
+        default=0, help_text="Words that closed on more or fewer ink blobs than their spelling demands."
+    )
+    ties = models.PositiveSmallIntegerField(default=0, help_text="Equal-cost readings the parser could not separate.")
+    edited = models.BooleanField(
+        default=False,
+        help_text="A human has corrected this line since; the engine's verdict is no longer the truth about it.",
+    )
+
+    class Meta:
+        db_table = "line_word_status"
+        verbose_name = "Line Word Status"
+        verbose_name_plural = "Line Word Statuses"
+
+    def __str__(self) -> str:
+        return f"line {self.line_id}: {self.status}"
+
+
+class CalibrationSnapshot(BaseModel):
+    """One text line's ink, measured once over its full box, kept for good.
+
+    **Why a copy and not the Line.** Re-processing a page deletes its ``Line`` rows,
+    and a label a reviewer gave a blob is only meaningful against the exact pixels
+    it was given on. So the pixels come along: ``image`` is the line as the engine
+    measured it, ``labels`` the same size with every pixel's blob id encoded in its
+    RGB value (0 is background), and ``metadata`` every blob's geometry and evidence.
+    The page and line are *numbers*, not foreign keys, for the same reason.
+
+    **Why the full line box.** A word run cuts the first and last line of a span at
+    an aya boundary, and a cut image gets new blob numbers and a re-measured writing
+    band. A snapshot is taken once per line, uncut; a span selects blobs from it.
+
+    Immutable. ``fingerprint`` hashes everything the measurement depends on, so a
+    changed source makes a new snapshot rather than editing an old one.
+    """
+
+    mushaf = models.ForeignKey(Mushaf, on_delete=models.CASCADE, related_name="calibration_snapshots")
+    page_number = models.PositiveSmallIntegerField()
+    line_number = models.PositiveSmallIntegerField()
+    #: The ``Line`` it was cut from, while that row lasts. Not a key: provenance only.
+    source_line_id = models.UUIDField(null=True, blank=True)
+    fingerprint = models.CharField(max_length=64)
+    metadata = models.JSONField(default=dict)
+    image = models.FileField(upload_to=calibration_file_path, max_length=255)
+    labels = models.FileField(upload_to=calibration_file_path, max_length=255)
+
+    class Meta:
+        db_table = "calibration_snapshot"
+        verbose_name = "Calibration Snapshot"
+        verbose_name_plural = "Calibration Snapshots"
+        constraints = (models.UniqueConstraint(fields=["mushaf", "fingerprint"], name="unique_calibration_snapshot"),)
+
+    def __str__(self) -> str:
+        return f"p{self.page_number}:l{self.line_number} snapshot of {self.mushaf_id}"
+
+
+class CalibrationReview(BaseModel):
+    """One page's calibration review: the working draft and a pointer to its approval.
+
+    ``payload`` is the **draft** — mutable, saved as often as the reviewer likes, and
+    never a source of examples. ``revision`` counts every change to it, so a tab
+    holding an older number is refused rather than allowed to overwrite newer work.
+    ``confirmed_revision`` names the :class:`CalibrationRevision` that is approved;
+    re-editing a confirmed page leaves that approval in force until it is replaced.
+
+    Keyed by page *number*, so it outlives re-processing the page.
+    """
+
+    mushaf = models.ForeignKey(Mushaf, on_delete=models.CASCADE, related_name="calibration_reviews")
+    page_number = models.PositiveSmallIntegerField()
+    revision = models.PositiveIntegerField(default=0)
+    confirmed_revision = models.PositiveIntegerField(null=True, blank=True)
+    payload = models.JSONField(default=dict)
+
+    class Meta:
+        db_table = "calibration_review"
+        verbose_name = "Calibration Review"
+        verbose_name_plural = "Calibration Reviews"
+        constraints = (models.UniqueConstraint(fields=["mushaf", "page_number"], name="unique_calibration_review"),)
+
+    def __str__(self) -> str:
+        return f"p{self.page_number} review r{self.revision} of {self.mushaf_id}"
+
+
+class CalibrationRevisionKind(models.TextChoices):
+    #: What the engine proposed before anyone touched the page — the prediction
+    #: record evaluation compares against. Written once per processing.
+    PROCESSED = "processed", "Processed"
+    #: An approval: the only kind that supplies examples.
+    CONFIRMED = "confirmed", "Confirmed"
+    #: Word boundaries a person corrected before calibration existed, archived so a
+    #: re-processed page cannot take them with it. No blob labels — none were given.
+    LEGACY = "legacy", "Legacy boundaries"
+
+
+class CalibrationRevision(BaseModel):
+    """An immutable record in a review's history.
+
+    Written at the three moments that must never be rewritten — see
+    :class:`CalibrationRevisionKind`. Drafts are *not* revisions: they change on
+    every save, and keeping each one would store the whole page again each time.
+    """
+
+    review = models.ForeignKey(CalibrationReview, on_delete=models.CASCADE, related_name="revisions")
+    number = models.PositiveIntegerField()
+    kind = models.CharField(max_length=16, choices=CalibrationRevisionKind.choices)
+    payload = models.JSONField(default=dict)
+    #: The client's id for the request that wrote this, so a retried confirmation
+    #: returns the first answer instead of approving the page twice.
+    request_id = models.UUIDField(null=True, blank=True)
+
+    class Meta:
+        db_table = "calibration_revision"
+        verbose_name = "Calibration Revision"
+        verbose_name_plural = "Calibration Revisions"
+        ordering = ("number",)
+        constraints = (
+            models.UniqueConstraint(fields=["review", "number"], name="unique_calibration_revision"),
+            models.UniqueConstraint(fields=["review", "request_id"], name="unique_calibration_request"),
+        )
+
+    def __str__(self) -> str:
+        return f"{self.kind} r{self.number} of {self.review_id}"
+
+    def save(self, *args: Any, **kwargs: Any) -> None:
+        if not self._state.adding:
+            raise ValidationError("Calibration revisions are immutable; create a new revision.")
+        super().save(*args, **kwargs)
+
+
+class CalibrationSettings(BaseModel):
+    """Local opt-in, deliberately absent from copied/imported calibration data."""
+
+    mushaf = models.OneToOneField(Mushaf, on_delete=models.CASCADE, related_name="calibration_settings")
+    revision = models.PositiveIntegerField(default=0)
+    experimental = models.BooleanField(default=False)
+
+    class Meta:
+        db_table = "calibration_settings"
+
+
+class CalibrationProfile(BaseModel):
+    """Which approved revisions a set of predictions was made from, and how.
+
+    Small by design: ``payload`` holds the matcher settings, the feature version and
+    the ids of the approved revisions — never the examples themselves, which are
+    rebuilt from those revisions' snapshots when needed. ``signature`` hashes the
+    three, so the same inputs always name the same profile.
+
+    ``mode`` is ``shadow`` until a person approves an evaluation: predictions are
+    recorded and shown, never applied. Copies and imports always arrive in shadow.
+    """
+
+    mushaf = models.ForeignKey(Mushaf, on_delete=models.CASCADE, related_name="calibration_profiles")
+    signature = models.CharField(max_length=64)
+    payload = models.JSONField(default=dict)
+    mode = models.CharField(max_length=16, default="shadow")
+
+    class Meta:
+        db_table = "calibration_profile"
+        verbose_name = "Calibration Profile"
+        verbose_name_plural = "Calibration Profiles"
+        constraints = (models.UniqueConstraint(fields=["mushaf", "signature"], name="unique_calibration_profile"),)
+
+    def __str__(self) -> str:
+        return f"{self.mode} profile {self.signature[:8]} of {self.mushaf_id}"
 
 
 class ActivityEvent(BaseModel):

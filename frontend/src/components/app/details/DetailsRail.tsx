@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import {
+  TEMPLATE_TYPES,
   pageImageUrl,
   type MushafDetail,
   type MushafStats,
@@ -102,16 +103,17 @@ export function DetailsRail({
             {t("details.rail_edit")}
           </Link>
         </div>
-        <TemplateRow
-          label={t("details.rail_suraHeader")}
-          template={templates?.find((t) => t.type === "sura_header")}
-          onClick={() => showTemplateDialog(templates?.find((t) => t.type === "sura_header"))}
-        />
-        <TemplateRow
-          label={t("details.rail_ayaSeparator")}
-          template={templates?.find((t) => t.type === "aya_separator")}
-          onClick={() => showTemplateDialog(templates?.find((t) => t.type === "aya_separator"))}
-        />
+        {TEMPLATE_TYPES.map((type) => {
+          const template = templates?.find((row) => row.type === type);
+          return (
+            <TemplateRow
+              key={type}
+              label={t(`templates.name_${type}`)}
+              template={template}
+              onClick={() => showTemplateDialog(template)}
+            />
+          );
+        })}
       </div>
 
       {/* record */}
@@ -346,9 +348,7 @@ function TemplateModal({
 }) {
   const { t } = useTranslation();
   if (!template) return null;
-  const typeLabel = t(
-    template.type === "sura_header" ? "details.rail_suraHeader" : "details.rail_ayaSeparator",
-  );
+  const typeLabel = t(`templates.name_${template.type}`);
   return (
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50"

@@ -6,8 +6,9 @@ from django.test.utils import CaptureQueriesContext
 from ninja.errors import HttpError
 
 from api.models import ActivityEvent, ActivityTypeChoices, Page, ProcessingRun
-from api.services import coordinates, editing, suras
+from api.services import coordinates, editing
 from api.tests.helpers import bare_mushaf, default_user
+from quran.services import suras
 
 
 def _seed_pages(mushaf, count: int, settings: dict | None = None) -> ProcessingRun:

@@ -12,6 +12,7 @@ import {
   regenerateThumbnail,
   updateMushaf,
   useQiraat,
+  type IjamMode,
   type MushafDetail,
   type MushafPatch,
 } from "@/lib/api";
@@ -24,6 +25,7 @@ export function SettingsTab({ mushaf }: { mushaf: MushafDetail }) {
 
   const [name, setName] = useState(mushaf.name);
   const [qiraa, setQiraa] = useState(mushaf.qiraa ?? "");
+  const [ijam, setIjam] = useState<IjamMode>(mushaf.ijam_mode);
   const [first, setFirst] = useState(mushaf.first_quran_pdf_page);
   const [last, setLast] = useState(mushaf.last_quran_pdf_page);
   const [error, setError] = useState<string | null>(null);
@@ -70,6 +72,7 @@ export function SettingsTab({ mushaf }: { mushaf: MushafDetail }) {
     const patch: MushafPatch = {};
     if (name.trim() !== mushaf.name) patch.name = name.trim();
     if ((qiraa || null) !== mushaf.qiraa) patch.qiraa = qiraa || null;
+    if (ijam !== mushaf.ijam_mode) patch.ijam_mode = ijam;
     if (Object.keys(patch).length === 0) return toast.info(t("details.set_nothingToSave"));
     save.mutate(patch);
   }
@@ -124,6 +127,25 @@ export function SettingsTab({ mushaf }: { mushaf: MushafDetail }) {
               </b>
             )}
             {t("details.set_qiraatAvailable", { count: (qiraat ?? []).length })}
+          </div>
+          {/* Under the riwaya on purpose: both are facts about the printed book
+              rather than about the work done on it, and this one is read by the
+              same engine the riwaya feeds. Not disabled by `locked` — it changes
+              nothing already written, and the only way to know whether it suits a
+              mushaf is to run once and read how often a word is reported short. */}
+          <label className="mb-1.5 mt-[13px] block text-[10px] font-semibold uppercase tracking-[0.06em] text-text-secondary">
+            {t("details.set_ijam")}
+          </label>
+          <select
+            value={ijam}
+            onChange={(e) => setIjam(e.target.value as IjamMode)}
+            className={`${inputClass} cursor-pointer`}
+          >
+            <option value="report">{t("details.set_ijamReport")}</option>
+            <option value="ignore">{t("details.set_ijamIgnore")}</option>
+          </select>
+          <div className="mt-[7px] text-[10.5px] leading-[1.5] text-text-muted">
+            {t("details.set_ijamHint")}
           </div>
           {error && (
             <div className="mt-2.5 rounded-md border border-error-border bg-error-bg px-3 py-2 text-[11.5px] text-error">

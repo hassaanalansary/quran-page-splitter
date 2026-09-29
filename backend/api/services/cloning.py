@@ -86,6 +86,17 @@ def _copy_tree(source: Mushaf, target: Mushaf) -> None:
     bundle.write_tree(target, bundle.serialize_tree(source))
 
 
+def _copy_calibration(source: Mushaf, target: Mushaf) -> None:
+    snapshots = {str(snapshot.pk): snapshot for snapshot in source.calibration_snapshots.all()}
+
+    def read_file(snapshot_id: str, field: str) -> bytes:
+        with getattr(snapshots[snapshot_id], field).open("rb") as stored:
+            data: bytes = stored.read()
+        return data
+
+    bundle.restore_calibration(target, bundle.serialize_calibration(source), read_file)
+
+
 def duplicate(source: Mushaf, *, owner: User) -> Mushaf:
     """Copy ``source`` into ``owner``'s account and return the new mushaf.
 
@@ -96,13 +107,16 @@ def duplicate(source: Mushaf, *, owner: User) -> Mushaf:
         target = Mushaf(
             owner=owner,
             name=_unique_name(owner, source.name),
-            qiraa=source.qiraa,
+            rawi=source.rawi,
             pdf_original_name=source.pdf_original_name,
             pdf_sha256=source.pdf_sha256,
             pdf_page_count=source.pdf_page_count,
             first_quran_pdf_page=source.first_quran_pdf_page,
             last_quran_pdf_page=source.last_quran_pdf_page,
             description=source.description,
+            # A property of the printing, so it travels with the copy — the same
+            # reason `rawi` does. A duplicate is the same book.
+            ijam_mode=source.ijam_mode,
             # A copy starts private; publishing it again is the new owner's call.
             visibility=VisibilityChoices.PRIVATE,
             duplicated_from=source,
@@ -117,6 +131,7 @@ def duplicate(source: Mushaf, *, owner: User) -> Mushaf:
         mushaf_service._copy_thumbnail_from(source, target)
         _copy_templates(source, target)
         _copy_tree(source, target)
+        _copy_calibration(source, target)
 
         activity.emit(
             target,

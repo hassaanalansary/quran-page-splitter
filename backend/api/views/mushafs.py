@@ -61,6 +61,9 @@ class MushafDetailOut(MushafOut):
     published_at: datetime | None = None
     description: str = ""
     export_uniform_size: bool = False
+    #: "report" | "ignore" — whether word detection checks a word against the dots
+    #: its spelling expects. A fact about the printing, not about the text.
+    ijam_mode: str = "report"
 
 
 class ActivityEventOut(Schema):
@@ -94,6 +97,7 @@ class MushafPatchIn(Schema):
     first_quran_pdf_page: int | None = None
     last_quran_pdf_page: int | None = None
     export_uniform_size: bool | None = None
+    ijam_mode: str | None = None
 
 
 class TemplateForm(Schema):

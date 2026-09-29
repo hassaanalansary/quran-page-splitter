@@ -9,8 +9,8 @@ from ninja.errors import HttpError
 from api.models import ActivityEvent, ActivityTypeChoices, Page, ProcessingRun
 from api.services import mushaf as mushaf_service
 from api.services import processing as processing_service
-from api.services import suras
 from api.tests.helpers import MediaTestCase, default_user, make_pdf_bytes, make_png_bytes
+from quran.services import suras
 
 # Reasonable detection settings; acceleration off to use the CPU path in CI.
 _SETTINGS = {

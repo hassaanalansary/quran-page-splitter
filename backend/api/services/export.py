@@ -27,8 +27,7 @@ from api import i18n
 from api.models import ActivityTypeChoices, Line, Page, Segment
 from api.services import activity, coordinates, pdf
 from api.services import mushaf as mushaf_service
-from core.cut_review import _apply_eraser_stroke
-from core.image_utils import make_transparent
+from core.imaging import apply_eraser_stroke, make_transparent
 
 #: Keep small archives in RAM; larger ones spill to a temp file on disk.
 _ZIP_SPOOL_BYTES = 16 * 1024 * 1024
@@ -37,9 +36,7 @@ _ZIP_SPOOL_BYTES = 16 * 1024 * 1024
 def export_lines(*, user: User, mushaf_id: uuid.UUID, page_number: int) -> dict:
     """Render the page, crop each line to a transparent PNG, and store its path."""
     mushaf = mushaf_service.get_mushaf(mushaf_id, user=user)
-    page = Page.objects.filter(mushaf=mushaf, page_number=page_number).first()
-    if page is None:
-        raise HttpError(404, i18n.t("page_no_export"))
+    page = mushaf_service.get_page(mushaf, page_number, message="page_no_export")
 
     pdf_index = pdf.logical_to_pdf_index(mushaf.first_quran_pdf_page, page_number, page.source_pdf_page)
     image = Image.open(io.BytesIO(pdf.render_page(mushaf.pdf_file.path, pdf_index)))
@@ -51,7 +48,7 @@ def export_lines(*, user: User, mushaf_id: uuid.UUID, page_number: int) -> dict:
     # Rendered up front rather than streamed one at a time: a uniform canvas can
     # only be sized once every line on the page has been cut and erased. Fifteen
     # RGBA line crops is a manageable amount to hold.
-    rendered = [(line, _render_line_image(image, line, column)) for line in lines]
+    rendered = [(line, render_line_image(image, line, column)) for line in lines]
     canvas: tuple[int, int] | None = None
     if mushaf.export_uniform_size and rendered:
         canvas = (
@@ -167,7 +164,7 @@ def coordinates_json(mushaf_id: uuid.UUID, *, user: User | None) -> tuple[str, d
         "mushaf": {
             "id": str(mushaf.id),
             "name": mushaf.name,
-            "qiraa": mushaf.qiraa.name if mushaf.qiraa else None,
+            "qiraa": mushaf.rawi.name if mushaf.rawi else None,
             "pages": mushaf.last_quran_pdf_page - mushaf.first_quran_pdf_page + 1,
         },
         "pages": pages_out,
@@ -203,7 +200,13 @@ def _to_png_bytes(rgba: Image.Image) -> bytes:
     return buffer.getvalue()
 
 
-def _render_line_image(image: Image.Image, line: Line, column: dict | None) -> Image.Image:
+def render_line_image(image: Image.Image, line: Line, column: dict | None) -> Image.Image:
+    """Crop one line out of a rendered page, make it transparent, punch the erasers out.
+
+    Public because ``services.line_images`` needs the same crop to feed the
+    word-boundary engine — a line whose PNG was never exported, or one that must
+    line up with page coordinates, is cut here rather than read from disk.
+    """
     # The line cut spans the page's text-column bounds (coordinates.page_column);
     # the line's own x/w track content extent (from segments) and are left
     # untouched. Only the vertical extent (Y/H) comes from the line.
@@ -220,7 +223,7 @@ def _render_line_image(image: Image.Image, line: Line, column: dict | None) -> I
         alpha = rgba.getchannel("A")
         draw = ImageDraw.Draw(alpha)
         for stroke in strokes:
-            _apply_eraser_stroke(
+            apply_eraser_stroke(
                 draw,
                 {"brush_size": stroke.brush_size, "points": stroke.points},
                 left,

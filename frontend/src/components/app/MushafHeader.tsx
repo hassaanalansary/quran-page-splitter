@@ -3,14 +3,29 @@ import { useTranslation } from "react-i18next";
 
 import { LanguageSwitcher } from "@/components/app/LanguageSwitcher";
 import { UserMenu } from "@/components/app/UserMenu";
-import { coordinatesUrl, mushafStatus, useStats, useTemplates, type MushafDetail } from "@/lib/api";
+import {
+  coordinatesUrl,
+  mushafStatus,
+  useStats,
+  useTemplates,
+  useWordsCoverage,
+  type MushafDetail,
+} from "@/lib/api";
 
 import { pipelineSteps, STATUS_META, STEP_ROUTES, type StepSlug } from "./details/helpers";
 
-const STEP_SLUGS: StepSlug[] = ["setup", "templates", "process", "review", "finalize"];
+const STEP_SLUGS: StepSlug[] = [
+  "setup",
+  "templates",
+  "process",
+  "review",
+  "finalize",
+  "word-run",
+  "word-cuts",
+];
 
 /** Unified top bar for every mushaf page (workspace steps + the details hub):
- * breadcrumb → hub, status pill, a status-aware 5-step nav, and quick actions. */
+ * breadcrumb → hub, status pill, a status-aware 6-step nav, and quick actions. */
 export function MushafHeader({
   mushaf,
   activeSlug,
@@ -25,11 +40,14 @@ export function MushafHeader({
   const { t } = useTranslation();
   const { data: templates } = useTemplates(mushaf.id);
   const { data: stats } = useStats(mushaf.id);
+  // Held for 30s (see useWordsCoverage): the header reads it on every workspace
+  // page, and without it the sixth step could never show a tick.
+  const { data: wordCoverage } = useWordsCoverage(mushaf.id);
   const templatesReady =
     !!templates &&
     ["sura_header", "aya_separator"].every((t) => templates.some((tpl) => tpl.type === t));
   const stepState = new Map(
-    pipelineSteps(mushaf, templatesReady, stats, null).map((s) => [s.slug, s.state]),
+    pipelineSteps(mushaf, templatesReady, stats, null, wordCoverage).map((s) => [s.slug, s.state]),
   );
   const statusKey = mushafStatus(mushaf);
   const status = STATUS_META[statusKey];
@@ -98,7 +116,8 @@ export function MushafHeader({
         <Link
           to={STEP_ROUTES[cta.slug]}
           params={{ mushafId: mushaf.id }}
-          search={cta.slug === "review" && cta.reviewPage ? { page: cta.reviewPage } : undefined}
+          // Both page-addressed steps carry it now: review, and the word cuts.
+          search={cta.reviewPage ? { page: cta.reviewPage } : undefined}
           className="flex h-12 flex-col p-6 cursor-pointer justify-center rounded-[7px] bg-orange px-3 text-white transition-colors hover:bg-orange-hover"
         >
           <span className="text-[15px] font-bold leading-[1.1]">{t("header.continue")}</span>

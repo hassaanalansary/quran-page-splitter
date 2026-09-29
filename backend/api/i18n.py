@@ -60,10 +60,7 @@ MESSAGES: dict[str, dict[str, str]] = {
             "Cannot change Quran-page bounds after pages are processed; "
             "delete the processed pages (or the mushaf) and reprocess."
         ),
-        "ar": (
-            "لا يمكن تغيير حدود صفحات القرآن بعد معالجة الصفحات؛ "
-            "احذف الصفحات المعالَجة (أو المصحف) وأعد المعالجة."
-        ),
+        "ar": ("لا يمكن تغيير حدود صفحات القرآن بعد معالجة الصفحات؛ احذف الصفحات المعالَجة (أو المصحف) وأعد المعالجة."),
     },
     "invalid_template_type": {
         "en": "Invalid template type {template_type!r}.",
@@ -105,15 +102,98 @@ MESSAGES: dict[str, dict[str, str]] = {
         "en": "No processing run is in progress for this mushaf.",
         "ar": "لا توجد عملية معالجة جارية لهذا المصحف.",
     },
+    "words_no_riwaya": {
+        "en": "Set this mushaf's riwaya before detecting words — it is what says where its ayat end.",
+        "ar": "حدّد رواية هذا المصحف قبل كشف الكلمات — فهي التي تحدد نهايات آياته.",
+    },
+    "words_span_not_found": {
+        "en": (
+            "{sura}:{aya} is not on any reviewed line of this mushaf. Process the pages that hold "
+            "it, and make sure their aya numbering has been reviewed."
+        ),
+        "ar": (
+            "الآية {sura}:{aya} ليست على أي سطر مُراجَع في هذا المصحف. عالج الصفحات التي تحتويها، "
+            "وتأكد من مراجعة ترقيم آياتها."
+        ),
+    },
+    "words_span_backwards": {
+        "en": "The span {from_sura}:{from_aya}..{to_sura}:{to_aya} runs backwards through this mushaf.",
+        "ar": "النطاق {from_sura}:{from_aya}..{to_sura}:{to_aya} يسير عكسيًا في هذا المصحف.",
+    },
+    "no_active_word_run": {
+        "en": "No word detection run is in progress for this mushaf.",
+        "ar": "لا توجد عملية كشف كلمات جارية لهذا المصحف.",
+    },
+    "calibration_not_found": {
+        "en": "Page {page} has nothing to calibrate — it is not processed in this mushaf.",
+        "ar": "لا يوجد في الصفحة {page} ما يُعاير — فهي غير معالَجة في هذا المصحف.",
+    },
+    "calibration_not_reviewed": {
+        "en": "Review page {page}'s lines and aya separators first; calibration reads the page as reviewed.",
+        "ar": "راجع أسطر الصفحة {page} وفواصل آياتها أولًا؛ فالمعايرة تقرأ الصفحة كما رُوجعت.",
+    },
+    "calibration_not_numbered": {
+        "en": "Page {page} has aya segments without a number. Save it in Review so its ayat are numbered.",
+        "ar": "في الصفحة {page} مقاطع آيات بلا رقم. احفظها في المراجعة حتى تُرقَّم آياتها.",
+    },
+    "calibration_already_processed": {
+        "en": "Page {page} is already processed for calibration. Its draft is kept; open it instead.",
+        "ar": "الصفحة {page} معالَجة للمعايرة بالفعل، ومسودتها محفوظة؛ افتحها بدلًا من ذلك.",
+    },
+    "calibration_not_processed": {
+        "en": "Page {page} has not been processed for calibration yet.",
+        "ar": "لم تُعالَج الصفحة {page} للمعايرة بعد.",
+    },
+    "calibration_stale_revision": {
+        "en": "This page changed since you opened it — in another tab, or by a run. Reload it to continue.",
+        "ar": "تغيّرت هذه الصفحة منذ فتحتها — في تبويب آخر أو بعملية تشغيل. أعد تحميلها للمتابعة.",
+    },
+    "calibration_stale_source": {
+        "en": (
+            "This page's lines changed since it was processed (re-processed, reviewed, or erased). "
+            "Process it again to calibrate the current lines."
+        ),
+        "ar": (
+            "تغيّرت أسطر هذه الصفحة منذ معالجتها (أُعيدت معالجتها أو مراجعتها أو مُسح منها شيء). "
+            "عالجها من جديد لمعايرة الأسطر الحالية."
+        ),
+    },
+    "calibration_stale_context": {
+        "en": (
+            "A neighbouring page's lines changed since this page was processed, so it cannot be read again "
+            "across them. Process it again — the decisions on its unchanged lines are kept."
+        ),
+        "ar": (
+            "تغيّرت أسطر صفحة مجاورة منذ معالجة هذه الصفحة، فلا يمكن قراءتها من جديد عبرها. "
+            "عالجها من جديد — وتبقى القرارات المتّخذة في أسطرها التي لم تتغيّر."
+        ),
+    },
+    "calibration_invalid_edits": {
+        "en": "These edits do not match the page they were made on. Reload the page and try again.",
+        "ar": "هذه التعديلات لا تطابق الصفحة التي أُجريت عليها. أعد تحميل الصفحة وحاول مجددًا.",
+    },
+    "calibration_exceptions": {
+        "en": "{count} item(s) on this page still disagree with the text. Acknowledge them to confirm.",
+        "ar": "ما زال {count} عنصرًا في هذه الصفحة لا يوافق النص. أقرّ بها لتأكيد الصفحة.",
+    },
+    "calibration_request_reused": {
+        "en": "That save was already sent with different content. Reload the page and save again.",
+        "ar": "أُرسل هذا الحفظ من قبل بمحتوى مختلف. أعد تحميل الصفحة واحفظ مجددًا.",
+    },
+    "calibration_no_active_job": {
+        "en": "No calibration page is being processed for this mushaf.",
+        "ar": "لا تجري معالجة أي صفحة معايرة لهذا المصحف.",
+    },
+    "page_not_found": {
+        "en": "Page {page} is not in this mushaf.",
+        "ar": "الصفحة {page} ليست في هذا المصحف.",
+    },
     "log_not_found": {
         "en": "Log file not found.",
         "ar": "ملف السجل غير موجود.",
     },
     "pdf_bounds": {
-        "en": (
-            "Require 1 <= first_quran_pdf_page <= last_quran_pdf_page <= {max} "
-            "(got {first}, {last})."
-        ),
+        "en": ("Require 1 <= first_quran_pdf_page <= last_quran_pdf_page <= {max} (got {first}, {last})."),
         "ar": "المطلوب: 1 <= الصفحة الأولى <= الصفحة الأخيرة <= {max} (المُدخَل {first}، {last}).",
     },
     "page_number_range": {

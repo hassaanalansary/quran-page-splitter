@@ -10,7 +10,7 @@ very troughs it is meant to sharpen.
 import numpy as np
 from django.test import SimpleTestCase
 
-from core.line_cutter import _smoothing_kernel_size, split_by_valleys
+from core.page_detection.line_cutter import _smoothing_kernel_size, split_by_valleys
 
 #: Pitches measured from real runs: Al-Shamarli's 300-dpi render, and a mushaf
 #: whose pages come out at roughly a quarter of that.
