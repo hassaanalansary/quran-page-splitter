@@ -236,6 +236,8 @@ def start_words(
     user: User | None = None,
     runner: Callable[[ProcessJob], None] | None = None,
     inline: bool | None = None,
+    kind: str = ProcessJobKindChoices.WORDS,
+    current_page: int | None = None,
 ) -> ProcessJob:
     """Register a word-detection job and set it going.
 
@@ -243,16 +245,20 @@ def start_words(
     ``ensure_idle`` for why the two must not overlap on one mushaf. What differs is
     only what the row counts: lines rather than pages, and a span rather than a page
     range, though the page range is filled in too since the span implies one.
+
+    ``kind`` lets calibration register a one-page run under its own name — the same
+    engine over the same kind of span, polled by a different screen.
     """
     ensure_idle(mushaf.id)
     _ensure_capacity(user)
 
     job = ProcessJob.objects.create(
-        kind=ProcessJobKindChoices.WORDS,
+        kind=kind,
         mushaf=mushaf,
         started_by=user,
         page_range_start=plan.first_page,
         page_range_end=plan.last_page,
+        current_page=current_page,
         total=plan.total_lines,
         lines_done=0,
         start_sura=plan.start[0],

@@ -106,6 +106,31 @@ IjamMode = Literal["report", "ignore"]
 
 
 @dataclass(frozen=True)
+class BlobConstraint:
+    """Override a component identified by (LineImage.source, local CC label).
+
+    Ownership refers to WordInput.id, never its position in the requested span.
+    An assigned component must be consumed as a body (possibly with zero PAWs).
+    Calibration retry releases only locked_role, retaining PAW and ownership data.
+    """
+
+    locked_role: Literal["body", "mark"] | None = None
+    lock_source: Literal["human", "calibration"] | None = None
+    paw_count: int = 1
+    assigned_word_id: int | None = None
+
+    def __post_init__(self) -> None:
+        if self.locked_role not in (None, "body", "mark"):
+            raise ValueError("locked_role must be body, mark, or None")
+        if self.lock_source not in (None, "human", "calibration"):
+            raise ValueError("lock_source must be human, calibration, or None")
+        if type(self.paw_count) is not int or self.paw_count < 0:
+            raise ValueError("paw_count must be a non-negative integer")
+        if self.assigned_word_id is not None and type(self.assigned_word_id) is not int:
+            raise ValueError("assigned_word_id must be an integer or None")
+
+
+@dataclass(frozen=True)
 class WordBoundaryInput:
     """Everything one run of the engine needs."""
 
@@ -128,6 +153,9 @@ class WordBoundaryInput:
     #:
     #: Fixed across a mushaf, which is what makes one template each enough.
     symbol_templates: Mapping[str, Image.Image] = field(default_factory=dict)
+    #: Only surviving text components may be constrained. Unknown or ambiguous
+    #: source/label keys raise ValueError instead of silently dropping an edit.
+    constraints: Mapping[tuple[str, int], BlobConstraint] = field(default_factory=dict)
 
 
 def images_from_paths(paths: Iterable[Path]) -> list[LineImage]:

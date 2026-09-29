@@ -3,7 +3,7 @@
 from ninja import NinjaAPI
 from ninja.security import django_auth
 
-from api.views import bundles, finalize, gallery, mushafs, pages, processing, words
+from api.views import bundles, calibration, finalize, gallery, mushafs, pages, processing, words
 from quran.views import counting_systems, qiraat, suras
 
 # Session-cookie auth for everything by default; routers opt out with auth=None
@@ -29,6 +29,7 @@ api.add_router("/mushafs", processing.router)
 api.add_router("/mushafs", pages.router)
 api.add_router("/mushafs", finalize.router)
 api.add_router("/mushafs", words.router)
+api.add_router("/mushafs", calibration.router)
 
 # Reading a bundle to find out which mushaf it belongs to — the step before an
 # import, and the one place bundle handling is not addressed by mushaf id.

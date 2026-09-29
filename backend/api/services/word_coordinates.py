@@ -16,13 +16,23 @@ human's corrections and writes those instead.
 """
 
 import uuid
+from copy import deepcopy
 from dataclasses import dataclass, field
 from itertools import pairwise
 
 from django.db import transaction
 from django.db.models import Count, Prefetch, Q
 
-from api.models import Line, LineTypeChoices, LineWord, LineWordStatus, Page
+from api.models import (
+    CalibrationReview,
+    CalibrationRevision,
+    CalibrationRevisionKind,
+    Line,
+    LineTypeChoices,
+    LineWord,
+    LineWordStatus,
+    Page,
+)
 from api.services.line_images import PlacedLine
 from core.word_boundary import WordBoundaryResult
 from quran.models import Aya, CountingSystem
@@ -43,6 +53,7 @@ class SaveReport:
     #: Human-added cuts dropped because a word this run produced lands on the same
     #: x. Rare, and worth naming rather than crashing on.
     displaced: int = 0
+    protected_line_ids: set[uuid.UUID] = field(default_factory=set)
 
 
 @transaction.atomic
@@ -77,15 +88,26 @@ def save_word_coordinates(
 
     Order is **stored, not measured**: position comes from the engine's own output
     order, merged with whatever survived on the line — see _place.
+
+    **A person's work is never written over.** Lines a reviewer corrected, and every
+    line of a page whose calibration review is confirmed, are skipped outright — no
+    rows cleared, none placed, no status replaced — and named in the report. See
+    :func:`protected_lines`.
     """
-    lines = [placed.line for placed in placements]
+    protected_line_ids = protected_lines([placed.line for placed in placements])
+    pairs = [
+        (outcome, placed)
+        for outcome, placed in zip(result.lines, placements, strict=True)
+        if placed.line.pk not in protected_line_ids
+    ]
+    lines = [placed.line for _, placed in pairs]
 
     rows: list[LineWord] = []
     statuses: list[LineWordStatus] = []
     unresolved: list[str] = []
     lines_written = 0
 
-    for outcome, placed in zip(result.lines, placements, strict=True):
+    for outcome, placed in pairs:
         status = LineWordStatus(
             line=placed.line,
             status=outcome.status,
@@ -143,7 +165,44 @@ def save_word_coordinates(
         words_written=len(rows),
         unresolved=unresolved,
         displaced=displaced,
+        protected_line_ids=protected_line_ids,
     )
+
+
+#: A line whose words are a person's: corrected in the word editor, or written with
+#: no engine verdict at all — the engine writes a status wherever it writes words.
+#: Used to protect them from runs and to archive them before their line is deleted.
+HAND_MADE = Q(word_status__edited=True) | Q(word_status__isnull=True, words__isnull=False)
+
+
+def protected_lines(lines: list[Line]) -> set[uuid.UUID]:
+    """The lines an engine run must leave exactly as they are.
+
+    Three kinds, all of them a person's:
+
+    * ``edited`` — corrected by hand in the word editor;
+    * words and **no status at all** — the engine writes a status on every line it
+      writes words to, so words without one were placed by a person. Asked of the
+      rows rather than flagged on save, because a fake engine verdict would show a
+      hand-made line as "unresolved" in every triage count;
+    * any line of a page whose calibration review is **confirmed** — the approved
+      answer for that page, which only a new confirmation may replace.
+
+    Locks the pages involved, so a confirmation landing mid-run is either seen here
+    or waits for this transaction.
+    """
+    if not lines:
+        return set()
+    ids = [line.pk for line in lines]
+    pages = list(Page.objects.select_for_update().filter(pk__in={line.page_id for line in lines}).order_by("pk"))
+    confirmed = set(
+        CalibrationReview.objects.filter(
+            mushaf_id__in={page.mushaf_id for page in pages}, confirmed_revision__isnull=False
+        ).values_list("mushaf_id", "page_number")
+    )
+    confirmed_pages = {page.pk for page in pages if (page.mushaf_id, page.page_number) in confirmed}
+    human = set(Line.objects.filter(HAND_MADE, pk__in=ids).values_list("pk", flat=True))
+    return {line.pk for line in lines if line.pk in human or line.page_id in confirmed_pages}
 
 
 def _place(lines: list[Line], fresh: list[LineWord]) -> None:
@@ -210,6 +269,64 @@ def _write_rows(lines: list[Line], rows: list[LineWord], statuses: list[LineWord
 # ---------------------------------------------------------------------------
 # The manual fix
 # ---------------------------------------------------------------------------
+def preserve_legacy_edits(page: Page, *, using: str = "default") -> None:
+    """Archive the page's hand-corrected word boundaries in its calibration review.
+
+    What a person corrected in the word editor lives in ``LineWord`` rows, which die
+    with their ``Line`` when the page is re-processed. This copies them — boundaries
+    only, since no blob was ever labelled — into ``payload["legacy_lines"]`` and an
+    immutable ``legacy`` revision. A no-op when nothing changed since the last copy.
+
+    Called around every manual save and by ``api.signals`` before a line is deleted.
+    Bumping ``revision`` is deliberate: a calibration tab open on this page is now
+    looking at boundaries that changed underneath it, and must reload — to a draft
+    that holds them (``calibration.absorb_legacy_edits``).
+    """
+    with transaction.atomic(using=using):
+        lines = list(
+            Line.objects.using(using)
+            .filter(HAND_MADE, page=page)
+            .distinct()
+            .order_by("line_number")
+            .prefetch_related("words")
+        )
+        if not lines:
+            return
+        review, _ = (
+            CalibrationReview.objects.using(using)
+            .select_for_update()
+            .get_or_create(mushaf_id=page.mushaf_id, page_number=page.page_number)
+        )
+        payload = deepcopy(review.payload)
+        legacy = {entry["line_number"]: entry for entry in payload.get("legacy_lines", [])}
+        for line in lines:
+            legacy[line.line_number] = {
+                "line_number": line.line_number,
+                "line_id": str(line.pk),
+                "words": list(line.words.values("word_id", "position", "start_x", "end_x")),
+            }
+        payload["legacy_lines"] = [legacy[number] for number in sorted(legacy)]
+        # An open calibration draft takes the cuts too: the last editor to touch a
+        # line wins, so the page's next confirmation cannot overwrite this edit.
+        # Imported here, not at the top: calibration builds on this module.
+        from api.services.calibration import absorb_legacy_edits
+
+        absorb_legacy_edits(payload, lines)
+        if payload == review.payload:
+            return
+        review.revision += 1
+        review.payload = payload
+        review.save(using=using, update_fields=["revision", "payload", "updated_at"])
+        # Only the archive itself: the head payload may also hold a calibration
+        # draft, and a legacy record is about boundaries, not that draft.
+        CalibrationRevision.objects.using(using).create(
+            review=review,
+            number=review.revision,
+            kind=CalibrationRevisionKind.LEGACY,
+            payload={"legacy_lines": deepcopy(payload["legacy_lines"])},
+        )
+
+
 @dataclass(frozen=True)
 class CoherenceIssue:
     """One way the stored words stopped making sense as a reading of the page."""
@@ -234,6 +351,7 @@ def replace_page_words(
     line_edits: list[dict],
     *,
     counting_system: CountingSystem | None,
+    preserve_legacy: bool = True,
 ) -> PageWordsReport:
     """Replace the words of the named lines, whole lines at a time.
 
@@ -264,6 +382,9 @@ def replace_page_words(
     make the pair impossible to do one at a time. The report says what is broken; the
     same choice ``renumber_mushaf`` makes.
     """
+    Page.objects.select_for_update().get(pk=page.pk)
+    if preserve_legacy:
+        preserve_legacy_edits(page)
     by_id = {str(line.id): line for line in page.lines.all()}
     touched: list[Line] = []
     rows: list[LineWord] = []
@@ -285,7 +406,12 @@ def replace_page_words(
 
     LineWord.objects.filter(line__in=touched).delete()
     LineWord.objects.bulk_create(rows, batch_size=1000)
+    # A line the engine never read has no status row, and stays that way: words
+    # with no status are recognisably a person's (``protected_lines``), and a made-up
+    # verdict would put the line in every "needs review" count.
     LineWordStatus.objects.filter(line__in=touched).update(edited=True)
+    if preserve_legacy:
+        preserve_legacy_edits(page)
 
     return PageWordsReport(
         lines_written=len(touched),

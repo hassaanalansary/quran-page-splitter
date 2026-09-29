@@ -267,10 +267,82 @@ The function [`detect_words`](../backend/core/word_boundary/engine.py#L44) is re
 
   Starts a cursor that points to the word in order.
 
-  Then it comes the function `parse_line`, which takes `LineInk` instance which holds almost all the data we gathered regarding this line up to this point, `WordInput` isntance, the cursor, `aya_starts`, `ijam`, and `ornaments_before` which is how many ornaments precede this line in the span. It is used only to recover when the cursor has been lost altogether, where counting is the one thing left that still says which aya an ornament closes.
+  Then comes the alignment step. The old way to think about it is a `parse_line` function that takes a `LineInk` instance, the `WordInput` list, the cursor, `aya_starts`, and `ijam`. The current code does the same kind of work through [`parse_span`](../backend/core/word_boundary/span.py#L136), because it needs to keep the cursor alive across lines until an aya ornament gives it a certain place to settle.
 
 #### `parse_line` function flow:
 
-1. It reads the components in order from right to left, then it splits the line into segments by the separators.
+1. It reads the components in order from right to left. The ornaments are not treated as normal ink here. They are inserted in the stream as special events, because an ornament means "an aya ended here", not "this is another blob that may or may not be a letter".
 
-2. 
+2. The older mental model is that a line is split into ornament-delimited segments, and then each segment is parsed. This is still useful to understand the data shape, but the current engine is a little smarter than that: it calls [`parse_span`](../backend/core/word_boundary/span.py#L136), which parses all the lines of the requested span as one connected reading.
+
+3. The reason for this is simple. A line break is not an aya break. An aya can start on one line and finish on the next, so if the engine makes a small mistake near the end of line 1, line 2 should still be allowed to prove that the mistake happened. If each line was locked immediately, line 2 would inherit the wrong cursor and the error would walk forward with it.
+
+4. So the parser creates one event stream from all lines:
+
+    - `blob`: a connected ink component that may be used as part of a word, or left as a mark.
+    - `ornament`: an aya separator, which is a hard anchor.
+    - `line-end`: a physical line break. A word cannot pass through it, so only states that already closed a word are allowed to survive.
+
+5. The parser starts with a cursor pointing to the first `WordInput` in the requested span. Every live reading carries a state that is basically:
+
+    ```text
+    (current word index, how many PAWs this word already consumed)
+    ```
+
+    There are a few extra values in the real key too, such as the previous cut and the current word's left edge, because these help settle geometry ties. But the heart of it is still: which word are we placing, and how much of it has already been seen?
+
+6. For every blob, the parser tries the two possible stories:
+
+    - Leave it out of the word bodies. This means it is probably a dot, tashkeel, noise, or something that should not define a word boundary.
+    - Use it as a body blob for the current word. If that closes the word with a reasonable PAW count, the parser may also move the cursor to the next word.
+
+7. Each story has a cost:
+
+    - A blob that looks strongly like a body is cheap to use as body and expensive to ignore.
+    - A blob that looks like a mark is cheap to ignore and expensive to use as body.
+    - Closing a word with the wrong PAW count is allowed within a small slack, but it costs a lot, because the known spelling should win over a small visual disagreement.
+
+8. This is dynamic programming, not a greedy walk. If two different histories reach the same future state, the engine keeps the cheaper one. If they are equally good, it keeps that ambiguity as a review signal instead of pretending the choice was magically certain.
+
+9. When the stream reaches a line end, the engine narrows the live states. A word may not cross a physical line boundary, so any reading still holding an open word is dropped. But it still does not choose the final reading yet if the aya has not ended. It just carries the surviving readings to the next line.
+
+10. When the stream reaches an ornament, the engine settles the current stretch. This is the place where the text gives a certain boundary: the ornament closes an aya, so the winning reading should land on the word index where that aya ends.
+
+11. If a supplied ornament already knows which aya it closes, the engine prefers that declared aya. This is safer than guessing from the current cursor, because the current cursor is exactly the thing that may have drifted. If the label is missing or outside the requested span, it falls back to the next aya boundary after the cursor.
+
+12. If no perfect anchored reading exists, the engine does not hide the problem. It may keep the best available reading and mark the line as `scored`, or it may mark a line as `partial` / `unresolved` if no trustworthy reading closed words there. This is important: the engine is allowed to be unsure, but it should be honest about where that happened.
+
+13. After the span parser finishes, it converts the committed readings back into one [`LineParse`](../backend/core/word_boundary/alignment.py#L113) per line. This is where the run becomes easy for the caller again: each line gets its own status, reason, groups of component labels, word indices, ambiguity count, deviation count, and conflict labels if constraints were involved.
+
+14. Then [`apply_parse_roles`](../backend/core/word_boundary/alignment.py#L269) writes the chosen roles back onto the blobs:
+
+    - blobs used by word groups become `body`;
+    - blobs left out become `mark`;
+    - unresolved blobs fall back to their earlier preferred role;
+    - ambiguous blobs are marked so a debug overlay can show them differently.
+
+15. Finally, [`build_line_boxes`](../backend/core/word_boundary/alignment.py#L294) creates the actual word boxes. It takes the body blobs assigned to each word, attaches nearby marks to those bodies, and makes the word box span both the bodies and their marks. The `offset_x` and `offset_y` from the tight crop are added back here, so the final coordinates are again in the original line image's coordinate system.
+
+### Word engine output
+
+At the end, [`detect_words`](../backend/core/word_boundary/engine.py#L44) returns a [`WordBoundaryResult`](../backend/core/word_boundary/results.py#L137). It contains the lines, the word boxes, the components, the ornaments, and the run-level completion flag.
+
+The line status can be:
+
+- `exact`: the line parsed cleanly and does not need special attention.
+- `scored`: the line has a reading, but something should be reviewed, such as an aya boundary miss, equal-cost readings, a PAW-count deviation, or an i'jam shortage.
+- `partial`: some words or stretches were resolved, but not the whole line.
+- `unresolved`: the engine could not draw trustworthy word boundaries for this line.
+
+Each returned word carries:
+
+- the word index in the supplied stream;
+- the Quran text;
+- the aya label;
+- the database word id if it came from the database;
+- the expected PAW count;
+- the component labels used as its bodies;
+- the `x`, `y`, `w`, `h` box;
+- and `end_x`, which is the cut position for this word. Since Arabic is right-to-left, this is the left edge of the word box.
+
+So, in short, the word engine does not read Quran text from pixels. It already knows the text. Its job is to place that known text onto the measured ink, keep the cheapest believable alignment, and leave enough diagnostics for a human to review the places where the image and the spelling did not agree perfectly.

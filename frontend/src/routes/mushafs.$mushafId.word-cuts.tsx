@@ -8,7 +8,10 @@ import { CanvasHelp } from "@/components/app/CanvasHelp";
 import { Aside, Hint, PanelCard, StatusLine } from "@/components/app/Panel";
 import { TourOverlay } from "@/components/app/tour/TourOverlay";
 import { WordRunProgress } from "@/components/app/WordRunProgress";
+import { WordsGateNotice } from "@/components/app/WordsGateNotice";
+import { WordsModeSwitch } from "@/components/app/WordsModeSwitch";
 import { useStepTour, type TourStep } from "@/components/app/tour/useStepTour";
+import { CalibrationEditor } from "@/components/calibration/CalibrationEditor";
 import { WordsCanvas } from "@/components/canvas/WordsCanvas";
 import { revealInScroller } from "@/lib/reveal";
 import { Button } from "@/components/ui/button";
@@ -51,11 +54,48 @@ import {
   type EditLine,
   type WordsModel,
 } from "@/lib/words/model";
+import { wordsPlace } from "@/lib/words/place";
+
+type WordCutsSearch = {
+  page: number;
+  /** Calibration review of the page instead of its cuts. */
+  mode?: "calibrate";
+};
 
 export const Route = createFileRoute("/mushafs/$mushafId/word-cuts")({
-  validateSearch: (s: Record<string, unknown>) => ({ page: Math.max(1, Number(s.page) || 1) }),
-  component: WordsPage,
+  validateSearch: (s: Record<string, unknown>): WordCutsSearch => ({
+    page: Math.max(1, Number(s.page) || 1),
+    ...(s.mode === "calibrate" ? { mode: "calibrate" as const } : {}),
+  }),
+  component: WordCutsStep,
 });
+
+/** The Words step: the cuts editor, or — with `?mode=calibrate` — calibration
+ * review of the same page. Two editors rather than one with a toggle, because they
+ * hold different things: cuts are word boxes, calibration is every blob of ink. */
+function WordCutsStep() {
+  const { mushafId } = useParams({ from: "/mushafs/$mushafId/word-cuts" });
+  const { page, mode } = Route.useSearch();
+  const navigate = useNavigate({ from: "/mushafs/$mushafId/word-cuts" });
+  const { i18n } = useTranslation();
+  const { data: mushaf } = useMushaf(mushafId);
+
+  if (mode !== "calibrate") return <WordsPage />;
+  if (!mushaf) return null;
+  const pageCount = mushaf.logical_page_count;
+  return (
+    <CalibrationEditor
+      mushafId={mushafId}
+      page={page}
+      pageCount={pageCount}
+      onPageChange={(n) =>
+        navigate({ search: { page: Math.max(1, Math.min(pageCount, n)), mode: "calibrate" } })
+      }
+      modeSwitch={<WordsModeSwitch mushafId={mushafId} page={page} mode="calibrate" />}
+      isRTL={i18n.language === "ar"}
+    />
+  );
+}
 
 const HISTORY_LIMIT = 100;
 const EMPTY: WordsModel = { lines: [], labels: new Map(), pins: [] };
@@ -218,12 +258,13 @@ function WordsPage() {
 
   // Unlike Finalize, this blocks a *page* change too, not just leaving the step:
   // the model is rebuilt per page, so paging away with unsaved cuts would drop
-  // them without a word.
+  // them without a word. Switching to calibration unmounts this editor, so that
+  // counts as leaving as well.
   useBlocker({
     enableBeforeUnload: () => dirty.length > 0,
     shouldBlockFn: ({ current, next }) => {
       if (!dirty.length) return false;
-      if (current.pathname === next.pathname && searchPage(current) === searchPage(next)) {
+      if (current.pathname === next.pathname && wordsPlace(current) === wordsPlace(next)) {
         return false;
       }
       return !window.confirm(t("words.leaveConfirm"));
@@ -473,7 +514,11 @@ function WordsPage() {
             }
           />
         ) : (
-          <GateNotice mushafId={mushafId} page={page} processed={!!pages?.processed.has(page)} />
+          <WordsGateNotice
+            mushafId={mushafId}
+            page={page}
+            processed={!!pages?.processed.has(page)}
+          />
         )}
         <CanvasHelp
           guideItems={guideItems}
@@ -502,6 +547,7 @@ function WordsPage() {
           </div>
         }
       >
+        <WordsModeSwitch mushafId={mushafId} page={page} mode="cuts" />
         {!ready ? (
           <Hint tone="warning">{t("words.gateHint", { page })}</Hint>
         ) : (
@@ -616,37 +662,6 @@ function WordsPage() {
 }
 
 // ── pieces ───────────────────────────────────────────────────────────────────
-
-/** The page is only editable once detection AND review have settled it: the run
- * anchors on the aya ornaments whose positions Review is where you fix. */
-function GateNotice({
-  mushafId,
-  page,
-  processed,
-}: {
-  mushafId: string;
-  page: number;
-  processed: boolean;
-}) {
-  const { t } = useTranslation();
-  return (
-    <div className="flex flex-1 items-center justify-center p-8">
-      <div className="flex max-w-sm flex-col items-center gap-3 text-center">
-        <p className="text-[13px] leading-relaxed text-text-secondary">
-          {processed ? t("words.gateUnreviewed", { page }) : t("words.gateUnprocessed", { page })}
-        </p>
-        <Link
-          to={processed ? "/mushafs/$mushafId/review" : "/mushafs/$mushafId/process"}
-          params={{ mushafId }}
-          search={processed ? { page } : undefined}
-          className="rounded-[7px] bg-orange px-3 py-2 text-[12.5px] font-semibold text-white transition-colors hover:bg-orange-hover"
-        >
-          {processed ? t("words.gateToReview") : t("words.gateToProcess")}
-        </Link>
-      </div>
-    </div>
-  );
-}
 
 function CutList({
   line,
@@ -788,13 +803,6 @@ const numberClass =
 
 function clamp(n: number, lo: number, hi: number) {
   return Math.max(lo, Math.min(hi, Math.round(n) || lo));
-}
-
-/** `?page` off a blocker location. Read defensively because the blocker's
- * `search` is the union of every route's schema, and most of them have no page. */
-function searchPage(location: { search: unknown }): number | null {
-  const search = location.search as { page?: unknown } | undefined;
-  return typeof search?.page === "number" ? search.page : null;
 }
 
 /** i18n key for a coherence issue. Returns literal types, not `string`, so `t()`

@@ -153,6 +153,10 @@ class WordLine:
     #: Empty for an unresolved line — no boundaries were drawn.
     words: list[WordBox] = field(default_factory=list)
     segments: list[WordSegment] = field(default_factory=list)
+    #: Local CC labels whose calibration role locks were released during retry.
+    released_locks: list[int] = field(default_factory=list)
+    #: Constrained components in a failed or withdrawn segment, for review.
+    constraint_conflicts: list[int] = field(default_factory=list)
 
 
 @dataclass(frozen=True)

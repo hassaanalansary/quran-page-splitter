@@ -1,6 +1,6 @@
 """Parse a whole span as one search, collapsing only where the text is certain.
 
-``alignment.parse_line`` optimises one ornament-delimited stretch of one line and
+The former line parser optimised one ornament-delimited stretch of one line and
 hands the next line a single integer cursor. An aya that crosses a line break is
 therefore two independent optimisations, and the second cannot reconsider the
 first: when its stretch comes up a blob short its only moves are to starve a word
@@ -151,7 +151,7 @@ def _settle(
     matches the old behaviour: a plausible boundary a reviewer can nudge beats no
     boundary, and ``missed_boundary`` says which happened.
     """
-    finals = [(state, record) for state, record in states.items() if state[1] == 0]
+    finals = [(state, record) for state, record in states.items() if state[1] == 0 and not record.current_group]
     missed = False
     if require_end is not None:
         anchored = [(s, r) for s, r in finals if s[0] == require_end]
@@ -201,15 +201,51 @@ def parse_span(
     lost: set[int] = set()
     peak = 1
     event_start = 0
+    has_fragments = any(blob.paw_count == 0 for _, blob in by_ident.values())
+    released: dict[int, list[int]] = {}
+    failures: list[tuple[list[_Event], str, set[int]]] = []
+    #: Stretches whose reading was kept although it missed the aya boundary, and
+    #: the constrained components inside them — the diagnostic, not a withdrawal.
+    boundary_misses: list[tuple[list[_Event], set[int]]] = []
+    budget_failed = False
+    #: A constrained component has been spent in the stretch being read. Only then
+    #: does a failure wait for the ornament instead of committing early the frozen
+    #: way: an early commit could drop a forced body, or split the stretch a
+    #: calibration retry has to replay whole. Unconstrained stretches are untouched.
+    stretch_constrained = False
+
+    def replay(stretch: list[_Event]) -> dict[StateKey, ParseRecord]:
+        nonlocal budget_failed
+        retried = _fresh(entry)
+        budget_failed = False
+        for event in stretch:
+            if event.kind == "blob":
+                assert event.blob is not None
+                retried = _advance(retried, event.blob, event.ident, words, allow_full=has_fragments)
+                if len(retried) > MAX_LIVE_STATES:
+                    budget_failed = True
+                    return {}
+            elif event.kind == "line-end":
+                retried = _line_end(retried)
+        return retried
 
     def commit(require_end: int | None, stop: int, *, absolute: bool = False) -> None:
-        nonlocal states, entry, ink_since_anchor, lines_since_anchor, event_start
+        nonlocal states, entry, ink_since_anchor, lines_since_anchor, event_start, budget_failed, stretch_constrained
+        stretch_constrained = False
+        stretch = events[event_start:stop]
+        constrained = {e.ident for e in stretch if e.blob is not None and e.blob.constrained}
         if absolute and require_end is not None and require_end < entry:
             # A known boundary disproves placements made past it. Discard the
             # affected commits before rewinding so later words cannot be duplicated.
             conflicting = [c for c in commits if c.end_word > require_end]
             for previous in conflicting:
                 lost.update(previous.lines)
+                withdrawn = events[previous.event_start : previous.event_stop]
+                locked = {e.ident for e in withdrawn if e.blob is not None and e.blob.constrained}
+                if locked:
+                    failures.append((withdrawn, "constraint-conflict", locked))
+            if constrained:
+                failures.append((stretch, "constraint-conflict", constrained))
             commits[:] = [c for c in commits if c.end_word <= require_end]
             lost.update(lines_since_anchor)
             logger.warning(
@@ -223,8 +259,39 @@ def parse_span(
             ink_since_anchor = False
             lines_since_anchor = set()
             event_start = stop
+            budget_failed = False
             return
         settled = _settle(states, require_end)
+        if constrained and (settled is None or settled[3]):
+            # No reading, or none reaching the known boundary: retry the aya once
+            # with the *automatic* locks released. Human decisions stay; a PAW
+            # shortfall alone never gets here, because an exact-count reading is not
+            # required — only one that closes a word, and reaches the ornament.
+            calibration = [
+                e
+                for e in stretch
+                if e.blob is not None and e.blob.locked_role is not None and e.blob.lock_source == "calibration"
+            ]
+            if calibration:
+                for event in calibration:
+                    assert event.blob is not None
+                    event.blob.locked_role = None
+                    event.blob.lock_source = None
+                    released.setdefault(event.line, []).append(event.blob.label)
+                states = replay(stretch)
+                settled = _settle(states, require_end)
+            remaining = {e.ident for e in stretch if e.blob is not None and e.blob.constrained}
+            # A "reading" that places no word at all is the search's empty start
+            # state surviving to the end — under human constraints it is no reading.
+            if (settled is None or not settled[1].groups) and remaining:
+                reason = "constraint-search-budget-exceeded" if budget_failed else "constraint-conflict"
+                failures.append((stretch, reason, remaining))
+                settled = None
+            elif settled is not None and settled[3] and remaining:
+                # The frozen engine's own fallback — a flagged reading that misses
+                # the ornament beats no reading — is kept. The constrained blobs are
+                # named so the reviewer can see which decisions the boundary resists.
+                boundary_misses.append((stretch, remaining))
         if settled is None:
             # Nothing closed a word over this stretch. The lines it covered get no
             # cuts; the next ornament re-anchors, which is what keeps one bad line
@@ -251,8 +318,8 @@ def parse_span(
                         entry + offset,
                         word.text,
                         word.paws,
-                        len(group),
-                        " OFF" if len(group) != word.paws else "    ",
+                        sum(by_ident[i][1].paw_count for i in group),
+                        " OFF" if sum(by_ident[i][1].paw_count for i in group) != word.paws else "    ",
                         word.ijam_above,
                         word.ijam_below,
                         [by_ident[i][1].label for i in group],
@@ -277,7 +344,7 @@ def parse_span(
             entry = state[0]
         # An *ornament* is absolute: the image says the aya ends here, so the next
         # aya opens where the text says and not where this reading happened to stop —
-        # otherwise one short aya shifts every aya after it. ``parse_line`` did this
+        # otherwise one short aya shifts every aya after it. The former line parser did this
         # with ``cursor = require_end``; losing it in the move to a cross-line search
         # is what let a local failure stop being local.
         #
@@ -292,16 +359,24 @@ def parse_span(
         ink_since_anchor = False
         lines_since_anchor = set()
         event_start = stop
+        budget_failed = False
 
     for event_index, event in enumerate(events):
         if event.kind == "blob":
             assert event.blob is not None
             blob = event.blob
-            states = _advance(states, blob, event.ident, words)
+            states = _advance(states, blob, event.ident, words, allow_full=has_fragments)
             peak = max(peak, len(states))
             ink_since_anchor = True
             lines_since_anchor.add(event.line)
+            stretch_constrained = stretch_constrained or blob.constrained
             if len(states) > MAX_LIVE_STATES:
+                if stretch_constrained:
+                    # A partial commit could discard a forced body or prevent an
+                    # aya-wide calibration retry. Carry the failure to its anchor.
+                    states = {}
+                    budget_failed = True
+                    continue
                 # Degrade rather than abandon: settle here, which is exactly the
                 # old per-stretch behaviour, and carry on with a clean state set.
                 logger.warning(
@@ -317,7 +392,7 @@ def parse_span(
             # A word may not span a line break, so only states that closed one
             # survive. This narrows the candidates without choosing between them.
             kept = _line_end(states)
-            if kept:
+            if kept or stretch_constrained:
                 states = kept
             elif ink_since_anchor:
                 commit(None, event_index + 1)
@@ -341,7 +416,34 @@ def parse_span(
     )
     if trace is not None:
         trace.extend(commits)
-    return _to_lines(inks, words, by_ident, commits, lost, ijam), entry
+    parses = _to_lines(inks, words, by_ident, commits, lost, ijam)
+    for line, labels in released.items():
+        parses[line].released_locks = sorted(set(labels))
+    for stretch, reason, constrained in failures:
+        for line in sorted({event.line for event in stretch}):
+            parse = parses[line]
+            in_stretch = {event.blob.label for event in stretch if event.line == line and event.blob is not None}
+            parse.constraint_conflicts.update(
+                by_ident[ident][1].label for ident in constrained if by_ident[ident][0] == line
+            )
+            parse.status = "partial" if parse.groups else "unresolved"
+            parse.reason = "; ".join(dict.fromkeys(filter(None, [parse.reason, reason])))
+            parse.segments.append(SegmentParse("unresolved", reason, None, None, None, 0, labels=in_stretch))
+    for stretch, constrained in boundary_misses:
+        for line in sorted({event.line for event in stretch}):
+            parse = parses[line]
+            named = {by_ident[ident][1].label for ident in constrained if by_ident[ident][0] == line}
+            if not named:
+                continue
+            parse.constraint_conflicts.update(named)
+            parse.reason = "; ".join(dict.fromkeys(filter(None, [parse.reason, "constraint-boundary-missed"])))
+            if parse.status == "exact":
+                parse.status = "scored"
+            if parse.segments:
+                # ``_to_lines`` summarised the line in its first segment; keep it true.
+                parse.segments[0].status = parse.status
+                parse.segments[0].reason = parse.reason
+    return parses, entry
 
 
 def _to_lines(

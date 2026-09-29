@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
+from typing import Literal
 
 import cv2
 import numpy as np
@@ -81,6 +82,14 @@ class Blob:
     role: str | None = None
     #: An equal-cost parse assigned this component a different role.
     role_ambiguous: bool = False
+    locked_role: Literal["body", "mark"] | None = None
+    lock_source: Literal["human", "calibration"] | None = None
+    paw_count: int = 1
+    assigned_word_id: int | None = None
+
+    @property
+    def constrained(self) -> bool:
+        return self.locked_role is not None or self.paw_count != 1 or self.assigned_word_id is not None
 
     @property
     def right(self) -> int:
@@ -135,6 +144,9 @@ class LineInk:
     #: ``separator_spans``: a span there becomes a parser event, and a parser event
     #: closes an aya. See ``split_symbols``.
     symbol_spans: list[tuple[int, int]] = field(default_factory=list)
+    #: Exact original CC raster, including removed ornaments/symbols. Same crop
+    #: and shape as mask; zero is background and positive values are Blob.label.
+    label_map: np.ndarray = field(default_factory=lambda: np.zeros((0, 0), dtype=np.int32))
 
 
 def load_ink(im: Image.Image, alpha_threshold: int = 40) -> np.ndarray:
@@ -180,6 +192,7 @@ def analyse_line(
             label=line.label,
             source=line.source,
             mask=mask,
+            label_map=np.zeros(mask.shape, dtype=np.int32),
             offset_x=0,
             offset_y=0,
             peak=0,
@@ -228,7 +241,7 @@ def analyse_line(
     )
     # ``connectivity`` by name: positionally that slot is ``labels``, and while
     # OpenCV's overload dispatch sorts an int out at run time, the stubs cannot.
-    count, _, stats, _ = cv2.connectedComponentsWithStats(tight.astype(np.uint8), connectivity=8)
+    count, label_map, stats, _ = cv2.connectedComponentsWithStats(tight.astype(np.uint8), connectivity=8)
     components: list[Blob] = []
     for k in range(1, count):
         x, y, w, h, area = (int(v) for v in stats[k])
@@ -318,6 +331,7 @@ def analyse_line(
         label=line.label,
         source=line.source,
         mask=tight,
+        label_map=label_map,
         offset_x=offset_x,
         offset_y=offset_y,
         peak=peak,

@@ -22,6 +22,12 @@ under ``wl-out/bench/<tag>/``:
 Nothing is written to the database. ``take`` is read-only on the DB and cuts its
 lines fresh from the PDF, so it can be re-run at will.
 
+``take --canonical`` measures each line over its full box, the way calibration's
+snapshots do, and applies the span as a filter on blobs instead of cropping the
+first and last line. Calibration stays off, so comparing it with a plain ``take``
+of the same spans isolates what the measurement alone changes. Its JSON has the same
+shape, with every x in page coordinates, so the two compare line for line.
+
 Sibling of snapshot.py, which does before/after on one pinned mushaf; this one ranges
 over several and produces something gradable by eye.
 """
@@ -45,8 +51,9 @@ from django.db.models import Count, Max, Min  # noqa: E402
 from PIL import Image, ImageDraw, ImageFont  # noqa: E402
 
 from api.models import LineTypeChoices, Mushaf, Page, Segment  # noqa: E402
-from api.services import word_inputs, word_runs  # noqa: E402
-from core.word_boundary import detect_words  # noqa: E402
+from api.services import calibration_snapshots, line_images, word_inputs, word_runs  # noqa: E402
+from core.word_boundary import IjamMode, WordBoundaryInput, detect_words  # noqa: E402
+from core.word_boundary.engine import detect_prepared  # noqa: E402
 from script.word_lines import render  # noqa: E402
 
 OUT = Path(__file__).resolve().parent / "bench"
@@ -207,7 +214,39 @@ def blob_sheet(image: Image.Image, components: list[dict], path: Path) -> None:
     canvas.save(path)
 
 
-def take(mushaf: Mushaf, tag: str, spans: list[str]) -> None:
+class _Placed:
+    """A ``PlacedLine`` for a line measured over its full box: what ``take`` reads."""
+
+    def __init__(self, image, line, origin_x: int) -> None:
+        self.image, self.line, self.origin_x = image, line, origin_x
+
+
+def canonical(mushaf: Mushaf, prepared, start: tuple[int, int], end: tuple[int, int]):
+    """The same span measured the calibration way: each line uncut, the span a filter.
+
+    In memory only — ``extract_line`` measures, it does not store — so, like the rest
+    of ``take``, this writes nothing to the database. Calibration stays off: no
+    blob is locked, so any difference from the legacy run is the measurement's.
+    """
+    templates = calibration_snapshots.Templates.of(mushaf)
+    rendered: dict = {}
+    images, inks, placed = [], [], []
+    for legacy in prepared.placements:
+        line = legacy.line
+        if line.page_id not in rendered:
+            rendered[line.page_id] = line_images._render_page(mushaf, line.page)
+        extraction = calibration_snapshots.extract_line(line, rendered[line.page_id], templates)
+        calibration_snapshots.select_span(extraction.ink, extraction.metadata, start, end)
+        image = legacy.image.__class__(extraction.image, legacy.image.label, legacy.image.source)
+        images.append(image)
+        inks.append(extraction.ink)
+        placed.append(_Placed(image, line, extraction.metadata["bbox"]["x"]))
+    ijam: IjamMode = "ignore" if mushaf.ijam_mode == "ignore" else "report"
+    source = WordBoundaryInput(lines=images, words=prepared.source.words, ijam=ijam)
+    return detect_prepared(source, inks), placed
+
+
+def take(mushaf: Mushaf, tag: str, spans: list[str], *, full_line: bool = False) -> None:
     root = OUT / tag
     root.mkdir(parents=True, exist_ok=True)
     held = ", ".join(sorted(mushaf.templates.values_list("type", flat=True))) or "none"
@@ -226,12 +265,15 @@ def take(mushaf: Mushaf, tag: str, spans: list[str]) -> None:
     for text in spans:
         start, end = parse_span(text)
         prepared = word_inputs.prepare_engine_input(mushaf.id, user=mushaf.owner, start=start, end=end)
-        result = detect_words(prepared.source)
+        if full_line:
+            result, placements = canonical(mushaf, prepared, start, end)
+        else:
+            result, placements = detect_words(prepared.source), prepared.placements
         lines: list[dict] = []
         by_page: dict[int, list[tuple[str, Image.Image]]] = {}
         sheet_md += [f"## span {text}", ""]
 
-        for outcome, placed in zip(result.lines, prepared.placements, strict=True):
+        for outcome, placed in zip(result.lines, placements, strict=True):
             page, line_no = placed.line.page.page_number, placed.line.line_number
             lines.append(
                 {
@@ -361,12 +403,18 @@ def main(argv: list[str]) -> None:
     p_take.add_argument("mushaf", help="id, id prefix, or part of the name")
     p_take.add_argument("--tag", required=True, help="output folder under wl-out/bench/")
     p_take.add_argument("--spans", nargs="+", required=True, help="S:A-S:A ...")
+    p_take.add_argument(
+        "--canonical",
+        action="store_true",
+        help="measure each line over its full box, as calibration does, instead of the "
+        "word run's cropped lines (calibration off; nothing stored)",
+    )
     args = parser.parse_args(argv)
 
     if args.command == "list":
         listing()
     else:
-        take(resolve(args.mushaf), args.tag, args.spans)
+        take(resolve(args.mushaf), args.tag, args.spans, full_line=args.canonical)
 
 
 if __name__ == "__main__":

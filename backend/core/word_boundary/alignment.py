@@ -18,15 +18,12 @@ ambiguity rather than enumerated.
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass, field, replace
 
-from core.word_boundary.calibration import COUNT_SLACK, COUNT_WEIGHT, MAX_LIVE_STATES
+from core.word_boundary.calibration import COUNT_SLACK, COUNT_WEIGHT
 from core.word_boundary.ink import Blob, LineInk, attach_marks
-from core.word_boundary.inputs import IjamMode, WordInput
+from core.word_boundary.inputs import WordInput
 from core.word_boundary.results import WordBox
-
-logger = logging.getLogger(__name__)
 
 StateKey = tuple[int, int, int | None, int | None]
 
@@ -143,6 +140,8 @@ class LineParse:
     body_labels: set[int] = field(default_factory=set)
     role_ambiguous_labels: set[int] = field(default_factory=set)
     segments: list[SegmentParse] = field(default_factory=list)
+    released_locks: list[int] = field(default_factory=list)
+    constraint_conflicts: set[int] = field(default_factory=set)
 
 
 def parser_events(ink: LineInk) -> list[ParseEvent]:
@@ -195,27 +194,32 @@ def _merge_record(target: dict[StateKey, ParseRecord], key: tuple, candidate: Pa
 
 
 def _advance(
-    states: dict[StateKey, ParseRecord], blob: Blob, ident: int, words: list[WordInput]
+    states: dict[StateKey, ParseRecord], blob: Blob, ident: int, words: list[WordInput], *, allow_full: bool = False
 ) -> dict[StateKey, ParseRecord]:
     """Keep geometry-distinct paths, discarding only primary-score dominance."""
     nxt: dict[StateKey, ParseRecord] = {}
     for key, record in states.items():
-        _merge_record(nxt, key, _with_mark(record, blob))
-        for produced_key, produced in _with_body(record, blob, ident, words, key):
+        if blob.locked_role != "body" and blob.assigned_word_id is None:
+            _merge_record(nxt, key, _with_mark(record, blob))
+        for produced_key, produced in _with_body(record, blob, ident, words, key, allow_full=allow_full):
             _merge_record(nxt, produced_key, produced)
     # Geometry affects only the third rank tier. A worse (cost, deviations)
     # prefix at the same word/count can never beat the better prefix's suffix.
-    best: dict[tuple[int, int], tuple[int, ...]] = {}
+    best: dict[tuple[int, int, bool], tuple[int, ...]] = {}
     for key, record in nxt.items():
-        prefix = key[:2]
+        prefix = (key[0], key[1], bool(record.current_group))
         best[prefix] = min(best.get(prefix, record.rank[:2]), record.rank[:2])
-    return {key: record for key, record in nxt.items() if record.rank[:2] == best[key[:2]]}
+    return {
+        key: record
+        for key, record in nxt.items()
+        if record.rank[:2] == best[(key[0], key[1], bool(record.current_group))]
+    }
 
 
 def _line_end(states: dict[StateKey, ParseRecord]) -> dict[StateKey, ParseRecord]:
     kept: dict[StateKey, ParseRecord] = {}
     for key, record in states.items():
-        if key[1] == 0:
+        if key[1] == 0 and not record.current_group:
             _merge_record(kept, key, replace(record, previous_end=None, current_left=None))
     return kept
 
@@ -243,6 +247,8 @@ def _with_body(
     ident: int,
     words: list[WordInput],
     state: tuple,
+    *,
+    allow_full: bool = False,
 ) -> list[tuple[StateKey, ParseRecord]]:
     """Every way this component can extend or finish the current word.
 
@@ -252,10 +258,12 @@ def _with_body(
     a boundary, and the next word starts where it should.
     """
     word_index, done = state[:2]
-    if word_index >= len(words):
+    if blob.locked_role == "mark" or word_index >= len(words):
+        return []
+    if blob.assigned_word_id is not None and blob.assigned_word_id != words[word_index].id:
         return []
     want = words[word_index].paws
-    done += 1
+    done += blob.paw_count
     if done > want + COUNT_SLACK:
         return []
 
@@ -288,7 +296,7 @@ def _with_body(
                 ),
             )
         )
-    if done < want + COUNT_SLACK:
+    if done < want + COUNT_SLACK or allow_full or blob.constrained:
         options.append(
             (
                 (word_index, done),
@@ -356,323 +364,12 @@ def _required_marks_present(record: ParseRecord, words: list[WordInput], start_w
     return True
 
 
-def _parse_segment(
-    events: list[ParseEvent],
-    ink: LineInk,
-    words: list[WordInput],
-    start_word: int | None,
-    require_end: int | None,
-    ijam: IjamMode = "report",
-) -> SegmentParse:
-    """Parse one ornament-delimited stretch of a line.
-
-    ``require_end`` is the word index the stretch must finish on when an ornament
-    follows it: an ornament closes an aya, so a reading that stops anywhere else
-    has mis-assigned words and is rejected outright.
-    """
-    labels = {event.blob.label for event in events if event.blob is not None}
-    if start_word is None:
-        logger.info("      no cursor to start from — segment left unresolved")
-        return SegmentParse("unresolved", "upstream-unresolved", None, None, None, 0, labels=labels)
-
-    logger.info(
-        "      %d blob(s), cursor at word %d%s; text from here: %s",
-        len(events),
-        start_word,
-        f", must finish on word {require_end}" if require_end is not None else ", open end",
-        _text_preview(words, start_word, require_end),
-    )
-
-    states: dict[StateKey, ParseRecord] = {(start_word, 0, None, None): ParseRecord(0, (), (), (), 0)}
-    peak_states = 1
-    for event in events:
-        assert event.blob is not None
-        blob = event.blob
-        states = _advance(states, blob, blob.label, words)
-        peak_states = max(peak_states, len(states))
-        if len(states) > MAX_LIVE_STATES:
-            logger.warning(
-                "      search budget spent: %d live states past blob #%d (ceiling %d) — segment abandoned",
-                len(states),
-                blob.label,
-                MAX_LIVE_STATES,
-            )
-            return SegmentParse("unresolved", "search-budget-exceeded", start_word, None, None, 0, labels=labels)
-
-    finals = [
-        (state, record)
-        for state, record in states.items()
-        if state[1] == 0 and (require_end is None or state[0] == require_end)
-    ]
-    missed_boundary = False
-    if not finals and require_end is not None:
-        # The aya did not finish where its ornament says it should. Take the best
-        # reading anyway and flag it, rather than discarding the whole stretch.
-        missed_boundary = True
-        finals = [(state, record) for state, record in states.items() if state[1] == 0]
-        logger.info(
-            "      no reading finished on word %d as the ornament demands; "
-            "taking the best of %d that closed a word instead",
-            require_end,
-            len(finals),
-        )
-    if not finals:
-        logger.info("      no reading closed a word over %d blob(s) — segment unresolved", len(events))
-        return SegmentParse("unresolved", "no-parse", start_word, None, None, 0, labels=labels)
-
-    minimum_rank = min(record.rank for _, record in finals)
-    minimum = minimum_rank[0]
-    best = [(state, record) for state, record in finals if record.rank == minimum_rank]
-    representatives: dict[tuple[int, ...], tuple[tuple[int, int], ParseRecord]] = {}
-    ambiguous_ends = any(record.ambiguous_ends for _, record in best)
-    for state, record in best:
-        representatives.setdefault(record.ends, (state, record))
-    end_sequences = len(representatives) + (1 if ambiguous_ends and len(representatives) == 1 else 0)
-
-    # Always commit to a reading. A tie is settled deterministically rather than
-    # abandoned: a plausible boundary a human can nudge is worth far more than no
-    # boundary at all, and the tie is reported so review can be prioritised.
-    state, record = representatives[min(representatives)]
-
-    concerns: list[str] = []
-    if missed_boundary:
-        concerns.append("aya-boundary-missed")
-    if record.deviations:
-        concerns.append(f"{record.deviations} word(s) off-count")
-    if end_sequences > 1:
-        concerns.append(f"{end_sequences} equal-cost readings")
-    # ── the expected dots, checked where this mushaf's script warrants it ─────
-    #
-    # ``IJAM`` describes one dotting convention, not a universal fact — Maghribi
-    # puts ف's dot below where that table puts it above, and a mushaf may leave
-    # final ي undotted. So whether the question is worth asking at all is declared
-    # per mushaf and arrives as ``ijam``. See ``inputs.IjamMode``, which also
-    # records why there is no mode that lets this *reject* a reading.
-    #
-    # Asked of the winner, after ranking, because the check needs a *completed*
-    # parse: it counts which components were left over as marks, and at any
-    # intermediate state the blobs further left are undecided while words overlap
-    # wherever a tail sweeps under a neighbour. There is nothing to choose between
-    # by this point anyway — every rival that reached the same key is already gone.
-    ijam_short = ijam != "ignore" and not _required_marks_present(record, words, start_word, ink)
-    if ijam_short:
-        # This reading ate a letter's dot. Two quite different things can be behind
-        # that, and only one of them is a reason to change the algorithm:
-        #
-        #   mask empty   no equal-rank alternative was ever discarded on this path,
-        #                so the ink really cannot be read without eating a dot.
-        #                Nothing the DP could carry would have helped.
-        #   mask set     ``_merge_record`` dropped a reading that disagreed about
-        #                which blobs are bodies. That one may well have kept the
-        #                dot, and it was gone before anything could prefer it.
-        #
-        # Counting the second kind over a real mushaf is what would decide whether
-        # the DP should keep i'jam-distinct alternatives. Saying which it is in the
-        # reason means the next ordinary run answers that, with nothing to add.
-        concerns.append("i'jam short, alternatives discarded" if record.role_ambiguous_mask else "i'jam short")
-
-    logger.info(
-        "      → %s  cost=%d  words %d..%d (%d)  deviations=%d  readings=%d  peak states=%d%s",
-        "exact" if not concerns else "scored",
-        minimum,
-        start_word,
-        state[0],
-        len(record.groups),
-        record.deviations,
-        end_sequences,
-        peak_states,
-        f"  [{', '.join(concerns)}]" if concerns else "",
-    )
-    if logger.isEnabledFor(logging.DEBUG):
-        for offset, group in enumerate(record.groups):
-            word = words[start_word + offset]
-            logger.debug(
-                "        word %-5d %-14s paws want %d got %d%s  i'jam %d↑/%d↓  blobs %s",
-                start_word + offset,
-                word.text,
-                word.paws,
-                len(group),
-                " OFF" if len(group) != word.paws else "    ",
-                word.ijam_above,
-                word.ijam_below,
-                list(group),
-            )
-
-    max_label = max((blob.label for blob in ink.components), default=0)
-    return SegmentParse(
-        "exact" if not concerns else "scored",
-        ", ".join(concerns) or None,
-        start_word,
-        state[0],
-        minimum,
-        end_sequences,
-        deviations=record.deviations,
-        groups=[list(group) for group in record.groups],
-        labels=labels,
-        body_labels={label for label in range(1, max_label + 1) if record.body_mask & (1 << label)},
-        role_ambiguous_labels={label for label in range(1, max_label + 1) if record.role_ambiguous_mask & (1 << label)},
-    )
-
-
-def _text_preview(words: list[WordInput], start: int, end: int | None, limit: int = 6) -> str:
-    """The first few words a segment may spend, for a reader following the trace.
-
-    The log is read to answer "which words did it think were here", and word
-    indices alone cannot answer that. Bounded because a long stretch would bury
-    the line it belongs to.
-    """
-    stop = min(end if end is not None else start + limit, start + limit, len(words))
-    shown = [word.text for word in words[start:stop]]
-    if not shown:
-        return "(none left)"
-    more = (end if end is not None else len(words)) - stop
-    return " ".join(shown) + (f" … (+{more})" if more > 0 else "")
-
-
 def _aya_end_after(cursor: int, aya_starts: list[int]) -> int:
     """The word index at which the aya holding ``cursor`` finishes."""
     for start in aya_starts:
         if start > cursor:
             return start
     return aya_starts[-1]
-
-
-def parse_line(
-    ink: LineInk,
-    words: list[WordInput],
-    start_word: int | None,
-    *,
-    aya_starts: list[int],
-    ornaments_before: int = 0,
-    ijam: IjamMode = "report",
-) -> LineParse:
-    """Parse a physical line as independent ornament-delimited segments.
-
-    An ornament is an absolute anchor, not merely something to validate against:
-    the word following it opens the next aya whatever happened before it. Parsing
-    the stretches either side separately means a fused word ahead of an ornament
-    can no longer discard the perfectly determined words behind it — and a line
-    whose incoming cursor was lost upstream still resolves everything after its
-    first ornament.
-
-    An ornament is read *locally*: it closes whichever aya the cursor is inside,
-    rather than the k-th aya of the span. Counting ornaments from the start of
-    the span instead makes every anchor depend on every earlier detection, so one
-    spurious ring anywhere in a sura shifts all of them — and the old code, which
-    demanded a perfect global count before it would anchor at all, simply gave up
-    on the whole run. The local reading needs no such bargain: a missed ornament
-    costs one boundary and the next one re-syncs.
-
-    ``ornaments_before`` is how many ornaments precede this line in the span. It
-    is used only to recover when the cursor has been lost altogether, where
-    counting is the one thing left that still says which aya an ornament closes.
-    """
-    starts = set(aya_starts)
-    events = parser_events(ink)
-    stretches: list[list[ParseEvent]] = [[]]
-    for event in events:
-        if event.kind == "separator":
-            stretches.append([])
-        else:
-            stretches[-1].append(event)
-
-    logger.info(
-        "    parsing %s: %d stretch(es) split by %d ornament(s), cursor in at %s",
-        ink.label,
-        len(stretches),
-        len(stretches) - 1,
-        start_word if start_word is not None else "lost",
-    )
-
-    segments: list[SegmentParse] = []
-    cursor = start_word
-    closed_so_far = ornaments_before
-    for index, stretch in enumerate(stretches):
-        # Every stretch but the last is closed by an ornament, so it must finish
-        # on that aya's boundary.
-        closed = index < len(stretches) - 1
-        require_end: int | None = None
-        if closed:
-            if cursor is None:
-                # Lost upstream. The ornament count is all that is left to say
-                # which boundary this is, so a failed line stops costing every
-                # line after it.
-                require_end = aya_starts[min(closed_so_far + 1, len(aya_starts) - 1)]
-            elif stretch or cursor not in starts:
-                # An ornament opening a line closes an aya whose words all sat on
-                # the line above, and must not consume an aya of its own.
-                require_end = _aya_end_after(cursor, aya_starts)
-        logger.info("    stretch %d/%d%s", index + 1, len(stretches), " (closed by an ornament)" if closed else "")
-        if not stretch:
-            logger.info("      no ink — the ornament opens the line, so it takes no aya of its own")
-            segments.append(SegmentParse("empty", None, cursor, cursor, 0, 1))
-        else:
-            segment = _parse_segment(stretch, ink, words, cursor, require_end, ijam)
-            segments.append(segment)
-            cursor = segment.next_word
-        if closed:
-            # The ornament is absolute: whatever the stretch made of its ink, the
-            # aya ends here and the next word opens the one after it.
-            if require_end is not None:
-                if cursor != require_end:
-                    logger.info("      ornament overrides the cursor: %s → %s", cursor, require_end)
-                cursor = require_end
-            closed_so_far += 1
-
-    resolved = [s for s in segments if s.resolved and s.groups]
-    unresolved = [s for s in segments if not s.resolved]
-    groups: list[list[int]] = []
-    word_indices: list[int] = []
-    for segment in resolved:
-        assert segment.start_word is not None
-        for offset in range(len(segment.groups)):
-            word_indices.append(segment.start_word + offset)
-        groups.extend(segment.groups)
-
-    costs = [s.alignment_cost for s in segments if s.alignment_cost is not None]
-    concerns = [s.reason for s in segments if s.reason]
-    status: str
-    reason: str | None
-    if unresolved and not resolved:
-        status, reason = "unresolved", concerns[0] if concerns else "no-parse"
-    elif unresolved:
-        status, reason = "partial", "; ".join(concerns) or None
-    elif concerns:
-        # Boundaries were drawn, but something about them is worth a human look.
-        status, reason = "scored", "; ".join(concerns)
-    else:
-        status, reason = "exact", None
-
-    log = logger.warning if status == "unresolved" else logger.info
-    log(
-        "    %s → %s%s: %d word(s) placed, cursor %s → %s",
-        ink.label,
-        status.upper() if status in ("unresolved", "partial") else status,
-        f" ({reason})" if reason else "",
-        len(groups),
-        start_word if start_word is not None else "lost",
-        segments[-1].next_word if segments else None,
-    )
-
-    return LineParse(
-        status,
-        reason,
-        # An unresolved final segment can still hand on a cursor when every
-        # minimum-cost reading consumed the same number of words.
-        segments[-1].next_word if segments else None,
-        max(costs, default=None),
-        # Count ties only. A determined segment reports one reading and must
-        # contribute nothing, so a clean line stays at 0 and a flagged one
-        # carries the depth of its tie — which is what the reason line claims.
-        sum(s.end_sequences for s in segments if s.end_sequences > 1),
-        deviations=sum(s.deviations for s in segments),
-        groups=groups,
-        word_indices=word_indices,
-        committed_labels={label for s in resolved for label in s.labels},
-        body_labels={label for s in resolved for label in s.body_labels},
-        role_ambiguous_labels={label for s in resolved for label in s.role_ambiguous_labels},
-        segments=segments,
-    )
 
 
 def apply_parse_roles(ink: LineInk, parsed: LineParse) -> None:
@@ -685,7 +382,10 @@ def apply_parse_roles(ink: LineInk, parsed: LineParse) -> None:
     cluttering every unresolved line with boxes suggesting they might be text.
     """
     for blob in ink.components:
-        if blob.label in parsed.committed_labels:
+        if blob.locked_role is not None:
+            blob.role = blob.locked_role
+            blob.role_ambiguous = False
+        elif blob.label in parsed.committed_labels:
             blob.role = "body" if blob.label in parsed.body_labels else "mark"
             blob.role_ambiguous = blob.label in parsed.role_ambiguous_labels
         else:
@@ -701,11 +401,13 @@ def build_line_boxes(
     groups: list[list[int]],
     ink: LineInk,
 ) -> list[WordBox]:
-    """Word boxes in **image** coordinates, with semantic word ends body-only.
+    """Word boxes in **image** coordinates, spanning a word's bodies *and* its marks.
 
-    The box grows to cover a word's marks so the drawn rectangle contains its
-    tashkeel, but ``end_x`` — where the cut goes — is taken from the bodies alone,
-    since a mark leaning past its letter must not move the boundary.
+    Each mark goes to the body it sits over (:func:`attach_marks`), and the box —
+    ``end_x``, where the cut goes, included — takes in every one of them. A word is
+    highlighted with its tashkeel: a fatha leaning past its letter, or a kasra under
+    the neighbouring one, is still part of the word it belongs to. (Until 2026-09-27
+    the horizontal edges were body-only; the user asked for the marks.)
 
     This is where the tight crop is undone. ``ink.offset_x``/``offset_y`` are added
     once, here, and everything the engine returns is in the caller's own image
@@ -717,8 +419,8 @@ def build_line_boxes(
     for index, word, labels in zip(indices, words, groups, strict=True):
         bodies = [by_label[label] for label in labels]
         parts = [*bodies, *(mark for label in labels for mark in owned[label])]
-        left = min(blob.x for blob in bodies) + ink.offset_x
-        right = max(blob.right for blob in bodies) + ink.offset_x
+        left = min(blob.x for blob in parts) + ink.offset_x
+        right = max(blob.right for blob in parts) + ink.offset_x
         top = min(blob.y for blob in parts) + ink.offset_y
         bottom = max(blob.bottom for blob in parts) + ink.offset_y
         boxes.append(

@@ -89,7 +89,7 @@ module = "allauth.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-module = ["api.tests.*", "accounts.tests", "quran.tests.*"]
+module = ["api.tests.*", "accounts.tests", "quran.tests.*", "core.tests.*"]
 disallow_untyped_defs = false
 check_untyped_defs = false
 

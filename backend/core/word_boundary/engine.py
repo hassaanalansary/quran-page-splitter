@@ -22,11 +22,12 @@ import time
 
 from core.word_boundary.alignment import (
     LineParse,
+    SegmentParse,
     apply_parse_roles,
     build_line_boxes,
 )
 from core.word_boundary.ink import LineInk, analyse_line
-from core.word_boundary.inputs import WordBoundaryInput, WordInput, aya_starts
+from core.word_boundary.inputs import BlobConstraint, WordBoundaryInput, WordInput, aya_starts
 from core.word_boundary.results import (
     FLAGGED_STATUSES,
     STATUSES,
@@ -57,7 +58,6 @@ def detect_words(
     written: the caller decides where that goes — a per-run file for the web app
     (``api.services.run_logs``), the console for the CLI, nowhere at all for a test.
     """
-    started = time.perf_counter()
     words = source.words
     logger.info("═" * 72)
     logger.info(
@@ -104,6 +104,22 @@ def detect_words(
         split_separators(ink, template, match_threshold=separator_threshold)
         inks.append(ink)
 
+    return detect_prepared(source, inks)
+
+
+def detect_prepared(source: WordBoundaryInput, inks: list[LineInk]) -> WordBoundaryResult:
+    """Align already measured, symbol/ornament-partitioned ink in reading order.
+
+    No image measurement, cropping, matching or CC relabeling is performed.
+    One ink is required per source line. Coordinates remain in the full line's
+    tight crop, with its original offsets, even when components were filtered.
+    Roles and released calibration locks are updated on the supplied blobs.
+    """
+    started = time.perf_counter()
+    if len(inks) != len(source.lines):
+        raise ValueError("detect_prepared requires one LineInk per source line")
+    _apply_constraints(source, inks)
+    words = source.words
     starts = aya_starts(words)
     logger.info(
         "── aligning — %d ornament(s) over the span, %d aya boundary(ies) in the text ──",
@@ -132,7 +148,11 @@ def detect_words(
                 cursor,
                 len(ink.components),
             )
-            parses[index] = LineParse("unresolved", "words-exhausted", cursor, None, 0)
+            if parsed.constraint_conflicts or "constraint-" in (parsed.reason or ""):
+                continue
+            parses[index] = LineParse(
+                "unresolved", "words-exhausted", cursor, None, 0, released_locks=parsed.released_locks
+            )
             apply_parse_roles(ink, parses[index])
 
     # A prefix-only parse cannot claim success: withdraw the final line's cuts
@@ -147,21 +167,73 @@ def detect_words(
             cursor,
             len(words),
         )
-        parses[last] = LineParse("unresolved", "unconsumed-text-span", None, None, 0)
-        apply_parse_roles(inks[last], parses[last])
+        if "constraint-" not in (parses[last].reason or ""):
+            parses[last] = LineParse(
+                "unresolved", "unconsumed-text-span", None, None, 0, released_locks=parses[last].released_locks
+            )
+            apply_parse_roles(inks[last], parses[last])
+
+    # Recovery can withdraw earlier placements or exhaust the text before a
+    # forced body. Report every unplaced hard body even if all word IDs appear.
+    for ink, parsed in zip(inks, parses, strict=True):
+        placed_labels = {label for group in parsed.groups for label in group}
+        missing = {
+            blob.label
+            for blob in ink.components
+            if (blob.locked_role == "body" or blob.assigned_word_id is not None) and blob.label not in placed_labels
+        }
+        if missing:
+            parsed.constraint_conflicts.update(missing)
+            parsed.status = "partial" if parsed.groups else "unresolved"
+            if "constraint-" not in (parsed.reason or ""):
+                parsed.reason = "; ".join(filter(None, [parsed.reason, "constraint-conflict"]))
+                parsed.segments.append(
+                    SegmentParse("unresolved", "constraint-conflict", None, None, None, 0, labels=missing)
+                )
 
     lines = [
         _line_result(source.lines[i].label, source.lines[i].source, ink, parsed, words)
         for i, (ink, parsed) in enumerate(zip(inks, parses, strict=True))
     ]
     placed = {word.index for line in lines for word in line.words}
-    complete = placed == set(range(len(words)))
+    complete = placed == set(range(len(words))) and not any("constraint-" in (line.reason or "") for line in lines)
     _log_summary(lines, words, complete, time.perf_counter() - started)
     return WordBoundaryResult(
         lines=lines,
         words_consumed=len(placed),
         complete=complete,
     )
+
+
+def _apply_constraints(source: WordBoundaryInput, inks: list[LineInk]) -> None:
+    """Carry ``source.constraints`` onto the blobs they name, and validate them all.
+
+    Keyed by ``(LineImage.source, blob label)``: a label is only unique within its
+    own line. A key that names no surviving text blob raises rather than being
+    dropped — a reviewer's decision silently ignored is the one failure worse than
+    a refused run.
+    """
+    by_key: dict[tuple[str, int], list] = {}
+    for line, ink in zip(source.lines, inks, strict=True):
+        for blob in ink.components:
+            by_key.setdefault((line.source, blob.label), []).append(blob)
+    for key, constraint in source.constraints.items():
+        matches = by_key.get(key, [])
+        if len(matches) != 1:
+            raise ValueError(f"Constraint key must identify one text component: {key!r}")
+        blob = matches[0]
+        blob.locked_role = constraint.locked_role
+        blob.lock_source = constraint.lock_source
+        blob.paw_count = constraint.paw_count
+        blob.assigned_word_id = constraint.assigned_word_id
+    ids = [word.id for word in source.words]
+    for ink in inks:
+        for blob in ink.components:
+            # Constraints may also arrive set directly on the blobs (a caller that
+            # rebuilt the ink itself); building one validates them the same way.
+            BlobConstraint(blob.locked_role, blob.lock_source, blob.paw_count, blob.assigned_word_id)
+            if blob.assigned_word_id is not None and ids.count(blob.assigned_word_id) > 1:
+                raise ValueError(f"Ownership requires unique WordInput.id: {blob.assigned_word_id}")
 
 
 def _log_summary(lines: list[WordLine], words: list[WordInput], complete: bool, seconds: float) -> None:
@@ -307,4 +379,6 @@ def _line_result(
             )
             for segment in parsed.segments
         ],
+        released_locks=parsed.released_locks,
+        constraint_conflicts=sorted(parsed.constraint_conflicts),
     )

@@ -1,6 +1,8 @@
 import uuid
+from typing import Any
 
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
 
@@ -44,6 +46,10 @@ class ActivityTypeChoices(models.TextChoices):
     LINES_EXPORTED = "lines_exported", "Lines Exported"
     WORDS_DETECTED = "words_detected", "Words Detected"
     WORDS_EDITED = "words_edited", "Words Edited"
+    CALIBRATION_SAVED = "calibration_saved", "Calibration Saved"
+    CALIBRATION_CONFIRMED = "calibration_confirmed", "Calibration Confirmed"
+    CALIBRATION_PROCESSED = "calibration_processed", "Calibration Processed"
+    CALIBRATION_EVALUATED = "calibration_evaluated", "Calibration Evaluated"
 
 
 class BaseModel(models.Model):
@@ -85,6 +91,10 @@ def line_png_path(instance: "Line", filename: str) -> str:
     # ``filename`` arrives as "page-0007/line-03.png" so the stored tree mirrors
     # the layout of the lines.zip download.
     return f"{mushaf_dir(instance.page.mushaf_id)}/lines/{filename}"
+
+
+def calibration_file_path(instance: "CalibrationSnapshot", filename: str) -> str:
+    return f"{mushaf_dir(instance.mushaf_id)}/calibration/{instance.id}/{filename}"
 
 
 class VisibilityChoices(models.TextChoices):
@@ -275,6 +285,9 @@ class ProcessJobStateChoices(models.TextChoices):
 class ProcessJobKindChoices(models.TextChoices):
     DETECTION = "detection", "Page detection"
     WORDS = "words", "Word boundaries"
+    #: One page processed for calibration review. Its own kind so the word-run
+    #: screen, which polls the latest ``words`` job, never mistakes it for a run.
+    CALIBRATION = "calibration", "Calibration page"
 
 
 class ProcessJob(BaseModel):
@@ -601,6 +614,156 @@ class LineWordStatus(BaseModel):
 
     def __str__(self) -> str:
         return f"line {self.line_id}: {self.status}"
+
+
+class CalibrationSnapshot(BaseModel):
+    """One text line's ink, measured once over its full box, kept for good.
+
+    **Why a copy and not the Line.** Re-processing a page deletes its ``Line`` rows,
+    and a label a reviewer gave a blob is only meaningful against the exact pixels
+    it was given on. So the pixels come along: ``image`` is the line as the engine
+    measured it, ``labels`` the same size with every pixel's blob id encoded in its
+    RGB value (0 is background), and ``metadata`` every blob's geometry and evidence.
+    The page and line are *numbers*, not foreign keys, for the same reason.
+
+    **Why the full line box.** A word run cuts the first and last line of a span at
+    an aya boundary, and a cut image gets new blob numbers and a re-measured writing
+    band. A snapshot is taken once per line, uncut; a span selects blobs from it.
+
+    Immutable. ``fingerprint`` hashes everything the measurement depends on, so a
+    changed source makes a new snapshot rather than editing an old one.
+    """
+
+    mushaf = models.ForeignKey(Mushaf, on_delete=models.CASCADE, related_name="calibration_snapshots")
+    page_number = models.PositiveSmallIntegerField()
+    line_number = models.PositiveSmallIntegerField()
+    #: The ``Line`` it was cut from, while that row lasts. Not a key: provenance only.
+    source_line_id = models.UUIDField(null=True, blank=True)
+    fingerprint = models.CharField(max_length=64)
+    metadata = models.JSONField(default=dict)
+    image = models.FileField(upload_to=calibration_file_path, max_length=255)
+    labels = models.FileField(upload_to=calibration_file_path, max_length=255)
+
+    class Meta:
+        db_table = "calibration_snapshot"
+        verbose_name = "Calibration Snapshot"
+        verbose_name_plural = "Calibration Snapshots"
+        constraints = (models.UniqueConstraint(fields=["mushaf", "fingerprint"], name="unique_calibration_snapshot"),)
+
+    def __str__(self) -> str:
+        return f"p{self.page_number}:l{self.line_number} snapshot of {self.mushaf_id}"
+
+
+class CalibrationReview(BaseModel):
+    """One page's calibration review: the working draft and a pointer to its approval.
+
+    ``payload`` is the **draft** — mutable, saved as often as the reviewer likes, and
+    never a source of examples. ``revision`` counts every change to it, so a tab
+    holding an older number is refused rather than allowed to overwrite newer work.
+    ``confirmed_revision`` names the :class:`CalibrationRevision` that is approved;
+    re-editing a confirmed page leaves that approval in force until it is replaced.
+
+    Keyed by page *number*, so it outlives re-processing the page.
+    """
+
+    mushaf = models.ForeignKey(Mushaf, on_delete=models.CASCADE, related_name="calibration_reviews")
+    page_number = models.PositiveSmallIntegerField()
+    revision = models.PositiveIntegerField(default=0)
+    confirmed_revision = models.PositiveIntegerField(null=True, blank=True)
+    payload = models.JSONField(default=dict)
+
+    class Meta:
+        db_table = "calibration_review"
+        verbose_name = "Calibration Review"
+        verbose_name_plural = "Calibration Reviews"
+        constraints = (models.UniqueConstraint(fields=["mushaf", "page_number"], name="unique_calibration_review"),)
+
+    def __str__(self) -> str:
+        return f"p{self.page_number} review r{self.revision} of {self.mushaf_id}"
+
+
+class CalibrationRevisionKind(models.TextChoices):
+    #: What the engine proposed before anyone touched the page — the prediction
+    #: record evaluation compares against. Written once per processing.
+    PROCESSED = "processed", "Processed"
+    #: An approval: the only kind that supplies examples.
+    CONFIRMED = "confirmed", "Confirmed"
+    #: Word boundaries a person corrected before calibration existed, archived so a
+    #: re-processed page cannot take them with it. No blob labels — none were given.
+    LEGACY = "legacy", "Legacy boundaries"
+
+
+class CalibrationRevision(BaseModel):
+    """An immutable record in a review's history.
+
+    Written at the three moments that must never be rewritten — see
+    :class:`CalibrationRevisionKind`. Drafts are *not* revisions: they change on
+    every save, and keeping each one would store the whole page again each time.
+    """
+
+    review = models.ForeignKey(CalibrationReview, on_delete=models.CASCADE, related_name="revisions")
+    number = models.PositiveIntegerField()
+    kind = models.CharField(max_length=16, choices=CalibrationRevisionKind.choices)
+    payload = models.JSONField(default=dict)
+    #: The client's id for the request that wrote this, so a retried confirmation
+    #: returns the first answer instead of approving the page twice.
+    request_id = models.UUIDField(null=True, blank=True)
+
+    class Meta:
+        db_table = "calibration_revision"
+        verbose_name = "Calibration Revision"
+        verbose_name_plural = "Calibration Revisions"
+        ordering = ("number",)
+        constraints = (
+            models.UniqueConstraint(fields=["review", "number"], name="unique_calibration_revision"),
+            models.UniqueConstraint(fields=["review", "request_id"], name="unique_calibration_request"),
+        )
+
+    def __str__(self) -> str:
+        return f"{self.kind} r{self.number} of {self.review_id}"
+
+    def save(self, *args: Any, **kwargs: Any) -> None:
+        if not self._state.adding:
+            raise ValidationError("Calibration revisions are immutable; create a new revision.")
+        super().save(*args, **kwargs)
+
+
+class CalibrationSettings(BaseModel):
+    """Local opt-in, deliberately absent from copied/imported calibration data."""
+
+    mushaf = models.OneToOneField(Mushaf, on_delete=models.CASCADE, related_name="calibration_settings")
+    revision = models.PositiveIntegerField(default=0)
+    experimental = models.BooleanField(default=False)
+
+    class Meta:
+        db_table = "calibration_settings"
+
+
+class CalibrationProfile(BaseModel):
+    """Which approved revisions a set of predictions was made from, and how.
+
+    Small by design: ``payload`` holds the matcher settings, the feature version and
+    the ids of the approved revisions — never the examples themselves, which are
+    rebuilt from those revisions' snapshots when needed. ``signature`` hashes the
+    three, so the same inputs always name the same profile.
+
+    ``mode`` is ``shadow`` until a person approves an evaluation: predictions are
+    recorded and shown, never applied. Copies and imports always arrive in shadow.
+    """
+
+    mushaf = models.ForeignKey(Mushaf, on_delete=models.CASCADE, related_name="calibration_profiles")
+    signature = models.CharField(max_length=64)
+    payload = models.JSONField(default=dict)
+    mode = models.CharField(max_length=16, default="shadow")
+
+    class Meta:
+        db_table = "calibration_profile"
+        verbose_name = "Calibration Profile"
+        verbose_name_plural = "Calibration Profiles"
+        constraints = (models.UniqueConstraint(fields=["mushaf", "signature"], name="unique_calibration_profile"),)
+
+    def __str__(self) -> str:
+        return f"{self.mode} profile {self.signature[:8]} of {self.mushaf_id}"
 
 
 class ActivityEvent(BaseModel):

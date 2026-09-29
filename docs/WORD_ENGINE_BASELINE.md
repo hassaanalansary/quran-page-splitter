@@ -65,3 +65,17 @@ word placements even when counts match. Backward recovery can withdraw an entire
 conflicting commit, including otherwise plausible placements within it.
 
 The next step is planning calibration, not additional heuristic development.
+
+## Changes Since the Freeze
+
+**2026-09-27 — word boxes span their marks** (user decision). `build_line_boxes` now
+takes a word's horizontal edges — `end_x`, where the cut goes, included — from its
+bodies *and* the marks attached to them, not from the bodies alone. The search is
+untouched: which ink belongs to which word is decided exactly as before.
+
+Checked against `wl-out/bench/calibration-continuation-legacy` (the frozen path as of
+2026-09-27) with tag `marks-in-boxes`, same six spans: every one of the 123 lines keeps
+the same words over the same components; 597 of 958 word boxes widened (right edge
+498, left edge 213; median 5 px, 90th percentile 11 px, largest 30 px). Frozen reports
+are therefore no longer byte-identical to `pre-calibration-v1` by design; compare word
+placements and component lists instead.

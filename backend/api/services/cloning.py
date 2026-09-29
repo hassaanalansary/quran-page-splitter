@@ -86,6 +86,17 @@ def _copy_tree(source: Mushaf, target: Mushaf) -> None:
     bundle.write_tree(target, bundle.serialize_tree(source))
 
 
+def _copy_calibration(source: Mushaf, target: Mushaf) -> None:
+    snapshots = {str(snapshot.pk): snapshot for snapshot in source.calibration_snapshots.all()}
+
+    def read_file(snapshot_id: str, field: str) -> bytes:
+        with getattr(snapshots[snapshot_id], field).open("rb") as stored:
+            data: bytes = stored.read()
+        return data
+
+    bundle.restore_calibration(target, bundle.serialize_calibration(source), read_file)
+
+
 def duplicate(source: Mushaf, *, owner: User) -> Mushaf:
     """Copy ``source`` into ``owner``'s account and return the new mushaf.
 
@@ -120,6 +131,7 @@ def duplicate(source: Mushaf, *, owner: User) -> Mushaf:
         mushaf_service._copy_thumbnail_from(source, target)
         _copy_templates(source, target)
         _copy_tree(source, target)
+        _copy_calibration(source, target)
 
         activity.emit(
             target,

@@ -1,4 +1,4 @@
-"""The portable work bundle — ``mushaf-work/v1``.
+"""The portable work bundle — ``mushaf-work/v2`` (also reads v1).
 
 A mushaf's *work* (page bounds, line and segment geometry, sura assignments,
 erase strokes, template crops) packaged as a zip you can archive, email, or
@@ -27,14 +27,16 @@ import logging
 import shutil
 import uuid
 import zipfile
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
+from copy import deepcopy
 from datetime import UTC, datetime
 from tempfile import SpooledTemporaryFile
 from typing import Any
 
 from django.core.files.base import ContentFile
 from django.db import transaction
+from django.db.models import F
 from ninja.errors import HttpError
 from ninja.files import UploadedFile
 
@@ -42,8 +44,15 @@ from accounts.models import User
 from api import i18n
 from api.models import (
     ActivityTypeChoices,
+    CalibrationProfile,
+    CalibrationReview,
+    CalibrationRevision,
+    CalibrationRevisionKind,
+    CalibrationSnapshot,
     EraseStroke,
     Line,
+    LineWord,
+    LineWordStatus,
     Mushaf,
     Page,
     Segment,
@@ -54,10 +63,12 @@ from api.services import activity
 
 logger = logging.getLogger(__name__)
 
-SCHEMA = "mushaf-work/v1"
+SCHEMA = "mushaf-work/v2"
+SUPPORTED_SCHEMAS = ("mushaf-work/v1", SCHEMA)
 
 MANIFEST_NAME = "manifest.json"
 PAGES_NAME = "pages.json"
+CALIBRATION_NAME = "calibration.json"
 TEMPLATE_DIR = "templates"
 
 #: Same threshold as the line-image zip: buffer in RAM, spill to disk beyond it.
@@ -98,7 +109,13 @@ def serialize_tree(mushaf: Mushaf) -> list[dict]:
             {"brush_size": stroke.brush_size, "points": stroke.points}
         )
 
-    for line in Line.objects.filter(page__mushaf=mushaf).select_related("page").order_by("line_number"):
+    for line in (
+        Line.objects.filter(page__mushaf=mushaf)
+        .select_related("page", "word_status")
+        .prefetch_related("words")
+        .order_by("line_number")
+    ):
+        status = getattr(line, "word_status", None)
         lines_by_page.setdefault(line.page.page_number, []).append(
             {
                 "line_number": line.line_number,
@@ -110,6 +127,19 @@ def serialize_tree(mushaf: Mushaf) -> list[dict]:
                 "bbox_h": line.bbox_h,
                 "segments": segments_by_line.get(line.id, []),
                 "erase_strokes": strokes_by_line.get(line.id, []),
+                "words": [
+                    {"word_id": word.word_id, "position": word.position, "start_x": word.start_x, "end_x": word.end_x}
+                    for word in line.words.all()
+                ],
+                "word_status": {
+                    "status": status.status,
+                    "reason": status.reason,
+                    "deviations": status.deviations,
+                    "ties": status.ties,
+                    "edited": status.edited,
+                }
+                if status
+                else None,
             }
         )
 
@@ -214,6 +244,211 @@ def write_tree(target: Mushaf, pages: list[dict]) -> None:
         batch_size=BATCH_SIZE,
     )
 
+    LineWord.objects.bulk_create(
+        [
+            LineWord(
+                line=new_line_by_key[(page_number, line["line_number"])],
+                word_id=word.get("word_id"),
+                position=word.get("position", index),
+                start_x=word["start_x"],
+                end_x=word["end_x"],
+            )
+            for page_number, line in line_rows
+            for index, word in enumerate(line.get("words", []))
+        ],
+        batch_size=BATCH_SIZE,
+    )
+    LineWordStatus.objects.bulk_create(
+        [
+            LineWordStatus(
+                line=new_line_by_key[(page_number, line["line_number"])],
+                **{
+                    key: value
+                    for key, value in line["word_status"].items()
+                    if key in ("status", "reason", "deviations", "ties", "edited")
+                },
+            )
+            for page_number, line in line_rows
+            if line.get("word_status")
+        ],
+        batch_size=BATCH_SIZE,
+    )
+
+
+def serialize_calibration(mushaf: Mushaf) -> dict:
+    """Portable history and index inputs; runtime indexes and approval do not travel."""
+    return {
+        "source_mushaf_id": str(mushaf.pk),
+        "snapshots": [
+            {
+                "id": str(snapshot.pk),
+                "page_number": snapshot.page_number,
+                "line_number": snapshot.line_number,
+                "source_line_id": str(snapshot.source_line_id) if snapshot.source_line_id else None,
+                "fingerprint": snapshot.fingerprint,
+                "metadata": deepcopy(snapshot.metadata),
+            }
+            for snapshot in mushaf.calibration_snapshots.order_by("page_number", "line_number", "pk")
+        ],
+        "reviews": [
+            {
+                "page_number": review.page_number,
+                "revision": review.revision,
+                "confirmed_revision": review.confirmed_revision,
+                "payload": deepcopy(review.payload),
+                "revisions": [
+                    {
+                        # Profiles name the approvals they were built from by id.
+                        "id": str(revision.pk),
+                        "number": revision.number,
+                        "kind": revision.kind,
+                        "payload": deepcopy(revision.payload),
+                        "request_id": str(revision.request_id) if revision.request_id else None,
+                    }
+                    for revision in review.revisions.all()
+                ],
+            }
+            for review in mushaf.calibration_reviews.order_by("page_number").prefetch_related("revisions")
+        ],
+        "profiles": [
+            {"signature": profile.signature, "payload": _portable_profile(profile.payload), "mode": "shadow"}
+            for profile in mushaf.calibration_profiles.order_by("signature")
+        ],
+    }
+
+
+def _revision_kind(revision: dict) -> str:
+    """A revision's kind, validated — a bundle is untrusted input."""
+    kind = revision.get("kind")
+    if kind not in CalibrationRevisionKind.values:
+        raise ValueError(f"Unknown calibration revision kind {kind!r}")
+    return str(kind)
+
+
+def _portable_profile(payload: dict) -> dict:
+    return {
+        key: deepcopy(value)
+        for key, value in payload.items()
+        if key not in ("index", "cached_index", "index_path", "active_approval", "approved", "approved_at", "mode")
+    }
+
+
+def _remap_snapshot_refs(value: Any, ids: dict[str, str]) -> Any:
+    if isinstance(value, dict):
+        return {ids.get(key, key): _remap_snapshot_refs(item, ids) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_remap_snapshot_refs(item, ids) for item in value]
+    return ids.get(value, value) if isinstance(value, str) else value
+
+
+def _rebind_lines(value: Any, lines: dict[tuple[int, int], str], page: int) -> Any:
+    """Point every row at the target's own line with the same page and line number.
+
+    Rows name their ``Line`` by id, and a copy's lines are new rows: left pointing at
+    the original's, every review would arrive stale. The original id is kept beside
+    the new one as provenance. A row whose line the target does not have keeps its
+    old id, and reads as stale — which is then the truth.
+    """
+    if isinstance(value, list):
+        return [_rebind_lines(item, lines, page) for item in value]
+    if not isinstance(value, dict):
+        return value
+    out = {key: _rebind_lines(item, lines, page) for key, item in value.items()}
+    if "line_id" in out and "line_number" in out:
+        own = lines.get((int(out.get("page_number", page)), int(out["line_number"])))
+        if own is not None and own != out["line_id"]:
+            out.setdefault("source_line_id", out["line_id"])
+            out["line_id"] = own
+    return out
+
+
+def _offset_revisions(payload: dict, offset: int) -> dict:
+    """Shift a payload's references to revision numbers by the history it joins."""
+    if offset and isinstance(payload.get("processed_revision"), int):
+        payload = {**payload, "processed_revision": payload["processed_revision"] + offset}
+    return payload
+
+
+def restore_calibration(target: Mushaf, data: dict, read_file: Callable[[str, str], bytes | None]) -> None:
+    """Restore files into target-owned paths and rebind every reference to the target.
+
+    Snapshot ids, revision ids and line ids are all the target's own afterwards, so
+    a copy's unchanged pages read as current, not stale; each original id is kept
+    beside its replacement as provenance. Existing history stays immutable when
+    importing over a worked target: imported revisions are appended after it, and
+    every reference to a revision number is shifted to match.
+    """
+    from api.models import CalibrationSettings
+
+    # Activation is local consent, never portable data, even on an existing target.
+    CalibrationSettings.objects.filter(mushaf=target).update(experimental=False, revision=F("revision") + 1)
+    lines = {
+        (page_number, line_number): str(pk)
+        for page_number, line_number, pk in Line.objects.filter(page__mushaf=target).values_list(
+            "page__page_number", "line_number", "pk"
+        )
+    }
+    ids: dict[str, str] = {}
+    for entry in data.get("snapshots", []):
+        source_id = str(uuid.UUID(entry["id"]))
+        own_line = lines.get((entry.get("page_number"), entry.get("line_number")))
+        snapshot, created = CalibrationSnapshot.objects.get_or_create(
+            mushaf=target,
+            fingerprint=entry["fingerprint"],
+            defaults={
+                "page_number": entry.get("page_number"),
+                "line_number": entry.get("line_number"),
+                "source_line_id": own_line or entry.get("source_line_id"),
+            },
+        )
+        ids[source_id] = str(snapshot.pk)
+        if created:
+            snapshot.metadata = deepcopy(entry.get("metadata", {}))
+            snapshot.metadata.setdefault("source_mushaf_id", data.get("source_mushaf_id"))
+            snapshot.metadata.setdefault("source_snapshot_id", source_id)
+            snapshot.metadata.setdefault("source_line_id", entry.get("source_line_id"))
+            for field in ("image", "labels"):
+                content = read_file(source_id, field)
+                if content is None:
+                    raise ValueError(f"Missing calibration snapshot {source_id}/{field}.png")
+                getattr(snapshot, field).save(f"{field}.png", ContentFile(content), save=False)
+            snapshot.save()
+
+    for entry in data.get("reviews", []):
+        review, _ = CalibrationReview.objects.select_for_update().get_or_create(
+            mushaf=target, page_number=entry["page_number"]
+        )
+        offset = review.revision
+        page = int(entry["page_number"])
+        used_requests = set(review.revisions.values_list("request_id", flat=True))
+        for revision in entry.get("revisions", []):
+            request_id = uuid.UUID(revision["request_id"]) if revision.get("request_id") else None
+            payload = _remap_snapshot_refs(revision.get("payload", {}), ids)
+            created_revision = CalibrationRevision.objects.create(
+                review=review,
+                number=offset + revision["number"],
+                kind=_revision_kind(revision),
+                payload=_offset_revisions(_rebind_lines(payload, lines, page), offset),
+                request_id=request_id if request_id not in used_requests else None,
+            )
+            if revision.get("id"):
+                ids[str(uuid.UUID(revision["id"]))] = str(created_revision.pk)
+        review.revision = offset + entry["revision"]
+        confirmed = entry.get("confirmed_revision")
+        review.confirmed_revision = offset + confirmed if confirmed is not None else review.confirmed_revision
+        payload = _remap_snapshot_refs(entry.get("payload", {}), ids)
+        review.payload = _offset_revisions(_rebind_lines(payload, lines, page), offset)
+        if "profile" in review.payload:
+            review.payload["profile"] = {**review.payload["profile"], "mode": "shadow"}
+        review.save()
+
+    for entry in data.get("profiles", []):
+        CalibrationProfile.objects.update_or_create(
+            mushaf=target,
+            signature=entry["signature"],
+            defaults={"mode": "shadow", "payload": _remap_snapshot_refs(_portable_profile(entry["payload"]), ids)},
+        )
+
 
 # --------------------------------------------------------------------------
 # Export
@@ -237,6 +472,7 @@ def build(mushaf_id: uuid.UUID, *, user: User | None) -> tuple[str, SpooledTempo
 
     mushaf = mushaf_service.get_mushaf(mushaf_id, user=user, write=False)
     pages = serialize_tree(mushaf)
+    calibration = serialize_calibration(mushaf)
 
     templates = []
     for template in mushaf.templates.order_by("type"):
@@ -279,6 +515,13 @@ def build(mushaf_id: uuid.UUID, *, user: User | None) -> tuple[str, SpooledTempo
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
         archive.writestr(MANIFEST_NAME, json.dumps(manifest, ensure_ascii=False, indent=2))
         archive.writestr(PAGES_NAME, json.dumps({"pages": pages}, ensure_ascii=False))
+        if any(calibration[key] for key in ("snapshots", "reviews", "profiles")):
+            archive.writestr(CALIBRATION_NAME, json.dumps(calibration, ensure_ascii=False))
+            for snapshot in mushaf.calibration_snapshots.all():
+                for field in ("image", "labels"):
+                    stored = getattr(snapshot, field)
+                    with stored.open("rb") as source:
+                        archive.writestr(f"calibration/{snapshot.pk}/{field}.png", source.read())
         for template in mushaf.templates.order_by("type"):
             if not template.image:
                 continue
@@ -345,7 +588,7 @@ def read_manifest(archive: zipfile.ZipFile) -> dict:
     if not isinstance(manifest, dict):
         raise HttpError(400, i18n.t("bundle_invalid"))
 
-    if manifest.get("schema") != SCHEMA:
+    if manifest.get("schema") not in SUPPORTED_SCHEMAS:
         raise HttpError(
             400,
             i18n.t("bundle_schema_unknown", schema=manifest.get("schema"), expected=SCHEMA),
@@ -519,6 +762,22 @@ def apply_bundle(
             target.pages.all().delete()
             write_tree(target, pages)
             _restore_templates(target, archive, manifest)
+            if manifest["schema"] == SCHEMA:
+                raw_calibration = _read_member(archive, CALIBRATION_NAME, max_bytes=MAX_JSON_BYTES)
+                if raw_calibration is not None:
+                    try:
+                        calibration = json.loads(raw_calibration)
+                        if not isinstance(calibration, dict):
+                            raise ValueError("Calibration must be an object")
+                        restore_calibration(
+                            target,
+                            calibration,
+                            lambda snapshot_id, field: _read_member(
+                                archive, f"calibration/{snapshot_id}/{field}.png", max_bytes=MAX_TEMPLATE_BYTES
+                            ),
+                        )
+                    except (ValueError, KeyError, TypeError, AttributeError) as exc:
+                        raise HttpError(400, i18n.t("bundle_invalid")) from exc
 
             activity.emit(
                 target,

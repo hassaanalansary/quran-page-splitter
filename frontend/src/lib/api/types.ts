@@ -257,7 +257,7 @@ export type ProcessJobState =
 export type ProcessJobPhase = "starting" | "rendering" | "detecting" | "saving" | "finished";
 
 /** Which engine a run drives: detection walks pages, words walks lines. */
-export type ProcessJobKind = "detection" | "words";
+export type ProcessJobKind = "detection" | "words" | "calibration";
 
 /** Live state of a processing run (POST /process, GET /process/job).
  *
