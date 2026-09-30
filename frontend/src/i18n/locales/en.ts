@@ -754,6 +754,23 @@ export const en = {
     modeWords: "Words",
     modeBlobsHelp: "Select ink and say what it is — click, Shift-click to add, or drag a rectangle",
     modeWordsHelp: "Drag the edges of a word",
+    modeGallery: "Gallery",
+    modeGalleryHelp:
+      "The page's marks side by side, one group per type — or all its ink by role — to catch the odd one out at a glance",
+    gallery: {
+      kindLabel: "What the gallery groups by",
+      byType: "By type",
+      byRole: "Body or mark",
+      zoom: "Zoom",
+      typesHint:
+        "One group per type; doubts and unsure guesses first. Click to select — a digit retypes it; double-click or Enter shows it in its line.",
+      rolesHint:
+        "Marks the engine found most like bodies first, then bodies most like marks. B and M decide; double-click or Enter shows it in its line.",
+      empty: "Nothing here with this filter.",
+      noType: "No type yet",
+      typeCount: "{{count}} · {{typed}} typed, {{expected}} expected",
+      count: "{{count}}",
+    },
     prevLook: "Previous blob to look at (Shift+N)",
     nextLook: "Next blob to look at (N)",
     lookCount: "{{count}} to look at",
@@ -777,6 +794,7 @@ export const en = {
     source: {
       human: "decided by you",
       calibration: "locked by calibration",
+      text: "set by the text",
       search: "read by the engine",
     },
     key: {
@@ -786,9 +804,6 @@ export const en = {
     },
 
     // The inspector
-    inspectorOne: "Blob {{id}} · line {{line}}",
-    inspectorMany: "{{count}} blobs · line {{line}}",
-    evidence: "Evidence",
     belongsTo: "Belongs to",
     exception: "Out of the ordinary",
     exceptionKind: {
@@ -812,6 +827,8 @@ export const en = {
       show: "Show each mark's type under its line",
       untyped: "Not typed, and nothing like it has been typed yet",
       typedTitle: "{{type}} — typed",
+      textTitle: "{{type}} — set by the text",
+      tanweenStroke: "one stroke of its tanween",
       sureTitle: "{{type}} — expected, sure. A accepts",
       likelyTitle: "{{type}} — expected, likely. A accepts",
       doubtTitle: "{{type}} — typed, but the other pages say {{other}}",
@@ -819,9 +836,59 @@ export const en = {
       showDoubtful: "Show them",
     },
     // The bar under the lines: what is selected, and the common decisions
+    marksCheck: {
+      okHelp: "Its marks fit its text",
+      offHelp:
+        "Its marks do not fit its text: {{missing}} missing, {{extra}} left over or typed otherwise",
+    },
     bar: {
-      empty:
-        "Nothing selected. Click a blob, or press ← to begin. ← → move blob by blob (left is onward, as Arabic reads) · ↑ ↓ line by line · Shift+← → add the next · with a type chosen in the filter the arrows visit only its marks · 1–9, 0 type the selected marks · A accepts the expected type · B body · M mark",
+      empty: "Nothing selected — click a blob, or press ← to begin.",
+      keyBlob: "blob by blob — left is onward, as Arabic reads",
+      keyLine: "line by line",
+      keyWord: "word by word",
+      keyAdd: "add the next blob to the selection",
+      keyType: "type the selected marks (1 fatha … 0 dot)",
+      keyAccept: "accept the expected type",
+      keyRole: "body · mark",
+      keyReset: "take the word's box from its ink again",
+      keyLook: "the next thing to look at",
+      keyClear: "clear the selection",
+      keyOpen: "gallery: show the selected blob in its line",
+      typedByText: "set by the text",
+      keyAddPart: "add a second type — two marks printed as one",
+      fromText: "Its word's text names it here.",
+      fromImage: "Three loose dots in a triangle: the embraced pause sign.",
+      fromExamples: "From the confirmed examples.",
+      textConflict:
+        "The examples say this, but its word's text names {{type}} here — worth a look.",
+      doubtText: "Typed {{typed}}, but its word's text names {{type}} here — worth a second look.",
+      addPart: "+ Pair…",
+      addPartHelp:
+        "Add a second type to the mark: two marks printed as one blob, as a hamza and its kasra under an alef. Shift and a digit do the same.",
+      marksFit: "✓ its marks fit its text",
+      marksMissing: "the text has, the ink lacks: {{types}}",
+      marksExtra: "not in the text: {{count}}",
+      marksDisagree: "typed otherwise than the text: {{count}}",
+      marksHelp:
+        "The word's marks against the marks its text names — harakat, shadda, sukun, madda, tanween, small letters, dots, and the pause signs where there are some.",
+      answeredExamples:
+        "The engine was unsure of this one; the confirmed examples settled it, so it does not ask for a look.",
+      answeredText:
+        "The engine was unsure of this one; the text settled it: its word's small letter on the line.",
+      many: "{{count}} blobs · line {{line}}",
+      engineRead: "The engine read it as a {{role}} (score {{score}}/14).",
+      tabType: "Which type?",
+      tabRole: "Body or mark?",
+      tabTypeHelp:
+        "The typed marks nearest this mark, type by type — why it is expected to be what it is",
+      tabRoleHelp:
+        "The confirmed blobs nearest this one, of either role — what calibration reads body-or-mark from",
+      typeHintUntyped:
+        "Each type scored by its own three nearest typed marks — from the confirmed pages and this one; smaller is closer. A picture opens its page.",
+      typeHintTyped:
+        "Only the other confirmed pages' typed marks — do they agree with your type? A picture opens its page.",
+      oneBlob: "Select one blob to see the examples nearest it.",
+      oneMark: "Select one mark to see which typed marks it is nearest.",
       typed: "typed",
       expectedSure: "expected · sure — not typed yet",
       expectedLikely: "expected · likely — not typed yet",
@@ -838,8 +905,6 @@ export const en = {
       moreTypes: "More…",
       acceptOne: "Accept {{type}}",
       acceptMany: "Accept expected ({{count}})",
-      evidence: "Nearest typed examples",
-      evidenceElsewhere: "What the other pages say",
       loadingEvidence: "Finding its nearest typed examples…",
       noEvidence: "No typed mark is like it yet.",
       distanceHelp: "How far this type's nearest examples are, on average — smaller is closer",
@@ -853,7 +918,15 @@ export const en = {
       untyped: "Not typed yet · {{count}}",
       doubtful: "Doubtful · {{count}}",
       help: "What a click, a drag and the arrow keys pick. Choose a type to see its marks in blue — typed or expected — with the rest faded.",
-      shownHelp: "The marks the filter picks out",
+      showing: "Showing {{what}} — {{count}} marks, {{expected}} of them only expected",
+      untypedLabel: "marks not typed yet",
+      doubtfulLabel: "doubtful marks",
+      pickAll: "Clicks pick the faded ink too",
+      pickAllHelp:
+        "Let a click or a rectangle pick the ink the filter fades — to fix a mark it missed. The arrow keys still visit only what it shows.",
+      acceptShown: "Accept the {{count}} expected",
+      acceptShownHelp:
+        "Give every mark shown whose type is only expected that type — on the whole page, as one undoable step. Fix the wrong ones first.",
     },
     unassignMarks: "Unassign marks ({{count}})",
     selectionFilter: "Selection filter",
@@ -866,6 +939,8 @@ export const en = {
       damma: "Damma",
       kasra: "Kasra",
       sukun: "Sukun",
+      roundZero: "Round zero ۟ (written, never read)",
+      rectZero: "Upright zero ۠ (read only when stopping)",
       shadda: "Shadda",
       tanween: "Tanween",
       madda: "Madda",
@@ -879,6 +954,7 @@ export const en = {
       waqfJim: "Pause sign ۚ (jīm)",
       waqfMim: "Pause sign ۘ (mīm)",
       waqfLa: "Pause sign ۙ (lā)",
+      waqfMuanaqa: "Embraced pause ۛ ۛ (muʿānaqa)",
       other: "Other",
     },
     assignTitle: "Belongs to word",
@@ -892,7 +968,6 @@ export const en = {
       "A body printed touching across a word break belongs to both words; the cut between them is yours to drag",
     share: "Share",
     release: "Take back my decisions on these",
-    examplesTitle: "Nearest confirmed examples",
     proposes: "Calibration would read it as a {{role}}.",
     noProposal: "Calibration makes no proposal: {{reasons}}.",
     loadingExamples: "Looking for examples…",
@@ -935,12 +1010,29 @@ export const en = {
 
     // The words of a line
     wordsTitle: "Words on line {{line}} · {{count}}",
+    wordNav: {
+      previous: "Previous word — Ctrl+→",
+      next: "Next word — Ctrl+←",
+      position: "Word {{index}} of {{count}}",
+      keys: "Ctrl+← → walk the page word by word",
+    },
     noWords: "No words were placed on this line.",
     unlabelledWord: "(a word the text does not have)",
     selectWordInk: "Select this word's ink",
     shared: "shared",
     countHelp: "The PAWs its ink gives it, against what its spelling needs",
-    resetEdges: "Take this word's edges from its ink again",
+    resetEdges: "Take this word's edges from its ink again — R",
+    boxes: {
+      legend:
+        "Dashed box: taken from its word's ink, and follows it. Solid: edges set by hand, kept as they are. Red: set by hand and wider than its ink.",
+      summary: "{{count}} hand-set boxes on this page — {{wide}} wider than their ink",
+      resetAll: "Take all from their ink",
+      resetAllHelp:
+        "Every hand-set box on the page is taken from its word's ink again — except a cut inside a body two words share, which only a hand can place. One undoable step.",
+      overshoot: "+{{px}} px",
+      overshootHelp:
+        "Set by hand, and {{px}} px wider than the word's ink — a confirmation would write it so. R takes it from the ink.",
+    },
 
     // What a confirmation acknowledges
     exceptionsTitle: "To acknowledge · {{count}}",
@@ -996,6 +1088,9 @@ export const en = {
     previewing: "Reading…",
     previewBanner:
       "Preview: the page read again under your decisions. Accept stores it as the draft; discard leaves the draft as it was.",
+    previewMoved: "{{count}} word(s) moved — outlined blue",
+    previewMovedPrevious: "Previous moved word",
+    previewMovedNext: "Next moved word",
     acceptPreview: "Accept and save",
     discardPreview: "Discard",
     acceptedToast: "Preview accepted and saved.",
@@ -1016,13 +1111,14 @@ export const en = {
     statusUnsaved: "Unsaved edits",
     statusLook: "{{count}} blob(s) to look at",
     statusConfirmed: "Confirmed",
-    statusClean: "Nothing flagged — confirm when the page reads right",
+    statusClean: "Nothing flagged — not the same as right: read it through, then confirm",
 
     // The confirm dialog
     confirmTitle: "Confirm page {{page}}",
     confirmIntro: "Confirming approves the whole page — not only what was flagged:",
     confirmWords: "its words replace the page's word cuts;",
-    confirmExamples: "its blobs become examples for the pages after it.",
+    confirmTeaches:
+      "its blobs become examples for the pages after it: {{bodies}} bodies and {{marks}} marks for body-or-mark, and {{typed}} typed marks for their types. Ink flagged out of the ordinary teaches nothing.",
     confirmExceptions: "{{count}} thing(s) still disagree with the text:",
     confirmAcknowledge: "I have looked at these, and confirm the page as it is",
     confirmClean: "Nothing disagrees with the text.",
@@ -1416,9 +1512,9 @@ export const en = {
       s1: "Process the page. Every blob of ink on its lines is measured and the page is read; the lines of ayat running onto the neighbouring pages come along as context.",
       s2: "Bodies are near-black and marks teal. Ornaments are purple, symbols amber. Each word's badge shows assigned / expected PAWs. Selected bodies have solid outlines; selected marks have dashed outlines.",
       s3: "Step through what asks for a look with N and Shift+N. A flag is a signal, never a verdict — and an unflagged blob is not thereby right.",
-      s4: "In Blobs mode, click a blob — or press ← — and the bar under the lines says what it is, its type, and its word. ← → move blob by blob, ↑ ↓ line by line, Shift adds the next. Under each line every mark shows its type: solid when typed, dashed when only expected. A accepts the expected type, 1–9 and 0 type the selected marks, B sets Body, M sets Mark. Choose a type in the filter to see only its marks, in blue — the quick way to catch one that is not what it says; Doubtful lists typed marks the other pages disagree with.",
+      s4: "In Blobs mode, click a blob — or press ← — and the bar under the lines says what it is, its type, and its word. ← → move blob by blob, ↑ ↓ line by line, Ctrl+← → word by word, Shift adds the next. Under each line every mark shows its type: solid when typed, dashed when only expected. A accepts the expected type, 1–9 and 0 type the selected marks, B sets Body, M sets Mark. Choose a type in the filter to see only its marks, in blue — the quick way to catch one that is not what it says. Tick Clicks pick the faded ink too to fix one the filter missed, then Accept the expected ones in one go. Doubtful lists typed marks the other pages disagree with. Gallery lays a type's marks side by side — one scroll instead of a scan of the page.",
       s5: "Assign ink to a word: its box spans all of its ink, bodies and marks alike — a dragged box too is always wide enough for its own ink. A mark that belongs to no word would stretch its neighbour's box, so Unassign marks leaves it unattached. Shared bodies need per-word PAW contributions and an internal cut.",
-      s6: "In Words mode, drag a word's edges. A dragged edge is kept by every later reading, until you reassign that word's ink.",
+      s6: "A dashed box is taken from its word's ink and follows it; a solid one was set by hand — dragged in Words mode, or carried in from the Cuts step — and is kept as it is; a red one reaches past its ink. R takes the selected word's box from its ink again; the word list can do all of the page's at once.",
       s7: "Preview recalculates affected ayat without saving; accept or discard it. Save draft keeps unfinished work. Confirm page makes it teach the next page you process. Enable Apply learning to new pages for experimental automatic role decisions. Suggested mark types remain editable and need explicit confirmation to teach their type.",
     },
   },
@@ -1470,7 +1566,7 @@ export const en = {
     wordCuts:
       "Drag a box edge or its middle · double-click inside a box to split it · select a word, then × or Delete removes it · + in the list inserts a word, ∅ marks one the text does not have.",
     calibration:
-      "← → next blob · ↑ ↓ line · B body · M mark · 1–9, 0 type · A accept the expected type · N the next thing to look at · Ctrl+S saves the draft",
+      "← → next blob · ↑ ↓ line · Ctrl+← → word · B body · M mark · 1–9, 0 type · A accept the expected type · R word box from its ink · N the next thing to look at · Ctrl+S saves the draft",
   },
   tour: {
     next: "Next",

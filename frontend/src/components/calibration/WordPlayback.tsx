@@ -10,8 +10,10 @@ import {
   expectedType,
   isTyped,
   wordCount,
+  wordRisks,
   type BlobSelection,
   type Expectations,
+  type MarkChecks,
 } from "@/lib/calibration/model";
 import {
   BODY_INK,
@@ -28,8 +30,8 @@ import {
 } from "@/lib/calibration/playback";
 import type { CalibrationBlob, CalibrationLine } from "@/lib/calibration/types";
 
-import { attentionKey, exceptionKey, subtypeKey } from "./labels";
-import { SUBTYPE_GLYPHS, type Subtype } from "./subtypes";
+import { attentionKey, exceptionKey, useTypeName } from "./labels";
+import { SUBTYPE_GLYPHS, subtypeGlyph, type Subtype } from "./subtypes";
 
 const SPEEDS = { slow: 2400, normal: 1300, fast: 650 } as const;
 type Raster = { source: ImageBitmap; ids: Uint32Array; width: number; height: number };
@@ -46,6 +48,7 @@ export function WordPlayback({
   page,
   lines,
   expectations,
+  checks,
   preview,
   disabled,
   onInspect,
@@ -54,6 +57,8 @@ export function WordPlayback({
   page: number;
   lines: CalibrationLine[];
   expectations: Expectations;
+  /** Every word's marks against its text's: a word they do not fit is worth a look. */
+  checks?: MarkChecks;
   preview: boolean;
   disabled: boolean;
   onInspect: (selection: BlobSelection) => void;
@@ -189,6 +194,7 @@ function Player({
   page,
   lines,
   expectations,
+  checks,
   preview,
   onInspect,
 }: {
@@ -196,11 +202,23 @@ function Player({
   page: number;
   lines: CalibrationLine[];
   expectations: Expectations;
+  checks?: MarkChecks;
   preview: boolean;
   onInspect: (selection: BlobSelection) => void;
 }) {
   const { t } = useTranslation();
-  const entries = useMemo(() => playbackWords(lines), [lines]);
+  const typeName = useTypeName();
+  /** Words with something worth a look (see `wordRisks`) played first, the rest after. */
+  const [riskyFirst, setRiskyFirst] = useState(false);
+  const all = useMemo(() => playbackWords(lines), [lines]);
+  const risky = useMemo(
+    () => all.filter((entry) => wordRisks(entry.line, entry.word, checks).length > 0),
+    [all, checks],
+  );
+  const entries = useMemo(
+    () => (riskyFirst ? [...risky, ...all.filter((entry) => !risky.includes(entry))] : all),
+    [all, risky, riskyFirst],
+  );
   const [index, setIndex] = useState(0);
   const [playing, setPlaying] = useState(
     () => !window.matchMedia("(prefers-reduced-motion: reduce)").matches,
@@ -258,10 +276,7 @@ function Player({
     return () => document.removeEventListener("visibilitychange", hidden);
   }, []);
 
-  const typeLabel = (type: string) => {
-    const key = subtypeKey(type);
-    return key ? t(key) : type || t("wordPlayback.unknown");
-  };
+  const typeLabel = (type: string) => (type ? typeName(type) : t("wordPlayback.unknown"));
   if (!current) return <p>{t("wordPlayback.empty")}</p>;
   const count = wordCount(current.line, current.word);
   const togglePlay = () => {
@@ -290,6 +305,15 @@ function Player({
         <Toggle label={t("wordPlayback.types")} checked={types} set={setTypes} />
         <Toggle label={t("wordPlayback.dim")} checked={dim} set={setDim} />
         <Toggle label={t("wordPlayback.boundaries")} checked={boundaries} set={setBoundaries} />
+        <Toggle
+          label={t("wordPlayback.riskyFirst", { count: risky.length })}
+          checked={riskyFirst}
+          set={(value) => {
+            setRiskyFirst(value);
+            setIndex(0);
+            setSelected(null);
+          }}
+        />
         <span className="flex items-center gap-1">
           <Swatch color={BODY_INK} />
           {t("wordPlayback.body")}
@@ -346,6 +370,18 @@ function Player({
               {t("wordPlayback.paws", count)}
             </span>
           </div>
+          {wordRisks(current.line, current.word, checks).length > 0 && (
+            <div className="flex flex-wrap gap-1">
+              {wordRisks(current.line, current.word, checks).map((risk) => (
+                <span
+                  key={risk}
+                  className="rounded-sm bg-warning-bg px-1.5 py-0.5 text-[10.5px] text-[#8a4b0d]"
+                >
+                  {t(`wordPlayback.risk.${risk}`)}
+                </span>
+              ))}
+            </div>
+          )}
           <WordInk
             entry={current}
             raster={assets.lines.get(current.line.snapshot_id)}
@@ -363,7 +399,7 @@ function Player({
             {[...new Set(blobs.filter((b) => b.role === "mark").map(typeOf))].map((type) => (
               <span key={type} className="flex items-center gap-1">
                 <Swatch color={types ? (TYPE_INK[type] ?? MARK_INK) : MARK_INK} dashed />
-                <span dir="rtl">{SUBTYPE_GLYPHS[type as Subtype] ?? ""}</span>
+                <span dir="rtl">{SUBTYPE_GLYPHS[type as Subtype] ?? subtypeGlyph(type)}</span>
                 {typeLabel(type)}
               </span>
             ))}

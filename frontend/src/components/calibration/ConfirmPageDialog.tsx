@@ -33,6 +33,7 @@ export function ConfirmPageDialog({
   onOpenChange,
   page,
   exceptions,
+  teaches,
   pending,
   onConfirm,
 }: {
@@ -40,6 +41,8 @@ export function ConfirmPageDialog({
   onOpenChange: (open: boolean) => void;
   page: number;
   exceptions: PageException[];
+  /** What confirming would teach later pages — see `teaches` in the model. */
+  teaches: { bodies: number; marks: number; typed: number };
   pending: boolean;
   onConfirm: (acknowledge: boolean) => void;
 }) {
@@ -51,6 +54,7 @@ export function ConfirmPageDialog({
         <ConfirmBody
           page={page}
           exceptions={exceptions}
+          teaches={teaches}
           pending={pending}
           onCancel={() => onOpenChange(false)}
           onConfirm={onConfirm}
@@ -63,12 +67,14 @@ export function ConfirmPageDialog({
 function ConfirmBody({
   page,
   exceptions,
+  teaches,
   pending,
   onCancel,
   onConfirm,
 }: {
   page: number;
   exceptions: PageException[];
+  teaches: { bodies: number; marks: number; typed: number };
   pending: boolean;
   onCancel: () => void;
   onConfirm: (acknowledge: boolean) => void;
@@ -94,7 +100,7 @@ function ConfirmBody({
 
       <ul className="flex list-disc flex-col gap-1 ps-5 text-[12.5px] leading-relaxed text-text-secondary">
         <li>{t("calibration.confirmWords")}</li>
-        <li>{t("calibration.confirmExamples")}</li>
+        <li>{t("calibration.confirmTeaches", teaches)}</li>
       </ul>
 
       {needed ? (

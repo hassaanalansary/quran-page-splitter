@@ -14,23 +14,27 @@ same numbers from the same rules, and two implementations would drift.
     tanzil.py   the Tanzil corpus loader (``sura|aya|text`` lines), and the
                 prepended-basmala trap that comes with it
     suras.py    the static 114-sura table: names, transliterations, aya counts
+    marks.py    every mark a word's text names, letter by letter, and where it is drawn
 
 **Use ``data/quran-uthmani.txt``.** The imlaei text gives wrong PAW counts — see
 ``tanzil.load_ayat``, which refuses the text-only download outright.
 """
 
 from core.text.arabic import IJAM, MARKS, NON_JOINERS, ijam_groups, letters_of, paw_count, paws
+from core.text.marks import PAUSES, TextMark, line_marks, text_marks
 from core.text.suras import SURAS, Sura, get_aya_count, get_sura, get_sura_name, get_total_ayas
-from core.text.tanzil import BASMALA_LETTERS, Aya, drop_leading_basmala, load_ayat, span
+from core.text.tanzil import BASMALA_LETTERS, Aya, drop_leading_basmala, load_ayat, load_pauses, span
 
 __all__ = [
     "BASMALA_LETTERS",
     "IJAM",
     "MARKS",
     "NON_JOINERS",
+    "PAUSES",
     "SURAS",
     "Aya",
     "Sura",
+    "TextMark",
     "drop_leading_basmala",
     "get_aya_count",
     "get_sura",
@@ -38,8 +42,11 @@ __all__ = [
     "get_total_ayas",
     "ijam_groups",
     "letters_of",
+    "line_marks",
     "load_ayat",
+    "load_pauses",
     "paw_count",
     "paws",
     "span",
+    "text_marks",
 ]

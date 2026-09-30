@@ -30,6 +30,7 @@ import type {
   TextRole,
   TypeDoubt,
   TypeSuggestion,
+  WordMarkCheck,
 } from "./types.ts";
 
 // ── Selection ────────────────────────────────────────────────────────────────
@@ -345,10 +346,16 @@ export function fitWord(line: CalibrationLine, word: CalibrationWord): Calibrati
 /** Recalculate the named words' edges from the bodies and marks that belong to them.
  *
  * `clear` is an explicit reassignment: it recalculates even a hand-dragged word and
- * drops the override, because the reviewer has just said which ink the word is. A
- * word left with no body keeps its old edges (a box needs numbers); its badge says
- * 0 of N. */
-function recalculate(line: CalibrationLine, words: Set<number>, clear: boolean): CalibrationLine {
+ * drops the override, because the reviewer has just said which ink the word is — all
+ * but a cut inside a body two words share, which ink cannot place, unless `force`
+ * says the reviewer asked for exactly that word. A word left with no body keeps its
+ * old edges (a box needs numbers); its badge says 0 of N. */
+function recalculate(
+  line: CalibrationLine,
+  words: Set<number>,
+  clear: boolean,
+  force = false,
+): CalibrationLine {
   if (!words.size) return line;
   return {
     ...line,
@@ -362,7 +369,11 @@ function recalculate(line: CalibrationLine, words: Set<number>, clear: boolean):
           blob.allocations.some((allocation) => allocation.word_id === id),
       );
       // An internal cut in shared ink is not recoverable from component bounds.
-      const next = { ...word, shared, override: clear && !shared ? false : word.override };
+      const next = {
+        ...word,
+        shared,
+        override: clear && (!shared || force) ? false : word.override,
+      };
       if (next.override) return fitWord(line, next);
       const edges = edgesFromInk(line, id);
       return edges ? { ...next, ...edges } : next;
@@ -416,6 +427,7 @@ export function setRole(
         allocations,
         subtype: role === "mark" ? blob.subtype : "",
         subtype_explicit: role === "mark" ? blob.subtype_explicit : false,
+        subtype_source: role === "mark" ? blob.subtype_source : undefined,
         decision_source: "human" as const,
       };
     });
@@ -450,11 +462,87 @@ export function setSubtype(
             ...blob,
             subtype: value,
             subtype_explicit: true,
+            subtype_source: undefined,
             explicit: true,
             decision_source: "human" as const,
           }
         : blob,
     ),
+  }));
+}
+
+// ── Pairs: marks printed as one ────────────────────────────────────────────
+
+/** The order a pair's names are written in — the server's `mark_check.COMPOUND_ORDER`,
+ * so both name a hamza printed with its kasra "hamza+kasra". */
+export const COMPOUND_ORDER: readonly string[] = [
+  "hamza",
+  "wasla",
+  "madda",
+  "daggerAlif",
+  "shadda",
+  "fatha",
+  "damma",
+  "kasra",
+  "sukun",
+  "roundZero",
+  "rectZero",
+  "tanween",
+  "smallLetter",
+  "ijamDot",
+  "waqfSili",
+  "waqfQili",
+  "waqfJim",
+  "waqfMim",
+  "waqfLa",
+  "waqfMuanaqa",
+  "other",
+];
+
+/** A type's parts: one for a single mark, two or more for marks printed as one. */
+export const subtypeParts = (subtype: string): string[] =>
+  subtype ? subtype.split("+").filter(Boolean) : [];
+
+/** Marks printed as one, named in `COMPOUND_ORDER`; one part is just that type. */
+export function composeSubtype(parts: string[]): string {
+  const rank = (part: string) => {
+    const at = COMPOUND_ORDER.indexOf(part);
+    return at < 0 ? COMPOUND_ORDER.length : at;
+  };
+  return [...new Set(parts)].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b)).join("+");
+}
+
+/** A type with `part` added — or taken off, when it has it and more besides. */
+export function togglePart(subtype: string, part: string): string {
+  const parts = subtypeParts(subtype);
+  if (!parts.includes(part)) return composeSubtype([...parts, part]);
+  const rest = parts.filter((other) => other !== part);
+  return rest.length ? composeSubtype(rest) : subtype;
+}
+
+/** Add a type to the selected marks' own — a hamza printed touching its kasra is typed
+ * "hamza+kasra" — or take it off again. Starts from the type each mark shows, typed
+ * or expected. Typing, so a decision. */
+export function addSubtypePart(
+  lines: CalibrationLine[],
+  selection: BlobSelection,
+  part: string,
+  expectations: Expectations,
+): CalibrationLine[] {
+  return onLine(lines, selection, (line, chosen) => ({
+    ...line,
+    blobs: line.blobs.map((blob) => {
+      if (!chosen.has(blob.id) || blob.role !== "mark") return blob;
+      const shown = shownType(blob, line.snapshot_id, expectations);
+      return {
+        ...blob,
+        subtype: togglePart(shown?.subtype ?? "", part),
+        subtype_explicit: true,
+        subtype_source: undefined,
+        explicit: true,
+        decision_source: "human" as const,
+      };
+    }),
   }));
 }
 
@@ -588,7 +676,8 @@ export function setWordEdges(
   });
 }
 
-/** Drop a word's dragged edges and take them from its bodies again. */
+/** Drop a word's hand-set edges and take them from its ink again — a cut inside a
+ * shared body too, which goes back to the body's middle. */
 export function resetWordEdges(
   lines: CalibrationLine[],
   snapshot: string,
@@ -598,8 +687,51 @@ export function resetWordEdges(
     const word = line.words[index];
     if (line.readonly || line.snapshot_id !== snapshot || !word || word.word_id === null)
       return line;
-    return recalculate(line, new Set([word.word_id]), true);
+    return recalculate(line, new Set([word.word_id]), true, true);
   });
+}
+
+/** Take every hand-set box on the page from its ink again, as one edit — except a
+ * cut inside a body two words share, which only a hand can place. */
+export function resetAllEdges(lines: CalibrationLine[]): CalibrationLine[] {
+  return lines.map((line) => {
+    if (line.readonly) return line;
+    const ids = new Set(
+      line.words
+        .filter((word) => word.override && !word.shared && word.word_id !== null)
+        .map((word) => word.word_id as number),
+    );
+    return ids.size ? recalculate(line, ids, true) : line;
+  });
+}
+
+/** Page px a hand-set box reaches past its word's ink, both sides together: 0 for a
+ * box taken from its ink, for a cut inside a shared body, and for a word with none. */
+export function overshoot(line: CalibrationLine, word: CalibrationWord): number {
+  if (!word.override || word.shared || word.word_id === null) return 0;
+  const ink = edgesFromInk(line, word.word_id);
+  if (!ink) return 0;
+  return Math.max(0, word.start_x - ink.start_x) + Math.max(0, ink.end_x - word.end_x);
+}
+
+/** A box further than this past its ink is not a hair's difference: it holds nothing
+ * of its word, and a confirmation would write it as the word's cut. */
+export const OVERSHOOT_PX = 3;
+
+/** The page's hand-set boxes that a page-wide reset would take from their ink, and
+ * how many of those reach past it. */
+export function handSetBoxes(lines: CalibrationLine[]) {
+  let count = 0;
+  let wide = 0;
+  for (const line of lines) {
+    if (line.readonly) continue;
+    for (const word of line.words) {
+      if (!word.override || word.shared || word.word_id === null) continue;
+      count += 1;
+      if (overshoot(line, word) > OVERSHOOT_PX) wide += 1;
+    }
+  }
+  return { count, wide };
 }
 
 /** Take a preview's alignment, keeping every edge the reviewer dragged by hand.
@@ -642,10 +774,37 @@ export function expectationsOf(suggestions: TypeSuggestion[]): Expectations {
   );
 }
 
-/** A mark a person typed — the only kind a type is ever learned from. A type stored
- * without `subtype_explicit` predates the flag, when every type was set by hand. */
+/** A mark a person typed, or the text did — the only kinds a type is ever learned
+ * from. A type stored without `subtype_explicit` predates the flag, when every type
+ * was set by hand. */
 export function isTyped(blob: CalibrationBlob): boolean {
-  return blob.role === "mark" && !!blob.subtype && blob.subtype_explicit !== false;
+  return (
+    blob.role === "mark" &&
+    !!blob.subtype &&
+    (blob.subtype_explicit !== false || blob.subtype_source === "text")
+  );
+}
+
+/** A mark whose type the text set, and nobody has typed since. */
+export function typedByText(blob: CalibrationBlob): boolean {
+  return (
+    blob.role === "mark" &&
+    !!blob.subtype &&
+    blob.subtype_source === "text" &&
+    !blob.subtype_explicit
+  );
+}
+
+/** Who answered the engine's doubt about a blob — its score in the contested band, or
+ * its first guess overruled by the count — so that the server no longer asks for a
+ * look: the confirmed examples, agreeing with its role, or the text. Null when the
+ * engine had no doubt, a person decided, or nothing answered it. */
+export function answeredBy(blob: CalibrationBlob): "examples" | "text" | null {
+  if (!isText(blob) || blob.explicit || blob.ownership_explicit) return null;
+  const doubted = (blob.body_score >= 6 && blob.body_score <= 9) || blob.role !== blob.initial_role;
+  if (!doubted) return null;
+  if (blob.decision_source === "text") return "text";
+  return blob.proposed_role === blob.role ? "examples" : null;
 }
 
 /** What a mark is expected to be: the latest guess, else a guess stored but never
@@ -661,18 +820,20 @@ export function expectedType(
   return blob.subtype ? { subtype: blob.subtype, sure: false, confidence: 0 } : null;
 }
 
-/** Accept the expected types: the selected marks' (`selection`), or every sure one
- * on the page (`"sure"`). Accepting is typing — the mark becomes an example once
- * the page is confirmed — so it is also a decision that the ink is a mark. */
+/** Accept the expected types: the selected marks' (`selection`), every sure one on
+ * the page (`"sure"`), or every one on the page a test lets through — the marks a
+ * filter shows. Accepting is typing — the mark becomes an example once the page is
+ * confirmed — so it is also a decision that the ink is a mark. */
 export function acceptExpected(
   lines: CalibrationLine[],
   expectations: Expectations,
-  scope: BlobSelection | "sure",
+  scope: BlobSelection | "sure" | ((line: CalibrationLine, blob: CalibrationBlob) => boolean),
 ): CalibrationLine[] {
   const accept = (line: CalibrationLine, chosen: Set<number> | null) => {
     let changed = false;
     const blobs = line.blobs.map((blob) => {
       if (chosen && !chosen.has(blob.id)) return blob;
+      if (typeof scope === "function" && !scope(line, blob)) return blob;
       const expected = expectedType(blob, line.snapshot_id, expectations);
       if (!expected || (scope === "sure" && !expected.sure)) return blob;
       changed = true;
@@ -686,7 +847,8 @@ export function acceptExpected(
     });
     return changed ? { ...line, blobs } : line;
   };
-  if (scope === "sure") return lines.map((line) => (line.readonly ? line : accept(line, null)));
+  if (scope === "sure" || typeof scope === "function")
+    return lines.map((line) => (line.readonly ? line : accept(line, null)));
   return onLine(lines, scope, (line, chosen) => accept(line, chosen));
 }
 
@@ -726,6 +888,33 @@ export function typingSignature(lines: CalibrationLine[]): string {
           .join(","),
     )
     .join("|");
+}
+
+// ── The text's check ─────────────────────────────────────────────────────────
+
+/** Each word's marks against its text's, by `snapshot:word`, as the server last
+ * checked them. */
+export type MarkChecks = Map<string, WordMarkCheck>;
+
+export const markCheckKey = (snapshot: string, word: number) => `${snapshot}:${word}`;
+
+export function markChecksOf(words: WordMarkCheck[]): MarkChecks {
+  return new Map(words.map((word) => [markCheckKey(word.snapshot_id, word.word_id), word]));
+}
+
+/** A word's check, when there is one. */
+export function markCheckOf(
+  snapshot: string,
+  wordId: number | null,
+  checks: MarkChecks,
+): WordMarkCheck | null {
+  return wordId === null ? null : (checks.get(markCheckKey(snapshot, wordId)) ?? null);
+}
+
+/** Strokes of a tanween, by `snapshot:blob` — each typed as the vowel it looks like,
+ * shown as the tanween they make. */
+export function tanweenOf(strokes: { snapshot_id: string; blob_id: number }[]): Set<string> {
+  return new Set(strokes.map((stroke) => expectationKey(stroke.snapshot_id, stroke.blob_id)));
 }
 
 /** Doubts by `snapshot:blob`, as the server last raised them. */
@@ -910,6 +1099,251 @@ export function stepLine(
     return { snapshot: line.snapshot_id, ids: [nearest.id] };
   }
   return null;
+}
+
+/** Every word of the editable lines that owns ink, in reading order: line by line,
+ * each line's words as the text runs. */
+function wordOrder(lines: CalibrationLine[]) {
+  return lines
+    .filter((line) => !line.readonly)
+    .flatMap((line) =>
+      line.words.flatMap((word, index) => {
+        const ink = inkOf(line, word.word_id);
+        return ink.length ? [{ line, index, ink }] : [];
+      }),
+    );
+}
+
+/** The word the selection is in — its index in `line.words`, or null: the word whose
+ * ink is exactly the selection (so a word sharing a body with its neighbour is still
+ * itself), else the first selected blob's owner. */
+export function wordAt(lines: CalibrationLine[], selection: BlobSelection): number | null {
+  const line = lines.find((candidate) => candidate.snapshot_id === selection.snapshot);
+  if (!line || !selection.ids.length) return null;
+  const chosen = new Set(selection.ids);
+  const whole = line.words.findIndex((word) => {
+    const ink = inkOf(line, word.word_id);
+    return ink.length === chosen.size && ink.every((id) => chosen.has(id));
+  });
+  if (whole >= 0) return whole;
+  const first = line.blobs.find((blob) => chosen.has(blob.id));
+  if (!first?.allocations.length) return null;
+  const owner = first.allocations[0].word_id;
+  const index = line.words.findIndex((word) => word.word_id === owner);
+  return index < 0 ? null : index;
+}
+
+/** All the ink of the next word (`delta` 1) or the previous one that `accept` lets
+ * through, from the word the selection is in — across lines, wrapping at the page's
+ * ends. From nothing: the first such word, or the last. Null when there is none. */
+export function stepWord(
+  lines: CalibrationLine[],
+  selection: BlobSelection,
+  delta: 1 | -1,
+  accept: (line: CalibrationLine, word: CalibrationWord) => boolean = () => true,
+): BlobSelection | null {
+  const order = wordOrder(lines);
+  const index = wordAt(lines, selection);
+  const at =
+    index === null
+      ? -1
+      : order.findIndex(
+          (entry) => entry.line.snapshot_id === selection.snapshot && entry.index === index,
+        );
+  const n = order.length;
+  for (let step = 1; step <= n; step++) {
+    const i = at < 0 ? (delta === 1 ? step - 1 : n - step) : (((at + delta * step) % n) + n) % n;
+    const entry = order[i];
+    if (accept(entry.line, entry.line.words[entry.index]))
+      return { snapshot: entry.line.snapshot_id, ids: entry.ink };
+  }
+  return null;
+}
+
+// ── What needs a look, word by word ──────────────────────────────────────────
+
+/** Why a word deserves a look before the page is confirmed: its count does not
+ * close, some of its ink asks for a look, its hand-set box reaches past its ink, its
+ * line was not settled, or it owns no ink at all. Signals, never verdicts — a word
+ * with none of them is not thereby right. */
+export type WordRisk = "count" | "look" | "box" | "line" | "noInk" | "marks";
+
+/** What about a word is worth a look — `marks` when its marks do not fit its text,
+ * given the text's `checks`. */
+export function wordRisks(
+  line: CalibrationLine,
+  word: CalibrationWord,
+  checks?: MarkChecks,
+): WordRisk[] {
+  if (word.word_id === null) return [];
+  const risks: WordRisk[] = [];
+  const ink = line.blobs.filter((blob) =>
+    blob.allocations.some((allocation) => allocation.word_id === word.word_id),
+  );
+  if (!ink.length) risks.push("noInk");
+  else if (!wordCount(line, word).ok) risks.push("count");
+  if (ink.some(needsLook)) risks.push("look");
+  if (overshoot(line, word) > OVERSHOOT_PX) risks.push("box");
+  if (line.status === "partial" || line.status === "unresolved") risks.push("line");
+  const check = checks ? markCheckOf(line.snapshot_id, word.word_id, checks) : null;
+  if (check && !check.ok) risks.push("marks");
+  return risks;
+}
+
+/** The words a re-reading moved, by id: to another line, an edge by more than a
+ * pixel, placed where it was not, or dropped. What a preview should point at. */
+export function changedWords(before: CalibrationLine[], after: CalibrationLine[]): Set<number> {
+  const places = (lines: CalibrationLine[]) => {
+    const found = new Map<number, { snapshot: string; start: number; end: number }>();
+    for (const line of lines) {
+      if (line.readonly) continue;
+      for (const word of line.words)
+        if (word.word_id !== null)
+          found.set(word.word_id, {
+            snapshot: line.snapshot_id,
+            start: word.start_x,
+            end: word.end_x,
+          });
+    }
+    return found;
+  };
+  const was = places(before);
+  const now = places(after);
+  const changed = new Set<number>();
+  for (const [id, place] of now) {
+    const old = was.get(id);
+    if (
+      !old ||
+      old.snapshot !== place.snapshot ||
+      Math.abs(old.start - place.start) > 1 ||
+      Math.abs(old.end - place.end) > 1
+    )
+      changed.add(id);
+  }
+  for (const id of was.keys()) if (!now.has(id)) changed.add(id);
+  return changed;
+}
+
+/** What confirming the page would teach later pages: its bodies and marks as examples
+ * of their role, its typed marks as examples of their type — the server's `_eligible`
+ * and `_typed`, counted. Ink flagged out of the ordinary teaches nothing, and neither
+ * does a body standing for other than exactly one PAW. */
+export function teaches(lines: CalibrationLine[]) {
+  let bodies = 0;
+  let marks = 0;
+  let typed = 0;
+  for (const line of lines) {
+    if (line.readonly) continue;
+    for (const blob of line.blobs) {
+      if (!isText(blob) || blob.exception) continue;
+      if (blob.role === "body") {
+        const paws = blob.allocations.reduce((sum, allocation) => sum + allocation.paws, 0);
+        if (!blob.allocations.length || paws === 1) bodies += 1;
+      } else {
+        marks += 1;
+        if (isTyped(blob)) typed += 1;
+      }
+    }
+  }
+  return { bodies, marks, typed };
+}
+
+// ── The gallery ──────────────────────────────────────────────────────────────
+
+/** The gallery shows the page's marks by type — or all its ink by role. */
+export type GalleryKind = "types" | "roles";
+export type GalleryItem = { line: CalibrationLine; blob: CalibrationBlob };
+export type GalleryGroup = {
+  /** A mark type ("" for marks with no type yet) — or "mark" / "body" by role. */
+  key: string;
+  items: GalleryItem[];
+  /** Of a type's marks: typed by a person, and only expected. */
+  typed: number;
+  expected: number;
+};
+
+/** The text blobs the filter lets through, grouped so that each group is one look:
+ * by the type each mark is (typed) or is expected to be — commonest first, marks with
+ * no type last — or by role, marks then bodies. Within a group, what most needs a
+ * look comes first: a doubt, then the least sure guess, then the sure ones, then the
+ * typed; by role, the ink the engine found hardest to call — a mark that scored most
+ * like a body, a body that scored most like a mark. Reading order breaks ties. */
+export function galleryGroups(
+  lines: CalibrationLine[],
+  kind: GalleryKind,
+  filter: BlobFilter,
+  expectations: Expectations,
+  doubts: Doubts,
+): GalleryGroup[] {
+  const groups = new Map<string, (GalleryItem & { rank: number; order: number })[]>();
+  const counts = new Map<string, { typed: number; expected: number }>();
+  readingOrder(lines).forEach(({ line, blob }, rank) => {
+    if (!passesFilter(blob, line.snapshot_id, filter, expectations, doubts)) return;
+    if (kind === "types" && blob.role !== "mark") return;
+    let key: string = blob.role;
+    let order = 0;
+    if (kind === "types") {
+      const shown = shownType(blob, line.snapshot_id, expectations);
+      key = shown?.subtype ?? "";
+      const tally = counts.get(key) ?? { typed: 0, expected: 0 };
+      if (shown?.typed) tally.typed += 1;
+      else if (shown) tally.expected += 1;
+      counts.set(key, tally);
+      order = doubtOf(blob, line.snapshot_id, doubts)
+        ? 0
+        : !shown
+          ? 4
+          : shown.typed
+            ? 3
+            : shown.sure
+              ? 2
+              : 1;
+    } else {
+      order = blob.role === "mark" ? -blob.body_score : blob.body_score;
+    }
+    const members = groups.get(key) ?? [];
+    members.push({ line, blob, rank, order });
+    groups.set(key, members);
+  });
+  const result = [...groups.entries()].map(([key, members]) => ({
+    key,
+    items: members
+      .sort((a, b) => a.order - b.order || a.rank - b.rank)
+      .map(({ line, blob }) => ({ line, blob })),
+    typed: counts.get(key)?.typed ?? 0,
+    expected: counts.get(key)?.expected ?? 0,
+  }));
+  return result.sort((a, b) =>
+    kind === "roles"
+      ? (a.key === "mark" ? 0 : 1) - (b.key === "mark" ? 0 : 1)
+      : (a.key === "" ? 1 : 0) - (b.key === "" ? 1 : 0) ||
+        b.items.length - a.items.length ||
+        a.key.localeCompare(b.key),
+  );
+}
+
+/** The next gallery item (`delta` 1) or the previous one, wrapping; with `group`, the
+ * first item of the next or previous group instead. From nothing: the first, or the
+ * last. Null when the gallery is empty. */
+export function stepGallery(
+  groups: GalleryGroup[],
+  selection: BlobSelection,
+  delta: 1 | -1,
+  group = false,
+): BlobSelection | null {
+  const items = groups.flatMap((entry, g) => entry.items.map((item) => ({ ...item, g })));
+  if (!items.length) return null;
+  const at = items.findIndex(
+    (item) => item.line.snapshot_id === selection.snapshot && selection.ids.includes(item.blob.id),
+  );
+  let next;
+  if (at < 0) next = items[delta === 1 ? 0 : items.length - 1];
+  else if (!group) next = items[(at + delta + items.length) % items.length];
+  else {
+    const g = (items[at].g + delta + groups.length) % groups.length;
+    next = items.find((item) => item.g === g)!;
+  }
+  return { snapshot: next.line.snapshot_id, ids: [next.blob.id] };
 }
 
 // ── The raster ───────────────────────────────────────────────────────────────

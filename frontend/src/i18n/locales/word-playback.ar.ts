@@ -51,4 +51,13 @@ export const wordPlaybackAr: typeof wordPlaybackEn = {
   missingType: "لم يُحدد النوع",
   unlabelled: "كلمة بلا تسمية",
   jump: "اختيار الكلمة",
+  riskyFirst: "الكلمات المحتاجة إلى نظر أولًا ({{count}})",
+  risk: {
+    count: "الأجزاء لا تكتمل",
+    look: "حبر يحتاج نظرة",
+    box: "مربّع أعرض من حبره",
+    line: "سطر لم يستقرّ",
+    noInk: "بلا حبر",
+    marks: "علامات لا توافق نصّها",
+  },
 };

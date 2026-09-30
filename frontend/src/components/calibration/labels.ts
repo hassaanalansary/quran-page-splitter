@@ -6,6 +6,11 @@
 // as a literal type, so the caller's `t()` keeps checking it (the same trick as
 // `issueKey` in the word-cuts route). A string the catalog has not heard of yet
 // maps to null, and the caller shows it as it came rather than hiding it.
+import { useCallback } from "react";
+import { useTranslation } from "react-i18next";
+
+import { subtypeParts } from "@/lib/calibration/model";
+
 import { SUBTYPES, type Subtype } from "./subtypes";
 
 const ATTENTION = {
@@ -81,4 +86,20 @@ export function subtypeKey(subtype: string) {
   return (SUBTYPES as readonly string[]).includes(subtype)
     ? (`calibration.subtype.${subtype as Subtype}` as const)
     : null;
+}
+
+/** A type's name in the reader's language: one mark's, or its parts' joined for marks
+ * printed as one ("Hamza + Kasra"). A key the catalog does not know shows as it came. */
+export function useTypeName(): (subtype: string) => string {
+  const { t } = useTranslation();
+  return useCallback(
+    (subtype: string) =>
+      subtypeParts(subtype)
+        .map((part) => {
+          const key = subtypeKey(part);
+          return key ? t(key) : part;
+        })
+        .join(" + "),
+    [t],
+  );
 }

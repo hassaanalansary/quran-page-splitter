@@ -1,8 +1,10 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useBlocker } from "@tanstack/react-router";
 import {
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
   Eye,
   EyeOff,
   Maximize2,
@@ -45,23 +47,34 @@ import {
 import {
   NO_SELECTION,
   acceptExpected,
+  addSubtypePart,
   assignToWord,
   attentionItems,
+  changedWords,
   currentOf,
   doubtsOf,
   draftOf,
   editSignature,
   expectationsOf,
+  expectedType,
   extendSelection,
+  galleryGroups,
+  handSetBoxes,
+  markChecksOf,
+  markCheckOf,
+  tanweenOf,
   highlights,
   historyOf,
   inkOf,
   newRequestId,
+  OVERSHOOT_PX,
+  overshoot,
   pageExceptions,
   passesFilter,
   pushHistory,
   releaseDecisions,
   requestIds,
+  resetAllEdges,
   resetWordEdges,
   setException,
   setRole,
@@ -70,16 +83,22 @@ import {
   shareBetween,
   stepAttention,
   stepBlob,
+  stepGallery,
   stepHistory,
   stepLine,
+  stepWord,
+  teaches,
   typeCounts,
   typeFilter,
   typeTally,
   typingSignature,
   wordCount,
   unassignMarks,
+  wordAt,
   type BlobFilter,
   type BlobSelection,
+  type GalleryKind,
+  type MarkChecks,
   type Doubts,
   type Expectations,
   type History,
@@ -93,16 +112,16 @@ import type {
 import { revealInScroller } from "@/lib/reveal";
 import { wordsPlace } from "@/lib/words/place";
 
-import { BlobInspector } from "./BlobInspector";
 import { BlobStrip } from "./BlobStrip";
 import { HIGHLIGHT_RGB, ROLE_RGB } from "./colors";
 import { ConfirmPageDialog } from "./ConfirmPageDialog";
 import { EvaluationPanel } from "./EvaluationPanel";
 import { LearningSettings } from "./LearningSettings";
+import { MarkGallery } from "./MarkGallery";
 import { WordPlayback } from "./WordPlayback";
-import { exceptionKey, problemKey, subtypeKey } from "./labels";
-import { SelectionBar } from "./SelectionBar";
-import { HOTKEY_TYPES, SUBTYPE_MARKS, type Subtype } from "./subtypes";
+import { exceptionKey, problemKey, useTypeName } from "./labels";
+import { SelectionBar, type EvidenceTab } from "./SelectionBar";
+import { HOTKEY_TYPES, subtypeGlyph } from "./subtypes";
 
 const PAD = 20;
 /** Screen px between stacked strips — constant, like the cuts editor's. */
@@ -183,12 +202,18 @@ export function CalibrationEditor({
   const [preview, setPreview] = useState<Preview | null>(null);
   /** A newer answer arrived over unsaved edits and was not taken. */
   const [held, setHeld] = useState(false);
-  const [mode, setMode] = useState<"blobs" | "words">("blobs");
+  const [mode, setMode] = useState<"blobs" | "words" | "gallery">("blobs");
+  /** The gallery groups marks by type, or all ink by role — at one zoom. */
+  const [galleryKind, setGalleryKind] = useState<GalleryKind>("types");
+  const [galleryZoom, setGalleryZoom] = useState(2);
   const [selectionFilter, setSelectionFilter] = useState<BlobFilter>("all");
   /** Guessed types for the marks nobody has typed, and what they were learned from. */
   const [expectations, setExpectations] = useState<Expectations>(() => new Map());
-  /** Typed marks the other pages' examples take for another type. */
+  /** Typed marks the other pages' examples — or their word's text — take for another type. */
   const [doubts, setDoubts] = useState<Doubts>(() => new Map());
+  /** Every word's marks against its text's, and the strokes that make its tanweens. */
+  const [checks, setChecks] = useState<MarkChecks>(() => new Map());
+  const [tanween, setTanween] = useState<Set<string>>(() => new Set());
   /** The typed examples nearest the one selected mark, for the selection bar: which
    * mark, asked against which typing, and the answer. */
   const [evidence, setEvidence] = useState<{
@@ -199,6 +224,10 @@ export function CalibrationEditor({
   } | null>(null);
   const [learnedFrom, setLearnedFrom] = useState({ examples: 0, here: 0 });
   const [showTypes, setShowTypes] = useState(true);
+  /** With a kind of mark shown, let a click pick the faded ink too — to fix a miss. */
+  const [pickAll, setPickAll] = useState(false);
+  /** What the bar explains about one mark: which type it is, or body or mark. */
+  const [evidenceTab, setEvidenceTab] = useState<EvidenceTab>("type");
   const [dim, setDim] = useState(false);
   const [zoom, setZoom] = useState(FIT_ZOOM);
   const [box, setBox] = useState(0);
@@ -567,6 +596,8 @@ export function CalibrationEditor({
         .then((answer) => {
           setExpectations(expectationsOf(answer.suggestions));
           setDoubts(doubtsOf(answer.doubts ?? []));
+          setChecks(markChecksOf(answer.words ?? []));
+          setTanween(tanweenOf(answer.tanween ?? []));
           setLearnedFrom({ examples: answer.examples, here: answer.typed_here });
         })
         // Hints only: a failure leaves the last guesses up, and saving says why.
@@ -590,7 +621,9 @@ export function CalibrationEditor({
   // again when the typing it is judged against changes — the last answer for the
   // same mark stays up meanwhile, so typing it does not blank the bar.
   const explained =
-    selectedBlobs.length === 1 && selectedBlobs[0].role === "mark" ? selectedBlobs[0] : null;
+    evidenceTab === "type" && selectedBlobs.length === 1 && selectedBlobs[0].role === "mark"
+      ? selectedBlobs[0]
+      : null;
   const explainedMark = explained ? `${selection.snapshot}:${explained.id}` : "";
   const explainKey = explainedMark ? `${explainedMark}|${typing}` : "";
   useEffect(() => {
@@ -630,6 +663,57 @@ export function CalibrationEditor({
     };
   }, [explainKey, canGuess, mushafId, page]);
 
+  // What a kind-of-mark filter shows on the page, and how many of those are only
+  // expected — what "Accept the shown" would type.
+  const shownByFilter = useMemo(() => {
+    let count = 0;
+    let expected = 0;
+    if (!highlights(selectionFilter)) return { count, expected };
+    for (const line of lines) {
+      if (line.readonly) continue;
+      for (const blob of line.blobs) {
+        if (!passesFilter(blob, line.snapshot_id, selectionFilter, expectations, doubts)) continue;
+        count += 1;
+        if (expectedType(blob, line.snapshot_id, expectations)) expected += 1;
+      }
+    }
+    return { count, expected };
+  }, [lines, selectionFilter, expectations, doubts]);
+
+  const handSet = useMemo(() => handSetBoxes(lines), [lines]);
+  const gallery = useMemo(
+    () =>
+      mode === "gallery"
+        ? galleryGroups(shownLines, galleryKind, selectionFilter, expectations, doubts)
+        : [],
+    [mode, shownLines, galleryKind, selectionFilter, expectations, doubts],
+  );
+  /** The words the preview's reading moved — what to look at before accepting it. */
+  const moved = useMemo(
+    () => (preview ? changedWords(lines, preview.doc.lines) : null),
+    [preview, lines],
+  );
+  const lessons = useMemo(() => teaches(lines), [lines]);
+
+  /** Show a blob picked in the gallery in its line, for what its crop cannot settle. */
+  const openInLine = (next: BlobSelection) => {
+    setMode("blobs");
+    selectAndReveal(next);
+  };
+
+  /** Select a gallery cell reached from the keyboard, and bring it into view. */
+  const selectCell = (next: BlobSelection) => {
+    select(next);
+    reveal(`[data-gallery="${CSS.escape(`${next.snapshot}:${next.ids[0]}`)}"]`, "vertical");
+  };
+
+  /** Select all of a word's ink, and bring its box into view. */
+  const selectWord = (next: BlobSelection) => {
+    select(next);
+    const index = wordAt(shownLines, next);
+    if (index !== null) reveal(`[data-word="${CSS.escape(`${next.snapshot}:${index}`)}"]`, "both");
+  };
+
   // ── leaving ────────────────────────────────────────────────────────────────
   // Blocks a page change and a switch to the cuts editor too, not only leaving the
   // step: the lines are rebuilt per page, so either would drop them unasked.
@@ -666,6 +750,11 @@ export function CalibrationEditor({
         } else if ((key === "z" && event.shiftKey) || key === "y") {
           event.preventDefault();
           if (editable) redo();
+        } else if ((key === "arrowleft" || key === "arrowright") && processed && mode === "blobs") {
+          // Word by word; left is onward, as for blobs.
+          event.preventDefault();
+          const next = stepWord(shownLines, selection, key === "arrowleft" ? 1 : -1);
+          if (next) selectWord(next);
         }
         return;
       }
@@ -681,10 +770,43 @@ export function CalibrationEditor({
       } else if (key === "a" && editable && selection.ids.length) {
         event.preventDefault();
         commit(acceptExpected(lines, expectations, selection));
+      } else if (key === "r" && editable && selection.ids.length) {
+        // The word the selection is in: its box taken from its ink again.
+        event.preventDefault();
+        const index = wordAt(lines, selection);
+        if (index !== null) commit(resetWordEdges(lines, selection.snapshot, index));
+      } else if (
+        event.shiftKey &&
+        /^(Digit|Numpad)[0-9]$/.test(event.code) &&
+        editable &&
+        selectedBlobs.some((b) => b.role === "mark")
+      ) {
+        // Shift and a digit: add its type to the marks' own — two marks printed as one.
+        event.preventDefault();
+        const digit = Number(event.code.slice(-1));
+        commit(addSubtypePart(lines, selection, HOTKEY_TYPES[(digit + 9) % 10], expectations));
       } else if (/^[0-9]$/.test(key) && editable && selectedBlobs.some((b) => b.role === "mark")) {
         // 1 to 9, then 0: the types in HOTKEY_TYPES.
         event.preventDefault();
         commit(setSubtype(lines, selection, HOTKEY_TYPES[(Number(key) + 9) % 10]));
+      } else if (
+        (key === "arrowleft" || key === "arrowright" || key === "arrowup" || key === "arrowdown") &&
+        processed &&
+        mode === "gallery"
+      ) {
+        // The gallery flows right to left, like the page: ← onward, ↑↓ by group.
+        event.preventDefault();
+        const delta = key === "arrowleft" || key === "arrowdown" ? 1 : -1;
+        const next = stepGallery(
+          gallery,
+          selection,
+          delta,
+          key === "arrowup" || key === "arrowdown",
+        );
+        if (next) selectCell(next);
+      } else if (key === "enter" && mode === "gallery" && selection.ids.length) {
+        event.preventDefault();
+        openInLine(selection);
       } else if (
         (key === "arrowleft" || key === "arrowright" || key === "arrowup" || key === "arrowdown") &&
         processed &&
@@ -811,10 +933,7 @@ export function CalibrationEditor({
     </div>
   );
 
-  const typeName = (subtype: string) => {
-    const key = subtypeKey(subtype);
-    return key ? t(key) : subtype;
-  };
+  const typeName = useTypeName();
   const filterTypes = [...tally.types.entries()]
     .map(([subtype, count]) => ({ subtype, ...count }))
     .sort(
@@ -825,6 +944,12 @@ export function CalibrationEditor({
     if (!filterTypes.some((entry) => entry.subtype === chosen))
       filterTypes.push({ subtype: chosen, typed: 0, expected: 0 });
   }
+
+  const filterLabel = selectionFilter.startsWith("type:")
+    ? `${subtypeGlyph(selectionFilter.slice("type:".length))} ${typeName(selectionFilter.slice("type:".length))}`
+    : selectionFilter === "untyped"
+      ? t("calibration.filter.untypedLabel")
+      : t("calibration.filter.doubtfulLabel");
 
   const problem = (kind: string) => {
     const key = problemKey(kind);
@@ -877,6 +1002,30 @@ export function CalibrationEditor({
       )
     ) : !column ? (
       center(<p className="text-[12.5px] text-text-muted">{t("calibration.noLines")}</p>)
+    ) : mode === "gallery" ? (
+      <MarkGallery
+        groups={gallery}
+        kind={galleryKind}
+        onKind={(kind) => {
+          setGalleryKind(kind);
+          setSelection(NO_SELECTION);
+        }}
+        zoom={galleryZoom}
+        onZoom={setGalleryZoom}
+        expectations={expectations}
+        doubts={doubts}
+        selection={selection}
+        editable={editable}
+        onSelect={select}
+        onOpen={openInLine}
+        onAcceptGroup={(subtype) =>
+          commit(
+            acceptExpected(lines, expectations, (line, blob) =>
+              passesFilter(blob, line.snapshot_id, typeFilter(subtype), expectations, doubts),
+            ),
+          )
+        }
+      />
     ) : (
       // dir=ltr: a picture of a page measured in pixels, and pixel x grows
       // rightwards whichever way the script reads.
@@ -910,8 +1059,11 @@ export function CalibrationEditor({
               onSelect={select}
               mode={mode}
               selectionFilter={selectionFilter}
+              pickAll={pickAll && highlights(selectionFilter)}
+              movedWords={moved ?? undefined}
               expectations={expectations}
               doubts={doubts}
+              tanween={tanween}
               showTypes={showTypes && mode === "blobs" && !line.readonly}
               dim={dim}
               selectable={!line.readonly}
@@ -954,6 +1106,7 @@ export function CalibrationEditor({
             page={page}
             lines={shownLines}
             expectations={expectations}
+            checks={checks}
             preview={!!preview}
             disabled={builtPage !== page || !!busy || stale}
             onInspect={(next) => {
@@ -967,13 +1120,17 @@ export function CalibrationEditor({
             aria-label={t("calibration.modeLabel")}
             className="flex h-[26px] flex-none overflow-hidden rounded-sm border border-border-strong"
           >
-            {(["blobs", "words"] as const).map((value) => (
+            {(["blobs", "words", "gallery"] as const).map((value) => (
               <button
                 key={value}
                 type="button"
                 aria-pressed={mode === value}
                 title={t(
-                  value === "blobs" ? "calibration.modeBlobsHelp" : "calibration.modeWordsHelp",
+                  value === "blobs"
+                    ? "calibration.modeBlobsHelp"
+                    : value === "words"
+                      ? "calibration.modeWordsHelp"
+                      : "calibration.modeGalleryHelp",
                 )}
                 onClick={() => setMode(value)}
                 className={`cursor-pointer px-2.5 text-[11.5px] font-medium transition-colors ${
@@ -982,21 +1139,20 @@ export function CalibrationEditor({
                     : "bg-white text-text-secondary hover:bg-bg-surface"
                 }`}
               >
-                {t(value === "blobs" ? "calibration.modeBlobs" : "calibration.modeWords")}
+                {t(
+                  value === "blobs"
+                    ? "calibration.modeBlobs"
+                    : value === "words"
+                      ? "calibration.modeWords"
+                      : "calibration.modeGallery",
+                )}
               </button>
             ))}
           </div>
 
           <span className="mx-1 h-5 w-px flex-none bg-border" />
-          {mode === "blobs" && (
+          {mode !== "words" && (
             <span className="flex flex-none items-center gap-1.5">
-              {highlights(selectionFilter) && (
-                <span
-                  className="h-2.5 w-2.5 flex-none rounded-sm"
-                  style={{ background: `rgb(${HIGHLIGHT_RGB.join(",")})` }}
-                  title={t("calibration.filter.shownHelp")}
-                />
-              )}
               <select
                 aria-label={t("calibration.selectionFilter")}
                 title={t("calibration.filter.help")}
@@ -1013,7 +1169,7 @@ export function CalibrationEditor({
                 <optgroup label={t("calibration.filter.types")}>
                   {filterTypes.map(({ subtype, typed, expected }) => (
                     <option key={subtype} value={typeFilter(subtype)}>
-                      {`${SUBTYPE_MARKS[subtype as Subtype] ?? "?"}  ${typeName(subtype)} · ${
+                      {`${subtypeGlyph(subtype)}  ${typeName(subtype)} · ${
                         expected
                           ? t("calibration.filter.count", { count: typed + expected, expected })
                           : typed + expected
@@ -1030,30 +1186,34 @@ export function CalibrationEditor({
               </select>
             </span>
           )}
-          <IconButton
-            label={t("canvas.zoomOut")}
-            disabled={zoom <= MIN_ZOOM}
-            onClick={() => step(1 / STEP)}
-          >
-            <Minus size={13} />
-          </IconButton>
-          <span className="w-11 flex-none text-center text-[11px] font-medium tabular-nums text-text-secondary">
-            {Math.round(zoom * 100)}%
-          </span>
-          <IconButton
-            label={t("canvas.zoomIn")}
-            disabled={zoom >= MAX_ZOOM}
-            onClick={() => step(STEP)}
-          >
-            <Plus size={13} />
-          </IconButton>
-          <IconButton
-            label={t("canvas.fit")}
-            disabled={zoom === FIT_ZOOM}
-            onClick={() => setZoom(FIT_ZOOM)}
-          >
-            <Maximize2 size={12} />
-          </IconButton>
+          {mode !== "gallery" && (
+            <>
+              <IconButton
+                label={t("canvas.zoomOut")}
+                disabled={zoom <= MIN_ZOOM}
+                onClick={() => step(1 / STEP)}
+              >
+                <Minus size={13} />
+              </IconButton>
+              <span className="w-11 flex-none text-center text-[11px] font-medium tabular-nums text-text-secondary">
+                {Math.round(zoom * 100)}%
+              </span>
+              <IconButton
+                label={t("canvas.zoomIn")}
+                disabled={zoom >= MAX_ZOOM}
+                onClick={() => step(STEP)}
+              >
+                <Plus size={13} />
+              </IconButton>
+              <IconButton
+                label={t("canvas.fit")}
+                disabled={zoom === FIT_ZOOM}
+                onClick={() => setZoom(FIT_ZOOM)}
+              >
+                <Maximize2 size={12} />
+              </IconButton>
+            </>
+          )}
 
           <span className="mx-1 h-5 w-px flex-none bg-border" />
           <IconButton
@@ -1116,9 +1276,91 @@ export function CalibrationEditor({
           </div>
         </div>
 
+        {mode !== "words" && processed && highlights(selectionFilter) && (
+          <div
+            className="flex flex-shrink-0 flex-wrap items-center gap-x-4 gap-y-1 border-b border-border px-3 py-1.5 text-[11.5px] text-text-secondary"
+            style={{ background: `rgb(${HIGHLIGHT_RGB.join(",")} / 0.07)` }}
+          >
+            <span className="flex items-center gap-1.5">
+              <span
+                className="h-2.5 w-2.5 flex-none rounded-sm"
+                style={{ background: `rgb(${HIGHLIGHT_RGB.join(",")})` }}
+              />
+              {t("calibration.filter.showing", {
+                what: filterLabel,
+                count: shownByFilter.count,
+                expected: shownByFilter.expected,
+              })}
+            </span>
+            {mode === "blobs" && (
+              <label
+                className="flex cursor-pointer items-center gap-1.5"
+                title={t("calibration.filter.pickAllHelp")}
+              >
+                <input
+                  type="checkbox"
+                  checked={pickAll}
+                  onChange={(event) => setPickAll(event.target.checked)}
+                />
+                {t("calibration.filter.pickAll")}
+              </label>
+            )}
+            {shownByFilter.expected > 0 && (
+              <Button
+                variant="outline"
+                className="h-7 px-2 text-[11.5px]"
+                disabled={!editable}
+                onClick={() => commit(acceptExpected(lines, expectations, passes))}
+                title={t("calibration.filter.acceptShownHelp")}
+              >
+                {t("calibration.filter.acceptShown", { count: shownByFilter.expected })}
+              </Button>
+            )}
+          </div>
+        )}
+
         {preview && (
-          <div className="flex-shrink-0 border-b border-border bg-orange-tint px-3 py-1.5 text-[11.5px] leading-snug text-text-secondary">
-            {t("calibration.previewBanner")}
+          <div className="flex flex-shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-border bg-orange-tint px-3 py-1.5 text-[11.5px] leading-snug text-text-secondary">
+            <span>{t("calibration.previewBanner")}</span>
+            <span className="flex items-center gap-1.5 font-medium text-text-primary">
+              <span
+                className="h-2.5 w-2.5 flex-none rounded-sm border-2"
+                style={{ borderColor: "var(--info)" }}
+              />
+              {t("calibration.previewMoved", { count: moved?.size ?? 0 })}
+            </span>
+            {!!moved?.size && (
+              <span className="flex items-center gap-1">
+                <IconButton
+                  label={t("calibration.previewMovedPrevious")}
+                  onClick={() => {
+                    const next = stepWord(
+                      shownLines,
+                      selection,
+                      -1,
+                      (_, word) => word.word_id !== null && moved.has(word.word_id),
+                    );
+                    if (next) selectWord(next);
+                  }}
+                >
+                  <ChevronRight size={13} />
+                </IconButton>
+                <IconButton
+                  label={t("calibration.previewMovedNext")}
+                  onClick={() => {
+                    const next = stepWord(
+                      shownLines,
+                      selection,
+                      1,
+                      (_, word) => word.word_id !== null && moved.has(word.word_id),
+                    );
+                    if (next) selectWord(next);
+                  }}
+                >
+                  <ChevronLeft size={13} />
+                </IconButton>
+              </span>
+            )}
           </div>
         )}
 
@@ -1129,10 +1371,12 @@ export function CalibrationEditor({
         {processed && !stale && (
           <SelectionBar
             mushafId={mushafId}
+            page={page}
             line={selectedLine}
             blobs={selectedBlobs}
             expectations={expectations}
             doubts={doubts}
+            checks={checks}
             evidence={
               explained
                 ? evidence?.mark === explainedMark
@@ -1140,10 +1384,18 @@ export function CalibrationEditor({
                   : { data: null, loading: true }
                 : null
             }
+            tab={evidenceTab}
+            onTab={setEvidenceTab}
             disabled={!editable}
             onRole={(role) => commit(setRole(lines, selection, role))}
             onSubtype={(value) => commit(setSubtype(lines, selection, value))}
+            onAddPart={(part) => commit(addSubtypePart(lines, selection, part, expectations))}
             onAccept={() => commit(acceptExpected(lines, expectations, selection))}
+            onException={(value) => commit(setException(lines, selection, value))}
+            onAssign={(wordId, paws) => commit(assignToWord(lines, selection, wordId, paws))}
+            onShare={(shares) => commit(shareBetween(lines, selection, shares))}
+            onRelease={() => commit(releaseDecisions(lines, selection))}
+            onUnassign={() => commit(unassignMarks(lines, selection))}
           />
         )}
 
@@ -1236,29 +1488,22 @@ export function CalibrationEditor({
           </Hint>
         )}
 
-        {selectedLine && selectedBlobs.length > 0 && (
-          <BlobInspector
-            key={`${selection.snapshot}:${selection.ids.join(",")}`}
-            mushafId={mushafId}
-            page={page}
-            line={selectedLine}
-            blobs={selectedBlobs}
-            disabled={!editable}
-            onException={(value) => commit(setException(lines, selection, value))}
-            onAssign={(wordId, paws) => commit(assignToWord(lines, selection, wordId, paws))}
-            onShare={(shares) => commit(shareBetween(lines, selection, shares))}
-            onRelease={() => commit(releaseDecisions(lines, selection))}
-            onUnassign={() => commit(unassignMarks(lines, selection))}
-          />
-        )}
-
         {focusLine && (
           <WordList
             line={focusLine}
-            selection={selection}
+            current={
+              selection.snapshot === focusLine.snapshot_id ? wordAt(shownLines, selection) : null
+            }
             editable={editable}
-            onSelect={(ids) => select({ snapshot: focusLine.snapshot_id, ids })}
+            onSelect={(ids) => selectWord({ snapshot: focusLine.snapshot_id, ids })}
+            onStep={(delta) => {
+              const next = stepWord(shownLines, selection, delta);
+              if (next) selectWord(next);
+            }}
             onReset={(index) => commit(resetWordEdges(lines, focusLine.snapshot_id, index))}
+            handSet={handSet}
+            onResetAll={() => commit(resetAllEdges(lines))}
+            checks={checks}
           />
         )}
 
@@ -1351,6 +1596,7 @@ export function CalibrationEditor({
         onOpenChange={setConfirmOpen}
         page={page}
         exceptions={found}
+        teaches={lessons}
         pending={confirmMutation.isPending}
         onConfirm={(acknowledge) => confirmMutation.mutate(acknowledge)}
       />
@@ -1408,40 +1654,94 @@ function PageCard({
 }
 
 /** The focused line's words: each with its count, and — for one dragged by hand —
- * the way back to edges taken from its ink. A row selects that word's ink. */
+ * the way back to edges taken from its ink. A row selects that word's ink and shows
+ * it; the arrows above step word by word across the page, as Ctrl+← → do. */
 function WordList({
   line,
-  selection,
+  current,
   editable,
   onSelect,
+  onStep,
   onReset,
+  handSet,
+  onResetAll,
+  checks,
 }: {
   line: CalibrationLine;
-  selection: BlobSelection;
+  /** The word the selection is in, on this line. */
+  current: number | null;
   editable: boolean;
   onSelect: (ids: number[]) => void;
+  onStep: (delta: 1 | -1) => void;
   onReset: (index: number) => void;
+  /** The page's hand-set boxes, and how many reach past their ink. */
+  handSet: { count: number; wide: number };
+  onResetAll: () => void;
+  /** Every word's marks against its text's. */
+  checks: MarkChecks;
 }) {
   const { t } = useTranslation();
+  const list = useRef<HTMLDivElement>(null);
+  // Keep the current word's row in view as the words are walked.
+  useEffect(() => {
+    if (current === null) return;
+    list.current
+      ?.querySelector<HTMLElement>(`[data-word-row="${current}"]`)
+      ?.scrollIntoView({ block: "nearest" });
+  }, [current, line.snapshot_id]);
   return (
     <PanelCard
       title={t("calibration.wordsTitle", { line: line.line_number, count: line.words.length })}
     >
+      <div className="-mt-1 flex items-center gap-1.5">
+        <IconButton label={t("calibration.wordNav.previous")} onClick={() => onStep(-1)}>
+          <ChevronUp size={13} />
+        </IconButton>
+        <IconButton label={t("calibration.wordNav.next")} onClick={() => onStep(1)}>
+          <ChevronDown size={13} />
+        </IconButton>
+        <span className="text-[11px] text-text-muted">
+          {current !== null
+            ? t("calibration.wordNav.position", { index: current + 1, count: line.words.length })
+            : t("calibration.wordNav.keys")}
+        </span>
+      </div>
+      <p className="-mt-1.5 text-[10.5px] leading-snug text-text-muted">
+        {t("calibration.boxes.legend")}
+      </p>
+      {handSet.count > 0 && (
+        <div
+          className={`flex items-center justify-between gap-2 rounded-sm px-2 py-1.5 text-[11px] leading-snug ${
+            handSet.wide ? "bg-error-bg text-error" : "bg-bg-surface text-text-secondary"
+          }`}
+        >
+          <span>
+            {t("calibration.boxes.summary", { count: handSet.count, wide: handSet.wide })}
+          </span>
+          <Button
+            variant="outline"
+            className="h-7 flex-none px-2 text-[11px]"
+            disabled={!editable}
+            onClick={onResetAll}
+            title={t("calibration.boxes.resetAllHelp")}
+          >
+            {t("calibration.boxes.resetAll")}
+          </Button>
+        </div>
+      )}
       {line.words.length === 0 ? (
         <p className="text-[12px] text-text-muted">{t("calibration.noWords")}</p>
       ) : (
-        <div className="flex max-h-[min(45vh,28rem)] flex-col gap-1 overflow-y-auto">
+        <div ref={list} className="flex max-h-[min(45vh,28rem)] flex-col gap-1 overflow-y-auto">
           {line.words.map((word, index) => {
             const count = wordCount(line, word);
             const ink = inkOf(line, word.word_id);
-            const active =
-              ink.length > 0 &&
-              selection.snapshot === line.snapshot_id &&
-              selection.ids.length === ink.length &&
-              ink.every((id) => selection.ids.includes(id));
+            const active = index === current;
+            const check = markCheckOf(line.snapshot_id, word.word_id, checks);
             return (
               <div
                 key={`${word.word_id ?? "u"}-${index}`}
+                data-word-row={index}
                 className={`flex flex-none items-center gap-2 rounded border p-1.5 transition-colors ${
                   active ? "border-orange bg-orange-tint" : "border-border"
                 }`}
@@ -1475,6 +1775,32 @@ function WordList({
                   >
                     {word.word_id === null ? "∅" : `${count.got}/${count.want}`}
                   </span>
+                  {check && (
+                    <span
+                      className={`flex-none rounded-sm px-1 text-[10px] font-semibold ${
+                        check.ok ? "text-text-muted" : "bg-warning-bg text-[#8a4b0d]"
+                      }`}
+                      title={t(
+                        check.ok
+                          ? "calibration.marksCheck.okHelp"
+                          : "calibration.marksCheck.offHelp",
+                        {
+                          missing: check.missing.length,
+                          extra: check.extra.length + check.disagree.length,
+                        },
+                      )}
+                    >
+                      {check.ok ? "✓" : "≠"}
+                    </span>
+                  )}
+                  {overshoot(line, word) > OVERSHOOT_PX && (
+                    <span
+                      className="flex-none rounded-sm bg-error-bg px-1 text-[10px] font-semibold tabular-nums text-error"
+                      title={t("calibration.boxes.overshootHelp", { px: overshoot(line, word) })}
+                    >
+                      {t("calibration.boxes.overshoot", { px: overshoot(line, word) })}
+                    </span>
+                  )}
                 </button>
                 {word.override && (
                   <button

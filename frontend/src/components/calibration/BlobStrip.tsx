@@ -11,6 +11,7 @@ import { mediaUrl } from "@/lib/api";
 import {
   decodeLabels,
   doubtOf,
+  expectationKey,
   expectedType,
   highlights,
   isSelected,
@@ -18,8 +19,11 @@ import {
   labelAt,
   labelsInRect,
   needsLook,
+  OVERSHOOT_PX,
+  overshoot,
   passesFilter,
   selectIds,
+  typedByText,
   wordCount,
   type BlobFilter,
   type BlobSelection,
@@ -29,8 +33,8 @@ import {
 import type { CalibrationLine } from "@/lib/calibration/types";
 
 import { HIGHLIGHT_RGB, ROLE_RGB } from "./colors";
-import { subtypeKey } from "./labels";
-import { SUBTYPE_MARKS, type Subtype } from "./subtypes";
+import { useTypeName } from "./labels";
+import { TANWEEN_MARKS, subtypeGlyph } from "./subtypes";
 
 const SELECTED_RGB: [number, number, number] = [234, 88, 12];
 /** Screen px of grab band either side of a word's edge. */
@@ -69,8 +73,11 @@ export function BlobStrip({
   disabled,
   selectable = !disabled,
   selectionFilter = "all",
+  pickAll = false,
+  movedWords,
   expectations,
   doubts,
+  tanween,
   showTypes = false,
   onWordEdge,
   onWordEdgeCommit,
@@ -98,6 +105,12 @@ export function BlobStrip({
   expectations?: Expectations;
   /** Typed marks the other pages take for another type. */
   doubts?: Doubts;
+  /** Strokes of a tanween, by `snapshot:blob`: shown as the tanween they make. */
+  tanween?: Set<string>;
+  /** Let a click or a drag pick the faded ink too — to fix a mark the filter missed. */
+  pickAll?: boolean;
+  /** The words a preview's reading moved, by id: outlined so they are looked at. */
+  movedWords?: Set<number>;
   /** Label every mark with its type in a lane under the line. */
   showTypes?: boolean;
   /** Live, during a drag — no history entry. */
@@ -227,6 +240,8 @@ export function BlobStrip({
         return {
           blob,
           typed,
+          byText: typedByText(blob),
+          stroke: tanween?.has(expectationKey(line.snapshot_id, blob.id)) ?? false,
           subtype: typed ? blob.subtype : (guess?.subtype ?? ""),
           sure: guess?.sure ?? false,
           doubt: doubtOf(blob, line.snapshot_id, doubted),
@@ -241,12 +256,9 @@ export function BlobStrip({
         return { ...slot, row };
       });
     return { slots, rows: slots.some((slot) => slot.row === 1) ? 2 : slots.length ? 1 : 0 };
-  }, [showTypes, guesses, doubted, line.blobs, line.snapshot_id, line.bbox.x, scale]);
+  }, [showTypes, guesses, doubted, tanween, line.blobs, line.snapshot_id, line.bbox.x, scale]);
 
-  const typeName = (subtype: string) => {
-    const key = subtypeKey(subtype);
-    return key ? t(key) : subtype;
-  };
+  const typeName = useTypeName();
 
   const onPointerDown = (event: ReactPointerEvent<HTMLCanvasElement>) => {
     if (!canSelect || event.button !== 0) return;
@@ -286,10 +298,12 @@ export function BlobStrip({
         )
       : [labelAt(raster.ids, raster.width, raster.height, to.x, to.y)].filter(Boolean);
     // Only text blobs are labelled — an ornament or a symbol is structure — and only
-    // the ones the filter lets through.
+    // the ones the filter lets through, unless the faded ones may be picked too.
     const text = new Set(
       line.blobs
-        .filter((b) => passesFilter(b, line.snapshot_id, selectionFilter, guesses, doubted))
+        .filter((b) =>
+          passesFilter(b, line.snapshot_id, pickAll ? "all" : selectionFilter, guesses, doubted),
+        )
         .map((b) => b.id),
     );
     const chosen = hits.filter((id) => text.has(id));
@@ -396,18 +410,29 @@ export function BlobStrip({
           }}
         />
 
-        {/* Words: a thin outline from where each starts to where it ends — solid
-            once dragged by hand. Draggable edges in Words mode; in Blobs mode they
+        {/* Words: a thin outline from where each starts to where it ends — dashed
+            when taken from its ink, solid once set by hand, red when set by hand and
+            reaching past its ink. Draggable edges in Words mode; in Blobs mode they
             stay out of the pointer's way. */}
         {line.words.map((word, index) => (
           <div
             key={`${word.word_id ?? "u"}-${index}`}
+            data-word={`${line.snapshot_id}:${index}`}
             className="pointer-events-none absolute top-0"
             style={{
               left: (word.end_x - line.bbox.x) * scale,
               width: Math.max(1, (word.start_x - word.end_x) * scale),
               height,
-              outline: `1px ${word.override ? "solid" : "dashed"} color-mix(in oklab, var(--orange) 70%, transparent)`,
+              outline:
+                word.word_id !== null && movedWords?.has(word.word_id)
+                  ? "2px solid var(--info)"
+                  : overshoot(line, word) > OVERSHOOT_PX
+                    ? "2px solid var(--error)"
+                    : `1px ${word.override ? "solid" : "dashed"} color-mix(in oklab, var(--orange) 70%, transparent)`,
+              background:
+                word.word_id !== null && movedWords?.has(word.word_id)
+                  ? "color-mix(in oklab, var(--info) 12%, transparent)"
+                  : undefined,
               outlineOffset: -1,
             }}
           >
@@ -496,10 +521,10 @@ export function BlobStrip({
 
       {lane.rows > 0 && (
         <div className="relative flex-none" style={{ width, height: lane.rows * ROW + 2 }}>
-          {lane.slots.map(({ blob, typed, subtype, sure, doubt, x, row }) => {
+          {lane.slots.map(({ blob, typed, byText, stroke, subtype, sure, doubt, x, row }) => {
             const chosen = isSelected(selection, line.snapshot_id, blob.id);
             const outside = shown !== null && !shown.has(blob.id);
-            const title = doubt
+            const named = doubt
               ? t("calibration.types.doubtTitle", {
                   type: typeName(subtype),
                   other: typeName(doubt.subtype),
@@ -507,10 +532,13 @@ export function BlobStrip({
               : !subtype
                 ? t("calibration.types.untyped")
                 : typed
-                  ? t("calibration.types.typedTitle", { type: typeName(subtype) })
+                  ? t(byText ? "calibration.types.textTitle" : "calibration.types.typedTitle", {
+                      type: typeName(subtype),
+                    })
                   : t(sure ? "calibration.types.sureTitle" : "calibration.types.likelyTitle", {
                       type: typeName(subtype),
                     });
+            const title = stroke ? `${named} · ${t("calibration.types.tanweenStroke")}` : named;
             return (
               <button
                 key={blob.id}
@@ -546,7 +574,11 @@ export function BlobStrip({
                   color: typed && !chosen ? `rgb(${ROLE_RGB.mark.join(",")})` : undefined,
                 }}
               >
-                {subtype ? (SUBTYPE_MARKS[subtype as Subtype] ?? "?") : "·"}
+                {subtype
+                  ? stroke
+                    ? (TANWEEN_MARKS[subtype] ?? subtypeGlyph(subtype))
+                    : subtypeGlyph(subtype)
+                  : "·"}
               </button>
             );
           })}

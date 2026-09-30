@@ -18,8 +18,26 @@ import {
   highlights,
   isTyped,
   passesFilter,
+  answeredBy,
+  typedByText,
+  addSubtypePart,
+  composeSubtype,
+  togglePart,
+  markChecksOf,
+  markCheckOf,
+  tanweenOf,
   stepBlob,
   stepLine,
+  stepWord,
+  wordAt,
+  handSetBoxes,
+  overshoot,
+  resetAllEdges,
+  changedWords,
+  galleryGroups,
+  stepGallery,
+  teaches,
+  wordRisks,
   typeCounts,
   typeFilter,
   typeTally,
@@ -514,4 +532,201 @@ assert.deepEqual(inkOf(line(), null), []);
   assert.deepEqual(extendSelection(lines, sel([1]), 1, any), sel([1, 3]));
   assert.deepEqual(extendSelection(lines, sel([4]), 1, any), sel([4]), "not past the line's end");
   assert.deepEqual(extendSelection(lines, sel([3]), -1, any), sel([3, 1]));
+}
+
+// Words: all of a word's ink at once, in reading order across lines, wrapping; the
+// word the selection is in is its first blob's owner.
+{
+  const second = { ...line("s2"), line_number: 2 };
+  const lines = [line(), second];
+  assert.deepEqual(stepWord(lines, NO_SELECTION, 1), sel([1, 2]));
+  assert.equal(wordAt(lines, sel([2])), 0);
+  assert.deepEqual(stepWord(lines, sel([2]), 1), sel([3]));
+  assert.deepEqual(stepWord(lines, sel([4]), 1), sel([1, 2], "s2"));
+  assert.deepEqual(stepWord(lines, sel([1], "s2"), -1), sel([4]));
+  assert.deepEqual(stepWord(lines, NO_SELECTION, -1), sel([4], "s2"));
+}
+
+// Accepting what a filter shows: every expected mark the test lets through, page-wide.
+{
+  const page = line();
+  page.blobs.push(blob(6, 350, "mark", 3));
+  const expectations = expectationsOf([
+    { snapshot_id: "s1", blob_id: 2, subtype: "fatha", confidence: 0.5, sure: false },
+    { snapshot_id: "s1", blob_id: 6, subtype: "kasra", confidence: 0.9, sure: true },
+  ]);
+  const fathas = acceptExpected([page], expectations, (l, b) =>
+    passesFilter(b, l.snapshot_id, typeFilter("fatha"), expectations, new Map()),
+  );
+  assert.deepEqual([pick(fathas, 2).subtype, pick(fathas, 2).subtype_explicit], ["fatha", true]);
+  assert.equal(pick(fathas, 6).subtype, "", "a kasra is not shown by the fatha filter");
+}
+
+// Hand-set boxes: how far past their ink they reach; one reset each, or all at once —
+// all but a cut inside a shared body, which one word's reset sends back to the middle.
+{
+  let lines = setWordEdges([line()], "s1", 1, 530, 440);
+  assert.equal(overshoot(lines[0], lines[0].words[1]), 40 + 20);
+  assert.equal(overshoot(lines[0], lines[0].words[0]), 0, "taken from its ink");
+  assert.deepEqual(handSetBoxes(lines), { count: 1, wide: 1 });
+  const reset = resetAllEdges(lines);
+  assert.deepEqual(
+    [reset[0].words[1].start_x, reset[0].words[1].end_x, reset[0].words[1].override],
+    [490, 460, false],
+  );
+  lines = shareBetween([line()], sel([3]), [
+    { word_id: 2, paws: 1 },
+    { word_id: 3, paws: 1 },
+  ]);
+  lines = setWordEdges(lines, "s1", 1, 490, 470);
+  assert.equal(overshoot(lines[0], lines[0].words[1]), 0, "a shared cut is the hand's");
+  assert.deepEqual(handSetBoxes(lines), { count: 0, wide: 0 });
+  assert.equal(resetAllEdges(lines)[0].words[1].end_x, 470, "the page-wide reset keeps it");
+  const middle = resetWordEdges(lines, "s1", 1)[0].words[1];
+  assert.deepEqual([middle.end_x, middle.override], [475, false]);
+}
+
+// Words: stepping through a test finds the next word that passes it, from anywhere.
+{
+  const second = { ...line("s2"), line_number: 2 };
+  const lines = [line(), second];
+  const third = (_: unknown, w: { word_id: number | null }) => w.word_id === 3;
+  assert.deepEqual(stepWord(lines, sel([2]), 1, third), sel([4]));
+  assert.deepEqual(stepWord(lines, sel([4]), 1, third), sel([4], "s2"));
+  assert.equal(
+    stepWord(lines, NO_SELECTION, 1, () => false),
+    null,
+  );
+}
+
+// Risky words: a count that does not close, ink asking for a look, a box past its ink.
+{
+  const page = line();
+  assert.deepEqual(wordRisks(page, page.words[0]), []);
+  const marked = setRole([page], sel([3]), "mark")[0];
+  assert.deepEqual(wordRisks(marked, marked.words[1]), ["count"]);
+  const looked = line();
+  looked.blobs[0].attention = ["uncertain"];
+  assert.deepEqual(wordRisks(looked, looked.words[0]), ["look"]);
+  const wide = setWordEdges([line()], "s1", 2, 420, 330)[0];
+  assert.deepEqual(wordRisks(wide, wide.words[2]), ["box"]);
+}
+
+// A preview's moved words: an edge beyond a pixel, a line change, a word dropped.
+{
+  const before = [line()];
+  const after = [{ ...line(), words: [word(1, 610, 580), word(2, 492, 460)] }];
+  assert.deepEqual([...changedWords(before, after)].sort(), [2, 3]);
+  assert.equal(changedWords(before, [line()]).size, 0);
+}
+
+// What a confirmation teaches: roles of every text blob but flagged ones and bodies of
+// other than one PAW; types of typed marks only.
+{
+  const page = line();
+  page.blobs.push({ ...blob(6, 350, "mark", 3), subtype: "kasra", subtype_explicit: true });
+  page.blobs.push({ ...blob(7, 300, "mark", 3), exception: "broken" });
+  assert.deepEqual(teaches([page, line("ctx", true)]), { bodies: 3, marks: 2, typed: 1 });
+  const two = assignToWord([page], sel([1]), 1, 2);
+  assert.equal(teaches(two).bodies, 2);
+}
+
+// The gallery: marks by their type, doubts and unsure guesses first, untyped last;
+// or all ink by role; stepping wraps, and ↑↓ jump between groups.
+{
+  const page = line();
+  page.blobs.push({ ...blob(6, 350, "mark", 3), subtype: "fatha", subtype_explicit: true });
+  page.blobs.push({ ...blob(7, 300, "mark", 3), subtype: "fatha", subtype_explicit: true });
+  page.blobs.push(blob(8, 250, "mark", null));
+  const expectations = expectationsOf([
+    { snapshot_id: "s1", blob_id: 2, subtype: "fatha", confidence: 0.3, sure: false },
+  ]);
+  const doubts = doubtsOf([
+    { snapshot_id: "s1", blob_id: 7, typed: "fatha", subtype: "madda", sure: true },
+  ]);
+  const types = galleryGroups([page], "types", "all", expectations, doubts);
+  assert.deepEqual(
+    types.map((g) => [g.key, g.items.map((i) => i.blob.id), g.typed, g.expected]),
+    [
+      ["fatha", [7, 2, 6], 2, 1],
+      ["", [8], 0, 0],
+    ],
+  );
+  const roles = galleryGroups([page], "roles", "all", expectations, doubts);
+  assert.deepEqual(
+    roles.map((g) => g.key),
+    ["mark", "body"],
+  );
+  assert.deepEqual(stepGallery(types, NO_SELECTION, 1), sel([7]));
+  assert.deepEqual(stepGallery(types, sel([6]), 1), sel([8]));
+  assert.deepEqual(stepGallery(types, sel([8]), 1), sel([7]), "wraps");
+  assert.deepEqual(stepGallery(types, sel([2]), 1, true), sel([8]), "next group");
+}
+
+// A type the text set counts as typed, until a person types it; and the engine's
+// doubts are answered by agreeing examples or by the text.
+{
+  const byText = {
+    ...blob(6, 350, "mark", 3),
+    subtype: "smallLetter",
+    subtype_explicit: false,
+    subtype_source: "text" as const,
+  };
+  assert.equal(isTyped(byText), true);
+  assert.equal(typedByText(byText), true);
+  assert.equal(isTyped({ ...byText, subtype_source: undefined }), false);
+  const page = line();
+  page.blobs.push(byText);
+  const retyped = setSubtype([page], sel([6]), "damma");
+  assert.equal(typedByText(retyped[0].blobs.find((b) => b.id === 6)!), false);
+
+  const alef = { ...blob(9, 200, "body", 1), body_score: 7, initial_role: "mark" as const };
+  assert.equal(answeredBy(alef), null, "nothing answered it");
+  assert.equal(answeredBy({ ...alef, proposed_role: "body" }), "examples");
+  assert.equal(
+    answeredBy({ ...alef, proposed_role: "body", explicit: true }),
+    null,
+    "a person decided",
+  );
+  assert.equal(answeredBy({ ...byText, initial_role: "body", decision_source: "text" }), "text");
+  assert.equal(answeredBy(blob(1, 580, "body", 1)), null, "no doubt to answer");
+}
+
+// Pairs: marks printed as one are typed by their parts, in one fixed order.
+{
+  assert.equal(composeSubtype(["kasra", "hamza"]), "hamza+kasra");
+  assert.equal(togglePart("hamza", "kasra"), "hamza+kasra");
+  assert.equal(togglePart("hamza+kasra", "kasra"), "hamza");
+  assert.equal(togglePart("hamza", "hamza"), "hamza", "a single type stays itself");
+  const page = line();
+  page.blobs.push({ ...blob(6, 350, "mark", 3), subtype: "hamza", subtype_explicit: true });
+  const paired = addSubtypePart([page], sel([6]), "kasra", new Map());
+  const mark = paired[0].blobs.find((b) => b.id === 6)!;
+  assert.deepEqual(
+    [mark.subtype, mark.subtype_explicit, mark.explicit],
+    ["hamza+kasra", true, true],
+  );
+  // From an expected type, too.
+  const guessed = expectationsOf([
+    { snapshot_id: "s1", blob_id: 2, subtype: "hamza", confidence: 1, sure: true },
+  ]);
+  assert.equal(
+    addSubtypePart([line()], sel([2]), "kasra", guessed)[0].blobs[1].subtype,
+    "hamza+kasra",
+  );
+}
+
+// The text's check: by word, and a word whose marks do not fit it is worth a look.
+{
+  const page = line();
+  const checks = markChecksOf([
+    { snapshot_id: "s1", word_id: 1, ok: true, missing: [], extra: [], disagree: [] },
+    { snapshot_id: "s1", word_id: 2, ok: false, missing: ["sukun"], extra: [], disagree: [] },
+  ]);
+  assert.equal(markCheckOf("s1", 2, checks)?.missing[0], "sukun");
+  assert.equal(markCheckOf("s1", null, checks), null);
+  assert.deepEqual(wordRisks(page, page.words[0], checks), []);
+  assert.deepEqual(wordRisks(page, page.words[1], checks), ["marks"]);
+  assert.deepEqual(wordRisks(page, page.words[1]), [], "no checks, no such risk");
+  assert.deepEqual([...tanweenOf([{ snapshot_id: "s1", blob_id: 4 }])], ["s1:4"]);
 }

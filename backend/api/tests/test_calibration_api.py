@@ -71,10 +71,18 @@ def _ring_template() -> bytes:
 STRAY = (560, 566)
 #: A flat stroke over every line's second body: a mark of another shape than the dot.
 BAR = (465, 485)
+#: A small square on the writing line just left of the first body — where a small waw
+#: or ya sits after its word's heh.
+SMALL = (566, 574)
 
 
 def _drawn_page(
-    *, fused: bool = False, ringless: tuple[int, ...] = (), stray: bool = False, bar: bool = False
+    *,
+    fused: bool = False,
+    ringless: tuple[int, ...] = (),
+    stray: bool = False,
+    bar: bool = False,
+    small: bool = False,
 ) -> Image.Image:
     """The picture a page renders as — see the module docstring.
 
@@ -92,6 +100,8 @@ def _drawn_page(
             draw.rectangle([STRAY[0], top + 1, STRAY[1] - 1, top + 3], fill="black")
         if bar:
             draw.rectangle([BAR[0], top + 2, BAR[1] - 1, top + 3], fill="black")
+        if small and number == 1:
+            draw.rectangle([SMALL[0], top + 19, SMALL[1] - 1, top + 30], fill="black")
         if number not in ringless:
             draw.rectangle([RING[0], top + 10, RING[1] - 1, top + 29], outline="black", width=3)
     return image
@@ -104,6 +114,7 @@ def drawn_pages(
     ringless: dict[int, tuple[int, ...]] | None = None,
     stray: bool = False,
     bar: bool = False,
+    small: bool = False,
 ):
     """Render every page as drawn: ``fused_page`` with its first line fused, and
     ``ringless`` mapping a page number to its lines printed without an ornament."""
@@ -114,6 +125,7 @@ def drawn_pages(
             ringless=(ringless or {}).get(page.page_number, ()),
             stray=stray and page.page_number == 1,
             bar=bar,
+            small=small and page.page_number == 1,
         )
 
     with mock.patch("api.services.line_images._render_page", side_effect=render):

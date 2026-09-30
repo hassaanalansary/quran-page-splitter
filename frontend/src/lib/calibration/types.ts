@@ -11,9 +11,10 @@ export type BlobRole = "body" | "mark" | "ornament" | "symbol";
 export type TextRole = "body" | "mark";
 /** Why a blob is flagged out of the ordinary. "" is none. */
 export type BlobException = "" | "mixed" | "broken" | "fused" | "uncertain";
-/** Who decided a blob's role: the reviewer, calibration (when locks are on), or the
- * alignment search on the frozen scores. */
-export type DecisionSource = "human" | "calibration" | "search";
+/** Who decided a blob's role: the reviewer, calibration (when locks are on), the
+ * text (a small waw or ya it puts on the line), or the alignment search on the frozen
+ * scores. */
+export type DecisionSource = "human" | "calibration" | "text" | "search";
 
 /** A blob's share of one word. `paws` is 1 for an ordinary letter body, 0 for a
  * broken fragment or for any mark, and 2 or more for bodies printed touching. */
@@ -41,8 +42,16 @@ export type CalibrationBlob = {
   ownership_explicit: boolean;
   subtype: string;
   /** A person set this type. A stored type without it is a guess that was never
-   * accepted — shown as expected, never taught. */
+   * accepted — shown as expected, never taught — unless the text set it. */
   subtype_explicit?: boolean;
+  /** "text": the type is the one the word's text names for this mark. Typed, and
+   * taught once the page is confirmed, but a person's own typing replaces it. */
+  subtype_source?: "text";
+  /** The text's word on this blob's role: its word's small waw or ya on the line,
+   * locked as a mark (provisionally — the reading may release it). */
+  text_role?: TextRole;
+  /** The word whose small letter the text says this is. */
+  text_word?: number;
   exception: BlobException;
   allocations: Allocation[];
   /** Why the blob deserves a look — signals, never verdicts. */
@@ -144,14 +153,19 @@ export type CalibrationDraft = {
   }[];
 };
 
-/** A guessed type for one mark nobody has typed: learned from the typed marks of
- * every confirmed page and of this one. `sure` when the examples agree closely. */
+/** A guessed type for one mark nobody has typed. `sure` when its source is sure. */
 export type TypeSuggestion = {
   snapshot_id: string;
   blob_id: number;
   subtype: string;
   confidence: number;
   sure: boolean;
+  /** Where it comes from: the type the word's text names for the mark ("text"), the
+   * typed marks of the confirmed pages and of this one ("examples"), or the ink's
+   * arrangement — three loose dots in a triangle, the embraced pause sign ("image"). */
+  source?: "text" | "examples" | "image";
+  /** The type the text names, when the examples are sure of another: worth a look. */
+  text?: string;
 };
 
 /** A mark typed on this page that the other pages' examples take for another type:
@@ -161,9 +175,25 @@ export type TypeDoubt = {
   blob_id: number;
   /** What it is typed as. */
   typed: string;
-  /** What the other pages' examples say it is. */
+  /** What the other pages' examples say it is — or the word's text. */
   subtype: string;
   sure: boolean;
+  /** Who doubts it: the word's text, or the other pages' examples. */
+  source?: "text" | "examples";
+};
+
+/** One word's marks against the marks its text names. */
+export type WordMarkCheck = {
+  snapshot_id: string;
+  word_id: number;
+  /** Nothing missing, nothing left over, nothing typed as another type. */
+  ok: boolean;
+  /** Types of the marks the text requires and the ink lacks. */
+  missing: string[];
+  /** Blobs the text has no mark for (pause signs aside: readings differ). */
+  extra: number[];
+  /** Typed blobs the text names otherwise. */
+  disagree: number[];
 };
 
 export type CalibrationTypes = {
@@ -173,6 +203,10 @@ export type CalibrationTypes = {
   examples: number;
   /** Typed marks on this page, sent with the draft. */
   typed_here: number;
+  /** Every word's check against its text. */
+  words?: WordMarkCheck[];
+  /** The marks that are strokes of a tanween, each typed as its vowel. */
+  tanween?: { snapshot_id: string; blob_id: number }[];
 };
 
 /** One typed mark shown as evidence: where it was typed, and how near it is. */

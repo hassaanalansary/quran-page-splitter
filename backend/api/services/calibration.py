@@ -44,6 +44,7 @@ from __future__ import annotations
 
 import copy
 import logging
+import statistics
 import uuid
 from collections import OrderedDict
 from dataclasses import asdict
@@ -72,7 +73,9 @@ from api.models import (
     Segment,
 )
 from api.services import activity, jobs, line_images, word_coordinates, word_inputs, word_runs
+from api.services import calibration_marks as text_marks
 from api.services import calibration_snapshots as snapshots
+from core.text import line_marks, paws
 from core.word_boundary import IjamMode, WordBoundaryInput, WordInput, detect_words
 from core.word_boundary.engine import detect_prepared
 from core.word_boundary.examples import (
@@ -104,6 +107,13 @@ UNCERTAIN_SCORES = range(6, 10)
 EDGE_TOLERANCE = 3
 #: A blob stands for at most this many PAWs. Generous; it only catches nonsense.
 MAX_PAWS = 8
+#: A small waw or ya on the line is at most this share of the line's typical body's
+#: area. Those confirmed on the first mushaf's pages 3-10 ran 0.12-0.27; the ink next
+#: to them, when it was a letter, 0.5 and up. It picks which blob the text means, never
+#: whether one is there — the text says that.
+SMALL_LETTER_AREA = 0.4
+#: The engine's doubts about a blob that an answer from the examples or the text settles.
+ENGINE_DOUBTS = ("uncertain", "search-override", "ambiguous")
 #: The matcher's settings. Recorded in every profile, so a change of settings is a
 #: change of profile and an old evaluation stays reproducible.
 MATCHER_CONFIG = dict(DEFAULT_CONFIG)
@@ -643,19 +653,25 @@ def process_page(
         "context": [row for row in rows if row["readonly"]],
         "issues": [],
     }
-    document = align_document(mushaf, document)
+    document = align_document(mushaf, document, text_locks=False)
     prediction = _record(document, context=True)
+    # What the text says about the ink that reading put on the line — its small waw
+    # and ya — goes on the draft, never on the prediction record.
+    reread = _place_text_locks(document)
     # Keep the canonical, unlocked prediction immutable for honest comparisons.
     # The setting is pinned to this run, not retroactively applied to older pages.
     if experimental:
         document["profile"]["mode"] = "experimental"
         document = align_document(mushaf, document, calibration_locks=True)
+    elif reread:
+        document = align_document(mushaf, document)
 
     # The draft: that reading, with what people already decided put back on it.
     decided, worded = _carry_decisions(document, before)
     if decided:
         document = align_document(mushaf, document, calibration_locks=document["profile"]["mode"] == "experimental")
     _keep_legacy_edges(document, _hand_made(mushaf, page), skip=worded)
+    _apply_text_types(mushaf, document)
     frozen = _frozen_record(mushaf, page, start, end, user)
     if cancelled is not None and cancelled():
         return False
@@ -888,7 +904,12 @@ def _frozen_record(mushaf: Mushaf, page: int, start: tuple[int, int], end: tuple
 # Aligning a document
 # ---------------------------------------------------------------------------
 def align_document(
-    mushaf: Mushaf, document: Doc, *, calibration_locks: bool = False, affected_ayas: set[str] | None = None
+    mushaf: Mushaf,
+    document: Doc,
+    *,
+    calibration_locks: bool = False,
+    affected_ayas: set[str] | None = None,
+    text_locks: bool = True,
 ) -> Doc:
     """Re-read the document's span under every decision already made on it.
 
@@ -896,6 +917,33 @@ def align_document(
     calibration's proposals are applied as *provisional* locks — released aya by aya
     by the engine if they make an aya unreadable — which is the third result the
     evaluation compares; the editor never asks for it while calibration is in shadow.
+
+    With ``text_locks`` the text's own word is added: the small waw and ya it puts on
+    the writing line are locked as marks (:func:`_place_text_locks`), provisionally,
+    like calibration's. Where the reading then puts one somewhere the locks did not
+    expect, the span is read once more under the corrected locks.
+    """
+    result = _read(
+        mushaf, document, calibration_locks=calibration_locks, affected_ayas=affected_ayas, text_locks=text_locks
+    )
+    if not text_locks or affected_ayas == set():
+        return result
+    moved = _place_text_locks(result)
+    if not moved:
+        return result
+    scope = None if affected_ayas is None else set(affected_ayas) | moved
+    return _read(mushaf, result, calibration_locks=calibration_locks, affected_ayas=scope, text_locks=True)
+
+
+def _read(
+    mushaf: Mushaf,
+    document: Doc,
+    *,
+    calibration_locks: bool,
+    affected_ayas: set[str] | None,
+    text_locks: bool,
+) -> Doc:
+    """One reading of the document's span — see :func:`align_document`.
 
     Words printed touching across a word break are read as one — see
     :func:`_fused_units`.
@@ -929,7 +977,7 @@ def align_document(
             edited = decided.get(blob.label)
             if edited is None:
                 continue
-            _constrain(blob, edited, unit_of, calibration_locks=calibration_locks)
+            _constrain(blob, edited, unit_of, calibration_locks=calibration_locks, text_locks=text_locks)
         images.append(image)
         inks.append(ink)
         cut_by_row.append(cut)
@@ -1117,16 +1165,26 @@ def _unit(members: list[Doc]) -> WordInput:
     )
 
 
-def _constrain(blob: Any, edited: Doc, unit_of: dict[int, int], *, calibration_locks: bool) -> None:
+def _constrain(
+    blob: Any, edited: Doc, unit_of: dict[int, int], *, calibration_locks: bool, text_locks: bool = True
+) -> None:
     """Carry one blob's decisions onto the engine's ``Blob``.
 
     A body given to words is placed in them and counts exactly the PAWs it was given
     — all of them together when it is shared by two words, since those two are one
     unit to the engine (see :func:`_fused_units`).
+
+    A person's decision is a hard lock. The text's and calibration's are provisional:
+    the engine knows them as "calibration" locks, which it releases aya by aya when
+    they leave an aya unreadable. The text outranks calibration — the examples cannot
+    tell a small waw from a waw, and the text names every one.
     """
     if (edited["explicit"] or edited.get("ownership_explicit")) and edited["role"] in TEXT_ROLES:
         blob.locked_role = edited["role"]
         blob.lock_source = "human"
+    elif text_locks and edited.get("text_role") in TEXT_ROLES:
+        blob.locked_role = edited["text_role"]
+        blob.lock_source = "calibration"
     elif calibration_locks and edited.get("proposed_role") in TEXT_ROLES:
         blob.locked_role = edited["proposed_role"]
         blob.lock_source = "calibration"
@@ -1262,6 +1320,9 @@ def _apply_outcome(
     conflicts, released = set(outcome.constraint_conflicts), set(outcome.released_locks)
     locked = {blob.label: blob.lock_source for blob in ink.components if blob.locked_role is not None}
     missing_ids = {word["word_id"] for word in row["words"] if word["word_id"] is not None} - placed
+    here = {
+        member for box in outcome.words if box.word_id is not None for member in units.get(box.word_id, [box.word_id])
+    }
 
     for blob in row["blobs"]:
         component = components.get(blob["id"])
@@ -1270,6 +1331,7 @@ def _apply_outcome(
             blob["role"] = component.role
         if blob["role"] != "mark" and not blob.get("subtype_explicit"):
             blob["subtype"] = ""  # a body has no mark type; a person's own label stays
+            blob.pop("subtype_source", None)
         if not blob.get("ownership_explicit"):
             owner = owners.get(blob["id"])
             paws = 1 if blob["role"] == "body" else 0
@@ -1282,6 +1344,9 @@ def _apply_outcome(
             if locked.get(blob["id"]) == "calibration"
             else "search"
         )
+        word_id = blob.get("text_word")
+        if blob.get("text_role") and locked.get(blob["id"]) == "calibration" and word_id is not None:
+            _finish_text_lock(blob, word_id if word_id in here else None)
         blob["attention"] = _attention(blob, component, cut, conflicts, released)
 
     previous = {word["word_id"]: word for word in row["words"] if word["word_id"] is not None}
@@ -1345,6 +1410,163 @@ def _apply_outcome(
     row["reason"] = "preview-kept-missing-words" if missing_ids else outcome.reason
 
 
+# ---------------------------------------------------------------------------
+# What the text says about the ink: the small waw and ya on the line
+# ---------------------------------------------------------------------------
+def _place_text_locks(document: Doc) -> set[str]:
+    """Lock the ink of every small waw and ya the text puts on the line as a mark. In place.
+
+    ``بِهِۦ``, ``لَهُۥ``: the text names every one — 2,214 in the Quran, all but 30 at
+    the end of a word, after its final heh — and the engine calls it a letter: it sits
+    on the writing line. Nor can the examples teach it otherwise: squeezed to one size,
+    a small waw *is* a waw. So the text decides — :func:`_small_letters` finds the blob
+    in the reading as it stands, and it is locked, provisionally, as its word's mark.
+
+    Returns the ayat the new locks change: those of the words whose small letter the
+    reading had not already made their mark — empty when there is nothing to read again.
+    """
+    references = {word["id"]: word for word in document["stream"]}
+    moved: set[str] = set()
+    for row in document["lines"]:
+        if row.get("readonly"):
+            continue
+        wanted = _small_letters(row, references)
+        for blob in row["blobs"]:
+            word_id = wanted.get(blob["id"])
+            before = blob.get("text_word")
+            if word_id is None:
+                if before is not None:
+                    blob.pop("text_role", None)
+                    blob.pop("text_word", None)
+                    moved |= _owner_ayas(blob, references)
+                    if before in references:
+                        moved.add(references[before]["aya"])
+                continue
+            blob.update(text_role="mark", text_word=word_id)
+            if blob["role"] == "mark" and [a["word_id"] for a in blob["allocations"]] in ([word_id], []):
+                _finish_text_lock(blob, word_id)
+            else:
+                moved |= _owner_ayas(blob, references) | {references[word_id]["aya"]}
+    return moved
+
+
+def _small_letters(row: Doc, references: dict[int, Doc]) -> dict[int, int]:
+    """Which blob of a read row each small waw or ya of its words is printed as.
+
+    It sits on the line just after its letter: the first ink to the left of that
+    letter's piece whose middle lies within the writing band, a few pixels away and
+    small beside the line's letters. On the first mushaf's confirmed pages every one
+    was exactly that; where the text has no small letter, the first ink there is the
+    next word's letter, or a mark off the line. Ink a person decided otherwise is left
+    alone, and so is a word whose pieces the reading did not give it in full.
+
+    One reading gets it the other way round: the word's last piece handed to the word
+    before, and the small letter taken for the piece — the count still closes. Then the
+    word's last body is itself small and on the line, nothing small lies beyond it, and
+    the body just to its right is another word's: that body is the small letter.
+
+    Returns blob id → the word it belongs to.
+    """
+    texts = [blob for blob in row["blobs"] if blob["role"] in TEXT_ROLES]
+    areas = [blob["area"] for blob in texts if blob["role"] == "body"]
+    if not areas:
+        return {}
+    typical = statistics.median(areas)
+    top, bottom = row["band"]
+    on_line = [blob for blob in texts if top <= blob["y"] + blob["h"] / 2 <= bottom]
+    bodies: dict[int, list[Doc]] = {}
+    for blob in texts:
+        if blob["role"] == "body":
+            for allocation in blob["allocations"]:
+                bodies.setdefault(allocation["word_id"], []).append(blob)
+    found: dict[int, int] = {}
+    for word in row["words"]:
+        ident = word["word_id"]
+        if ident is None or ident not in references:
+            continue
+        text = references[ident]["text"]
+        marks = line_marks(text)
+        if not marks:
+            continue
+        pieces = paws(text)
+        own = sorted(bodies.get(ident, []), key=lambda blob: -(blob["x"] + blob["w"]))
+        for mark in marks:
+            piece = _piece_of(pieces, mark.letter)
+            if len(own) >= len(pieces):
+                anchor = own[piece]
+            elif own and piece == len(pieces) - 1:
+                anchor = own[-1]
+            else:
+                continue
+            left = sorted(
+                (blob for blob in on_line if blob is not anchor and blob["x"] + blob["w"] <= anchor["x"] + 2),
+                key=lambda blob: -(blob["x"] + blob["w"]),
+            )
+            candidate = left[0] if left else None
+            if candidate is None or (
+                candidate["area"] > SMALL_LETTER_AREA * typical
+                or anchor["x"] - (candidate["x"] + candidate["w"]) > bottom - top + 1
+            ):
+                candidate = anchor if _taken_for_a_piece(anchor, own, pieces, piece, on_line, typical, ident) else None
+            if candidate is None:
+                continue
+            if candidate["explicit"] and candidate["role"] != "mark":
+                continue  # a person said it is a letter
+            owners = [allocation["word_id"] for allocation in candidate["allocations"]]
+            if candidate.get("ownership_explicit") and owners not in ([ident], []):
+                continue  # a person gave it to another word
+            found[candidate["id"]] = ident
+    return found
+
+
+def _taken_for_a_piece(
+    anchor: Doc, own: list[Doc], pieces: list[str], piece: int, on_line: list[Doc], typical: float, word_id: int
+) -> bool:
+    """Whether a word's last body is its small letter, read as the piece whose ink the
+    word before took — see :func:`_small_letters`."""
+    if piece != len(pieces) - 1 or anchor is not own[-1] or len(own) > len(pieces):
+        return False
+    if anchor not in on_line or anchor["area"] > SMALL_LETTER_AREA * typical:
+        return False
+    right = [
+        blob
+        for blob in on_line
+        if blob is not anchor and blob["role"] == "body" and blob["x"] >= anchor["x"] + anchor["w"] - 2
+    ]
+    if not right:
+        return False
+    neighbour = min(right, key=lambda blob: blob["x"])
+    return word_id not in {allocation["word_id"] for allocation in neighbour["allocations"]}
+
+
+def _piece_of(pieces: list[str], letter: int) -> int:
+    """The index of the piece holding a word's ``letter``-th letter."""
+    seen = 0
+    for index, piece in enumerate(pieces):
+        seen += len(piece)
+        if letter < seen:
+            return index
+    return max(len(pieces) - 1, 0)
+
+
+def _finish_text_lock(blob: Doc, word_id: int | None) -> None:
+    """A blob the text locked, as the reading kept it: the text's mark, of its word.
+
+    Its type is the text's too — a small letter — unless a person typed it; and the
+    engine's doubts about its role are answered. ``word_id`` is None when the reading
+    placed the word on another line: then the ink keeps the owner the reading gave it.
+    """
+    if blob["role"] != "mark":
+        return
+    if not blob["explicit"]:
+        blob["decision_source"] = "text"
+        blob["attention"] = [flag for flag in blob.get("attention", []) if flag not in ENGINE_DOUBTS]
+    if word_id is not None and not blob.get("ownership_explicit"):
+        blob["allocations"] = [{"word_id": word_id, "paws": 0}]
+    if not blob.get("subtype_explicit"):
+        blob.update(subtype="smallLetter", subtype_source="text")
+
+
 def _in_reading_order(labelled: list[Doc], unlabelled: list[Doc]) -> list[Doc]:
     """Labelled words by their place in the text; unlabelled ones where they sit.
 
@@ -1367,16 +1589,25 @@ def _attention(
     Recomputed from scratch on every alignment, so a flag disappears once its cause
     has gone. An unflagged blob is not thereby correct — a wrong reading can have an
     exact count and a confident score — which is why confirmation is of the page.
+
+    Three of them are the engine's doubts about itself: a score in the contested band,
+    a first guess the count overruled, a tie between readings. Those are *answered*,
+    and not raised, when the confirmed examples agree with the role the blob ended up
+    with, or the text named it (``decision_source`` "text"). A thin alef scores in the
+    contested band on every page; once the examples say body, asking again is noise.
+    The examples' role proposals were right 4,569 times out of 4,569 on the first
+    mushaf's pages 3 to 10 — they abstain rather than guess.
     """
     flags = []
     if blob["role"] in TEXT_ROLES and not (blob["explicit"] or blob.get("ownership_explicit")):
-        if blob["body_score"] in UNCERTAIN_SCORES:
+        answered = blob.get("proposed_role") == blob["role"] or blob.get("decision_source") == "text"
+        if blob["body_score"] in UNCERTAIN_SCORES and not answered:
             flags.append("uncertain")
-        if not blob["explicit"] and blob["role"] != blob["initial_role"]:
+        if blob["role"] != blob["initial_role"] and not answered:
             flags.append("search-override")
         if blob.get("proposed_role") and blob["proposed_role"] != blob["role"]:
             flags.append("calibration-disagreement")
-        if component is not None and component.ambiguous:
+        if component is not None and component.ambiguous and not answered:
             flags.append("ambiguous")
     if blob["id"] in cut:
         flags.append("span-boundary")
@@ -1502,6 +1733,8 @@ def _merge_blob(blob: Doc, new: Doc, references: dict[int, Doc]) -> None:
         exception=new.get("exception", ""),
         allocations=[{"word_id": a["word_id"], "paws": a["paws"]} for a in allocations],
     )
+    if blob["subtype_explicit"] or not blob["subtype"]:
+        blob.pop("subtype_source", None)
     if blob["explicit"]:
         blob["decision_source"] = "human"
     elif blob.get("decision_source") == "human":
@@ -1551,6 +1784,7 @@ def preview(mushaf: Mushaf, page: int, data: Doc) -> Doc:
         affected_ayas=set(edited.get("pending_ayas", [])),
         calibration_locks=edited.get("profile", {}).get("mode") == "experimental",
     )
+    _apply_text_types(mushaf, document)
     document["pending_ayas"] = []
     document.pop("request", None)
     document.update(
@@ -1646,6 +1880,7 @@ def save(mushaf: Mushaf, page: int, data: Doc, *, confirm: bool = False, user: U
             affected_ayas=set(document.get("pending_ayas", [])),
             calibration_locks=document.get("profile", {}).get("mode") == "experimental",
         )
+        _apply_text_types(mushaf, document)
         document["pending_ayas"] = []
     if confirm:
         found = exceptions(document)
@@ -1694,12 +1929,14 @@ def _typed(blob: Doc) -> bool:
     """A mark a person gave a type to — the only kind that may teach a type.
 
     A type with no ``subtype_explicit`` predates the flag, and every type then was
-    set by hand. Flagged ink teaches nothing, as for roles.
+    set by hand. A type the text set (``subtype_source`` "text") counts as typed: the
+    text named that mark, and a person confirms the page it is on. Flagged ink teaches
+    nothing, as for roles.
     """
     return (
         blob["role"] == "mark"
         and bool(blob.get("subtype"))
-        and bool(blob.get("subtype_explicit", True))
+        and (bool(blob.get("subtype_explicit", True)) or blob.get("subtype_source") == "text")
         and not blob.get("exception")
     )
 
@@ -1775,6 +2012,12 @@ def type_suggestions(mushaf: Mushaf, page: int, data: Doc) -> Doc:
     """A type for every mark on the page that nobody has typed yet, and a doubt on
     every typed one the other pages disagree with. Stores nothing.
 
+    The word's text speaks first (:mod:`api.services.calibration_marks`): a mark takes the
+    type its word's text names for it — sure when the word's ink fits its text — and a
+    typed one the text names otherwise is doubted by the text. Every word's check comes
+    back too (``words``), and the marks that are strokes of a tanween (``tanween``).
+    What the text does not reach, the examples guess as before.
+
     Learned from the marks typed on every confirmed page -- all of them, not only the
     earlier ones: these are hints for a person to accept or correct, not predictions
     under evaluation -- and from the marks already typed on this page, sent with the
@@ -1789,39 +2032,94 @@ def type_suggestions(mushaf: Mushaf, page: int, data: Doc) -> Doc:
     review = _review(mushaf, page)
     if review is None or not review.payload.get("lines"):
         _refuse("not_processed", 422, page=page)
-    rows = _apply_edits(mushaf, review, data)["lines"]
+    edited = _apply_edits(mushaf, review, data)
+    rows = edited["lines"]
     stored, marks = _page_marks(mushaf, rows)
     here = _typed_samples(stored, rows)
     confirmed = _confirmed_types(mushaf, page)
+    index = build_type_index(confirmed + here)
+    checks = text_marks.check_rows(rows, edited["stream"], marks, index, ijam=mushaf.ijam_mode != "ignore")
+    named = {
+        (snapshot_id, ident): (check.types[ident], ident in check.sure)
+        for snapshot_id, per_word in checks.items()
+        for check in per_word.values()
+        for ident in check.types
+    }
+    arranged = {(row["snapshot_id"], ident) for row in rows for ident in text_marks.embraced(row)}
     untyped = [mark for mark in marks if not _typed(mark[1])]
-    typed = [mark for mark in marks if _typed(mark[1])]
-    guesses = predict_types([features for _, _, features in untyped], build_type_index(confirmed + here))
-    suggestions = [
-        {
-            "snapshot_id": row["snapshot_id"],
-            "blob_id": blob["id"],
-            "subtype": found["subtype"],
-            "confidence": found["confidence"],
-            "sure": found["sure"],
-        }
-        for (row, blob, _), found in zip(untyped, guesses, strict=True)
-        if found["subtype"]
-    ]
+    typed = [mark for mark in marks if text_marks.human_typed(mark[1])]
+    guesses = predict_types([features for _, _, features in untyped], index)
+    suggestions = []
+    for (row, blob, _), found in zip(untyped, guesses, strict=True):
+        key = (row["snapshot_id"], blob["id"])
+        kind, sure = named.get(key, ("", False))
+        said: Doc = {}
+        if sure:
+            # The word fits its text, and the examples do not say otherwise.
+            suggestion, source = {"subtype": kind, "confidence": 1.0, "sure": True}, "text"
+        elif key in arranged:
+            # Three loose dots in a triangle: the ink's arrangement, whatever each looks like.
+            suggestion, source = {"subtype": "waqfMuanaqa", "confidence": 0.0, "sure": False}, "image"
+        elif found["sure"] and found["subtype"]:
+            # The examples are sure; if the text names another type, it is worth a look.
+            conflict = bool(kind) and kind != found["subtype"]
+            suggestion = {"subtype": found["subtype"], "confidence": found["confidence"], "sure": not conflict}
+            source = "examples"
+            said = {"text": kind} if conflict else {}
+        elif kind:
+            suggestion, source = {"subtype": kind, "confidence": found["confidence"], "sure": False}, "text"
+        elif found["subtype"]:
+            suggestion = {"subtype": found["subtype"], "confidence": found["confidence"], "sure": False}
+            source = "examples"
+        else:
+            continue
+        suggestions.append({"snapshot_id": key[0], "blob_id": key[1], **suggestion, "source": source, **said})
     elsewhere = build_type_index(confirmed)
     known = set(elsewhere.types)
-    checks = predict_types([features for _, _, features in typed], elsewhere)
-    doubts = [
-        {
-            "snapshot_id": row["snapshot_id"],
-            "blob_id": blob["id"],
-            "typed": blob["subtype"],
-            "subtype": found["subtype"],
-            "sure": found["sure"],
-        }
-        for (row, blob, _), found in zip(typed, checks, strict=True)
-        if found["subtype"] and found["subtype"] != blob["subtype"] and blob["subtype"] in known
-    ]
-    return {"suggestions": suggestions, "doubts": doubts, "examples": len(confirmed), "typed_here": len(here)}
+    answers = predict_types([features for _, _, features in typed], elsewhere)
+    disagreed = {
+        (snapshot_id, ident): check.types[ident]
+        for snapshot_id, per_word in checks.items()
+        for check in per_word.values()
+        for ident in check.disagree
+    }
+    doubts = []
+    for (row, blob, _), found in zip(typed, answers, strict=True):
+        key = (row["snapshot_id"], blob["id"])
+        if key in disagreed:
+            # The text names the mark otherwise: the stronger evidence of the two.
+            doubts.append(
+                {"snapshot_id": key[0], "blob_id": key[1], "typed": blob["subtype"], "subtype": disagreed[key]}
+                | {"sure": True, "source": "text"}
+            )
+        elif found["subtype"] and found["subtype"] != blob["subtype"] and blob["subtype"] in known:
+            doubts.append(
+                {"snapshot_id": key[0], "blob_id": key[1], "typed": blob["subtype"], "subtype": found["subtype"]}
+                | {"sure": found["sure"], "source": "examples"}
+            )
+    return {
+        "suggestions": suggestions,
+        "doubts": doubts,
+        "examples": len(confirmed),
+        "typed_here": len(here),
+        "words": text_marks.summary(checks),
+        "tanween": [
+            {"snapshot_id": snapshot_id, "blob_id": ident}
+            for snapshot_id, per_word in checks.items()
+            for check in per_word.values()
+            for ident in sorted(check.tanween)
+        ],
+    }
+
+
+def _apply_text_types(mushaf: Mushaf, document: Doc) -> None:
+    """Type the marks of the document's own lines that their words' text surely names —
+    see :func:`calibration_marks.apply_text_types`. In place."""
+    rows = [row for row in document["lines"] if not row.get("readonly")]
+    stored, marks = _page_marks(mushaf, rows)
+    index = build_type_index(_confirmed_types(mushaf, document["page"]) + _typed_samples(stored, rows))
+    checks = text_marks.check_rows(rows, document["stream"], marks, index, ijam=mushaf.ijam_mode != "ignore")
+    text_marks.apply_text_types(rows, checks)
 
 
 def type_evidence(mushaf: Mushaf, page: int, data: Doc) -> Doc:
