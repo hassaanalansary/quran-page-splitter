@@ -356,7 +356,7 @@ No reset was applied during implementation or live UI verification.
 Read-only. One row per confirmed page, measured against what you confirmed:
 
 ```
-engine wrong       roles the engine alone got wrong
+engine wrong       roles the engine's own reading got wrong (no learning, no text)
 learning decided   blobs the confirmed examples proposed a role for — and how many
 learning wrong       of those proposals were wrong
 looks asked        blobs the first draft asked you to look at

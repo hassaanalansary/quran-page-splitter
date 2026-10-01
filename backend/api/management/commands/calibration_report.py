@@ -3,7 +3,7 @@
 One row per confirmed page, each measured against its confirmation:
 
 * **the engine and the learning**, from the prediction record, as the evaluation reads
-  it: the roles the engine alone got wrong, how many blobs the confirmed examples
+  it: the roles the engine's own reading got wrong, how many blobs the confirmed examples
   proposed a role for, and how many of those proposals were wrong;
 * **what the reviewer corrected**, from the draft as it was first shown — kept beside
   the prediction since 2026-10-01: the blobs it asked a look at, the roles changed, the
@@ -55,7 +55,7 @@ COLUMNS: list[tuple[str, str, int, Callable[[Doc], str]]] = [
 ]
 
 LEGEND = """\
-engine wrong       roles the engine alone got wrong
+engine wrong       roles the engine's own reading got wrong (no learning, no text)
 learning decided   blobs the confirmed examples proposed a role for
 learning wrong     of those proposals, the ones the confirmation contradicts
 looks asked        blobs the first draft asked you to look at
@@ -132,7 +132,7 @@ def _page(
             if key not in text:
                 continue
             right = final[key]["role"]
-            engine += blob.get("initial_role", blob["role"]) != right
+            engine += blob["role"] != right
             if blob.get("proposed_role") in calibration.TEXT_ROLES:
                 learned += 1
                 learned_wrong += blob["proposed_role"] != right
