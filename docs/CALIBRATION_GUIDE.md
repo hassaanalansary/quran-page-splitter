@@ -196,7 +196,10 @@ so while they are the only other pages, some doubts on page 3 are false alarms.
 The Uthmani text names every mark of every word — harakat, shadda, sukun, madda,
 tanween, the small letters, the hamza a letter carries, the i'jam dots, and, from the
 complete text in `backend/quran/data`, the pause sign after a word. So each word's marks
-are checked against its text, the way its bodies are counted against its pieces:
+are checked against its text, the way its bodies are counted against its pieces.
+The text is Hafs's, so all of this is for a mushaf whose riwaya is Hafs; for another
+riwaya — other harakat, other small letters, other pauses — it stands aside and the
+examples alone guess.
 
 ```
 عَظِيمٌ    the text names          the ink has
@@ -238,7 +241,11 @@ What the print may do differently is allowed, never flagged:
 **New types.** *Round zero* ۟ — a letter written and never read (كَفَرُوا۟); *upright
 zero* ۠ — read only when stopping (أَنَا۠); and the *embraced pause* ۛ ۛ, whose three
 loose dots in a triangle are found from the ink (a letter's dots touch, or nearly) and
-made sure by the text where it has them. Marks printed as **one blob** are typed as a
+made sure by the text where it has them. To type one by hand, select all three dots —
+drag a box around them, or click one and Shift-click the other two — and choose
+*Embraced pause* under *More…*: each dot carries the type. Like any pause sign, the
+dots belong to the word the sign follows; if the next word shows ≠, they went to it.
+Marks printed as **one blob** are typed as a
 pair: **Shift** with a digit adds that type to the mark's own — a hamza with Shift+3
 becomes *hamza + kasra* — and *+ Pair…* in the bar does the same. Pressing a plain digit
 types a single type again.
@@ -325,7 +332,8 @@ later restart. It creates a work-bundle backup before modifying anything and:
 
 - Restarts active calibration drafts and confirmations, excluding their old labels
   from future teaching.
-- Restores pre-calibration manual boundaries from the earliest legacy archive.
+- Restores pre-calibration manual boundaries from the latest legacy archive before
+  calibration began (each archive carries every hand-cut line seen so far).
 - Returns other affected lines to their first stored canonical engine reading.
 - Leaves PDF, layout, numbering, templates, erasures and unrelated pages alone.
 - Keeps immutable old revisions and snapshots as history, rather than deleting
@@ -338,3 +346,32 @@ the other 20 pre-calibration manual lines are outside that reset and untouched.
 Afterward refresh the app, process page 1, review, confirm, then process page 2.
 
 No reset was applied during implementation or live UI verification.
+
+## How Each Page Went
+
+```powershell
+.\.venv\Scripts\python.exe manage.py calibration_report b9975701-a795-4b18-8c66-5551dd47aae1
+```
+
+Read-only. One row per confirmed page, measured against what you confirmed:
+
+```
+engine wrong       roles the engine alone got wrong
+learning decided   blobs the confirmed examples proposed a role for — and how many
+learning wrong       of those proposals were wrong
+looks asked        blobs the first draft asked you to look at
+roles fixed        roles you changed
+text typed/fixed   marks the text typed, and how many of those you changed
+small locked       small waw/ya on the line the text locked as marks;
+lock undone          the locks you did not keep; small letters you made marks
+small by hand        yourself
+words fixed        words whose box ended up different
+min                minutes from processing to the first confirmation, breaks included
+```
+
+"First draft" is the page as you first saw it after processing: since 2026-10-01 it
+is kept beside the prediction record, so the report can tell what *you* changed — the
+text's types you corrected, the small letters it missed. A page processed before then
+has none: its words are compared with the engine's first reading instead (marked `~`)
+and the first-draft columns stay blank. Like every count here, it says where the work
+went; the pages themselves say whether it is right.

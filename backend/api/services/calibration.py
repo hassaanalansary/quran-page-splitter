@@ -149,6 +149,18 @@ def _review(mushaf: Mushaf, page: int) -> CalibrationReview | None:
     return CalibrationReview.objects.filter(mushaf=mushaf, page_number=page).first()
 
 
+def _follows_text(mushaf: Mushaf) -> bool:
+    """Whether the loaded text's marks are this mushaf's to be checked against.
+
+    There is one text, and it is Hafs's: another riwaya reads other harakat, other small
+    letters, other pauses, so for a mushaf printed in one the text's word on its marks
+    would be wrong where it is surest. Its rules — the small letters' locks, the types
+    the text names, each word's check — stand aside there, and the examples alone guess.
+    """
+    rawi = mushaf.rawi
+    return rawi is not None and rawi.name.lower() == "hafs"
+
+
 def _system(mushaf: Mushaf) -> CountingSystem | None:
     try:
         return word_inputs.counting_system_for(mushaf)
@@ -613,7 +625,9 @@ def process_page(
     written as an immutable ``processed`` revision: the prediction record. It is what
     the evaluation compares the eventual confirmation against, so it is taken before
     anything a person did is put back on the page — decisions carried from an earlier
-    draft, cuts corrected in the word editor — and never touched afterwards.
+    draft, cuts corrected in the word editor — and never touched afterwards. Beside it
+    goes the draft as its reviewer first sees it (:func:`_shown`), so a report can say
+    what they corrected.
     """
     start, end = _span_for_page(mushaf, page)
     system = word_inputs.counting_system_for(mushaf)
@@ -657,7 +671,7 @@ def process_page(
     prediction = _record(document, context=True)
     # What the text says about the ink that reading put on the line — its small waw
     # and ya — goes on the draft, never on the prediction record.
-    reread = _place_text_locks(document)
+    reread = _place_text_locks(document) if _follows_text(mushaf) else set()
     # Keep the canonical, unlocked prediction immutable for honest comparisons.
     # The setting is pinned to this run, not retroactively applied to older pages.
     if experimental:
@@ -672,6 +686,7 @@ def process_page(
         document = align_document(mushaf, document, calibration_locks=document["profile"]["mode"] == "experimental")
     _keep_legacy_edges(document, _hand_made(mushaf, page), skip=worded)
     _apply_text_types(mushaf, document)
+    shown = _shown(document)
     frozen = _frozen_record(mushaf, page, start, end, user)
     if cancelled is not None and cancelled():
         return False
@@ -689,7 +704,7 @@ def process_page(
             review=review,
             number=review.revision,
             kind=CalibrationRevisionKind.PROCESSED,
-            payload={**prediction, "frozen": frozen},
+            payload={**prediction, "frozen": frozen, "shown": shown},
         )
         activity.emit(
             mushaf,
@@ -772,6 +787,52 @@ def _record(document: Doc, *, context: bool = False) -> Doc:
     """
     dropped = ("request",) if context else ("context", "request")
     return {key: copy.deepcopy(value) for key, value in document.items() if key not in dropped}
+
+
+#: The engine's doubts about a role, which a person's decision on the blob settles —
+#: the editor's ``activeAttention`` drops the same ones.
+ROLE_FLAGS = ("uncertain", "ambiguous", "search-override", "calibration-disagreement", "released-lock")
+
+
+def _needs_look(blob: Doc) -> bool:
+    """Whether the editor asks for a look at this blob, as its ``needsLook`` decides."""
+    decided = blob.get("explicit") or blob.get("ownership_explicit")
+    flags = [flag for flag in blob.get("attention", []) if not (decided and flag in ROLE_FLAGS)]
+    return bool(flags) or blob.get("exception") == "uncertain"
+
+
+def _shown(document: Doc) -> Doc:
+    """The draft as its reviewer first sees it, compactly: each blob's role and type,
+    whether the text set them, whether it asks for a look, and each word's edges.
+
+    The prediction record is the engine's reading before the page's own locks, the
+    text's types and earlier decisions are put on it; what a reviewer then corrects is
+    this. Kept beside the prediction so ``manage.py calibration_report`` can say what
+    was corrected — never read back as a reading.
+    """
+    lines = []
+    for row in document["lines"]:
+        # The editor shows every box widened to its ink (``page_document``).
+        fitted = copy.deepcopy(row)
+        _fit_words(fitted)
+        lines.append(
+            {
+                "snapshot_id": row["snapshot_id"],
+                "line_number": row["line_number"],
+                "blobs": {
+                    str(blob["id"]): {
+                        "role": blob["role"],
+                        "subtype": blob.get("subtype", ""),
+                        "by_text": blob.get("subtype_source") == "text",
+                        "text_lock": bool(blob.get("text_role")),
+                        "look": _needs_look(blob),
+                    }
+                    for blob in row["blobs"]
+                },
+                "words": [[word["word_id"], word["start_x"], word["end_x"]] for word in fitted["words"]],
+            }
+        )
+    return {"lines": lines}
 
 
 def _cuts_of(line: Line) -> list[Doc]:
@@ -921,8 +982,10 @@ def align_document(
     With ``text_locks`` the text's own word is added: the small waw and ya it puts on
     the writing line are locked as marks (:func:`_place_text_locks`), provisionally,
     like calibration's. Where the reading then puts one somewhere the locks did not
-    expect, the span is read once more under the corrected locks.
+    expect, the span is read once more under the corrected locks. Only for a mushaf
+    that follows the text (:func:`_follows_text`).
     """
+    text_locks = text_locks and _follows_text(mushaf)
     result = _read(
         mushaf, document, calibration_locks=calibration_locks, affected_ayas=affected_ayas, text_locks=text_locks
     )
@@ -2038,7 +2101,11 @@ def type_suggestions(mushaf: Mushaf, page: int, data: Doc) -> Doc:
     here = _typed_samples(stored, rows)
     confirmed = _confirmed_types(mushaf, page)
     index = build_type_index(confirmed + here)
-    checks = text_marks.check_rows(rows, edited["stream"], marks, index, ijam=mushaf.ijam_mode != "ignore")
+    checks = (
+        text_marks.check_rows(rows, edited["stream"], marks, index, ijam=mushaf.ijam_mode != "ignore")
+        if _follows_text(mushaf)
+        else {}
+    )
     named = {
         (snapshot_id, ident): (check.types[ident], ident in check.sure)
         for snapshot_id, per_word in checks.items()
@@ -2115,6 +2182,8 @@ def type_suggestions(mushaf: Mushaf, page: int, data: Doc) -> Doc:
 def _apply_text_types(mushaf: Mushaf, document: Doc) -> None:
     """Type the marks of the document's own lines that their words' text surely names —
     see :func:`calibration_marks.apply_text_types`. In place."""
+    if not _follows_text(mushaf):
+        return
     rows = [row for row in document["lines"] if not row.get("readonly")]
     stored, marks = _page_marks(mushaf, rows)
     index = build_type_index(_confirmed_types(mushaf, document["page"]) + _typed_samples(stored, rows))
@@ -2402,6 +2471,7 @@ def _evaluate_page(mushaf: Mushaf, page: int, processed: Doc, confirmed: Doc) ->
 def _calibrated(mushaf: Mushaf, processed: Doc) -> Doc:
     """The processed page re-read with its own proposals applied as locks."""
     document = copy.deepcopy(processed)
+    document.pop("shown", None)
     document.setdefault("context", [])
     for row in document["lines"]:
         row["words"] = [word for word in row["words"] if word.get("override")]

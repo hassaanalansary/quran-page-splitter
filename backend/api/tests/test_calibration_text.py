@@ -17,6 +17,7 @@ from unittest import mock
 from django.core.management import call_command
 from django.test import SimpleTestCase
 
+from api.management.commands import calibration_report
 from api.models import CalibrationRevision
 from api.services import calibration as calibration_service
 from api.services import calibration_marks
@@ -348,3 +349,46 @@ class RetypeFromTextTests(CalibrationApiTestCase):
         # The dot keeps its type, and the old confirmation stays in the page's history.
         self.assertEqual(self.blob_at(after["lines"][0], DOT[0])["subtype"], "ijamDot")
         self.assertTrue(CalibrationRevision.objects.filter(review__mushaf=self.mushaf, number=before).exists())
+
+
+class CalibrationReportTests(CalibrationApiTestCase):
+    """Page 1's first word is ن: the text types its drawn dot, and the reviewer retypes it."""
+
+    def setUp(self):
+        super().setUp()
+        Word.objects.filter(id=1).update(text="ن")
+        self.process(1)
+        self.doc = self.document(1)
+
+    def test_the_first_draft_is_kept_beside_the_prediction(self):
+        processed = CalibrationRevision.objects.get(review__mushaf=self.mushaf, review__page_number=1, kind="processed")
+        dot = self.blob_at(self.doc["lines"][0], DOT[0])
+        first = processed.payload["shown"]["lines"][0]["blobs"][str(dot["id"])]
+        self.assertEqual((first["role"], first["subtype"], first["by_text"]), ("mark", "ijamDot", True))
+        # The prediction itself is still the engine's alone.
+        self.assertNotIn("subtype_source", self.blob_at(processed.payload["lines"][0], DOT[0]))
+
+    def test_the_report_counts_what_the_reviewer_changed(self):
+        body = self.draft(self.doc, acknowledge_exceptions=True)
+        self.draft_blob(body, 0, DOT[0]).update(subtype="fatha", subtype_explicit=True, explicit=True)
+        self.assertEqual(self.confirm(1, body).status_code, 200)
+        [page] = calibration_report.measure(self.mushaf)
+        self.assertEqual(
+            {key: page[key] for key in ("page", "first_draft", "by_text", "text_changed", "roles", "words")},
+            {"page": 1, "first_draft": True, "by_text": 1, "text_changed": 1, "roles": 0, "words": 0},
+        )
+        out = io.StringIO()
+        call_command("calibration_report", str(self.mushaf.id), stdout=out)
+        self.assertIn("text typed/fixed", out.getvalue())
+
+
+class FollowsTextTests(SimpleTestCase):
+    def test_only_a_mushaf_in_the_texts_riwaya_is_checked_against_it(self):
+        from types import SimpleNamespace
+
+        def mushaf(rawi: str | None):
+            return SimpleNamespace(rawi=SimpleNamespace(name=rawi) if rawi else None)
+
+        self.assertTrue(calibration_service._follows_text(mushaf("Hafs")))
+        self.assertFalse(calibration_service._follows_text(mushaf("qalun")))
+        self.assertFalse(calibration_service._follows_text(mushaf(None)))

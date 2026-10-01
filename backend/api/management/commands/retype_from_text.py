@@ -50,6 +50,8 @@ class Command(BaseCommand):
             raise CommandError("Use the full mushaf UUID.") from exc
         if ProcessJob.objects.filter(mushaf=mushaf, state="running").exists():
             raise CommandError("Stop processing jobs first.")
+        if not calibration._follows_text(mushaf):
+            raise CommandError("The text is Hafs's; this mushaf is printed in another riwaya.")
         total = 0
         for review in CalibrationReview.objects.select_for_update().filter(mushaf=mushaf).order_by("page_number"):
             if not review.payload.get("lines"):
