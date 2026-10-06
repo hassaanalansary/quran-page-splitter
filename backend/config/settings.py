@@ -168,7 +168,7 @@ ACCOUNT_LOGIN_METHODS = {"email"}
 # (allauth/headless/account/inputs.py), and the SPA does its own confirm-password
 # check before posting.
 ACCOUNT_SIGNUP_FIELDS = ["email*", "password1*"]
-ACCOUNT_EMAIL_VERIFICATION = "mandatory"
+ACCOUNT_EMAIL_VERIFICATION = "optional"
 ACCOUNT_UNIQUE_EMAIL = True
 ACCOUNT_PREVENT_ENUMERATION = True
 #: Otherwise allauth's `display` field falls back to str(user) — the address.
