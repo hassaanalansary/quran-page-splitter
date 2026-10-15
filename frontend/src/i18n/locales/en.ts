@@ -111,6 +111,7 @@ export const en = {
     signInToDuplicate: "Sign in to copy",
     downloadJson: "Coordinates JSON",
     downloadZip: "Line images (.zip)",
+    downloadFull: "Words, marks & maps (.zip)",
     more: "Show more",
     showingCount: "Showing {{shown}} of {{total}}",
     publishedBadge: "Published",
@@ -1158,6 +1159,134 @@ export const en = {
     gateShadow:
       "These results are not validation approval. Experimental application is a separate opt-in and still requires full review.",
     gateOpen: "These numbers allow calibration to be switched on.",
+
+    downloadPage: "Download this page's data (.zip)",
+
+    // Bulk processing, and the readiness meter
+    bulk: {
+      meterTitle: "Ready to process in bulk",
+      level: {
+        keep: "Keep calibrating page by page",
+        close: "Getting there",
+        ready: "Ready to process the rest in bulk",
+      },
+      pagesShort: "{{count}} of {{target}} pages",
+      open: "Process pages in bulk…",
+      title: "Process pages in bulk",
+      intro:
+        "Process a range of pages for review in one background job. You still review and confirm every page afterwards, in any order.",
+      loading: "Reading the confirmed pages…",
+      meterIntro:
+        "How sure your confirmed pages make us that processing the rest now loses nothing. Pages processed in a batch learn from the pages confirmed before the batch reaches them, and stop learning after.",
+      meterBlind:
+        "An estimate, not a promise: it cannot see a mistake nobody fixed. The word search is not taught by calibration, so word fixes stay about the same either way.",
+      state: {
+        pass: "Met",
+        near: "Almost",
+        fail: "Not yet",
+        unknown: "Not enough pages yet",
+      },
+      checkTitle: {
+        pages: "Pages confirmed",
+        trust: "The learning is right",
+        settled: "The learning has settled",
+        fixes: "Little left to fix",
+      },
+      check: {
+        pagesEnough: "{{count}} pages confirmed — enough to judge by ({{target}} needed).",
+        pagesMore:
+          "{{count}} of {{target}} pages confirmed. The learning needs a few ordinary pages to judge by.",
+        trustUnknown:
+          "No proposals yet — the learning starts proposing from the second confirmed page.",
+        trustRight:
+          "Never contradicted: {{made}} body-or-mark proposals on the last {{pages}} page(s), none wrong.",
+        trustWrong:
+          "{{wrong}} of {{made}} proposals on the last {{pages}} page(s) were wrong. A batch would repeat such mistakes on every page — check the Doubtful marks of those pages first.",
+        settledUnknown: "Needs 3 confirmed pages to tell whether the learning is still growing.",
+        settledFlat:
+          "It decides {{latest}}% of the blobs, and grew {{growth}} points a page over the last {{pages}} pages: more pages one by one would add little.",
+        settledGrowing:
+          "Still growing: {{growth}} points a page over the last {{pages}} pages (now {{latest}}%). Each page confirmed now still makes the next ones better.",
+        fixesUnknown: "Needs a page processed since 1 October, whose first draft was kept.",
+        fixes:
+          "You fixed {{perPage}} roles and mark types a page on the last {{pages}} page(s) — {{rate}} per 1,000 blobs.",
+        fixesWords: "Words to fix: about {{words}} a page.",
+      },
+      chartTitle: "Blobs the learning decided, per confirmed page",
+      chartEmpty: "Confirm a page to start the chart.",
+      barLabel: "Page {{page}}: the learning decided {{value}}% of the blobs",
+      tooltipPage: "Page {{page}}",
+      tooltipFixes: "{{fixes}} roles and types fixed · {{words}} words moved",
+      tooltipWords: "{{words}} words moved",
+      axisPage: "p. {{page}}",
+      tableToggle: "Per page ({{count}})",
+      column: {
+        page: "Page",
+        decided: "Decided",
+        wrong: "Wrong",
+        fixes: "Fixed",
+        words: "Words moved",
+        minutes: "Minutes",
+      },
+      cost: "A page takes about {{process}} to process here, and about {{review}} min to review.",
+      costProcess: "A page takes about {{process}} to process here.",
+      costUnknown: "Process a page to learn how long one takes here.",
+      duration: {
+        seconds: "{{count}} s",
+        minutes: "{{count}} min",
+        hours: "{{hours}} h {{minutes}} min",
+      },
+      from: "From page",
+      to: "To page",
+      ofPages: "of {{count}}",
+      badRange:
+        "Choose a range within pages 1 to {{count}}, the first page no later than the last.",
+      refresh: "Also process again the drafts nobody has edited",
+      refreshHelp:
+        "They get the learning as it is now. Drafts with saved work, and confirmed pages, are never processed over — so save the page you are working on first.",
+      planLoading: "Reading the range…",
+      planProcess: "{{count}} page(s) will be processed.",
+      leftAlone: "Left alone:",
+      reason: {
+        confirmed: "{{count}} confirmed",
+        edited: "{{count}} being worked on",
+        untouched:
+          "{{count}} draft(s) nobody touched — processed again only if their lines changed",
+        current: "{{count}} draft(s) already current",
+        not_reviewed: "{{count}} not reviewed yet in Review",
+        not_numbered: "{{count}} whose ayat are not numbered — save them in Review",
+        missing: "{{count}} not processed in Process",
+      },
+      estimate:
+        "About {{time}}, at {{seconds}} s a page. You can keep reviewing and confirming while it runs; a page you edit is never processed over.",
+      estimateUnknown: "Process one page first to estimate how long the batch takes.",
+      learningOff:
+        "The learning switch is off: these pages will show the learning's proposals without applying them. Turn on “Apply learning to new pages” under Page · learning first to have them applied.",
+      notReady:
+        "The meter suggests calibrating a few more pages first. You can start anyway — and later process the drafts nobody touched again, with the box above.",
+      running: "A page or a batch is being processed. Wait for it, or stop it, to start another.",
+      cancel: "Cancel",
+      start: "Process {{count}} page(s)",
+      startChanged: "Process the drafts whose lines changed",
+      starting: "Starting…",
+      startedToast: "Processing pages {{first}}–{{last}} in the background.",
+      progressTitle: "Processing pages {{first}}–{{last}}",
+      progressLine: "Page {{page}} · {{processed}} processed · {{skipped}} left alone",
+      progressFailed: "{{count}} failed",
+      progressLeft: "About {{time}} left",
+      stop: "Stop",
+      stopping: "Stopping after this page…",
+      lastBatch:
+        "Last batch, pages {{first}}–{{last}}: {{processed}} processed, {{skipped}} left alone, {{failed}} failed",
+      lastStopped: "stopped",
+      lastBroken: "interrupted",
+      failedPages: "Failed: {{pages}}",
+      doneToast:
+        "Batch done: {{processed}} page(s) processed, {{skipped}} left alone, {{failed}} failed.",
+      stoppedToast: "Batch stopped: {{processed}} page(s) processed; the rest are as they were.",
+      status: "Batch: page {{page}} · {{done}} of {{total}} processed",
+      here: "The batch is processing this page now. It opens here when it is done.",
+    },
   },
   details: {
     tab_overview: "Overview",
@@ -1396,6 +1525,24 @@ export const en = {
     ex_noReviewed: "No reviewed pages to export.",
     ex_noProcessed: "No processed pages to export.",
     ex_exportFailed: "Export failed.",
+    ex_fullTitle: "Words, marks & pixel maps · ZIP",
+    ex_fullPill: "{{count}} calibrated",
+    ex_fullWordsOnly: "Word boxes only",
+    ex_fullConfirmed: "pages confirmed in Calibrate",
+    ex_fullDrafts:
+      "{{count}} more processed in Calibrate but not confirmed — exported too, marked as drafts.",
+    ex_fullAllConfirmed: "Every calibrated page is confirmed.",
+    ex_fullNone:
+      "No page calibrated yet: the export still carries every line, aya and word box, without blobs.",
+    ex_fullImages: "Include the line images",
+    ex_fullMaps: "Include the pixel maps (which word, which blob)",
+    ex_fullDownload: "Download full export ↓ zip",
+    ex_fullHelp:
+      "Every blob with its class (body, mark, ornament, symbol) and a mark's type, every word with its aya and box, in page and line-PNG pixels. Made while it downloads: a whole mushaf can take a few minutes.",
+    kv_spaces: "coordinates",
+    kv_perWord: "per word",
+    kv_perBlob: "per blob",
+    kv_maps: "per line",
   },
   canvas: {
     page: "Page",

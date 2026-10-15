@@ -19,27 +19,29 @@ export function containedPoint(
   return px >= 0 && py >= 0 && px < imageW && py < imageH ? { x: px, y: py } : null;
 }
 
-export const BODY_INK: RGB = [0, 76, 160];
-export const MARK_INK: RGB = [174, 24, 82];
+export const BODY_INK: RGB = [0, 0, 0];
+// Mark inks sit mid-tone (relative luminance ~0.14–0.25): about 3.4–5:1
+// against both the black body ink and the white background.
+export const MARK_INK: RGB = [222, 40, 110];
 export const TYPE_INK: Record<string, RGB> = {
-  fatha: [160, 56, 0],
-  damma: [158, 20, 96],
-  kasra: [0, 105, 75],
-  sukun: [105, 50, 155],
-  shadda: [125, 85, 0],
-  tanween: [181, 28, 28],
-  madda: [124, 32, 111],
-  daggerAlif: [77, 105, 0],
-  smallLetter: [143, 60, 76],
-  ijamDot: [77, 77, 77],
-  hamza: [140, 66, 0],
-  wasla: [0, 112, 101],
-  waqfSili: [146, 28, 28],
-  waqfQili: [120, 48, 91],
-  waqfJim: [65, 110, 23],
-  waqfMim: [116, 61, 137],
-  waqfLa: [133, 91, 20],
-  other: [115, 66, 66],
+  fatha: [214, 90, 0],
+  damma: [205, 40, 130],
+  kasra: [0, 150, 105],
+  sukun: [140, 80, 210],
+  shadda: [170, 118, 0],
+  tanween: [225, 50, 50],
+  madda: [170, 55, 155],
+  daggerAlif: [105, 145, 0],
+  smallLetter: [190, 85, 105],
+  ijamDot: [40, 120, 220],
+  hamza: [190, 95, 0],
+  wasla: [0, 150, 135],
+  waqfSili: [195, 45, 45],
+  waqfQili: [165, 70, 130],
+  waqfJim: [90, 150, 35],
+  waqfMim: [155, 90, 185],
+  waqfLa: [180, 125, 30],
+  other: [160, 95, 95],
 };
 
 /** The stored word order is authoritative, including unlabelled manual words. */
@@ -85,6 +87,7 @@ export function paintPlaybackInk(
   types: ReadonlyMap<number, string>,
   distinguishTypes: boolean,
   dimOthers: boolean,
+  hideOthers = false,
 ): Uint8ClampedArray {
   const pixels = new Uint8ClampedArray(ids.length * 4);
   const blobs = new Map(line.blobs.map((blob) => [blob.id, blob]));
@@ -92,13 +95,14 @@ export function paintPlaybackInk(
     const blob = blobs.get(ids[i]);
     if (!blob) continue;
     const active = word && belongsAt(blob, word, line.bbox.x + (i % width));
+    if (!active && hideOthers) continue;
     const color = active
       ? inkColor(blob, types.get(blob.id) ?? "", distinguishTypes)
       : [110, 110, 110];
     pixels[i * 4] = color[0];
     pixels[i * 4 + 1] = color[1];
     pixels[i * 4 + 2] = color[2];
-    pixels[i * 4 + 3] = active ? 255 : dimOthers ? 70 : 230;
+    pixels[i * 4 + 3] = active ? 255 : dimOthers ? 0 : 230;
   }
   return pixels;
 }

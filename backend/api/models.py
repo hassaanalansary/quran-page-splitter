@@ -288,6 +288,9 @@ class ProcessJobKindChoices(models.TextChoices):
     #: One page processed for calibration review. Its own kind so the word-run
     #: screen, which polls the latest ``words`` job, never mistakes it for a run.
     CALIBRATION = "calibration", "Calibration page"
+    #: Many pages processed for calibration review, one after another. It counts
+    #: pages, where a one-page job counts that page's lines — hence a kind of its own.
+    CALIBRATION_BATCH = "calibration_batch", "Calibration pages"
 
 
 class ProcessJob(BaseModel):
@@ -311,7 +314,7 @@ class ProcessJob(BaseModel):
     """
 
     kind = models.CharField(
-        max_length=16,
+        max_length=32,
         choices=ProcessJobKindChoices.choices,
         default=ProcessJobKindChoices.DETECTION,
         help_text="Which engine this run drives. Detection walks pages; words walks lines.",
@@ -381,6 +384,14 @@ class ProcessJob(BaseModel):
         blank=True,
         default="",
         help_text="Path (relative to settings.LOG_DIR) of this run's detailed log file.",
+    )
+    report = models.JSONField(
+        null=True,
+        blank=True,
+        help_text=(
+            "Calibration batches only: what happened to each page of the range — processed, "
+            "skipped and why, or failed. Written as the run goes, so a poll can show it."
+        ),
     )
 
     class Meta:

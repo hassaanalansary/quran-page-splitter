@@ -256,8 +256,38 @@ export type ProcessJobState =
 /** What the run is doing right now — drives the progress label. */
 export type ProcessJobPhase = "starting" | "rendering" | "detecting" | "saving" | "finished";
 
-/** Which engine a run drives: detection walks pages, words walks lines. */
-export type ProcessJobKind = "detection" | "words" | "calibration";
+/** Which engine a run drives: detection walks pages, words walks lines, calibration
+ * processes one page for review — or, as `calibration_batch`, a range of pages. */
+export type ProcessJobKind = "detection" | "words" | "calibration" | "calibration_batch";
+
+/** Why a calibration batch processes a page, or leaves it alone — see
+ * backend/api/services/calibration_batch.py. `untouched` is only a plan's word: such
+ * a draft is processed again if its lines changed (`stale`), else left (`current`). */
+export type BatchReason =
+  | "new"
+  | "refresh"
+  | "stale"
+  | "untouched"
+  | "current"
+  | "edited"
+  | "confirmed"
+  | "not_reviewed"
+  | "not_numbered"
+  | "missing";
+
+/** A calibration batch's account of its range, written as it goes. */
+export type CalibrationBatchReport = {
+  first: number;
+  last: number;
+  refresh: boolean;
+  /** Pages the plan expected to process when the batch started. */
+  planned: number;
+  processed: number[];
+  skipped: Partial<Record<BatchReason, number[]>>;
+  failed: { page: number; error: string }[];
+  /** Seconds spent processing, over the pages processed so far. */
+  busy_seconds: number;
+};
 
 /** Live state of a processing run (POST /process, GET /process/job).
  *
@@ -296,6 +326,8 @@ export type ProcessJob = {
   /** Word runs count lines, not pages: read this against `total`, and leave
    * `pages_saved` alone (it stays 0 for the whole run). */
   lines_done: number;
+  /** Calibration batches only: what has happened to each page of the range. */
+  report?: CalibrationBatchReport | null;
 };
 
 export const PROCESS_JOB_DONE: readonly ProcessJobState[] = [

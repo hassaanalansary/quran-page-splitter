@@ -32,6 +32,7 @@ import {
   cancelCalibration,
   confirmCalibration,
   explainType,
+  exportUrl,
   isJobRunning,
   isJobSettled,
   previewCalibration,
@@ -113,6 +114,7 @@ import { revealInScroller } from "@/lib/reveal";
 import { wordsPlace } from "@/lib/words/place";
 
 import { BlobStrip } from "./BlobStrip";
+import { BulkPanel } from "./BulkPanel";
 import { HIGHLIGHT_RGB, ROLE_RGB } from "./colors";
 import { ConfirmPageDialog } from "./ConfirmPageDialog";
 import { EvaluationPanel } from "./EvaluationPanel";
@@ -289,7 +291,16 @@ export function CalibrationEditor({
 
   // ── derived ────────────────────────────────────────────────────────────────
   const running = isJobRunning(job);
-  const processingHere = running && job?.current_page === page;
+  /** The latest job when it is a batch of pages rather than one page. */
+  const batch = job?.kind === "calibration_batch" ? job : null;
+  const processingHere = running && !batch && job?.current_page === page;
+  /** The running batch is on this page now: reached, and not yet processed or passed. */
+  const batchHere =
+    running &&
+    !!batch &&
+    batch.current_page === page &&
+    !batch.report?.processed.includes(page) &&
+    !Object.values(batch.report?.skipped ?? {}).some((pages) => pages?.includes(page));
   const stale = !!doc?.stale;
   const contextStale = !stale && !!doc?.context_stale;
   const shownLines = preview ? preview.doc.lines : lines;
@@ -484,6 +495,8 @@ export function CalibrationEditor({
       void queryClient.invalidateQueries({ queryKey: queryKeys.pageWords(mushafId, at) });
       void queryClient.invalidateQueries({ queryKey: queryKeys.wordsCoverage(mushafId) });
       void queryClient.invalidateQueries({ queryKey: calibrationKeys.evaluation(mushafId) });
+      // The meter moves with every confirmation — that is what it is for.
+      void queryClient.invalidateQueries({ queryKey: calibrationKeys.readiness(mushafId) });
       toast.success(t("calibration.confirmedToast", { page: at }));
     },
     onError: failed,
@@ -563,14 +576,45 @@ export function CalibrationEditor({
       return;
     }
     announcedRef.current = job.id;
-    const at = jobPageRef.current ?? page;
     void queryClient.invalidateQueries({ queryKey: calibrationKeys.pages(mushafId) });
-    void queryClient.invalidateQueries({ queryKey: calibrationKeys.page(mushafId, at) });
     void queryClient.invalidateQueries({ queryKey: queryKeys.activity(mushafId) });
+    if (job.kind === "calibration_batch") {
+      // The page on screen may be one it processed; the meter's processing time moved.
+      void queryClient.invalidateQueries({ queryKey: calibrationKeys.page(mushafId, page) });
+      void queryClient.invalidateQueries({ queryKey: calibrationKeys.readiness(mushafId) });
+      const report = job.report;
+      const processed = report?.processed.length ?? 0;
+      const failed = report?.failed.length ?? 0;
+      const skipped = Object.values(report?.skipped ?? {}).reduce(
+        (total, pages) => total + (pages?.length ?? 0),
+        0,
+      );
+      if (job.state === "completed")
+        toast.success(t("calibration.bulk.doneToast", { processed, skipped, failed }));
+      else if (job.state === "cancelled")
+        toast.info(t("calibration.bulk.stoppedToast", { processed }));
+      else toast.error(job.error ?? t("calibration.requestFailed"));
+      return;
+    }
+    const at = jobPageRef.current ?? page;
+    void queryClient.invalidateQueries({ queryKey: calibrationKeys.page(mushafId, at) });
     if (job.state === "completed") toast.success(t("calibration.processDone", { page: at }));
     else if (job.state === "cancelled") toast.info(t("calibration.processCancelled"));
     else toast.error(job.error ?? t("calibration.requestFailed"));
   }, [job, mushafId, page, queryClient, t]);
+
+  // A running batch: each page it finishes appears on the rail, and opens here if it
+  // is the one on screen. The poll answers every second; only news is acted on.
+  const batchDone = running ? (batch?.report?.processed.length ?? 0) : 0;
+  const batchHasPage = running && !!batch?.report?.processed.includes(page);
+  useEffect(() => {
+    if (batchDone > 0)
+      void queryClient.invalidateQueries({ queryKey: calibrationKeys.pages(mushafId) });
+  }, [batchDone, mushafId, queryClient]);
+  useEffect(() => {
+    if (batchHasPage)
+      void queryClient.invalidateQueries({ queryKey: calibrationKeys.page(mushafId, page) });
+  }, [batchHasPage, mushafId, page, queryClient]);
 
   const busy =
     saveMutation.isPending ||
@@ -850,6 +894,14 @@ export function CalibrationEditor({
       <StatusLine tone="info">{t("calibration.loadingPage")}</StatusLine>
     ) : !ready ? (
       <StatusLine tone="warning">{t("words.gateStatus", { page })}</StatusLine>
+    ) : running && batch ? (
+      <StatusLine tone="info">
+        {t("calibration.bulk.status", {
+          page: batch.current_page ?? "…",
+          done: batch.report?.processed.length ?? 0,
+          total: batch.report?.planned ?? batch.total,
+        })}
+      </StatusLine>
     ) : running ? (
       <StatusLine tone="info">
         {t("calibration.processOther", { page: job?.current_page ?? "…" })}
@@ -991,6 +1043,8 @@ export function CalibrationEditor({
       )
     ) : !doc || builtPage !== page ? (
       center(<p className="text-[12.5px] text-text-muted">{t("calibration.loadingPage")}</p>)
+    ) : batchHere && !processed ? (
+      center(<p className="text-[13px] text-text-secondary">{t("calibration.bulk.here")}</p>)
     ) : !processed ? (
       center(
         <>
@@ -1414,6 +1468,19 @@ export function CalibrationEditor({
       <Aside status={status} footer={footer}>
         {modeSwitch}
 
+        <BulkPanel
+          mushafId={mushafId}
+          page={page}
+          pageCount={pageCount}
+          job={job ?? null}
+          onStarted={(started) => {
+            watchedRef.current = started.id;
+            queryClient.setQueryData(calibrationKeys.job(mushafId), started);
+          }}
+          onStop={() => cancelMutation.mutate()}
+          stopping={cancelMutation.isPending}
+        />
+
         {processed && types.marks > 0 && (
           <PanelCard title={t("calibration.types.title")}>
             <p className="text-[11.5px] text-text-secondary">
@@ -1577,6 +1644,7 @@ export function CalibrationEditor({
             />
             {processed && (
               <PageCard
+                mushafId={mushafId}
                 page={page}
                 revision={doc.revision}
                 confirmedRevision={doc.confirmed_revision}
@@ -1606,13 +1674,16 @@ export function CalibrationEditor({
 
 // ── pieces ───────────────────────────────────────────────────────────────────
 
-/** Where the page stands: its draft, its confirmation, and what it learns from. */
+/** Where the page stands: its draft, its confirmation, and what it learns from — and
+ * its data, as the full export carries it. */
 function PageCard({
+  mushafId,
   page,
   revision,
   confirmedRevision,
   profile,
 }: {
+  mushafId: string;
   page: number;
   revision: number;
   confirmedRevision: number | null;
@@ -1649,6 +1720,13 @@ function PageCard({
             : "calibration.shadowNote",
         )}
       </p>
+      <a
+        href={exportUrl(mushafId, { page })}
+        download
+        className="text-[11.5px] font-semibold text-orange hover:text-orange-hover"
+      >
+        {t("calibration.downloadPage")}
+      </a>
     </PanelCard>
   );
 }

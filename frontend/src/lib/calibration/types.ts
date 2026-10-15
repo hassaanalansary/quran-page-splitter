@@ -5,7 +5,7 @@
 // line's own crop of the page (its `bbox`), and `labels_url` is a raster the same
 // size in which every pixel's blob id is encoded as R + 256·G + 65536·B (0 is
 // background): the map clicks are hit-tested against.
-import type { PageWords, Rect } from "../api/types";
+import type { BatchReason, PageWords, Rect } from "../api/types";
 
 export type BlobRole = "body" | "mark" | "ornament" | "symbol";
 export type TextRole = "body" | "mark";
@@ -312,4 +312,83 @@ export type CalibrationComparison = {
       }
     >;
   }[];
+};
+
+/** One check behind the readiness meter — see backend/api/services/calibration_progress.py.
+ * `unknown`: not yet the confirmed pages to tell. */
+export type ReadinessCheck =
+  | {
+      key: "pages";
+      score: number;
+      state: ReadinessState;
+      values: { count: number; target: number };
+    }
+  | {
+      key: "trust";
+      score: number;
+      state: ReadinessState;
+      values: { made: number; wrong: number; pages: number };
+    }
+  | {
+      key: "settled";
+      score: number;
+      state: ReadinessState;
+      /** `growth`: points of share gained per page, fitted over the latest `pages`. */
+      values: { pages: number; latest: number; growth: number | null };
+    }
+  | {
+      key: "fixes";
+      score: number;
+      state: ReadinessState;
+      /** `rate`: roles and types fixed per 1,000 blobs of the latest first drafts. */
+      values: {
+        pages: number;
+        fixed: number;
+        rate: number | null;
+        per_page: number | null;
+        words_per_page: number | null;
+      };
+    };
+
+export type ReadinessState = "pass" | "near" | "fail" | "unknown";
+
+/** Whether calibration has learned enough that processing the rest in bulk loses
+ * little. An estimate from the confirmed pages, never a verdict. */
+export type CalibrationReadiness = {
+  /** 0–100. */
+  score: number;
+  level: "keep" | "close" | "ready";
+  checks: ReadinessCheck[];
+  /** Every confirmed page, in page order. */
+  pages: {
+    page: number;
+    blobs: number;
+    /** Share of the page's text blobs the learning proposed a role for, in percent. */
+    coverage: number;
+    learned_wrong: number;
+    /** Roles and types fixed on the first draft; null when no first draft was kept. */
+    fixes: number | null;
+    /** Words whose box ended up different from the first draft's. */
+    words: number;
+    words_total: number;
+    minutes: number;
+  }[];
+  cost: { process_seconds: number | null; review_minutes: number | null };
+  /** The learning switch: whether new pages apply the learning, not only show it. */
+  experimental: boolean;
+};
+
+/** What a batch over a range would do, page by page — nothing is started. */
+export type BatchPlan = {
+  first: number;
+  last: number;
+  refresh: boolean;
+  pages: Partial<Record<BatchReason, number[]>>;
+  /** Pages sure to be processed. */
+  process: number;
+  /** Drafts nobody touched, processed again only if their lines changed. */
+  untouched: number;
+  /** What a page has taken to process here lately; null before any has. */
+  process_seconds: number | null;
+  experimental: boolean;
 };

@@ -5,14 +5,17 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
 import { BundlePanel } from "@/components/app/details/BundlePanel";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import {
   ApiError,
   coordinatesUrl,
   exportLines,
+  exportUrl,
   linesZipUrl,
   queryKeys,
   updateMushaf,
+  useCalibrationPages,
   type MushafDetail,
   type MushafStats,
   type PageSummary,
@@ -207,6 +210,8 @@ export function ExportTab({
         </div>
       </div>
 
+      <FullExportCard mushafId={mushaf.id} />
+
       {/* review warning */}
       {processed.length > 0 && reviewedPages.length < processed.length && (
         <div className="mt-3.5 flex items-center gap-3 rounded-[11px] border border-border bg-white px-4 py-[13px]">
@@ -237,6 +242,87 @@ export function ExportTab({
 
       {/* The work itself, portable — as opposed to the rendered artifacts above. */}
       <BundlePanel mushaf={mushaf} summaries={summaries} />
+    </div>
+  );
+}
+
+/**
+ * The full data export (schema mushaf-export/v2): every line, aya, word and blob — each
+ * blob with its class and, for a mark, its type — in page pixels and in each line PNG's
+ * own, with every line's word map and blob map. Calibrated pages carry the blobs; the
+ * rest carry their word boxes. See backend/api/services/data_export.py.
+ */
+function FullExportCard({ mushafId }: { mushafId: string }) {
+  const { t } = useTranslation();
+  const { data: states } = useCalibrationPages(mushafId);
+  const [images, setImages] = useState(true);
+  const [maps, setMaps] = useState(true);
+  const confirmed = (states ?? []).filter((row) => row.confirmed_revision !== null).length;
+  const drafts = (states ?? []).filter(
+    (row) => row.processed && row.confirmed_revision === null,
+  ).length;
+
+  return (
+    <div className="mt-3.5 rounded-[11px] border border-border bg-white p-4">
+      <div className="flex items-center gap-2">
+        <span className="flex h-[26px] w-[26px] items-center justify-center rounded-[7px] bg-orange-tint font-mono text-[11px] font-semibold text-orange">
+          ZIP
+        </span>
+        <span className="text-[12.5px] font-bold text-text-primary">
+          {t("details.ex_fullTitle")}
+        </span>
+        <span
+          className={`ms-auto rounded-pill px-2 py-0.5 text-[10px] font-semibold ${
+            confirmed > 0 ? "bg-success-bg text-success" : "bg-bg-muted text-text-secondary"
+          }`}
+        >
+          {confirmed + drafts > 0
+            ? t("details.ex_fullPill", { count: confirmed + drafts })
+            : t("details.ex_fullWordsOnly")}
+        </span>
+      </div>
+      <div className="mt-[15px] grid grid-cols-1 gap-4 md:grid-cols-2">
+        <div>
+          <div className="flex items-baseline gap-2">
+            <span className="text-[27px] font-extrabold text-navy">{confirmed}</span>
+            <span className="text-[12px] font-medium text-text-muted">
+              {t("details.ex_fullConfirmed")}
+            </span>
+          </div>
+          <p className="mt-1 text-[11px] leading-snug text-text-secondary">
+            {drafts > 0
+              ? t("details.ex_fullDrafts", { count: drafts })
+              : confirmed > 0
+                ? t("details.ex_fullAllConfirmed")
+                : t("details.ex_fullNone")}
+          </p>
+          <div className="mt-3 flex flex-col gap-2">
+            <label className="flex cursor-pointer items-center gap-2 text-[12px] text-text-primary">
+              <Checkbox checked={images} onCheckedChange={(value) => setImages(value === true)} />
+              {t("details.ex_fullImages")}
+            </label>
+            <label className="flex cursor-pointer items-center gap-2 text-[12px] text-text-primary">
+              <Checkbox checked={maps} onCheckedChange={(value) => setMaps(value === true)} />
+              {t("details.ex_fullMaps")}
+            </label>
+          </div>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <KvRow k={t("details.kv_schema")} v="mushaf-export/v2" />
+          <KvRow k={t("details.kv_spaces")} v="page px + line-PNG px" />
+          <KvRow k={t("details.kv_perWord")} v="{ id, ref, text, box, ink }" />
+          <KvRow k={t("details.kv_perBlob")} v="{ class, type, words, box }" />
+          <KvRow k={t("details.kv_maps")} v="words + blobs PNG" />
+        </div>
+      </div>
+      <a
+        href={exportUrl(mushafId, { images, maps })}
+        download
+        className="mt-[15px] block h-[34px] rounded-lg bg-navy text-center text-[12px] font-bold leading-[34px] text-white transition-colors hover:bg-navy-hover"
+      >
+        {t("details.ex_fullDownload")}
+      </a>
+      <p className="mt-1.5 text-[11px] leading-snug text-text-muted">{t("details.ex_fullHelp")}</p>
     </div>
   );
 }

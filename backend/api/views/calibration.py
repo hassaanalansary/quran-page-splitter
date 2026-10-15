@@ -19,11 +19,17 @@ from pydantic import Field
 from api.auth import current_user
 from api.models import ProcessJobKindChoices
 from api.services import calibration as calibration_service
+from api.services import calibration_batch as batch_service
+from api.services import calibration_progress as progress_service
 from api.services import jobs as jobs_service
 from api.services import mushaf as mushaf_service
 from api.views.processing import JobOut, JobStatusOut
 
 router = Router(tags=["calibration"])
+
+#: Calibration's two kinds of job, polled and cancelled from the one screen: a page
+#: processed on its own, and a batch of pages. One runs at a time, as for every kind.
+CALIBRATION_JOBS = (ProcessJobKindChoices.CALIBRATION, ProcessJobKindChoices.CALIBRATION_BATCH)
 
 
 class AllocationIn(Schema):
@@ -118,19 +124,54 @@ def calibration_pages(request: HttpRequest, mushaf_id: uuid.UUID) -> dict:
 
 @router.get("/{mushaf_id}/calibration/job", response=JobStatusOut)
 def calibration_job(request: HttpRequest, mushaf_id: uuid.UUID) -> dict:
-    """The mushaf's current or latest calibration processing — the polling endpoint."""
+    """The mushaf's current or latest calibration processing — one page or a batch.
+    The polling endpoint; ``kind`` says which."""
     mushaf_service.get_mushaf(mushaf_id, user=current_user(request), write=False)
-    job = jobs_service.latest_for(mushaf_id, kind=ProcessJobKindChoices.CALIBRATION)
+    job = jobs_service.latest_for(mushaf_id, kind=CALIBRATION_JOBS)
     return {"job": jobs_service.to_dict(job) if job else None}
 
 
 @router.post("/{mushaf_id}/calibration/cancel", response=JobOut)
 def cancel_calibration(request: HttpRequest, mushaf_id: uuid.UUID) -> dict:
+    """Stop the page or the batch being processed. A batch stops between pages, and
+    every page it finished stays processed."""
     mushaf_service.get_mushaf(mushaf_id, user=current_user(request))
-    job = jobs_service.request_cancel(
-        mushaf_id, kind=ProcessJobKindChoices.CALIBRATION, message="calibration_no_active_job"
-    )
+    job = jobs_service.request_cancel(mushaf_id, kind=CALIBRATION_JOBS, message="calibration_no_active_job")
     return jobs_service.to_dict(job)
+
+
+class BatchIn(Schema):
+    """A range of pages to process for calibration review, one after another."""
+
+    first: int = Field(ge=1)
+    last: int = Field(ge=1)
+    #: Also process again the drafts nobody has touched, so they read with the
+    #: learning as it is now. Drafts somebody worked on are never processed over.
+    refresh: bool = False
+    #: Say what the batch would do, page by page, and start nothing.
+    dry_run: bool = False
+
+
+@router.post("/{mushaf_id}/calibration/batch", response={200: dict, 202: ProcessOut})
+def calibration_batch(request: HttpRequest, mushaf_id: uuid.UUID, data: BatchIn) -> tuple[int, dict]:
+    """Process pages ``first``..``last`` for review as one background job.
+
+    With ``dry_run``, the plan instead: each page's fate and why — see
+    ``api.services.calibration_batch`` — and what a page has taken to process here.
+    """
+    mushaf = mushaf_service.get_mushaf(mushaf_id, user=current_user(request))
+    if data.dry_run:
+        return 200, batch_service.plan(mushaf, data.first, data.last, refresh=data.refresh)
+    job = batch_service.start(mushaf, data.first, data.last, refresh=data.refresh, user=current_user(request))
+    return 202, {"job": jobs_service.to_dict(job)}
+
+
+@router.get("/{mushaf_id}/calibration/readiness")
+def calibration_readiness(request: HttpRequest, mushaf_id: uuid.UUID) -> JsonResponse:
+    """The readiness meter: whether calibration has learned enough that processing the
+    rest in bulk loses little. An estimate from the confirmed pages, never a verdict."""
+    mushaf = mushaf_service.get_mushaf(mushaf_id, user=current_user(request), write=False)
+    return _json(progress_service.readiness(mushaf))
 
 
 @router.get("/{mushaf_id}/calibration/evaluation")

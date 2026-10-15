@@ -21,8 +21,8 @@ from typing import Any
 
 from django.core.management.base import BaseCommand, CommandError, CommandParser
 
-from api.models import CalibrationReview, CalibrationRevision, CalibrationRevisionKind, Mushaf
-from api.services import calibration
+from api.models import Mushaf
+from api.services.calibration_progress import measure
 
 Doc = dict[str, Any]
 
@@ -90,98 +90,3 @@ class Command(BaseCommand):
             self.stdout.write("".join(value(row).rjust(width) for _, _, width, value in COLUMNS))
         self.stdout.write("")
         self.stdout.write(LEGEND)
-
-
-def measure(mushaf: Mushaf) -> list[Doc]:
-    """Every confirmed page's row, in page order."""
-    rows = []
-    reviews = CalibrationReview.objects.filter(mushaf=mushaf, confirmed_revision__isnull=False)
-    for review in reviews.order_by("page_number"):
-        confirmed = calibration._approval(review)
-        if confirmed is None:
-            continue
-        processed = CalibrationRevision.objects.filter(
-            review=review, number=confirmed.payload.get("processed_revision"), kind=CalibrationRevisionKind.PROCESSED
-        ).first()
-        if processed is None:
-            continue
-        # Time is measured to the page's first confirmation after it was processed: a
-        # later re-confirmation is a correction, not how long the page took.
-        finished = (
-            CalibrationRevision.objects.filter(
-                review=review, kind=CalibrationRevisionKind.CONFIRMED, number__gt=processed.number
-            )
-            .order_by("number")
-            .first()
-        )
-        rows.append(_page(review.page_number, processed, confirmed, finished or confirmed))
-    return rows
-
-
-def _page(
-    page: int, processed: CalibrationRevision, confirmed: CalibrationRevision, finished: CalibrationRevision
-) -> Doc:
-    final = {
-        (row["snapshot_id"], blob["id"]): blob for row in confirmed.payload.get("lines", []) for blob in row["blobs"]
-    }
-    text = {key for key, blob in final.items() if blob["role"] in calibration.TEXT_ROLES}
-    engine = learned = learned_wrong = 0
-    for row in processed.payload.get("lines", []):
-        for blob in row["blobs"]:
-            key = (row["snapshot_id"], blob["id"])
-            if key not in text:
-                continue
-            right = final[key]["role"]
-            engine += blob["role"] != right
-            if blob.get("proposed_role") in calibration.TEXT_ROLES:
-                learned += 1
-                learned_wrong += blob["proposed_role"] != right
-    truth = calibration._placements(confirmed.payload.get("lines", []), page)
-    found: Doc = {
-        "page": page,
-        "blobs": len(text),
-        "engine_wrong": engine,
-        "learned": learned,
-        "learned_wrong": learned_wrong,
-        "minutes": max(0, round((finished.created_at - processed.created_at).total_seconds() / 60)),
-    }
-    shown = processed.payload.get("shown")
-    if shown is None:
-        found.update(
-            first_draft=False, words=_different(calibration._placements_of(processed.payload, page), truth, page)
-        )
-        return found
-    counts = dict.fromkeys(("looks", "roles", "by_text", "text_changed", "locks", "locks_undone", "by_hand"), 0)
-    for row in shown["lines"]:
-        for ident, first in row["blobs"].items():
-            blob = final.get((row["snapshot_id"], int(ident)))
-            if blob is None:
-                continue
-            small = blob["role"] == "mark" and blob.get("subtype") == "smallLetter"
-            counts["looks"] += first["look"]
-            counts["roles"] += first["role"] != blob["role"]
-            if first["by_text"]:
-                counts["by_text"] += 1
-                counts["text_changed"] += blob["role"] != "mark" or blob.get("subtype", "") != first["subtype"]
-            if first["text_lock"]:
-                counts["locks"] += 1
-                counts["locks_undone"] += not small
-            elif small and first["role"] == "body":
-                counts["by_hand"] += 1
-    drafted = [
-        {
-            "line_number": row["line_number"],
-            "words": [{"word_id": w, "start_x": s, "end_x": e} for w, s, e in row["words"]],
-        }
-        for row in shown["lines"]
-    ]
-    found.update(counts, first_draft=True, words=_different(calibration._placements(drafted, page), truth, page))
-    return found
-
-
-def _different(
-    found: dict[int, list[calibration.Placement]], truth: dict[int, list[calibration.Placement]], page: int
-) -> int:
-    """How many words were placed otherwise than confirmed — moved, on another line,
-    missing, doubled or extra."""
-    return sum(calibration._word_errors(found, truth, page).values())

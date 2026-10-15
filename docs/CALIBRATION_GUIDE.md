@@ -49,19 +49,70 @@ on: the PAW count of a word is the number of bodies it owns. **Mark types teach 
 word engine nothing yet** — they are data for later rules and for their own sake.
 Typing every mark does not make the next page's words any better.
 
-It is *enough* when a new page comes out needing (almost) nothing: open **How
-calibration would do** at the bottom of the panel. For each confirmed page it lays
-the frozen engine, the engine's own full-line reading, and the calibrated reading —
-each made before you touched the page — against what you confirmed, and counts body
-and mark mistakes and words moved, missing or on the wrong line. When the
-*calibrated* column is near zero for several pages in a row, and its pictures agree,
-learning is doing the work. While it still equals the engine's own column, the
-examples are not helping yet — pages 1 and 2 of a Madina mushaf are printed smaller
-than the rest, so the first ordinary pages teach the most.
+### The readiness meter
 
-Processing many pages *with* calibration at once does not exist yet: a Cuts run
-ignores it, and Calibrate processes one page at a time. That is the step to build
-once the evaluation says learning is good enough.
+At the top of the Calibrate panel, **Ready to process in bulk** shows a score out of
+100 that moves with every page you confirm. It answers one question: *would
+processing the rest of the mushaf now, in one go, lose anything?* Four checks, read
+off your latest confirmed pages:
+
+| Check | Met when |
+| --- | --- |
+| Pages confirmed | 8 or more — the learning needs a few ordinary pages to judge by |
+| The learning is right | none of its body-or-mark proposals on the last 5 pages was contradicted |
+| The learning has settled | the share of blobs it decides grows 2 points a page or less (fitted over the last 5) |
+| Little left to fix | 5 or fewer roles and mark types fixed per 1,000 blobs on the last 3 first drafts |
+
+The score is the mean of the four. While the learning is making mistakes it stays
+under 50 whatever the rest say: a batch would repeat those mistakes on every page.
+**Process pages in bulk…** opens the details — each check with its numbers, a chart
+of how much the learning decided on each confirmed page, and a table of the same.
+
+It is an estimate, not a promise. It cannot see a mistake nobody fixed, and word
+fixes are reported beside it, not scored: calibration does not teach the word
+search, so they stay about the same whichever way the pages are processed. Pages 1
+and 2 of a Madina mushaf are printed smaller than the rest, so the first ordinary
+pages teach the most.
+
+For the full picture per page, **How calibration would do** at the bottom of the
+panel lays the frozen engine, the full-line reading and the calibrated reading —
+each made before you touched the page — against what you confirmed.
+
+## Process Pages in Bulk
+
+**Process pages in bulk…** → choose a range → **Process N pages**. One background
+job processes the pages one after another, exactly as **Process page** does each;
+review and confirm them afterwards, in any order. You can keep working while it
+runs: open the pages it has finished, review, confirm. **Stop** ends it after the
+page in hand, and every page it finished stays processed.
+
+What it does to each page of the range — the dialog lists them before you start:
+
+```
+no draft yet                               processed
+a draft nobody touched                     left alone, or processed again with
+                                           "Also process again the drafts nobody has edited"
+a draft nobody touched, whose lines
+  (or a neighbour's) changed since         processed again
+a draft with saved work                    left alone — never processed over
+a confirmed page                           left alone
+not reviewed / not numbered in Review      left alone — Review first
+```
+
+"Saved work" is anything stored on the draft since it was processed: a draft save,
+an accepted preview, a cut corrected in the word editor. Unsaved edits are not —
+save the page you are working on before re-processing untouched drafts.
+
+**What it learns from.** Each page learns from the pages confirmed *before the batch
+reaches it*, as it would page by page, so a page confirmed while the batch runs
+teaches the pages after it. Mark types are guessed again every time a page is
+opened, so those always use every confirmed page. Turn **Apply learning to new
+pages** on first if you want the learning applied, not only shown. Later, when more
+pages are confirmed, run a batch again with the "process again" box ticked: the
+drafts nobody touched are re-read with the larger learning.
+
+**How long.** About as long per page as **Process page** takes here (~45–70 s);
+the dialog estimates it from the pages processed so far.
 
 ## Edit Efficiently
 
@@ -375,3 +426,14 @@ text's types you corrected, the small letters it missed. A page processed before
 has none: its words are compared with the engine's first reading instead (marked `~`)
 and the first-draft columns stay blank. Like every count here, it says where the work
 went; the pages themselves say whether it is right.
+
+The readiness meter reads the same rows, for the latest 30 confirmed pages.
+
+## Export What You Confirmed
+
+**Details → Export → Words, marks & pixel maps** downloads everything a calibrated
+page holds: every blob with its class and, for a mark, its type; every word with its
+aya and box; both in page pixels and in each line PNG's own pixels; and, per line, a
+word map and a blob map saying which word and which blob each pixel of ink belongs
+to. Drafts go out too, marked as drafts. One page at a time: *Page · learning* →
+**Download this page's data**. The format is in `docs/EXPORT_FORMAT.md`.

@@ -7,12 +7,14 @@
 import { useQuery } from "@tanstack/react-query";
 
 import type {
+  BatchPlan,
   CalibrationComparison,
   CalibrationDocument,
   CalibrationDraft,
   CalibrationEvaluation,
   CalibrationExamples,
   CalibrationPageState,
+  CalibrationReadiness,
   CalibrationTypes,
   TypeEvidence,
 } from "../calibration/types";
@@ -24,6 +26,7 @@ export const calibrationKeys = {
   pages: (id: string) => ["mushaf", id, "calibration-pages"] as const,
   job: (id: string) => ["mushaf", id, "calibration-job"] as const,
   evaluation: (id: string) => ["mushaf", id, "calibration-evaluation"] as const,
+  readiness: (id: string) => ["mushaf", id, "calibration-readiness"] as const,
   examples: (id: string, page: number, snapshot: string, blob: number) =>
     ["mushaf", id, "page", page, "calibration-examples", snapshot, blob] as const,
 };
@@ -83,8 +86,27 @@ export function processCalibration(id: string, page: number) {
   return apiJson<{ job: ProcessJob }>("POST", `${pagePath(id, page)}/process`);
 }
 
+/** Stop the page or the batch being processed; a batch stops between pages. */
 export function cancelCalibration(id: string) {
   return apiJson<ProcessJob>("POST", `/api/mushafs/${id}/calibration/cancel`);
+}
+
+/** A range of pages for a batch; `refresh` processes untouched drafts again too. */
+export type BatchRange = { first: number; last: number; refresh: boolean };
+
+/** What a batch over the range would do, page by page. Starts nothing. */
+export function planCalibrationBatch(id: string, range: BatchRange, signal?: AbortSignal) {
+  return apiJson<BatchPlan>(
+    "POST",
+    `/api/mushafs/${id}/calibration/batch`,
+    { ...range, dry_run: true },
+    signal,
+  );
+}
+
+/** Process the range as one background job, polled with `useCalibrationJob`. */
+export function startCalibrationBatch(id: string, range: BatchRange) {
+  return apiJson<{ job: ProcessJob }>("POST", `/api/mushafs/${id}/calibration/batch`, range);
 }
 
 export function setCalibrationSettings(id: string, revision: number, experimental: boolean) {
@@ -155,6 +177,17 @@ export function useCalibrationEvaluation(id: string, enabled: boolean) {
     queryFn: ({ signal }) =>
       apiGet<CalibrationEvaluation>(`/api/mushafs/${id}/calibration/evaluation`, signal),
     enabled,
+    staleTime: 5 * 60_000,
+  });
+}
+
+/** The readiness meter. Cheap to answer, but it reads every confirmed page, so it is
+ * kept until a confirmation or a finished batch invalidates it. */
+export function useCalibrationReadiness(id: string) {
+  return useQuery({
+    queryKey: calibrationKeys.readiness(id),
+    queryFn: ({ signal }) =>
+      apiGet<CalibrationReadiness>(`/api/mushafs/${id}/calibration/readiness`, signal),
     staleTime: 5 * 60_000,
   });
 }

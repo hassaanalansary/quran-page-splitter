@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { ArrowLeft, ArrowRight, Copy, Download, FileJson } from "lucide-react";
+import { ArrowLeft, ArrowRight, Copy, Download, FileArchive, FileJson } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -12,6 +12,7 @@ import {
   ApiError,
   duplicateMushaf,
   galleryCoordinatesUrl,
+  galleryExportUrl,
   galleryLinesZipUrl,
   queryKeys,
   useGalleryItem,
@@ -224,6 +225,14 @@ function DetailBody({ item }: { item: GalleryDetail }) {
             <a href={galleryCoordinatesUrl(item.id)} download>
               <FileJson className="h-4 w-4" />
               {t("gallery.downloadJson")}
+            </a>
+          </Button>
+          {/* Every line, aya, word and blob, with the pixel maps — the export a
+              downstream app reads. See backend/api/services/data_export.py. */}
+          <Button asChild variant="outline">
+            <a href={galleryExportUrl(item.id)} download>
+              <FileArchive className="h-4 w-4" />
+              {t("gallery.downloadFull")}
             </a>
           </Button>
           {/* Not `asChild` + `disabled`: an <a> has no disabled state, so the

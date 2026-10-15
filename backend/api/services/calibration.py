@@ -667,7 +667,14 @@ def process_page(
         "context": [row for row in rows if row["readonly"]],
         "issues": [],
     }
+    def alive() -> None:
+        # The readings below run for a while without a line to count: say so between
+        # them, or a page in a long batch looks like a worker that died.
+        if progress is not None:
+            progress(len(lines))
+
     document = align_document(mushaf, document, text_locks=False)
+    alive()
     prediction = _record(document, context=True)
     # What the text says about the ink that reading put on the line — its small waw
     # and ya — goes on the draft, never on the prediction record.
@@ -679,6 +686,7 @@ def process_page(
         document = align_document(mushaf, document, calibration_locks=True)
     elif reread:
         document = align_document(mushaf, document)
+    alive()
 
     # The draft: that reading, with what people already decided put back on it.
     decided, worded = _carry_decisions(document, before)
@@ -686,6 +694,7 @@ def process_page(
         document = align_document(mushaf, document, calibration_locks=document["profile"]["mode"] == "experimental")
     _keep_legacy_edges(document, _hand_made(mushaf, page), skip=worded)
     _apply_text_types(mushaf, document)
+    alive()
     shown = _shown(document)
     frozen = _frozen_record(mushaf, page, start, end, user)
     if cancelled is not None and cancelled():

@@ -43,6 +43,7 @@ from typing import Any
 
 from django.conf import settings
 from django.db import connections
+from django.db.models import QuerySet
 from django.utils import timezone
 from ninja.errors import HttpError
 
@@ -101,6 +102,7 @@ def to_dict(job: ProcessJob) -> dict:
         # and the client has one number to show either way. Zero says the same thing
         # without making every reader of it check for null first.
         "lines_done": job.lines_done or 0,
+        "report": job.report,
     }
 
 
@@ -138,7 +140,17 @@ def get(job_id: uuid.UUID) -> ProcessJob | None:
     return ProcessJob.objects.filter(id=job_id).first()
 
 
-def latest_for(mushaf_id: uuid.UUID, *, kind: str | None = None) -> ProcessJob | None:
+#: One engine, or several polled by one screen — calibration's page and batch jobs.
+Kinds = str | tuple[str, ...] | None
+
+
+def _of_kind(rows: QuerySet[ProcessJob], kind: Kinds) -> QuerySet[ProcessJob]:
+    if kind is None:
+        return rows
+    return rows.filter(kind=kind) if isinstance(kind, str) else rows.filter(kind__in=kind)
+
+
+def latest_for(mushaf_id: uuid.UUID, *, kind: Kinds = None) -> ProcessJob | None:
     """The mushaf's most recent job, running or settled (None if never run).
 
     ``kind`` narrows it to one engine, which is what each poller wants: a word run
@@ -146,22 +158,28 @@ def latest_for(mushaf_id: uuid.UUID, *, kind: str | None = None) -> ProcessJob |
     somehow lost its page counter.
     """
     _settle_dead_jobs()
-    rows = ProcessJob.objects.filter(mushaf_id=mushaf_id)
-    if kind is not None:
-        rows = rows.filter(kind=kind)
+    rows = _of_kind(ProcessJob.objects.filter(mushaf_id=mushaf_id), kind)
     return rows.order_by("-started_at").first()
 
 
-def active_for(mushaf_id: uuid.UUID, *, kind: str | None = None) -> ProcessJob | None:
+def active_for(mushaf_id: uuid.UUID, *, kind: Kinds = None) -> ProcessJob | None:
     """The mushaf's job if it is still working, else None.
 
     Callers guarding against a clash pass no ``kind`` on purpose — see ``ensure_idle``.
     """
     _settle_dead_jobs()
-    rows = ProcessJob.objects.filter(mushaf_id=mushaf_id).exclude(state__in=TERMINAL_STATES)
-    if kind is not None:
-        rows = rows.filter(kind=kind)
+    rows = _of_kind(ProcessJob.objects.filter(mushaf_id=mushaf_id).exclude(state__in=TERMINAL_STATES), kind)
     return rows.order_by("-started_at").first()
+
+
+def is_settled(job_id: uuid.UUID) -> bool:
+    """Whether a job's row has come to rest — read fresh, for a worker to ask of itself.
+
+    A long run asks between its units of work: a row settled under it — by
+    ``_settle_dead_jobs``, after a unit that ran past the heartbeat timeout — no longer
+    holds the mushaf, so a second run may have started, and carrying on would race it.
+    """
+    return ProcessJob.objects.filter(pk=job_id, state__in=TERMINAL_STATES).exists()
 
 
 def ensure_idle(mushaf_id: uuid.UUID) -> None:
@@ -271,6 +289,40 @@ def start_words(
     return _launch(job, work, inline)
 
 
+def start_pages(
+    mushaf: Mushaf,
+    *,
+    kind: str,
+    first_page: int,
+    last_page: int,
+    total: int,
+    runner: Callable[[ProcessJob], None],
+    user: User | None = None,
+    inline: bool | None = None,
+    report: dict | None = None,
+) -> ProcessJob:
+    """Register a job that walks a range of pages with ``runner``, and set it going.
+
+    The same caps and the same one-run-per-mushaf rule as every other kind. ``total``
+    is the pages it means to work on, which may be fewer than the range holds — a
+    calibration batch skips the pages a person has already worked on.
+    """
+    ensure_idle(mushaf.id)
+    _ensure_capacity(user)
+
+    job = ProcessJob.objects.create(
+        kind=kind,
+        mushaf=mushaf,
+        started_by=user,
+        page_range_start=first_page,
+        page_range_end=last_page,
+        total=total,
+        report=report,
+        heartbeat_at=timezone.now(),
+    )
+    return _launch(job, runner, inline)
+
+
 def _launch(job: ProcessJob, work: Callable[[ProcessJob], None], inline: bool | None) -> ProcessJob:
     """Run ``work`` on this thread or a worker, and hand back the settled row."""
     if inline is None:
@@ -285,7 +337,7 @@ def _launch(job: ProcessJob, work: Callable[[ProcessJob], None], inline: bool | 
     return job
 
 
-def request_cancel(mushaf_id: uuid.UUID, *, kind: str | None = None, message: str = "no_active_process") -> ProcessJob:
+def request_cancel(mushaf_id: uuid.UUID, *, kind: Kinds = None, message: str = "no_active_process") -> ProcessJob:
     """Ask the mushaf's running job to stop at its next boundary.
 
     Detection stops between pages, a word run between chunks; both poll the same

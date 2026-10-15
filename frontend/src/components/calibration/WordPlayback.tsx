@@ -597,6 +597,7 @@ function overlay(
   types: ReadonlyMap<number, string>,
   distinguishTypes: boolean,
   dim: boolean,
+  hideOthers = false,
 ) {
   const canvas = document.createElement("canvas");
   canvas.width = raster.width;
@@ -612,6 +613,7 @@ function overlay(
       types,
       distinguishTypes,
       dim,
+      hideOthers,
     ),
   );
   context.putImageData(pixels, 0, 0);
@@ -774,11 +776,9 @@ function WordInk({
     ctx.fillStyle = "white";
     ctx.fillRect(0, 0, crop.w, crop.h);
     if (!raster) return;
-    ctx.globalAlpha = dim ? 0.25 : 1;
-    ctx.drawImage(raster.source, crop.x, crop.y, crop.w, crop.h, 0, 0, crop.w, crop.h);
-    ctx.globalAlpha = 1;
+    // No scan underneath: it would show the neighbouring words' ink.
     ctx.drawImage(
-      overlay(raster, entry, types, distinguishTypes, dim),
+      overlay(raster, entry, types, distinguishTypes, dim, true),
       crop.x,
       crop.y,
       crop.w,
