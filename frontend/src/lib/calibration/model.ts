@@ -27,6 +27,7 @@ import type {
   CalibrationDraft,
   CalibrationLine,
   CalibrationWord,
+  NoiseSuspect,
   TextRole,
   TypeDoubt,
   TypeSuggestion,
@@ -976,6 +977,24 @@ export function doubtOf(blob: CalibrationBlob, snapshot: string, doubts: Doubts)
   if (!isTyped(blob)) return null;
   const found = doubts.get(expectationKey(snapshot, blob.id));
   return found && found.typed === blob.subtype ? found : null;
+}
+
+/** Marks that may be noise the line's cutting left, by `snapshot:blob`, as the server
+ * last found them. */
+export type NoiseSuspects = Map<string, NoiseSuspect>;
+
+export function noiseOf(found: NoiseSuspect[]): NoiseSuspects {
+  return new Map(found.map((item) => [expectationKey(item.snapshot_id, item.blob_id), item]));
+}
+
+/** Why a blob may be noise — only while it is still ink: an erased one is settled. */
+export function noiseFor(
+  blob: CalibrationBlob,
+  snapshot: string,
+  noise: NoiseSuspects,
+): NoiseSuspect | null {
+  if (blob.erased) return null;
+  return noise.get(expectationKey(snapshot, blob.id)) ?? null;
 }
 
 /** A mark's type as the page shows it: typed by a person, else expected. */

@@ -19,6 +19,7 @@ import {
   labelAt,
   labelsInRect,
   needsLook,
+  noiseFor,
   OVERSHOOT_PX,
   overshoot,
   passesFilter,
@@ -29,6 +30,7 @@ import {
   type BlobSelection,
   type Doubts,
   type Expectations,
+  type NoiseSuspects,
 } from "@/lib/calibration/model";
 import type { CalibrationLine } from "@/lib/calibration/types";
 
@@ -39,6 +41,9 @@ import { TANWEEN_MARKS, subtypeGlyph } from "./subtypes";
 const SELECTED_RGB: [number, number, number] = [234, 88, 12];
 /** Erased ink is hatched in this, over white: still there to pick, plainly not text. */
 const ERASED_RGB: [number, number, number] = [201, 42, 42];
+/** Screen px the ring around a mark that may be noise is at the least — a speck is a
+ * pixel or two. */
+const NOISE_RING = 14;
 /** Screen px of grab band either side of a word's edge. */
 const EDGE_GRAB = 6;
 /** A pointer that moves further than this between down and up drew a rectangle. */
@@ -80,6 +85,7 @@ export function BlobStrip({
   expectations,
   doubts,
   tanween,
+  noise,
   showTypes = false,
   onWordEdge,
   onWordEdgeCommit,
@@ -109,6 +115,8 @@ export function BlobStrip({
   doubts?: Doubts;
   /** Strokes of a tanween, by `snapshot:blob`: shown as the tanween they make. */
   tanween?: Set<string>;
+  /** Marks that may be noise: ringed, to be found and erased or not. */
+  noise?: NoiseSuspects;
   /** Let a click or a drag pick the faded ink too — to fix a mark the filter missed. */
   pickAll?: boolean;
   /** The words a preview's reading moved, by id: outlined so they are looked at. */
@@ -496,6 +504,28 @@ export function BlobStrip({
               data-blob={`${line.snapshot_id}:${blob.id}`}
             />
           ))}
+
+        {!line.readonly &&
+          noise &&
+          line.blobs
+            .filter((blob) => noiseFor(blob, line.snapshot_id, noise))
+            .map((blob) => {
+              const width = Math.max(NOISE_RING, blob.w * scale + 8);
+              const height = Math.max(NOISE_RING, blob.h * scale + 8);
+              return (
+                <span
+                  key={`noise-${blob.id}`}
+                  className="pointer-events-none absolute rounded-full border-2 border-dashed"
+                  style={{
+                    borderColor: `rgb(${ERASED_RGB.join(",")})`,
+                    left: (blob.x - line.bbox.x + blob.w / 2) * scale - width / 2,
+                    top: (blob.y - line.bbox.y + blob.h / 2) * scale - height / 2,
+                    width,
+                    height,
+                  }}
+                />
+              );
+            })}
 
         {rectangle && (
           <div

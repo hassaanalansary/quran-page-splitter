@@ -9,12 +9,14 @@ import {
   doubtOf,
   expectationKey,
   markCheckOf,
+  noiseFor,
   shownType,
   typedByText,
   wordCount,
   type Doubts,
   type Expectations,
   type MarkChecks,
+  type NoiseSuspects,
 } from "@/lib/calibration/model";
 import type {
   Allocation,
@@ -59,6 +61,7 @@ export function SelectionBar({
   expectations,
   doubts,
   checks,
+  noise,
   evidence,
   tab,
   onTab,
@@ -82,6 +85,8 @@ export function SelectionBar({
   doubts: Doubts;
   /** Every word's marks against its text's. */
   checks: MarkChecks;
+  /** Marks that may be noise the line's cutting left. */
+  noise: NoiseSuspects;
   /** The type evidence for the one selected mark; null when it is not asked for. */
   evidence: { data: TypeEvidence | null; loading: boolean } | null;
   tab: EvidenceTab;
@@ -166,6 +171,7 @@ export function SelectionBar({
   const texts = blobs.filter((blob) => blob.role === "body" || blob.role === "mark");
   /** Every text blob selected is erased: the button restores them. */
   const erased = texts.length > 0 && texts.every((blob) => blob.erased);
+  const suspicion = single ? noiseFor(single, line.snapshot_id, noise) : null;
   // A body has no type to explain: its evidence is the role's.
   const showing: EvidenceTab = oneMark ? tab : "role";
 
@@ -285,6 +291,12 @@ export function SelectionBar({
               {t("calibration.bar.erasedHelp")}
             </span>
           )}
+          {suspicion && (
+            <div className="rounded-sm bg-warning-bg px-2 py-1 text-[11px] leading-snug text-[#8a4b0d]">
+              {t(`calibration.noise.${suspicion.kind}Help`)}
+              {suspicion.edge ? ` ${t("calibration.noise.edgeHelp")}` : ""}
+            </div>
+          )}
           {status?.tone === "expected" && guess?.source && (
             <span className="text-[10.5px] leading-snug text-text-muted">
               {t(
@@ -363,7 +375,7 @@ export function SelectionBar({
             {texts.length > 0 && (
               <Button
                 type="button"
-                variant="outline"
+                variant={suspicion ? "default" : "outline"}
                 className="h-7 px-2 text-[12px]"
                 disabled={disabled}
                 onClick={() => onErase(!erased)}

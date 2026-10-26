@@ -107,3 +107,50 @@ class ExportCutTests(SimpleTestCase):
         alpha = np.asarray(rgba.getchannel("A"))
         self.assertEqual(alpha[3, 7], 0)
         self.assertEqual(int((alpha == 0).sum()), 1)
+
+
+def mark(ident: int, area: int, *, y: int = 40) -> dict:
+    return {"id": ident, "x": 100 + 30 * ident, "y": y, "w": 10, "h": 10, "area": area, "role": "mark"}
+
+
+def library(distances: dict[int, float]):
+    """A library whose every kept shape is ``distances[id]`` from each mark."""
+    return SimpleNamespace(
+        can_propose=True,
+        limit=0.27,
+        roles_of=lambda features: [{"nearest_letter": distances[f], "nearest_mark": distances[f]} for f in features],
+    )
+
+
+class NoiseTests(SimpleTestCase):
+    def setUp(self):
+        self.row = {"snapshot_id": "a", "bbox": {"x": 0, "y": 0, "w": 1000, "h": 100}, "blobs": []}
+
+    def found(self, blobs: list[dict], distances: dict[int, float], extra: list[int]) -> list[tuple[int, str]]:
+        self.row["blobs"] = blobs
+        marks = [(self.row, blob, blob["id"]) for blob in blobs]
+        checks = {"a": {1: SimpleNamespace(extra=extra)}}
+        return [(f["blob_id"], f["kind"]) for f in calibration._noise(library(distances), marks, checks)]
+
+    def test_a_speck_is_noise_whatever_the_library_and_the_text_say(self):
+        blobs = [mark(1, 150), mark(2, 160), mark(3, 140), mark(4, 3, y=0)]
+        self.assertEqual(self.found(blobs, dict.fromkeys(range(1, 5), 0.0), []), [(4, "speck")])
+
+    def test_the_dot_inside_a_pause_sign_is_no_speck(self):
+        blobs = [mark(1, 150), mark(2, 160), mark(3, 140), mark(4, 20)]
+        self.assertEqual(self.found(blobs, dict.fromkeys(range(1, 5), 0.0), []), [])
+
+    def test_a_library_that_cannot_yet_tell_finds_specks_only(self):
+        blobs = [mark(1, 150), mark(2, 160), mark(3, 3)]
+        self.row["blobs"] = blobs
+        unsure = SimpleNamespace(can_propose=False, limit=0.27, roles_of=lambda features: [])
+        checks = {"a": {1: SimpleNamespace(extra=[1, 3])}}
+        found = calibration._noise(unsure, [(self.row, blob, blob["id"]) for blob in blobs], checks)
+        self.assertEqual([(f["blob_id"], f["kind"]) for f in found], [(3, "speck")])
+
+    def test_a_stranger_is_noise_only_when_its_word_has_it_left_over(self):
+        blobs = [mark(1, 150), mark(2, 160), mark(3, 140)]
+        far = {1: 0.1, 2: 0.4, 3: 0.4}
+        # Mark 2 is like nothing kept and left over; 3 is like nothing kept but its
+        # word's text wants it; 1 is left over but like a kept shape.
+        self.assertEqual(self.found(blobs, far, [1, 2]), [(2, "stranger")])

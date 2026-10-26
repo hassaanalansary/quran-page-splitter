@@ -68,6 +68,8 @@ import {
   historyOf,
   inkOf,
   newRequestId,
+  noiseFor,
+  noiseOf,
   OVERSHOOT_PX,
   overshoot,
   pageExceptions,
@@ -104,6 +106,7 @@ import {
   type Doubts,
   type Expectations,
   type History,
+  type NoiseSuspects,
 } from "@/lib/calibration/model";
 import type {
   CalibrationDocument,
@@ -217,6 +220,8 @@ export function CalibrationEditor({
   /** Every word's marks against its text's, and the strokes that make its tanweens. */
   const [checks, setChecks] = useState<MarkChecks>(() => new Map());
   const [tanween, setTanween] = useState<Set<string>>(() => new Set());
+  /** Marks that may be noise the line's cutting left — for the reviewer to erase. */
+  const [noise, setNoise] = useState<NoiseSuspects>(() => new Map());
   /** The typed examples nearest the one selected mark, for the selection bar: which
    * mark, asked against which typing, and the answer. */
   const [evidence, setEvidence] = useState<{
@@ -269,6 +274,7 @@ export function CalibrationEditor({
     setSelection(NO_SELECTION);
     setExpectations(new Map());
     setDoubts(new Map());
+    setNoise(new Map());
     // Keep the line being read when the new answer still has it.
     setFocus((previous) =>
       previous && next.lines.some((line) => line.snapshot_id === previous)
@@ -307,6 +313,21 @@ export function CalibrationEditor({
   const shownLines = preview ? preview.doc.lines : lines;
   const found = useMemo(() => pageExceptions(lines), [lines]);
   const looks = useMemo(() => attentionItems(shownLines).length, [shownLines]);
+  /** The marks that may be noise and are still ink, in reading order. */
+  const suspects = useMemo(
+    () =>
+      lines
+        .filter((line) => !line.readonly)
+        .flatMap((line) =>
+          [...line.blobs]
+            .sort((a, b) => b.x + b.w - (a.x + a.w))
+            .flatMap((blob) => {
+              const found = noiseFor(blob, line.snapshot_id, noise);
+              return found ? [{ line, blob, found }] : [];
+            }),
+        ),
+    [lines, noise],
+  );
   // Ayat the last reading (or the preview) left short of PAWs, and where each word is.
   const shortages = (preview ? preview.doc : doc)?.shortages ?? [];
   const wordOn = useMemo(
@@ -658,6 +679,7 @@ export function CalibrationEditor({
           setDoubts(doubtsOf(answer.doubts ?? []));
           setChecks(markChecksOf(answer.words ?? []));
           setTanween(tanweenOf(answer.tanween ?? []));
+          setNoise(noiseOf(answer.noise ?? []));
           setLearnedFrom({ examples: answer.examples, here: answer.typed_here });
         })
         // Hints only: a failure leaves the last guesses up, and saving says why.
@@ -1138,6 +1160,7 @@ export function CalibrationEditor({
               expectations={expectations}
               doubts={doubts}
               tanween={tanween}
+              noise={noise}
               showTypes={showTypes && mode === "blobs" && !line.readonly}
               dim={dim}
               selectable={!line.readonly}
@@ -1451,6 +1474,7 @@ export function CalibrationEditor({
             expectations={expectations}
             doubts={doubts}
             checks={checks}
+            noise={noise}
             evidence={
               explained
                 ? evidence?.mark === explainedMark
@@ -1662,6 +1686,53 @@ export function CalibrationEditor({
                 );
               })}
             </div>
+          </PanelCard>
+        )}
+
+        {processed && suspects.length > 0 && (
+          <PanelCard title={t("calibration.noise.title", { count: suspects.length })}>
+            <p className="-mt-1 text-[10.5px] leading-snug text-text-muted">
+              {t("calibration.noise.note")}
+            </p>
+            <div className="flex flex-col gap-1">
+              {suspects.map(({ line, blob, found: item }) => (
+                <button
+                  key={`${line.snapshot_id}:${blob.id}`}
+                  type="button"
+                  onClick={() => {
+                    setMode("blobs");
+                    selectAndReveal({ snapshot: line.snapshot_id, ids: [blob.id] });
+                  }}
+                  className="flex cursor-pointer flex-col gap-0.5 rounded border border-border p-1.5 text-start transition-colors hover:border-orange hover:bg-orange-tint"
+                >
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-warning">
+                    {t(`calibration.noise.${item.kind}`)} ·{" "}
+                    {t("words.onLine", { n: line.line_number })}
+                  </span>
+                  <span className="text-[11px] leading-snug text-text-secondary">
+                    {t("calibration.noise.detail", { w: blob.w, h: blob.h, area: blob.area })}
+                    {item.edge ? ` · ${t("calibration.noise.edge")}` : ""}
+                  </span>
+                </button>
+              ))}
+            </div>
+            <Button
+              variant="outline"
+              className="h-8 text-[12px]"
+              disabled={!editable}
+              onClick={() =>
+                commit(
+                  suspects.reduce(
+                    (current, { line, blob }) =>
+                      setErased(current, { snapshot: line.snapshot_id, ids: [blob.id] }, true),
+                    lines,
+                  ),
+                )
+              }
+              title={t("calibration.noise.eraseAllHelp")}
+            >
+              {t("calibration.noise.eraseAll", { count: suspects.length })}
+            </Button>
           </PanelCard>
         )}
 

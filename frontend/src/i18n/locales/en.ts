@@ -1056,6 +1056,21 @@ export const en = {
     shortageAya: "Aya {{aya}} · {{count}} PAW(s) short",
     shortageLikely: "likely in: {{words}}",
     shortageUncertain: "place uncertain — equal readings put it elsewhere too",
+    noise: {
+      title: "Possible noise · {{count}}",
+      note: "Ink that may be no part of the text — a speck, or a mark like nothing confirmed that its word's text has left over. Erase it or leave it: nothing is erased for you.",
+      speck: "Speck",
+      stranger: "Left over",
+      detail: "{{w}}×{{h}} px · {{area}} px of ink",
+      edge: "at the line's edge",
+      eraseAll: "Erase all {{count}}",
+      eraseAllHelp: "Erase every mark listed here — one edit, undone with Ctrl+Z.",
+      speckHelp:
+        "May be noise: a few pixels of ink — the tip of a letter of the line above, cut with this one, or a stray dot of the scan.",
+      strangerHelp:
+        "May be noise: like nothing the confirmed pages keep, and its word's text has every mark without it.",
+      edgeHelp: "It touches the line's edge.",
+    },
 
     // The page
     pageTitle: "Page {{page}}",

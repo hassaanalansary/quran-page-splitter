@@ -226,9 +226,24 @@ export type WordMarkCheck = {
   disagree: number[];
 };
 
+/** A mark that may be noise the line's cutting left — a person erases it or not.
+ * A `speck` is a few pixels of ink: the tip of a letter of the line above, cut with
+ * this one, or a stray dot of the scan. A `stranger` looks like nothing the library
+ * keeps and its word's text has it left over. `edge`: it touches the line's box. */
+export type NoiseSuspect = {
+  snapshot_id: string;
+  blob_id: number;
+  kind: "speck" | "stranger";
+  edge: boolean;
+  /** To the nearest kept shape, in LIMITs — for a left-over mark only. */
+  distance: number | null;
+};
+
 export type CalibrationTypes = {
   suggestions: TypeSuggestion[];
   doubts: TypeDoubt[];
+  /** Marks that may be noise. Absent from older servers. */
+  noise?: NoiseSuspect[];
   /** Typed marks on the confirmed pages the guesses learned from. */
   examples: number;
   /** Typed marks on this page, sent with the draft. */

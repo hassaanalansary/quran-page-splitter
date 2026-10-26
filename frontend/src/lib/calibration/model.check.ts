@@ -65,6 +65,8 @@ import {
   setException,
   setRole,
   setSubtype,
+  noiseFor,
+  noiseOf,
   needsLook,
   unassignMarks,
   setWordEdges,
@@ -338,6 +340,16 @@ const sel = (ids: number[], snapshot = "s1") => ({ snapshot, ids });
     initial_role: "ornament",
   });
   assert.equal(pick(setErased([withRing], sel([5]), true), 5).erased, undefined);
+}
+
+// A noise suspicion holds only while the blob is still ink.
+{
+  const noise = noiseOf([
+    { snapshot_id: "s1", blob_id: 2, kind: "speck", edge: true, distance: null },
+  ]);
+  assert.equal(noiseFor(pick([line()], 2), "s1", noise)?.kind, "speck");
+  assert.equal(noiseFor(pick(setErased([line()], sel([2]), true), 2), "s1", noise), null);
+  assert.equal(noiseFor(pick([line()], 1), "s1", noise), null);
 }
 
 // Attention runs right to left over editable lines and wraps.
