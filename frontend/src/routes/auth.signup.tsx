@@ -4,10 +4,17 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { BusyLabel } from "@/components/app/SatrLoader";
-import { AuthError as ErrorBanner, AuthShell, GoogleIcon } from "@/components/app/auth/AuthShell";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import {
+  AUTH_LINK,
+  AuthError as ErrorBanner,
+  AuthField,
+  AuthHeading,
+  AuthShell,
+  AuthStateActions,
+  AuthStateCard,
+  AuthSubmit,
+  GoogleStart,
+} from "@/components/app/auth/AuthShell";
 import { AuthError, signup, startProviderLogin } from "@/lib/api";
 import { redirectIfAuthenticated } from "@/lib/auth/guard";
 
@@ -24,6 +31,9 @@ function SignupPage() {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState<string | null>(null);
+  // allauth names the field a refusal is about (`param`); that message goes under
+  // its field, the rest in the banner.
+  const [fieldError, setFieldError] = useState<{ field: string; message: string } | null>(null);
   const [sentTo, setSentTo] = useState<string | null>(null);
 
   const mutation = useMutation({
@@ -42,6 +52,10 @@ function SignupPage() {
         void navigate({ to: "/" });
         return;
       }
+      if (e instanceof AuthError && (e.param === "email" || e.param === "password")) {
+        setFieldError({ field: e.param, message: e.message });
+        return;
+      }
       setError(e instanceof AuthError ? e.message : t("auth.errors.generic"));
     },
   });
@@ -49,106 +63,88 @@ function SignupPage() {
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    setFieldError(null);
     // allauth's signup endpoint takes a single `password`; the confirmation is
     // ours to check.
-    if (password !== confirm) return setError(t("auth.errors.passwordsDontMatch"));
+    if (password !== confirm) {
+      setFieldError({ field: "confirm", message: t("auth.errors.passwordsDontMatch") });
+      return;
+    }
     mutation.mutate();
   }
 
+  const errorFor = (field: string) => (fieldError?.field === field ? fieldError.message : null);
+
   if (sentTo) {
     return (
-      <AuthShell
-        title={t("auth.signup.checkInbox")}
-        subtitle={t("auth.signup.checkInboxBody", { email: sentTo })}
-        footer={
-          <Link to="/auth/login" className="font-medium text-lapis-text hover:underline">
-            {t("auth.backToSignIn")}
-          </Link>
-        }
-      >
-        <div className="rounded-md border border-done/30 bg-done-wash px-3 py-2 text-sm text-done-text">
-          {t("auth.signup.checkInbox")}
-        </div>
+      <AuthShell>
+        <AuthStateCard
+          icon="mail"
+          title={t("auth.signup.checkInbox")}
+          body={t("auth.signup.checkInboxBody", { email: sentTo })}
+        >
+          <AuthStateActions>
+            <Link to="/auth/login" className={AUTH_LINK}>
+              {t("auth.backToSignIn")}
+            </Link>
+          </AuthStateActions>
+        </AuthStateCard>
       </AuthShell>
     );
   }
 
   return (
-    <AuthShell
-      title={t("auth.signup.title")}
-      subtitle={t("auth.signup.subtitle")}
-      footer={
-        <>
-          {t("auth.signup.haveAccount")}{" "}
-          <Link to="/auth/login" className="font-medium text-lapis-text hover:underline">
-            {t("auth.signup.signInInstead")}
-          </Link>
-        </>
-      }
-    >
+    <AuthShell panel="signUp">
       <form onSubmit={onSubmit} className="flex flex-col gap-4">
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="signup-email">{t("auth.emailLabel")}</Label>
-          <Input
-            id="signup-email"
-            type="email"
-            autoComplete="email"
-            dir="ltr"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            autoFocus
-          />
-        </div>
-
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="signup-password">{t("auth.passwordLabel")}</Label>
-          <Input
-            id="signup-password"
-            type="password"
-            autoComplete="new-password"
-            dir="ltr"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-          />
-        </div>
-
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="signup-confirm">{t("auth.confirmPasswordLabel")}</Label>
-          <Input
-            id="signup-confirm"
-            type="password"
-            autoComplete="new-password"
-            dir="ltr"
-            value={confirm}
-            onChange={(e) => setConfirm(e.target.value)}
-            required
-          />
-        </div>
+        <AuthHeading title={t("auth.signup.title")} subtitle={t("auth.signup.subtitle")} />
+        <GoogleStart onClick={() => void startProviderLogin("google", "/")} />
+        <AuthField
+          id="signup-email"
+          label={t("auth.emailLabel")}
+          error={errorFor("email")}
+          type="email"
+          autoComplete="email"
+          dir="ltr"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          required
+          autoFocus
+        />
+        <AuthField
+          id="signup-password"
+          label={t("auth.passwordLabel")}
+          error={errorFor("password")}
+          type="password"
+          autoComplete="new-password"
+          dir="ltr"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          required
+        />
+        <AuthField
+          id="signup-confirm"
+          label={t("auth.confirmPasswordLabel")}
+          error={errorFor("confirm")}
+          type="password"
+          autoComplete="new-password"
+          dir="ltr"
+          value={confirm}
+          onChange={(e) => setConfirm(e.target.value)}
+          required
+        />
 
         {error && <ErrorBanner message={error} />}
 
-        <Button type="submit" disabled={mutation.isPending}>
+        <AuthSubmit disabled={mutation.isPending}>
           {mutation.isPending ? <BusyLabel>{t("common.loading")}</BusyLabel> : t("auth.signUp")}
-        </Button>
+        </AuthSubmit>
+        <p className="m-0 mt-0.5 text-center text-[14px] text-ink-2">
+          {t("auth.signup.haveAccount")}{" "}
+          <Link to="/auth/login" className="font-semibold text-lapis-text hover:underline">
+            {t("auth.signup.signInInstead")}
+          </Link>
+        </p>
       </form>
-
-      <div className="my-5 flex items-center gap-3">
-        <span className="h-px flex-1 bg-rule" />
-        <span className="text-xs uppercase text-ink-3">{t("auth.or")}</span>
-        <span className="h-px flex-1 bg-rule" />
-      </div>
-
-      <Button
-        type="button"
-        variant="outline"
-        className="w-full"
-        onClick={() => void startProviderLogin("google", "/")}
-      >
-        <GoogleIcon />
-        {t("auth.withGoogle")}
-      </Button>
     </AuthShell>
   );
 }

@@ -2,8 +2,12 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { AuthShell } from "@/components/app/auth/AuthShell";
-import { Button } from "@/components/ui/button";
+import {
+  AUTH_PRIMARY,
+  AuthShell,
+  AuthStateActions,
+  AuthStateCard,
+} from "@/components/app/auth/AuthShell";
 import { verifyEmail } from "@/lib/api";
 
 /** Landing page for the link in allauth's confirmation email — the `{key}`
@@ -29,32 +33,31 @@ function VerifyEmailPage() {
 
   if (state === "working") {
     return (
-      <AuthShell title={t("auth.verify.verifying")}>
-        <div className="h-1.5 w-full overflow-hidden rounded-full bg-sunk">
-          <div className="h-full w-1/3 animate-pulse rounded-full bg-lapis" />
-        </div>
+      <AuthShell>
+        <AuthStateCard
+          icon="working"
+          title={t("auth.verify.verifying")}
+          body={t("auth.verify.verifyingBody")}
+        />
       </AuthShell>
     );
   }
 
   const ok = state === "ok";
   return (
-    <AuthShell
-      title={ok ? t("auth.verify.success") : t("auth.verify.failed")}
-      subtitle={ok ? t("auth.verify.successBody") : t("auth.verify.failedBody")}
-    >
-      <div
-        className={
-          ok
-            ? "rounded-md border border-done/30 bg-done-wash px-3 py-2 text-sm text-done-text"
-            : "rounded-md border border-stop/20 bg-stop-wash px-3 py-2 text-sm text-stop-text"
-        }
+    <AuthShell>
+      <AuthStateCard
+        icon={ok ? "check" : "alert"}
+        tone={ok ? "done" : "stop"}
+        title={ok ? t("auth.verify.success") : t("auth.verify.failed")}
+        body={ok ? t("auth.verify.successBody") : t("auth.verify.failedBody")}
       >
-        {ok ? t("auth.verify.success") : t("auth.verify.failed")}
-      </div>
-      <Button asChild className="mt-5 w-full">
-        <Link to="/auth/login">{t("auth.signIn")}</Link>
-      </Button>
+        <AuthStateActions>
+          <Link to="/auth/login" className={AUTH_PRIMARY}>
+            {t("auth.signIn")}
+          </Link>
+        </AuthStateActions>
+      </AuthStateCard>
     </AuthShell>
   );
 }

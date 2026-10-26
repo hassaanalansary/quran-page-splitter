@@ -15,9 +15,17 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { logout, useSession } from "@/lib/api";
 
+/** The initials an avatar shows: the first letters of the first two words of
+ * the display name ("Ibrahim Morad" → "IM"), else the address's first letter. */
+function initialsOf(display: string, email: string): string {
+  const words = display.trim().split(/\s+/).filter(Boolean);
+  const letters = words.length ? words.slice(0, 2).map((word) => word[0]) : [email[0] ?? ""];
+  return letters.join("").toUpperCase();
+}
+
 /** Avatar + account dropdown. Rendered in both headers (the landing bar in
  * routes/index.tsx and the workspace bar in MushafHeader). */
-export function UserMenu() {
+export function UserMenu({ size = 28 }: { size?: number }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -32,7 +40,10 @@ export function UserMenu() {
     },
   });
 
-  if (isPending) return <div className="h-7 w-7 animate-pulse rounded-full bg-sunk" />;
+  if (isPending)
+    return (
+      <div className="animate-pulse rounded-full bg-sunk" style={{ width: size, height: size }} />
+    );
 
   if (!user) {
     return (
@@ -43,7 +54,7 @@ export function UserMenu() {
   }
 
   const label = user.display || user.email || "";
-  const initial = label.slice(0, 1).toUpperCase();
+  const initials = initialsOf(user.display ?? "", user.email ?? "");
 
   return (
     <DropdownMenu>
@@ -51,9 +62,12 @@ export function UserMenu() {
         <button
           type="button"
           aria-label={label}
-          className="flex h-7 w-7 items-center justify-center rounded-full bg-lapis text-xs font-semibold text-on-lapis outline-none transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-lapis"
+          style={{ width: size, height: size }}
+          className={`flex flex-none items-center justify-center rounded-full bg-lapis font-semibold text-on-lapis outline-none transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-lapis ${
+            size >= 36 ? "text-[13px]" : "text-xs"
+          }`}
         >
-          {initial}
+          {initials}
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-64">

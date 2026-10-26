@@ -2,15 +2,27 @@ import { useTranslation } from "react-i18next";
 
 import { cn } from "@/lib/utils";
 
+import {
+  SATR_FATHA,
+  SATR_LETTERS,
+  SATR_LETTERS_SMALL,
+  SATR_STAR,
+  SATR_SUKUN,
+  SATR_TILE,
+  SATR_TILE_GOLD,
+  SATR_TILE_INK,
+  SATR_TILE_MARK,
+  SATR_WORDMARK,
+} from "./satrMark";
+
 /**
- * The SATR header lockup: the small tile and the drawn wordmark
- * (design/brand/satr/logo/satr-lockup-horizontal-small-*.svg), split in two so the
- * pair can follow the reading direction. The mark itself is never mirrored: it is
- * Arabic writing, and SVG drawing ignores `dir`. Only the order of tile and wordmark
- * flips under RTL. The tile is the same in both themes; the wordmark is
- * `currentColor` (ink by default). Keep it at least 24 px tall.
+ * The SATR lockup: the tile and the drawn wordmark, in the proportions the redesign
+ * boards use (the wordmark 0.48 of the tile's height, a third of it between them).
+ * The mark is never mirrored: it is Arabic writing, and SVG drawing ignores `dir`.
+ * Only the order of tile and wordmark flips under RTL. The tile is the same in both
+ * themes; the wordmark is `currentColor` (ink by default). Keep it at least 24 px.
  */
-export function SatrLockup({ height = 28, className }: { height?: number; className?: string }) {
+export function SatrLockup({ size = 28, className }: { size?: number; className?: string }) {
   const { t } = useTranslation();
 
   return (
@@ -18,46 +30,121 @@ export function SatrLockup({ height = 28, className }: { height?: number; classN
       role="img"
       aria-label={t("common.appName")}
       className={cn("inline-flex flex-none items-center text-ink", className)}
-      style={{ height, gap: height * 0.24 }}
+      style={{ gap: size / 3 }}
     >
-      <svg viewBox="0 0 32 32" className="h-full w-auto" aria-hidden="true">
-        <rect width="32" height="32" rx="7.16" fill="#173E70" />
-        <rect y="20.29" width="32" height="1.12" fill="#C9962E" />
-        <g transform="translate(4.63 20.85) scale(0.2048)">
-          <g
-            fill="none"
-            stroke="#F4EFE6"
-            strokeWidth="12"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="M112 -20 L112 0 L20 0 C10 0 4 10 -1 24" />
-            <path d="M92 -20 L92 0" />
-            <path d="M72 -20 L72 0" />
-            <path d="M52 0 L52 -20 Q52 -28 44 -28 L28 -28" />
-            <path d="M28 0 L28 -62" />
-          </g>
-        </g>
-      </svg>
-      <svg viewBox="39.68 0 48.38 32" className="h-full w-auto" aria-hidden="true">
-        <g transform="translate(39.68 21.76) scale(0.288)">
-          <g
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="8"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="M30 -36 L14 -36 Q4 -36 4 -26 Q4 -20 14 -20 L20 -20 Q30 -20 30 -10 Q30 -4 20 -4 L4 -4" />
-            <path d="M50 -4 L50 -26 Q50 -36 60 -36 L66 -36 Q76 -36 76 -26 L76 -4" />
-            <path d="M50 -18 L76 -18" />
-            <path d="M93 -36 L121 -36" />
-            <path d="M107 -36 L107 -4" />
-            <path d="M138 -4 L138 -36 L154 -36 Q164 -36 164 -26 Q164 -20 154 -20 L138 -20" />
-            <path d="M151 -20 L164 -4" />
-          </g>
-        </g>
-      </svg>
+      {size >= 64 ? <SatrSymbol size={size} /> : <SatrTile size={size} />}
+      <SatrWordmark height={size * 0.48} />
     </span>
+  );
+}
+
+/** The tile below 64 px: the heavier word, no marks. */
+export function SatrTile({ size }: { size: number }) {
+  return (
+    <svg viewBox="0 0 64 64" width={size} height={size} aria-hidden="true" className="flex-none">
+      <rect width="64" height="64" rx="14.32" fill={SATR_TILE} />
+      <rect y="40.58" width="64" height="2.24" fill={SATR_TILE_GOLD} />
+      <g transform="translate(9.27 41.7) scale(0.4096)">
+        <g
+          fill="none"
+          stroke={SATR_TILE_INK}
+          strokeWidth="12"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          {SATR_LETTERS_SMALL.map((d) => (
+            <path key={d} d={d} />
+          ))}
+        </g>
+      </g>
+    </svg>
+  );
+}
+
+/** The full symbol, from 64 px: the word with its fatha and sukun, and ۞. */
+export function SatrSymbol({ size }: { size: number }) {
+  return (
+    <svg viewBox="0 0 64 64" width={size} height={size} aria-hidden="true" className="flex-none">
+      <rect width="64" height="64" rx="14.32" fill={SATR_TILE} />
+      <rect y="39.64" width="64" height="0.7" fill={SATR_TILE_GOLD} />
+      <g transform="translate(8.01 39.99) scale(0.3058)">
+        <g
+          fill="none"
+          stroke={SATR_TILE_INK}
+          strokeWidth="8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          {SATR_LETTERS.map((d) => (
+            <path key={d} d={d} />
+          ))}
+        </g>
+        <path
+          d={SATR_FATHA}
+          fill="none"
+          stroke={SATR_TILE_MARK}
+          strokeWidth="5.5"
+          strokeLinecap="round"
+        />
+        <path d={SATR_SUKUN} fill={SATR_TILE_MARK} />
+        <polygon points={SATR_STAR} fill={SATR_TILE_GOLD} />
+      </g>
+    </svg>
+  );
+}
+
+/** "SATR", drawn, in `currentColor`. */
+export function SatrWordmark({ height, className }: { height: number; className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 168 40"
+      height={height}
+      width={height * 4.2}
+      aria-hidden="true"
+      className={cn("flex-none", className)}
+    >
+      <g
+        transform="translate(0 40)"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        {SATR_WORDMARK.map((d) => (
+          <path key={d} d={d} />
+        ))}
+      </g>
+    </svg>
+  );
+}
+
+/** The word alone, every part in `currentColor`: a watermark behind a deep panel. */
+export function SatrGlyph({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 154.87 102" aria-hidden="true" className={cn("block", className)}>
+      <g transform="translate(-1 74)">
+        <g
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          {SATR_LETTERS.map((d) => (
+            <path key={d} d={d} />
+          ))}
+        </g>
+        <path
+          d={SATR_FATHA}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="5.5"
+          strokeLinecap="round"
+        />
+        <path d={SATR_SUKUN} fill="currentColor" />
+        <polygon points={SATR_STAR} fill="currentColor" />
+      </g>
+    </svg>
   );
 }

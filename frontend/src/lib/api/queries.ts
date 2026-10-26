@@ -1,11 +1,11 @@
 // React Query hooks + shared query keys for the API.
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 
 import { baseLanguage } from "@/i18n/config";
 
 import { getSession } from "./auth";
-import { GALLERY_PAGE_SIZE, getGalleryItem, listGallery } from "./gallery";
+import { GALLERY_PAGE_SIZE, getGalleryItem, listGallery, type GalleryQuery } from "./gallery";
 import { getMushaf, getStats, listActivity, listMushafs, listTemplates } from "./mushafs";
 import { getPage, listPages } from "./pages";
 import { getProcessJob, listRuns } from "./processing";
@@ -16,7 +16,7 @@ import { isJobRunning, type ProcessJob } from "./types";
 export const queryKeys = {
   session: ["session"] as const,
   mushafs: ["mushafs"] as const,
-  gallery: (qiraa: string | null, offset: number) => ["gallery", qiraa ?? "", offset] as const,
+  gallery: (query: GalleryQuery) => ["gallery", query] as const,
   galleryItem: (id: string) => ["gallery", id] as const,
   mushaf: (id: string) => ["mushaf", id] as const,
   templates: (id: string) => ["mushaf", id, "templates"] as const,
@@ -133,10 +133,20 @@ export function usePage(mushafId: string, pageNumber: number, enabled = true) {
 }
 
 /** Published mushafs. Works signed out — the gallery is public. */
-export function useGallery(qiraa: string | null = null, offset = 0) {
-  return useQuery({
-    queryKey: queryKeys.gallery(qiraa, offset),
-    queryFn: ({ signal }) => listGallery({ qiraa, offset, limit: GALLERY_PAGE_SIZE }, signal),
+/** The gallery under ``query``, a page at a time: "Show more" appends the next. */
+export function useGallery(query: GalleryQuery) {
+  return useInfiniteQuery({
+    queryKey: queryKeys.gallery(query),
+    queryFn: ({ pageParam, signal }) =>
+      listGallery({ ...query, offset: pageParam, limit: GALLERY_PAGE_SIZE }, signal),
+    initialPageParam: 0,
+    getNextPageParam: (last, pages) => {
+      const loaded = pages.reduce((sum, page) => sum + page.items.length, 0);
+      return loaded < last.total ? loaded : undefined;
+    },
+    // A new filter keeps the old cards up until the new ones land, so the grid
+    // does not flash to skeletons on every keystroke.
+    placeholderData: keepPreviousData,
   });
 }
 

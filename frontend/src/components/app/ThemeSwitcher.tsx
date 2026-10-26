@@ -4,8 +4,9 @@ import { useTranslation } from "react-i18next";
 import { setThemePreference, THEME_PREFERENCES, useTheme, type ThemePreference } from "@/lib/theme";
 
 /** The header's theme button: flips between light and dark. The account menu's
- * {@link ThemeMenuChoice} also offers System. */
-export function ThemeButton() {
+ * {@link ThemeMenuChoice} also offers System. 34 px in a step's top bar, 38 on the
+ * library, gallery and sign-in pages. */
+export function ThemeButton({ size = 34 }: { size?: number }) {
   const { t } = useTranslation();
   const { theme } = useTheme();
 
@@ -15,12 +16,13 @@ export function ThemeButton() {
       onClick={() => setThemePreference(theme === "dark" ? "light" : "dark")}
       aria-label={t("theme.switch")}
       title={t("theme.switch")}
-      className="flex h-[34px] w-[34px] flex-none cursor-pointer items-center justify-center rounded-control border border-rule-2 bg-card text-ink transition-colors hover:bg-sheet focus-visible:outline-2 focus-visible:outline-lapis"
+      style={{ width: size, height: size }}
+      className="flex flex-none cursor-pointer items-center justify-center rounded-control border border-rule-2 bg-card text-ink transition-colors hover:bg-sheet focus-visible:outline-2 focus-visible:outline-lapis"
     >
       <svg
         viewBox="0 0 24 24"
-        width="16"
-        height="16"
+        width={size >= 38 ? 17 : 16}
+        height={size >= 38 ? 17 : 16}
         fill="none"
         stroke="currentColor"
         strokeWidth="2"

@@ -4,10 +4,15 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { BusyLabel } from "@/components/app/SatrLoader";
-import { AuthError as ErrorBanner, AuthShell } from "@/components/app/auth/AuthShell";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import {
+  AUTH_LINK,
+  AUTH_PRIMARY,
+  AuthError as ErrorBanner,
+  AuthField,
+  AuthShell,
+  AuthStateActions,
+  AuthStateCard,
+} from "@/components/app/auth/AuthShell";
 import { AuthError, requestPasswordReset } from "@/lib/api";
 
 export const Route = createFileRoute("/auth/forgot")({ component: ForgotPasswordPage });
@@ -31,39 +36,36 @@ function ForgotPasswordPage() {
   }
 
   const backToSignIn = (
-    <Link to="/auth/login" className="font-medium text-lapis-text hover:underline">
+    <Link to="/auth/login" className={AUTH_LINK}>
       {t("auth.backToSignIn")}
     </Link>
   );
 
-  // Deliberately the same message whether or not the address exists — allauth
+  // Deliberately the same message whether or not the address exists: allauth
   // is configured with ACCOUNT_PREVENT_ENUMERATION, and leaking "no such user"
   // here would undo that.
   if (sentTo) {
     return (
-      <AuthShell
-        title={t("auth.reset.sent")}
-        subtitle={t("auth.reset.sentBody", { email: sentTo })}
-        footer={backToSignIn}
-      >
-        <div className="rounded-md border border-done/30 bg-done-wash px-3 py-2 text-sm text-done-text">
-          {t("auth.reset.sent")}
-        </div>
+      <AuthShell>
+        <AuthStateCard
+          icon="mail"
+          title={t("auth.reset.sent")}
+          body={t("auth.reset.sentBody", { email: sentTo })}
+        >
+          <AuthStateActions>{backToSignIn}</AuthStateActions>
+        </AuthStateCard>
       </AuthShell>
     );
   }
 
   return (
-    <AuthShell
-      title={t("auth.reset.title")}
-      subtitle={t("auth.reset.subtitle")}
-      footer={backToSignIn}
-    >
-      <form onSubmit={onSubmit} className="flex flex-col gap-4">
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="forgot-email">{t("auth.emailLabel")}</Label>
-          <Input
+    <AuthShell>
+      <AuthStateCard icon="key" title={t("auth.reset.title")} body={t("auth.reset.subtitle")}>
+        <form onSubmit={onSubmit} className="flex flex-col gap-3">
+          <AuthField
             id="forgot-email"
+            label={t("auth.emailLabel")}
+            compact
             type="email"
             autoComplete="email"
             dir="ltr"
@@ -72,18 +74,23 @@ function ForgotPasswordPage() {
             required
             autoFocus
           />
-        </div>
-
-        {error && <ErrorBanner message={error} />}
-
-        <Button type="submit" disabled={mutation.isPending}>
-          {mutation.isPending ? (
-            <BusyLabel>{t("common.loading")}</BusyLabel>
-          ) : (
-            t("auth.reset.submit")
-          )}
-        </Button>
-      </form>
+          {error && <ErrorBanner message={error} />}
+          <AuthStateActions>
+            <button
+              type="submit"
+              disabled={mutation.isPending}
+              className={`${AUTH_PRIMARY} cursor-pointer`}
+            >
+              {mutation.isPending ? (
+                <BusyLabel>{t("common.loading")}</BusyLabel>
+              ) : (
+                t("auth.reset.submit")
+              )}
+            </button>
+            {backToSignIn}
+          </AuthStateActions>
+        </form>
+      </AuthStateCard>
     </AuthShell>
   );
 }

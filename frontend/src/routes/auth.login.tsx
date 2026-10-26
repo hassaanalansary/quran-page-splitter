@@ -4,10 +4,14 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { BusyLabel } from "@/components/app/SatrLoader";
-import { AuthError as ErrorBanner, AuthShell, GoogleIcon } from "@/components/app/auth/AuthShell";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import {
+  AuthError as ErrorBanner,
+  AuthField,
+  AuthHeading,
+  AuthShell,
+  AuthSubmit,
+  GoogleStart,
+} from "@/components/app/auth/AuthShell";
 import { AuthError, getSession, login, queryKeys, startProviderLogin } from "@/lib/api";
 import { redirectIfAuthenticated } from "@/lib/auth/guard";
 
@@ -61,74 +65,56 @@ function LoginPage() {
   }
 
   return (
-    <AuthShell
-      title={t("auth.login.title")}
-      subtitle={t("auth.login.subtitle")}
-      footer={
-        <>
-          {t("auth.login.noAccount")}{" "}
-          <Link to="/auth/signup" className="font-medium text-lapis-text hover:underline">
-            {t("auth.login.createOne")}
-          </Link>
-        </>
-      }
-    >
-      <form onSubmit={onSubmit} className="flex flex-col gap-4">
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="login-email">{t("auth.emailLabel")}</Label>
-          <Input
-            id="login-email"
-            type="email"
-            autoComplete="email"
-            dir="ltr"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            autoFocus
-          />
-        </div>
-
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="login-password">{t("auth.passwordLabel")}</Label>
-          <Input
-            id="login-password"
-            type="password"
-            autoComplete="current-password"
-            dir="ltr"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-          />
-          <Link
-            to="/auth/forgot"
-            className="text-xs text-ink-2 hover:text-lapis-text hover:underline"
-          >
-            {t("auth.login.forgot")}
-          </Link>
-        </div>
+    <AuthShell>
+      <form onSubmit={onSubmit} className="flex flex-col gap-[18px]">
+        <AuthHeading title={t("auth.login.title")} subtitle={t("auth.login.subtitle")} />
+        <GoogleStart onClick={() => void startProviderLogin("google", next ?? "/")} />
+        <AuthField
+          id="login-email"
+          label={t("auth.emailLabel")}
+          type="email"
+          autoComplete="email"
+          dir="ltr"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          required
+          autoFocus
+        />
+        <AuthField
+          id="login-password"
+          label={t("auth.passwordLabel")}
+          aside={
+            <Link to="/auth/forgot" className="font-semibold text-lapis-text hover:underline">
+              {t("auth.login.forgot")}
+            </Link>
+          }
+          type="password"
+          autoComplete="current-password"
+          dir="ltr"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          required
+        />
 
         {error && <ErrorBanner message={error} />}
 
-        <Button type="submit" disabled={mutation.isPending}>
+        <AuthSubmit disabled={mutation.isPending}>
           {mutation.isPending ? <BusyLabel>{t("common.loading")}</BusyLabel> : t("auth.signIn")}
-        </Button>
+        </AuthSubmit>
+        <p className="m-0 mt-1 text-center text-[14px] text-ink-2">
+          {t("auth.login.noAccount")}{" "}
+          <Link to="/auth/signup" className="font-semibold text-lapis-text hover:underline">
+            {t("auth.login.createOne")}
+          </Link>
+        </p>
+        <p className="m-0 text-center text-[13px] text-ink-3">
+          {t("auth.login.browseBefore")}{" "}
+          <Link to="/gallery" className="text-ink-2 underline-offset-2 hover:underline">
+            {t("auth.login.browseLink")}
+          </Link>{" "}
+          {t("auth.login.browseAfter")}
+        </p>
       </form>
-
-      <div className="my-5 flex items-center gap-3">
-        <span className="h-px flex-1 bg-rule" />
-        <span className="text-xs uppercase text-ink-3">{t("auth.or")}</span>
-        <span className="h-px flex-1 bg-rule" />
-      </div>
-
-      <Button
-        type="button"
-        variant="outline"
-        className="w-full"
-        onClick={() => void startProviderLogin("google", next ?? "/")}
-      >
-        <GoogleIcon />
-        {t("auth.withGoogle")}
-      </Button>
     </AuthShell>
   );
 }

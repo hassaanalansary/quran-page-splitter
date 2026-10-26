@@ -6,8 +6,10 @@ auditable at a glance instead of scattered through the owner-scoped code.
 """
 
 import uuid
+from typing import Literal
 
-from django.db.models import Count, Q
+from django.db.models import Count, ExpressionWrapper, F, FloatField, Q, QuerySet, Value
+from django.db.models.functions import Greatest, Lower, StrIndex, Substr
 from django.utils import timezone
 
 from accounts.models import User
@@ -35,6 +37,9 @@ _GALLERY_VALUES = (
 )
 
 MAX_PAGE_SIZE = 60
+
+#: How the listing can be ordered: newest first, the most reviewed first, or by name.
+GallerySort = Literal["published", "complete", "name"]
 
 
 def _public_name(display_name: str, email: str) -> str:
@@ -64,37 +69,114 @@ def _serialize(row: dict, *, viewer_id: object = None) -> dict:
     }
 
 
+def _with_counts(rows: QuerySet[Mushaf]) -> QuerySet[Mushaf]:
+    return rows.annotate(
+        processed_page_count=Count("pages", distinct=True),
+        reviewed_page_count=Count("pages", filter=Q(pages__reviewed=True), distinct=True),
+    )
+
+
+def _matching(rows: QuerySet[Mushaf], search: str) -> QuerySet[Mushaf]:
+    """Entries whose name, qiraa or author contains ``search``.
+
+    The author is matched on the name the card shows: the display name, or for an
+    account without one, the part of the address before the @. Never the whole
+    address, so a search for a mail domain finds nothing.
+    """
+    rows = rows.annotate(
+        owner_local=Substr("owner__email", 1, StrIndex("owner__email", Value("@")) - 1),
+    )
+    return rows.filter(
+        Q(name__icontains=search)
+        | Q(rawi__name__icontains=search)
+        | Q(rawi__name_arabic__icontains=search)
+        | Q(owner__display_name__icontains=search)
+        | (Q(owner__display_name="") & Q(owner_local__icontains=search))
+    )
+
+
+def _completed(rows: QuerySet[Mushaf]) -> QuerySet[Mushaf]:
+    """Every Quran page reviewed: the frontend's ``mushafStatus`` "completed"."""
+    return rows.filter(
+        processed_page_count__gt=0,
+        reviewed_page_count__gte=F("last_quran_pdf_page") - F("first_quran_pdf_page") + 1,
+    )
+
+
+def _ordered(rows: QuerySet[Mushaf], sort: GallerySort) -> QuerySet[Mushaf]:
+    newest = ("-published_at", "-created_at")
+    if sort == "name":
+        return rows.order_by(Lower("name"), *newest)
+    if sort == "complete":
+        # Ordered by the expressions themselves, not by annotations: the listing's
+        # ``values()`` would drop an annotation it does not name.
+        pages = Greatest(F("last_quran_pdf_page") - F("first_quran_pdf_page") + 1, 1)
+        reviewed = ExpressionWrapper(F("reviewed_page_count") * 1.0 / pages, output_field=FloatField())
+        processed = ExpressionWrapper(F("processed_page_count") * 1.0 / pages, output_field=FloatField())
+        return rows.order_by(reviewed.desc(), processed.desc(), *newest)
+    return rows.order_by(*newest)
+
+
 def list_published(
     *,
     user: User | None = None,
     qiraa: str | None = None,
+    search: str | None = None,
+    completed: bool = False,
+    sort: GallerySort = "published",
     limit: int = 24,
     offset: int = 0,
 ) -> dict:
-    """Published mushafs, newest first. No session required.
+    """Published mushafs, newest first unless ``sort`` says otherwise. No session required.
 
     ``user`` is optional and read-only: it only decides ``is_owner`` per card, so
     a signed-in author sees their own entries marked rather than being offered a
     copy of what they already own.
+
+    ``facets`` counts the entries per qiraa under the same search and completed
+    filters but not the qiraa one, so the gallery's chips can offer every qiraa
+    there is something to find in, and "All" can say how many that is.
     """
     limit = max(1, min(limit, MAX_PAGE_SIZE))
     offset = max(0, offset)
 
     rows = Mushaf.objects.filter(visibility=VisibilityChoices.PUBLISHED).select_related("owner", "rawi")
+    search = (search or "").strip()
+    if search:
+        rows = _matching(rows, search)
+    rows = _with_counts(rows)
+    if completed:
+        rows = _completed(rows)
+
+    # Grouped over the matching ids rather than over ``rows`` itself: regrouping
+    # ``rows`` by qiraa would recount its page totals per qiraa and break the
+    # completed filter, which is per mushaf.
+    facets = (
+        Mushaf.objects.filter(id__in=rows.values("id"), rawi__isnull=False)
+        .values("rawi__name", "rawi__name_arabic")
+        .annotate(count=Count("id"))
+        .order_by("-count", "rawi__name")
+    )
+    everything = rows.count()
     if qiraa is not None:
         rows = rows.filter(rawi__name__iexact=qiraa.strip().lower())
 
-    total = rows.count()
-    page = (
-        rows.annotate(
-            processed_page_count=Count("pages", distinct=True),
-            reviewed_page_count=Count("pages", filter=Q(pages__reviewed=True), distinct=True),
-        )
-        .values(*_GALLERY_VALUES, "processed_page_count", "reviewed_page_count")
-        .order_by("-published_at", "-created_at")[offset : offset + limit]
-    )
+    total = rows.count() if qiraa is not None else everything
+    page = _ordered(rows, sort).values(*_GALLERY_VALUES, "processed_page_count", "reviewed_page_count")[
+        offset : offset + limit
+    ]
     viewer_id = user.pk if user is not None else None
-    return {"total": total, "items": [_serialize(row, viewer_id=viewer_id) for row in page]}
+    return {
+        "total": total,
+        "items": [_serialize(row, viewer_id=viewer_id) for row in page],
+        "facets": {
+            "all": everything,
+            "qiraat": [
+                {"name": row["rawi__name"], "name_arabic": row["rawi__name_arabic"], "count": row["count"]}
+                for row in facets
+            ],
+        },
+    }
 
 
 def get_published(mushaf_id: uuid.UUID, *, user: User | None) -> dict:
@@ -104,12 +186,7 @@ def get_published(mushaf_id: uuid.UUID, *, user: User | None) -> dict:
     """
     mushaf = mushaf_service.get_mushaf(mushaf_id, user=user, write=False)
     row = (
-        Mushaf.objects.filter(id=mushaf.id)
-        .select_related("owner", "rawi")
-        .annotate(
-            processed_page_count=Count("pages", distinct=True),
-            reviewed_page_count=Count("pages", filter=Q(pages__reviewed=True), distinct=True),
-        )
+        _with_counts(Mushaf.objects.filter(id=mushaf.id).select_related("owner", "rawi"))
         .values(*_GALLERY_VALUES, "processed_page_count", "reviewed_page_count")
         .first()
     )

@@ -50,9 +50,22 @@ class GalleryDetailOut(GalleryItemOut):
     exported_line_count: int
 
 
+class QiraaFacetOut(Schema):
+    name: str
+    name_arabic: str
+    count: int
+
+
+class GalleryFacetsOut(Schema):
+    #: Entries under the search and completed filters, whatever the qiraa.
+    all: int
+    qiraat: list[QiraaFacetOut]
+
+
 class GalleryListOut(Schema):
     total: int
     items: list[GalleryItemOut]
+    facets: GalleryFacetsOut
 
 
 class PublishIn(Schema):
@@ -68,11 +81,26 @@ class DuplicateOut(Schema):
 def list_gallery(
     request: HttpRequest,
     qiraa: str | None = None,
+    q: str | None = None,
+    completed: bool = False,
+    sort: gallery_service.GallerySort = "published",
     limit: int = 24,
     offset: int = 0,
 ) -> dict:
-    """Published mushafs, newest first. Open to everyone."""
-    return gallery_service.list_published(user=optional_user(request), qiraa=qiraa, limit=limit, offset=offset)
+    """Published mushafs. Open to everyone.
+
+    ``q`` searches the name, qiraa and author; ``completed`` keeps the fully
+    reviewed ones; ``sort`` is newest first, the most complete first, or by name.
+    """
+    return gallery_service.list_published(
+        user=optional_user(request),
+        qiraa=qiraa,
+        search=q,
+        completed=completed,
+        sort=sort,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.get("/{mushaf_id}", response=GalleryDetailOut, auth=None)
