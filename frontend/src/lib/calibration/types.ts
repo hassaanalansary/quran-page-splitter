@@ -118,8 +118,20 @@ export type CalibrationSettings = {
   default_limit: number;
 };
 
+/** An aya the reading left with fewer PAWs than its words spell — most often two
+ * PAWs printed touching. `words` are the words that came up short; `certain` is false
+ * when equal-cost readings could have put the shortage in another word. */
+export type PawShortage = {
+  aya: string;
+  short: number;
+  words: number[];
+  certain: boolean;
+};
+
 export type CalibrationDocument = {
   settings?: CalibrationSettings;
+  /** Ayat short of PAWs after the last reading. Absent from older drafts. */
+  shortages?: PawShortage[];
   page: number;
   revision: number;
   confirmed_revision: number | null;

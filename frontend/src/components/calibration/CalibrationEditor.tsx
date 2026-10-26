@@ -306,6 +306,21 @@ export function CalibrationEditor({
   const shownLines = preview ? preview.doc.lines : lines;
   const found = useMemo(() => pageExceptions(lines), [lines]);
   const looks = useMemo(() => attentionItems(shownLines).length, [shownLines]);
+  // Ayat the last reading (or the preview) left short of PAWs, and where each word is.
+  const shortages = (preview ? preview.doc : doc)?.shortages ?? [];
+  const wordOn = useMemo(
+    () =>
+      new Map(
+        shownLines.flatMap((line) =>
+          line.words.flatMap((word) =>
+            word.word_id === null
+              ? []
+              : [[word.word_id, { text: word.text, snapshot: line.snapshot_id }] as const],
+          ),
+        ),
+      ),
+    [shownLines],
+  );
 
   const strips = useMemo(() => {
     if (builtPage !== page) return [];
@@ -1605,6 +1620,41 @@ export function CalibrationEditor({
                   {t("calibration.moreExceptions", { count: found.length - LISTED })}
                 </span>
               )}
+            </div>
+          </PanelCard>
+        )}
+
+        {processed && shortages.length > 0 && (
+          <PanelCard title={t("calibration.shortagesTitle", { count: shortages.length })}>
+            <p className="-mt-1 text-[10.5px] leading-snug text-text-muted">
+              {t("calibration.shortagesNote")}
+            </p>
+            <div className="flex flex-col gap-1">
+              {shortages.map((item) => {
+                const short = item.words
+                  .map((id) => wordOn.get(id))
+                  .filter((word) => word !== undefined);
+                return (
+                  <button
+                    key={item.aya}
+                    type="button"
+                    disabled={!short.length}
+                    onClick={() => short[0] && showLine(short[0].snapshot)}
+                    className="flex cursor-pointer flex-col gap-0.5 rounded border border-border p-1.5 text-start transition-colors hover:border-orange hover:bg-orange-tint disabled:cursor-default"
+                  >
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-warning">
+                      {t("calibration.shortageAya", { aya: item.aya, count: item.short })}
+                    </span>
+                    <span dir="auto" className="text-[11px] leading-snug text-text-secondary">
+                      {item.certain && short.length
+                        ? t("calibration.shortageLikely", {
+                            words: short.map((word) => word.text).join("، "),
+                          })
+                        : t("calibration.shortageUncertain")}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           </PanelCard>
         )}

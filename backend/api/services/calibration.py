@@ -44,10 +44,12 @@ from __future__ import annotations
 
 import copy
 import logging
+import math
 import statistics
 import uuid
-from collections import OrderedDict
-from dataclasses import asdict
+from collections import Counter, OrderedDict, defaultdict
+from dataclasses import asdict, dataclass, field
+from itertools import pairwise
 from typing import Any, NoReturn, cast
 
 from django.db import transaction
@@ -77,6 +79,7 @@ from api.services import calibration_marks as text_marks
 from api.services import calibration_snapshots as snapshots
 from core.text import line_marks, paws
 from core.word_boundary import IjamMode, WordBoundaryInput, WordInput, detect_words
+from core.word_boundary.calibration import COUNT_WEIGHT, FUSION_DISCOUNT
 from core.word_boundary.engine import detect_prepared
 from core.word_boundary.examples import FEATURE_VERSION
 from core.word_boundary.ink import attach_marks
@@ -336,6 +339,131 @@ def _profile_summary(profile: CalibrationProfile, library: Library) -> Doc:
         "fingerprints": library.fingerprints,
         "limit": library.limit,
     }
+
+
+# ---------------------------------------------------------------------------
+# Fusions: letters this mushaf prints touching
+# ---------------------------------------------------------------------------
+#: Printed at least this often on the confirmed pages, a pair of letters speaks for
+#: itself; seen less, the letter that ends it speaks for it — whatever followed it.
+PAIR_EVIDENCE = 5
+
+#: (last letter of one piece, first letter of the next).
+Join = tuple[str, str]
+
+
+@dataclass(frozen=True)
+class FusionTable:
+    """How often each pair of letters at a PAW break was printed touching on the
+    confirmed pages, out of how often it was printed at all: (touching, printed).
+
+    Kept apart for a break between the pieces of one word and the space between two
+    words, which is wider: on the first mushaf's pages 1-14 all 16 touching pairs were
+    inside a word (a ر touched the next piece 9 times in 33 before a و; a و, 3 times
+    in 557), and not one of 1,493 joins across a space touched.
+    """
+
+    within: dict[Join, tuple[int, int]] = field(default_factory=dict)
+    across: dict[Join, tuple[int, int]] = field(default_factory=dict)
+
+    def chance(self, join: Join, *, across: bool) -> float:
+        """How likely this join is to be printed touching."""
+        tally = self.across if across else self.within
+        touching, printed = tally.get(join, (0, 0))
+        if not touching and printed < PAIR_EVIDENCE:
+            touching = sum(seen for (end, _), (seen, _) in tally.items() if end == join[0])
+            printed = sum(count for (end, _), (_, count) in tally.items() if end == join[0])
+        return touching / (printed + 1)
+
+
+def _touching_joins(document: Doc) -> list[tuple[Join, bool]]:
+    """Every join a confirmed page shows printed touching, and whether it is across a
+    space: a body given two PAWs of a word covers the join between them; a body shared
+    by two words, the join across the space."""
+    words = {word["id"]: word for word in document.get("stream", [])}
+    found = []
+    for row in document.get("lines", []):
+        bodies = [blob for blob in row["blobs"] if blob["role"] == "body" and blob.get("allocations")]
+        owned: dict[int, list[tuple[Doc, int]]] = defaultdict(list)
+        for blob in bodies:
+            for allocation in blob["allocations"]:
+                owned[allocation["word_id"]].append((blob, allocation["paws"]))
+        for word_id, parts in owned.items():
+            if word_id not in words:
+                continue
+            pieces = paws(words[word_id]["text"])
+            at = 0
+            # Right to left, so each body's PAWs follow the ones before it.
+            for _, count in sorted(parts, key=lambda part: -(part[0]["x"] + part[0]["w"])):
+                end = min(at + count, len(pieces)) - 1
+                found += [((pieces[j][-1], pieces[j + 1][0]), False) for j in range(at, end)]
+                at += count
+        for blob in bodies:
+            ids = [allocation["word_id"] for allocation in blob["allocations"] if allocation["word_id"] in words]
+            for first, second in pairwise(ids):
+                found.append(((paws(words[first]["text"])[-1][-1], paws(words[second]["text"])[0][0]), True))
+    return found
+
+
+def _printed_joins(document: Doc) -> list[tuple[Join, bool]]:
+    """Every join a confirmed page prints, touching or not: between the pieces of each
+    of its own words, and across the space to the next word of the same aya."""
+    stream = document.get("stream", [])
+    own = {word["word_id"] for row in document.get("lines", []) for word in row["words"] if word["word_id"]}
+    found = []
+    for index, word in enumerate(stream):
+        if word["id"] not in own:
+            continue
+        pieces = paws(word["text"])
+        found += [((first[-1], second[0]), False) for first, second in pairwise(pieces)]
+        following = stream[index + 1] if index + 1 < len(stream) else None
+        if following is not None and following["id"] in own and following["aya"] == word["aya"]:
+            found.append(((pieces[-1][-1], paws(following["text"])[0][0]), True))
+    return found
+
+
+#: Fusion tables by mushaf and the approvals they came from. Bounded.
+_FUSIONS: OrderedDict[tuple[str, tuple[str, ...]], FusionTable] = OrderedDict()
+_FUSIONS_MAX = 2
+
+
+def _fusion_table(mushaf: Mushaf, page: int) -> FusionTable:
+    """What every other confirmed page shows printed touching — the same pages the
+    library learns from."""
+    approved = _approved(mushaf, page)
+    key = (str(mushaf.pk), tuple(str(revision.pk) for revision in approved))
+    table = _FUSIONS.get(key)
+    if table is not None:
+        _FUSIONS.move_to_end(key)
+        return table
+    touching = Counter(item for revision in approved for item in _touching_joins(revision.payload))
+    printed = Counter(item for revision in approved for item in _printed_joins(revision.payload))
+    tallies: dict[bool, dict[Join, tuple[int, int]]] = {False: {}, True: {}}
+    for (join, across), count in printed.items():
+        tallies[across][join] = (touching[(join, across)], count)
+    table = FusionTable(within=tallies[False], across=tallies[True])
+    _FUSIONS[key] = table
+    while len(_FUSIONS) > _FUSIONS_MAX:
+        _FUSIONS.popitem(last=False)
+    return table
+
+
+def _short_weights(stream: list[Doc], table: FusionTable) -> dict[int, int]:
+    """What a missing PAW costs each word: COUNT_WEIGHT, less FUSION_DISCOUNT times the
+    chance that one of its joins — between its pieces, or across the space to the
+    words either side of it in its aya — is printed touching."""
+    weights: dict[int, int] = {}
+    pieces = [paws(word["text"]) for word in stream]
+    for index, word in enumerate(stream):
+        own = pieces[index]
+        chances = [table.chance((first[-1], second[0]), across=False) for first, second in pairwise(own)]
+        if index > 0 and stream[index - 1]["aya"] == word["aya"] and pieces[index - 1] and own:
+            chances.append(table.chance((pieces[index - 1][-1][-1], own[0][0]), across=True))
+        if index + 1 < len(stream) and stream[index + 1]["aya"] == word["aya"] and pieces[index + 1] and own:
+            chances.append(table.chance((own[-1][-1], pieces[index + 1][0][0]), across=True))
+        likely = 1 - math.prod(1 - chance for chance in chances)
+        weights[word["id"]] = round(COUNT_WEIGHT - FUSION_DISCOUNT * likely)
+    return weights
 
 
 # ---------------------------------------------------------------------------
@@ -1005,9 +1133,9 @@ def align_document(
     """Re-read the document's span under every decision already made on it.
 
     Human roles and assignments are hard constraints. With ``calibration_locks``,
-    calibration's proposals are applied as *provisional* locks — released aya by aya
-    by the engine if they make an aya unreadable — which is the third result the
-    evaluation compares; the editor never asks for it while calibration is in shadow.
+    calibration's proposals price each blob's roles by how sure the library is (see
+    :func:`_constrain`) — which is the third result the evaluation compares; the
+    editor never asks for it while calibration is in shadow.
 
     With ``text_locks`` the text's own word is added: the small waw and ya it puts on
     the writing line are locked as marks (:func:`_place_text_locks`), provisionally,
@@ -1060,6 +1188,8 @@ def _read(
     end = (int(result["end"][0]), int(result["end"][1]))
     units = _fused_units(rows, result["stream"])
     unit_of = {member: head for head, members in units.items() for member in members}
+    # Learned, like the library's prices: where this mushaf prints letters touching.
+    weights = _short_weights(result["stream"], _fusion_table(mushaf, result["page"])) if calibration_locks else {}
 
     images, inks, cut_by_row = [], [], []
     for row in rows:
@@ -1080,9 +1210,12 @@ def _read(
     for word in result["stream"]:
         head = unit_of.get(word["id"])
         if head is None:
-            stream.append(_word(word))
+            stream.append(_word(word, weights.get(word["id"], COUNT_WEIGHT)))
         elif head == word["id"]:
-            stream.append(_unit([original[member] for member in units[head]]))
+            members = units[head]
+            stream.append(
+                _unit([original[member] for member in members], min(weights.get(m, COUNT_WEIGHT) for m in members))
+            )
     source = WordBoundaryInput(lines=images, words=stream, ijam=cast(IjamMode, mushaf.ijam_mode))
     aligned = detect_prepared(source, inks)
 
@@ -1120,7 +1253,52 @@ def _read(
         if outcome.status != "exact" and not row["readonly"]:
             issues.append(outcome.reason or outcome.status)
     result["issues"] = sorted(set(issues))
+    tied = {row["snapshot_id"] for row, _, outcome in readings if outcome.end_sequences > 1}
+    result["shortages"] = _shortages(result, tied)
     return result
+
+
+def _shortages(document: Doc, tied: set[str]) -> list[Doc]:
+    """Every aya of the page the reading left with fewer PAWs than its words spell.
+
+    Two PAWs printed touching make one blob, so an aya with a touching pair comes up
+    short — and is flagged here rather than made up by reading a mark as a letter. Each
+    names the words that came up short (where the reading put the shortage, guided by
+    the joins likely to touch) and whether that place is ``certain``: not when a line
+    of the aya had equal-cost readings, which may have put it in another word.
+
+    Only ayat whose every word the reading placed: an unplaced word is a line that
+    failed to read, which says so itself.
+    """
+    stream = document["stream"]
+    taken: Counter[int] = Counter()
+    rows_of: dict[int, set[str]] = defaultdict(set)
+    for row in document["lines"] + document["context"]:
+        for blob in row["blobs"]:
+            if blob["role"] == "body":
+                for allocation in blob.get("allocations") or []:
+                    taken[allocation["word_id"]] += allocation["paws"]
+        for word in row["words"]:
+            if word["word_id"] is not None:
+                rows_of[word["word_id"]].add(row["snapshot_id"])
+    own = {word["word_id"] for row in document["lines"] for word in row["words"] if word["word_id"] is not None}
+    shortages = []
+    for aya in dict.fromkeys(word["aya"] for word in stream if word["id"] in own):
+        members = [word for word in stream if word["aya"] == aya]
+        if any(word["id"] not in rows_of for word in members):
+            continue
+        short = sum(word["paws"] for word in members) - sum(taken[word["id"]] for word in members)
+        if short <= 0:
+            continue
+        shortages.append(
+            {
+                "aya": aya,
+                "short": short,
+                "words": [word["id"] for word in members if taken[word["id"]] < word["paws"]],
+                "certain": not any(rows_of[word["id"]] & tied for word in members),
+            }
+        )
+    return shortages
 
 
 def _owner_ayas(blob: Doc, original: dict[int, Doc]) -> set[str]:
@@ -1186,7 +1364,7 @@ def _within(before: Doc, after: Doc, scope: set[str], original: dict[int, Doc]) 
     return merged
 
 
-def _word(raw: Doc) -> WordInput:
+def _word(raw: Doc, short_weight: int = COUNT_WEIGHT) -> WordInput:
     return WordInput(
         text=raw["text"],
         paws=raw["paws"],
@@ -1194,6 +1372,7 @@ def _word(raw: Doc) -> WordInput:
         ijam_below=raw["ijam_below"],
         aya=raw["aya"],
         id=raw["id"],
+        short_weight=short_weight,
     )
 
 
@@ -1246,7 +1425,7 @@ def _fused_units(rows: list[Doc], stream: list[Doc]) -> dict[int, list[int]]:
     return units
 
 
-def _unit(members: list[Doc]) -> WordInput:
+def _unit(members: list[Doc], short_weight: int = COUNT_WEIGHT) -> WordInput:
     """Consecutive words the engine is to read as one: everything they predict, added."""
     return WordInput(
         text=" ".join(member["text"] for member in members),
@@ -1255,6 +1434,7 @@ def _unit(members: list[Doc]) -> WordInput:
         ijam_below=sum(member["ijam_below"] for member in members),
         aya=members[0]["aya"],
         id=members[0]["id"],
+        short_weight=short_weight,
     )
 
 
@@ -1267,19 +1447,23 @@ def _constrain(
     — all of them together when it is shared by two words, since those two are one
     unit to the engine (see :func:`_fused_units`).
 
-    A person's decision is a hard lock. The text's and calibration's are provisional:
-    the engine knows them as "calibration" locks, which it releases aya by aya when
-    they leave an aya unreadable. The text outranks calibration — the examples cannot
-    tell a small waw from a waw, and the text names every one.
+    A person's decision is a hard lock. The text's is provisional: the engine knows
+    it as a "calibration" lock, which it releases aya by aya when it leaves an aya
+    unreadable. Calibration's — the library's answer, when ``calibration_locks`` (the
+    experimental opt-in) — is no lock at all but a *price*: reading the blob against
+    the library costs as much as the library is sure (``Blob.library_*``), so a sure
+    answer outweighs a missing PAW and an unsure one bends. The text outranks it —
+    the library cannot tell a small waw from a waw, and the text names every one.
     """
+    proposal = edited.get("proposal") or {}
+    if calibration_locks and edited.get("proposed_role") in TEXT_ROLES:
+        blob.library_role = edited["proposed_role"]
+        blob.library_confidence = float(proposal.get("confidence") or 0.0)
     if (edited["explicit"] or edited.get("ownership_explicit")) and edited["role"] in TEXT_ROLES:
         blob.locked_role = edited["role"]
         blob.lock_source = "human"
     elif text_locks and edited.get("text_role") in TEXT_ROLES:
         blob.locked_role = edited["text_role"]
-        blob.lock_source = "calibration"
-    elif calibration_locks and edited.get("proposed_role") in TEXT_ROLES:
-        blob.locked_role = edited["proposed_role"]
         blob.lock_source = "calibration"
     allocations = edited.get("allocations") or []
     if not (edited.get("ownership_explicit") and edited["role"] == "body" and allocations):
@@ -1412,6 +1596,8 @@ def _apply_outcome(
                 owners.setdefault(mark.label, owners[body])
     conflicts, released = set(outcome.constraint_conflicts), set(outcome.released_locks)
     locked = {blob.label: blob.lock_source for blob in ink.components if blob.locked_role is not None}
+    # A role the library priced and the reading kept is calibration's decision.
+    priced = {blob.label: blob.library_role for blob in ink.components if blob.library_role is not None}
     missing_ids = {word["word_id"] for word in row["words"] if word["word_id"] is not None} - placed
     here = {
         member for box in outcome.words if box.word_id is not None for member in units.get(box.word_id, [box.word_id])
@@ -1434,7 +1620,7 @@ def _apply_outcome(
             "human"
             if blob["explicit"] or locked.get(blob["id"]) == "human"
             else "calibration"
-            if locked.get(blob["id"]) == "calibration"
+            if locked.get(blob["id"]) == "calibration" or priced.get(blob["id"]) == blob["role"]
             else "search"
         )
         word_id = blob.get("text_word")

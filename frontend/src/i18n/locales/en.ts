@@ -1041,6 +1041,12 @@ export const en = {
     problem: { flagged: "Flagged", pawCount: "PAW count", unresolved: "Not settled" },
     moreExceptions: "…and {{count}} more",
     issuesTitle: "What the last reading reported",
+    shortagesTitle: "Ayat short of PAWs · {{count}}",
+    shortagesNote:
+      "The reading kept every learned body/mark answer and left these ayat with fewer PAWs than their words spell — most often two PAWs printed touching. Give the touching blob its PAWs.",
+    shortageAya: "Aya {{aya}} · {{count}} PAW(s) short",
+    shortageLikely: "likely in: {{words}}",
+    shortageUncertain: "place uncertain — equal readings put it elsewhere too",
 
     // The page
     pageTitle: "Page {{page}}",
@@ -1069,7 +1075,7 @@ export const en = {
       "Confirmed pages will guide body/mark decisions on newly processed pages, starting with examples from the first confirmed page: the fingerprint library's answer for every blob is applied. Predictions can be wrong. Continue reviewing every page. Saved drafts do not teach. Existing pages are not rewritten. Turning this off stops application on new pages.",
     enableExperimental: "Enable for new pages",
     experimentalNote:
-      "This page used experimental learned role restrictions. Review is still required.",
+      "This page was read with the learned body/mark answers (experimental): overturning a sure one cost more than leaving a word a PAW short. Review is still required.",
     heldHint:
       "This page changed elsewhere while you were editing it, so saving these edits would be refused. Reload to take the new version — your unsaved edits here are dropped.",
     staleHint:
