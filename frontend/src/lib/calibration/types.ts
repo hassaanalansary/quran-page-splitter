@@ -100,13 +100,26 @@ export type CalibrationLine = {
 export type CalibrationProfile = {
   signature: string;
   mode: "shadow" | string;
-  /** Confirmed pages the examples come from — always earlier than this one. */
+  /** Confirmed pages the examples come from — every one but this page. */
   pages: number[];
   examples: number;
+  /** The distinct shapes the library grouped those examples into, at `limit`. */
+  fingerprints?: number;
+  limit?: number;
+};
+
+/** A mushaf's calibration settings. `limit` is the fingerprint library's LIMIT in
+ * force — `default_limit` unless one was set — in its `comparison`'s own units. */
+export type CalibrationSettings = {
+  revision: number;
+  experimental: boolean;
+  comparison: string;
+  limit: number;
+  default_limit: number;
 };
 
 export type CalibrationDocument = {
-  settings?: { revision: number; experimental: boolean };
+  settings?: CalibrationSettings;
   page: number;
   revision: number;
   confirmed_revision: number | null;
@@ -248,8 +261,11 @@ export type CalibrationExample = {
   role: TextRole;
   subtype: string;
   distance: number;
-  /** How many identical confirmed blobs this example stands for. */
+  /** How many confirmed blobs this kept shape stands for: its group's size when it
+   * is the group's fingerprint, 1 for a member kept beside it. */
   copies: number;
+  /** Its group's fingerprint (else a member kept to show the group's reach). */
+  fingerprint?: boolean;
   image_url: string | null;
   /** The blob's box inside that line's image, image pixels. */
   crop: Rect | null;
@@ -259,6 +275,9 @@ export type CalibrationExamples = {
   proposed_role: TextRole | null;
   confidence: number;
   reasons: string[];
+  /** Distance to the nearest kept letter and the nearest kept mark. */
+  nearest_letter?: number;
+  nearest_mark?: number;
   support_count?: number;
   distinct_pages?: number;
   neighbors: CalibrationExample[];

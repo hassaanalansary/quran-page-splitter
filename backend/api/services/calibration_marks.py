@@ -24,7 +24,7 @@ from typing import Any
 
 from core.text import letters_of, paws, text_marks
 from core.text.marks import Lane
-from core.word_boundary.examples import TypeIndex, predict_types, type_scores
+from core.word_boundary.library import Library
 from core.word_boundary.mark_check import FoundMark, WordCheck, check_word
 from quran.services.quran_text import pause_signs
 
@@ -124,7 +124,7 @@ def check_rows(
     rows: list[Doc],
     stream: list[Doc],
     marks: list[tuple[Doc, Doc, Any]],
-    index: TypeIndex,
+    index: Library,
     *,
     ijam: bool,
 ) -> dict[str, dict[int, WordCheck]]:
@@ -143,8 +143,8 @@ def check_rows(
     references = {word["id"]: word for word in stream}
     pauses = pause_signs()
     features = [descriptor for _, _, descriptor in marks]
-    scores = type_scores(features, index) if index.types else [{} for _ in marks]
-    guesses = predict_types(features, index) if index.types else [{} for _ in marks]
+    scores = index.type_scores(features)
+    guesses = index.predict_types(features) if index.types else [{} for _ in marks]
     known = set(index.types)
     score_of = {(row["snapshot_id"], blob["id"]): found for (row, blob, _), found in zip(marks, scores, strict=True)}
     guess_of = {(row["snapshot_id"], blob["id"]): found for (row, blob, _), found in zip(marks, guesses, strict=True)}

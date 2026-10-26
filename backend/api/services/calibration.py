@@ -78,17 +78,9 @@ from api.services import calibration_snapshots as snapshots
 from core.text import line_marks, paws
 from core.word_boundary import IjamMode, WordBoundaryInput, WordInput, detect_words
 from core.word_boundary.engine import detect_prepared
-from core.word_boundary.examples import (
-    DEFAULT_CONFIG,
-    FEATURE_VERSION,
-    PreparedIndex,
-    build_prepared,
-    build_type_index,
-    nearest_by_type,
-    predict_prepared,
-    predict_types,
-)
+from core.word_boundary.examples import FEATURE_VERSION
 from core.word_boundary.ink import attach_marks
+from core.word_boundary.library import COMPARISONS, DEFAULT_COMPARISON, Library, build_library, comparison
 from core.word_boundary.results import InkComponent, WordLine
 from quran.models import CountingSystem
 from quran.services import words as words_service
@@ -114,14 +106,26 @@ MAX_PAWS = 8
 SMALL_LETTER_AREA = 0.4
 #: The engine's doubts about a blob that an answer from the examples or the text settles.
 ENGINE_DOUBTS = ("uncertain", "search-override", "ambiguous")
-#: The matcher's settings. Recorded in every profile, so a change of settings is a
-#: change of profile and an old evaluation stays reproducible.
-MATCHER_CONFIG = dict(DEFAULT_CONFIG)
+#: Which version of the library a profile was built by — part of its identity, so a
+#: change in how the library is built is a change of profile.
+LIBRARY_VERSION = 1
+#: Refused above this: a LIMIT that groups every shape together is a typo, not a setting.
+LIMIT_CEILING = 10.0
 
 
 def settings_document(mushaf: Mushaf) -> Doc:
+    """The mushaf's calibration settings: experimental learning, and the library's
+    comparison and LIMIT (``limit`` is what is in force; ``default_limit`` what an
+    unset LIMIT means for that comparison)."""
     setting = CalibrationSettings.objects.filter(mushaf=mushaf).first()
-    return {"revision": setting.revision if setting else 0, "experimental": bool(setting and setting.experimental)}
+    method = comparison(setting.comparison if setting else None)
+    return {
+        "revision": setting.revision if setting else 0,
+        "experimental": bool(setting and setting.experimental),
+        "comparison": method.name,
+        "limit": setting.library_limit if setting and setting.library_limit is not None else method.default_limit,
+        "default_limit": method.default_limit,
+    }
 
 
 @transaction.atomic
@@ -132,9 +136,16 @@ def save_settings(mushaf: Mushaf, data: Doc, *, user: User | None) -> Doc:
         _refuse("stale_revision")
     if data["experimental"] and not data.get("acknowledge_unvalidated"):
         _refuse("invalid_edits", 422)
+    # Every save says the whole setting: a null LIMIT is the comparison's default.
+    chosen = data.get("comparison") or setting.comparison or DEFAULT_COMPARISON
+    limit = data.get("limit")
+    if chosen not in COMPARISONS or (limit is not None and not 0 < limit <= LIMIT_CEILING):
+        _refuse("invalid_edits", 422)
     setting.experimental = data["experimental"]
+    setting.comparison = chosen
+    setting.library_limit = limit
     setting.revision += 1
-    setting.save(update_fields=["experimental", "revision", "updated_at"])
+    setting.save(update_fields=["experimental", "comparison", "library_limit", "revision", "updated_at"])
     activity.emit(
         mushaf, ActivityTypeChoices.CALIBRATION_SAVED, {"action": "settings", **settings_document(mushaf)}, actor=user
     )
@@ -180,16 +191,18 @@ def _approval(review: CalibrationReview) -> CalibrationRevision | None:
     ).first()
 
 
-def _approved(mushaf: Mushaf, before_page: int) -> list[CalibrationRevision]:
-    """Every confirmed approval of a page before ``before_page``, in page order.
+def _approved(mushaf: Mushaf, page: int) -> list[CalibrationRevision]:
+    """Every confirmed approval of a page other than ``page``, in page order.
 
-    *Before*, strictly: a page is never predicted from its own labels, which is
-    what makes the prediction record of each page an honest test of the pages
-    before it.
+    Never the page's own: a page is not predicted from its own labels, which is what
+    keeps the prediction record of each page an honest test of the others. Pages
+    after it count too — what a page teaches does not depend on when it was read.
     """
-    reviews = CalibrationReview.objects.filter(
-        mushaf=mushaf, page_number__lt=before_page, confirmed_revision__isnull=False
-    ).order_by("page_number")
+    reviews = (
+        CalibrationReview.objects.filter(mushaf=mushaf, confirmed_revision__isnull=False)
+        .exclude(page_number=page)
+        .order_by("page_number")
+    )
     return [revision for revision in (_approval(review) for review in reviews) if revision is not None]
 
 
@@ -235,7 +248,7 @@ def _samples(mushaf: Mushaf, revisions: list[CalibrationRevision]) -> list[dict]
                         "page_number": snapshot.page_number,
                         "line_number": snapshot.line_number,
                         "role": blob["role"],
-                        "subtype": blob.get("subtype", "") if blob.get("subtype_explicit", True) else "",
+                        "subtype": blob["subtype"] if _typed(blob) else "",
                         "revision_id": str(revision.pk),
                         "features": features[blob["id"]],
                     }
@@ -243,58 +256,58 @@ def _samples(mushaf: Mushaf, revisions: list[CalibrationRevision]) -> list[dict]
     return samples
 
 
-#: Prepared indexes by mushaf and profile signature. A signature fixes the examples
-#: exactly, so a cached index is never stale. The mushaf is part of the key because a
-#: duplicate carries its original's profiles under the same signatures, but its own
-#: snapshots. Bounded, because each index is a matrix of examples.
-_PREPARED: OrderedDict[tuple[str, str], PreparedIndex] = OrderedDict()
-_PREPARED_MAX = 2
+#: Libraries by mushaf and profile signature. A signature fixes the examples, the
+#: comparison and the LIMIT exactly, so a cached library is never stale. The mushaf is
+#: part of the key because a duplicate carries its original's profiles under the same
+#: signatures, but its own snapshots. Bounded, because each holds its kept shapes.
+_LIBRARIES: OrderedDict[tuple[str, str], Library] = OrderedDict()
+_LIBRARIES_MAX = 2
 
 
-def _prepared(mushaf: Mushaf, profile: CalibrationProfile) -> PreparedIndex:
-    """A profile's index, built from exactly the approvals and settings it records.
+def _library_of(mushaf: Mushaf, profile: CalibrationProfile) -> Library:
+    """A profile's library, built from exactly the approvals and settings it records.
 
     Never from whatever is approved now: a page re-confirmed since would otherwise
-    change the examples behind a prediction that was made before it.
+    change the examples behind a prediction that was made before it. A profile from
+    before the library (it records a matcher ``config`` instead) is read with the
+    default comparison and LIMIT.
     """
     key = (str(mushaf.pk), profile.signature)
-    prepared = _PREPARED.get(key)
-    if prepared is not None:
-        _PREPARED.move_to_end(key)
-        return prepared
+    library = _LIBRARIES.get(key)
+    if library is not None:
+        _LIBRARIES.move_to_end(key)
+        return library
     revisions = sorted(
         CalibrationRevision.objects.filter(
             review__mushaf=mushaf, pk__in=profile.payload.get("revisions", [])
         ).select_related("review"),
         key=lambda revision: revision.review.page_number,
     )
-    prepared = build_prepared(_samples(mushaf, revisions), profile.payload.get("config", MATCHER_CONFIG))
-    _PREPARED[key] = prepared
-    while len(_PREPARED) > _PREPARED_MAX:
-        _PREPARED.popitem(last=False)
-    return prepared
+    library = build_library(
+        _samples(mushaf, revisions),
+        method=comparison(profile.payload.get("comparison")),
+        limit=profile.payload.get("limit"),
+    )
+    _LIBRARIES[key] = library
+    while len(_LIBRARIES) > _LIBRARIES_MAX:
+        _LIBRARIES.popitem(last=False)
+    return library
 
 
-def profile_for(
-    mushaf: Mushaf, before_page: int, *, experimental: bool | None = None
-) -> tuple[CalibrationProfile, PreparedIndex]:
-    """The profile predictions for ``before_page`` are made from, and its index.
+def profile_for(mushaf: Mushaf, page: int) -> tuple[CalibrationProfile, Library]:
+    """The profile predictions for ``page`` are made from, and its library.
 
     The profile row records only *which* approvals and *which* settings — the
-    examples are rebuilt from those approvals' snapshots on demand. The same
-    approvals and settings always hash to the same signature, and so the same row.
+    examples are regrouped from those approvals' snapshots on demand (seconds). The
+    same approvals and settings always hash to the same signature, and so the same row.
     """
-    approved = _approved(mushaf, before_page)
-    config = dict(MATCHER_CONFIG)
-    # Experimental opt-in can start helping after the first confirmed page.
-    # Keep distinct-descriptor support, closeness and opposite-class separation.
-    if experimental is None:
-        experimental = settings_document(mushaf)["experimental"]
-    if experimental:
-        config["min_distinct_pages"] = 1
+    approved = _approved(mushaf, page)
+    settings = settings_document(mushaf)
     identity = {
         "feature_version": FEATURE_VERSION,
-        "config": config,
+        "library": LIBRARY_VERSION,
+        "comparison": settings["comparison"],
+        "limit": settings["limit"],
         "revisions": [str(revision.pk) for revision in approved],
     }
     signature = snapshots.digest(identity)
@@ -306,15 +319,22 @@ def profile_for(
             "mode": "shadow",
         },
     )
-    return profile, _prepared(mushaf, profile)
+    return profile, _library_of(mushaf, profile)
 
 
-def _profile_summary(profile: CalibrationProfile, prepared: PreparedIndex) -> Doc:
+def _library(mushaf: Mushaf, page: int) -> Library:
+    """The library that answers for ``page``: every other confirmed page's examples."""
+    return profile_for(mushaf, page)[1]
+
+
+def _profile_summary(profile: CalibrationProfile, library: Library) -> Doc:
     return {
         "signature": profile.signature,
         "mode": profile.mode,
         "pages": profile.payload.get("pages", []),
-        "examples": sum(len(refs) for refs in prepared.refs),
+        "examples": library.examples,
+        "fingerprints": library.fingerprints,
+        "limit": library.limit,
     }
 
 
@@ -522,29 +542,29 @@ def _text_role(raw: Doc) -> str:
     return "body" if raw["preferred"] == "body" else "mark"
 
 
-def _blank_row(snapshot: CalibrationSnapshot, line: Line, prepared: PreparedIndex, *, readonly: bool) -> Doc:
+def _blank_row(snapshot: CalibrationSnapshot, line: Line, library: Library, *, readonly: bool) -> Doc:
     """A line as the engine first sees it: every blob with its evidence, nothing decided.
 
-    Each text blob carries calibration's *proposal* — body, mark, or nothing when
-    its nearest examples do not clear the gate. In shadow mode that is all it is.
+    Each text blob carries calibration's *proposal* — body or mark, from the library,
+    with how sure it is; nothing when the library does not yet know both letters and
+    marks. In shadow mode that is all it is.
     """
     data = snapshot.metadata
     ornaments = {ident for group in data["separators"] for ident in group}
     symbols = {ident for _, group in data["symbols"] for ident in group}
-    features = snapshots.blob_features(snapshot) if prepared.roles and not readonly else {}
+    features = snapshots.blob_features(snapshot) if library.can_propose and not readonly else {}
     ox, oy = data["bbox"]["x"] + data["offset_x"], data["bbox"]["y"] + data["offset_y"]
+    text = [
+        raw["label"]
+        for raw in data["blobs"]
+        if raw["label"] not in ornaments and raw["label"] not in symbols and raw["label"] in features
+    ]
+    proposals = dict(zip(text, library.roles_of([features[ident] for ident in text]), strict=True))
     blobs = []
     for raw in data["blobs"]:
         ident = raw["label"]
         role = "ornament" if ident in ornaments else "symbol" if ident in symbols else _text_role(raw)
-        proposal: Doc = {}
-        if role in TEXT_ROLES and ident in features:
-            found = predict_prepared(features[ident], prepared)
-            proposal = {
-                "role": found["proposed_role"],
-                "confidence": round(found["confidence"], 4),
-                "reasons": found["reasons"],
-            }
+        proposal: Doc = proposals.get(ident, {})
         blobs.append(
             {
                 "id": ident,
@@ -634,7 +654,7 @@ def process_page(
     stream = words_service.word_stream(system, start=start, end=end)
     lines = _span_lines(mushaf, start, end)
     experimental = settings_document(mushaf)["experimental"]
-    profile, prepared = profile_for(mushaf, page, experimental=experimental)
+    profile, library = profile_for(mushaf, page)
     templates = snapshots.Templates.of(mushaf)
     approved = _approved_rows(mushaf, {line.page.page_number for line in lines} - {page})
     earlier = _review(mushaf, page)
@@ -652,7 +672,7 @@ def process_page(
         if readonly and str(snapshot.pk) in approved:
             row = _as_constraint(copy.deepcopy(approved[str(snapshot.pk)]))
         else:
-            row = _blank_row(snapshot, line, prepared, readonly=readonly)
+            row = _blank_row(snapshot, line, library, readonly=readonly)
         rows.append(row)
         if progress is not None:
             progress(index)
@@ -662,11 +682,12 @@ def process_page(
         "start": list(start),
         "end": list(end),
         "stream": [asdict(word) for word in stream],
-        "profile": _profile_summary(profile, prepared),
+        "profile": _profile_summary(profile, library),
         "lines": [row for row in rows if not row["readonly"]],
         "context": [row for row in rows if row["readonly"]],
         "issues": [],
     }
+
     def alive() -> None:
         # The readings below run for a while without a line to count: say so between
         # them, or a page in a long batch looks like a worker that died.
@@ -2034,32 +2055,6 @@ def _typed_samples(stored: dict[str, CalibrationSnapshot], rows: list[Doc]) -> l
     return samples
 
 
-#: The confirmed pages' typed marks, by mushaf and the approvals they came from —
-#: recomputed only when a confirmation changes. Bounded: each holds descriptors.
-_TYPED: OrderedDict[tuple[str, tuple[str, ...]], list[Doc]] = OrderedDict()
-_TYPED_MAX = 2
-
-
-def _confirmed_types(mushaf: Mushaf, page: int) -> list[Doc]:
-    """Every mark typed on every confirmed page except this one."""
-    approvals = [revision for number, revision in _approvals(mushaf) if number != page]
-    key = (str(mushaf.pk), tuple(str(revision.pk) for revision in approvals))
-    cached = _TYPED.get(key)
-    if cached is not None:
-        _TYPED.move_to_end(key)
-        return cached
-    rows = [row for revision in approvals for row in revision.payload.get("lines", [])]
-    stored = {
-        str(s.pk): s
-        for s in CalibrationSnapshot.objects.filter(mushaf=mushaf, pk__in={row["snapshot_id"] for row in rows})
-    }
-    samples = _typed_samples(stored, rows)
-    _TYPED[key] = samples
-    while len(_TYPED) > _TYPED_MAX:
-        _TYPED.popitem(last=False)
-    return samples
-
-
 def _page_marks(mushaf: Mushaf, rows: list[Doc]) -> tuple[dict[str, CalibrationSnapshot], list[tuple[Doc, Doc, Any]]]:
     """The rows' snapshots by id, and every mark on them with its descriptor."""
     stored = {
@@ -2108,8 +2103,8 @@ def type_suggestions(mushaf: Mushaf, page: int, data: Doc) -> Doc:
     rows = edited["lines"]
     stored, marks = _page_marks(mushaf, rows)
     here = _typed_samples(stored, rows)
-    confirmed = _confirmed_types(mushaf, page)
-    index = build_type_index(confirmed + here)
+    library = _library(mushaf, page)
+    index = library.with_typed(here)
     checks = (
         text_marks.check_rows(rows, edited["stream"], marks, index, ijam=mushaf.ijam_mode != "ignore")
         if _follows_text(mushaf)
@@ -2124,7 +2119,7 @@ def type_suggestions(mushaf: Mushaf, page: int, data: Doc) -> Doc:
     arranged = {(row["snapshot_id"], ident) for row in rows for ident in text_marks.embraced(row)}
     untyped = [mark for mark in marks if not _typed(mark[1])]
     typed = [mark for mark in marks if text_marks.human_typed(mark[1])]
-    guesses = predict_types([features for _, _, features in untyped], index)
+    guesses = index.predict_types([features for _, _, features in untyped])
     suggestions = []
     for (row, blob, _), found in zip(untyped, guesses, strict=True):
         key = (row["snapshot_id"], blob["id"])
@@ -2150,9 +2145,8 @@ def type_suggestions(mushaf: Mushaf, page: int, data: Doc) -> Doc:
         else:
             continue
         suggestions.append({"snapshot_id": key[0], "blob_id": key[1], **suggestion, "source": source, **said})
-    elsewhere = build_type_index(confirmed)
-    known = set(elsewhere.types)
-    answers = predict_types([features for _, _, features in typed], elsewhere)
+    known = set(library.types)
+    answers = library.predict_types([features for _, _, features in typed])
     disagreed = {
         (snapshot_id, ident): check.types[ident]
         for snapshot_id, per_word in checks.items()
@@ -2176,7 +2170,7 @@ def type_suggestions(mushaf: Mushaf, page: int, data: Doc) -> Doc:
     return {
         "suggestions": suggestions,
         "doubts": doubts,
-        "examples": len(confirmed),
+        "examples": library.typed_examples,
         "typed_here": len(here),
         "words": text_marks.summary(checks),
         "tanween": [
@@ -2195,7 +2189,7 @@ def _apply_text_types(mushaf: Mushaf, document: Doc) -> None:
         return
     rows = [row for row in document["lines"] if not row.get("readonly")]
     stored, marks = _page_marks(mushaf, rows)
-    index = build_type_index(_confirmed_types(mushaf, document["page"]) + _typed_samples(stored, rows))
+    index = _library(mushaf, document["page"]).with_typed(_typed_samples(stored, rows))
     checks = text_marks.check_rows(rows, document["stream"], marks, index, ijam=mushaf.ijam_mode != "ignore")
     text_marks.apply_text_types(rows, checks)
 
@@ -2224,9 +2218,9 @@ def type_evidence(mushaf: Mushaf, page: int, data: Doc) -> Doc:
     if found is None:
         _refuse("not_found", 404, page=page)
     blob, features = found
-    confirmed = _confirmed_types(mushaf, page)
-    index = build_type_index(confirmed if _typed(blob) else confirmed + _typed_samples(stored, rows))
-    candidates = nearest_by_type(features, index)
+    library = _library(mushaf, page)
+    index = library if _typed(blob) else library.with_typed(_typed_samples(stored, rows))
+    candidates = index.nearest_by_type(features)
     sources = {
         str(s.pk): s
         for s in CalibrationSnapshot.objects.filter(
@@ -2268,7 +2262,7 @@ def type_evidence(mushaf: Mushaf, page: int, data: Doc) -> Doc:
 # The inspector
 # ---------------------------------------------------------------------------
 def examples(mushaf: Mushaf, page: int, snapshot_id: str, blob_id: int) -> Doc:
-    """The confirmed examples nearest one blob, and what they propose.
+    """The kept shapes nearest one blob, and what the library proposes from them.
 
     Asked on demand rather than stored with the page: five neighbours for each of a
     thousand blobs is most of a page's weight, and a reviewer looks at a few.
@@ -2283,18 +2277,20 @@ def examples(mushaf: Mushaf, page: int, snapshot_id: str, blob_id: int) -> Doc:
     review = _review(mushaf, page)
     recorded = (review.payload.get("profile") or {}).get("signature") if review else None
     profile = CalibrationProfile.objects.filter(mushaf=mushaf, signature=recorded).first() if recorded else None
-    prepared = _prepared(mushaf, profile) if profile is not None else profile_for(mushaf, page)[1]
-    if features is None or not prepared.roles:
+    library = _library_of(mushaf, profile) if profile is not None else _library(mushaf, page)
+    if features is None or not library.can_propose:
         return {"proposed_role": None, "confidence": 0.0, "reasons": ["no_examples"], "neighbors": [], "mode": "shadow"}
-    found = predict_prepared(features, prepared)
+    found = library.role_of(features)
+    nearest = library.nearest(features)
+    agreeing = [neighbor for neighbor in nearest if neighbor["role"] == found["role"]]
     stored = {
         str(s.pk): s
         for s in CalibrationSnapshot.objects.filter(
-            mushaf=mushaf, pk__in=[neighbor["snapshot_id"] for neighbor in found["neighbors"]]
+            mushaf=mushaf, pk__in=[neighbor["snapshot_id"] for neighbor in nearest]
         )
     }
     neighbors = []
-    for neighbor in found["neighbors"]:
+    for neighbor in nearest:
         source = stored.get(neighbor["snapshot_id"])
         raw = next((b for b in (source.metadata["blobs"] if source else []) if b["label"] == neighbor["blob_id"]), None)
         neighbors.append(
@@ -2305,8 +2301,9 @@ def examples(mushaf: Mushaf, page: int, snapshot_id: str, blob_id: int) -> Doc:
                 "line_number": neighbor["line_number"],
                 "role": neighbor["role"],
                 "subtype": neighbor.get("subtype", ""),
-                "distance": round(neighbor["distance"], 4),
-                "copies": len(neighbor["refs"]),
+                "distance": neighbor["distance"],
+                "copies": neighbor["copies"],
+                "fingerprint": neighbor["fingerprint"],
                 "image_url": source.image.url if source else None,
                 "crop": (
                     {
@@ -2321,11 +2318,13 @@ def examples(mushaf: Mushaf, page: int, snapshot_id: str, blob_id: int) -> Doc:
             }
         )
     return {
-        "proposed_role": found["proposed_role"],
+        "proposed_role": found["role"],
         "confidence": found["confidence"],
         "reasons": found["reasons"],
-        "support_count": found["support_count"],
-        "distinct_pages": found["distinct_pages"],
+        "nearest_letter": found["nearest_letter"],
+        "nearest_mark": found["nearest_mark"],
+        "support_count": len(agreeing),
+        "distinct_pages": len({neighbor["page_number"] for neighbor in agreeing}),
         "neighbors": neighbors,
         "mode": "shadow",
     }

@@ -15,6 +15,7 @@ import type {
   CalibrationExamples,
   CalibrationPageState,
   CalibrationReadiness,
+  CalibrationSettings,
   CalibrationTypes,
   TypeEvidence,
 } from "../calibration/types";
@@ -109,12 +110,18 @@ export function startCalibrationBatch(id: string, range: BatchRange) {
   return apiJson<{ job: ProcessJob }>("POST", `/api/mushafs/${id}/calibration/batch`, range);
 }
 
-export function setCalibrationSettings(id: string, revision: number, experimental: boolean) {
-  return apiJson<{ revision: number; experimental: boolean }>(
-    "PUT",
-    `/api/mushafs/${id}/calibration/settings`,
-    { revision, experimental, acknowledge_unvalidated: experimental },
-  );
+/** Save the whole setting: `limit` null is the comparison's default LIMIT. */
+export function setCalibrationSettings(
+  id: string,
+  revision: number,
+  change: { experimental: boolean; limit: number | null },
+) {
+  return apiJson<CalibrationSettings>("PUT", `/api/mushafs/${id}/calibration/settings`, {
+    revision,
+    experimental: change.experimental,
+    limit: change.limit,
+    acknowledge_unvalidated: change.experimental,
+  });
 }
 
 export function useCalibration(id: string, page: number, enabled = true) {

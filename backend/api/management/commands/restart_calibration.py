@@ -128,7 +128,7 @@ class Command(BaseCommand):
             setting.experimental = False
             setting.revision += 1
             setting.save()
-        calibration._PREPARED.clear()
+        calibration._LIBRARIES.clear()
         self.stdout.write(
             self.style.SUCCESS(
                 f"Restarted {len(plans)} pages. Backup: {backup.resolve()}. "

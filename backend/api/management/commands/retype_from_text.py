@@ -29,7 +29,6 @@ from api.models import (
 )
 from api.services import activity, calibration
 from api.services import calibration_marks as text_marks
-from core.word_boundary.examples import build_type_index
 
 #: What a reviewer typed before the text's own type existed, and that type.
 RENAMED = {("sukun", "roundZero"), ("sukun", "rectZero"), ("ijamDot", "waqfMuanaqa")}
@@ -93,7 +92,7 @@ class Command(BaseCommand):
         if not options["apply"]:
             self.stdout.write(f"DRY RUN: {total} marks to retype. Nothing changed. Use --apply to retype them.")
             return
-        calibration._TYPED.clear()
+        calibration._LIBRARIES.clear()
         self.stdout.write(self.style.SUCCESS(f"Retyped {total} marks."))
 
 
@@ -103,7 +102,7 @@ def _renamed(mushaf: Mushaf, page: int, document: dict) -> dict[tuple[int, int],
     if not rows:
         return {}
     _, marks = calibration._page_marks(mushaf, rows)
-    index = build_type_index(calibration._confirmed_types(mushaf, page))
+    index = calibration._library(mushaf, page)
     checks = text_marks.check_rows(rows, document["stream"], marks, index, ijam=mushaf.ijam_mode != "ignore")
     found: dict[tuple[int, int], str] = {}
     for row in rows:

@@ -1053,14 +1053,20 @@ export const en = {
     confirmedAt: "at revision {{revision}}",
     editedSinceConfirm: "at revision {{revision}}, edited since",
     learning: "Learns from",
-    learningFrom: "{{count}} confirmed page(s) · {{examples}} examples",
-    learningNone: "no confirmed page before this one yet",
+    learningFrom:
+      "{{count}} confirmed page(s) · {{examples}} examples · {{fingerprints}} fingerprints",
+    learningNone: "no other confirmed page yet",
+    libraryLimit: "Fingerprint LIMIT",
+    libraryLimitHelp:
+      "How alike two shapes must be to share a fingerprint: smaller keeps more distinct shapes. Default {{value}}. Applies to pages processed from now on, and to type hints at once.",
+    applyLimit: "Apply",
+    defaultLimit: "Default",
     shadowNote:
       "This page was processed in shadow mode: learned role predictions were not applied.",
     experimentalSwitch: "Apply learning to new pages (experimental)",
     experimentalTitle: "Apply unvalidated learning?",
     experimentalWarning:
-      "Confirmed pages will guide body/mark decisions on newly processed later pages, starting with examples from the first confirmed page. Only close, agreeing matches with enough distinct examples apply. Accuracy has not been validated, and confident predictions can be wrong. Continue reviewing every page. Saved drafts do not teach. Existing pages are not rewritten. Turning this off stops application on new pages.",
+      "Confirmed pages will guide body/mark decisions on newly processed pages, starting with examples from the first confirmed page: the fingerprint library's answer for every blob is applied. Predictions can be wrong. Continue reviewing every page. Saved drafts do not teach. Existing pages are not rewritten. Turning this off stops application on new pages.",
     enableExperimental: "Enable for new pages",
     experimentalNote:
       "This page used experimental learned role restrictions. Review is still required.",

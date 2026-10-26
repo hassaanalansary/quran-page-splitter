@@ -1709,6 +1709,7 @@ function PageCard({
             ? t("calibration.learningFrom", {
                 count: profile.pages.length,
                 examples: profile.examples,
+                fingerprints: profile.fingerprints ?? "—",
               })
             : t("calibration.learningNone")}
         </dd>

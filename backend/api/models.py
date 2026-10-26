@@ -745,6 +745,10 @@ class CalibrationSettings(BaseModel):
     mushaf = models.OneToOneField(Mushaf, on_delete=models.CASCADE, related_name="calibration_settings")
     revision = models.PositiveIntegerField(default=0)
     experimental = models.BooleanField(default=False)
+    #: How the fingerprint library compares two blobs (``core.word_boundary.library.COMPARISONS``).
+    comparison = models.CharField(max_length=32, default="descriptor32")
+    #: The library's LIMIT, in the comparison's own units; null means its default.
+    library_limit = models.FloatField(null=True, blank=True)
 
     class Meta:
         db_table = "calibration_settings"

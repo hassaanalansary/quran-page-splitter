@@ -512,8 +512,26 @@ class SettingsTests(CalibrationApiTestCase):
         self.assertEqual(stored.payload["profile"]["mode"], "shadow")
         self.assertEqual(stored.payload["profile"]["pages"], [])
         profile = CalibrationProfile.objects.get(signature=doc["profile"]["signature"])
-        self.assertEqual(profile.payload["config"]["min_distinct_pages"], 1)
-        self.assertEqual(profile.payload["config"]["min_support"], 5)
+        self.assertEqual((profile.payload["comparison"], profile.payload["limit"]), ("descriptor32", 0.27))
+
+    def test_the_limit_is_saved_checked_and_part_of_the_profile(self):
+        url = f"/api/mushafs/{self.mushaf.id}/calibration/settings"
+        data = {"revision": 0, "experimental": False, "limit": 0.4}
+        response = self.client.put(url, data, content_type="application/json")
+        self.assertEqual(response.status_code, 200, response.content)
+        saved = response.json()
+        self.assertEqual((saved["comparison"], saved["limit"], saved["default_limit"]), ("descriptor32", 0.4, 0.27))
+        for refused in ({"limit": 0}, {"limit": -1}, {"limit": 11}, {"comparison": "unknown"}):
+            body = {"revision": 1, "experimental": False, **refused}
+            self.assertEqual(self.client.put(url, body, content_type="application/json").status_code, 422)
+        self.process(1)
+        profile = CalibrationProfile.objects.get(signature=self.document(1)["profile"]["signature"])
+        self.assertEqual(profile.payload["limit"], 0.4)
+        # A null LIMIT is the comparison's default again.
+        response = self.client.put(
+            url, {"revision": 1, "experimental": False, "limit": None}, content_type="application/json"
+        )
+        self.assertEqual(response.json()["limit"], 0.27)
 
     def test_predicted_subtypes_do_not_teach_without_explicit_confirmation(self):
         self.process(1)
@@ -595,12 +613,14 @@ class LearningTests(CalibrationApiTestCase):
         document = self.document(2)
         self.assertEqual(document["profile"]["pages"], [1])
         self.assertEqual(document["profile"]["examples"], 8)  # 3 bodies + 1 dot, twice
+        self.assertLessEqual(document["profile"]["fingerprints"], 8)
         profile = CalibrationProfile.objects.get(signature=document["profile"]["signature"])
         self.assertEqual(profile.mode, "shadow")
-        # Two distinct shapes cannot clear a gate that asks for five: it abstains.
+        # The library answers once it knows letters and marks, and says how sure.
         blob = self.blob_at(document["lines"][0], BODIES[0][0])
-        self.assertIsNone(blob["proposed_role"])
-        self.assertIn("insufficient_support", blob["proposal"]["reasons"])
+        self.assertEqual(blob["proposed_role"], "body")
+        self.assertEqual(blob["proposal"]["reasons"], [])
+        self.assertGreater(blob["proposal"]["confidence"], 0.5)
 
     def test_the_inspector_shows_where_the_nearest_examples_came_from(self):
         line = self.document(2)["lines"][0]
