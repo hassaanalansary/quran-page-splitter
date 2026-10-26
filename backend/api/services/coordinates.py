@@ -165,8 +165,7 @@ def _line_to_dict(line: Line) -> dict:
             for segment in line.segments.all()
         ],
         "erase_strokes": [
-            {"brush_size": stroke.brush_size, "points": stroke.points}
-            for stroke in line.erase_strokes.all()
+            {"brush_size": stroke.brush_size, "points": stroke.points} for stroke in line.erase_strokes.all()
         ],
         "line_png": _line_png_url(line),
     }
@@ -299,9 +298,7 @@ def plan_renumber(mushaf: Mushaf) -> RenumberPlan:
     counting_system = mushaf.rawi.counting_system if mushaf.rawi else None
     expected: dict[int, int] = {}
     if counting_system is not None:
-        expected = dict(
-            SuraAyaCount.objects.filter(counting_system=counting_system).values_list("sura_id", "count")
-        )
+        expected = dict(SuraAyaCount.objects.filter(counting_system=counting_system).values_list("sura_id", "count"))
 
     pages = list(
         Page.objects.filter(mushaf=mushaf)

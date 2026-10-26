@@ -41,9 +41,7 @@ def _line() -> LineResult:
 
 def _spans(line: LineResult) -> list[tuple[int, int, bool]]:
     """Segments as (left, right, has_separator), relative to the line box."""
-    return [
-        (seg.bbox.left - LINE_LEFT, seg.bbox.right - LINE_LEFT, seg.has_separator) for seg in line.segments
-    ]
+    return [(seg.bbox.left - LINE_LEFT, seg.bbox.right - LINE_LEFT, seg.has_separator) for seg in line.segments]
 
 
 class ShortLineTests(SimpleTestCase):

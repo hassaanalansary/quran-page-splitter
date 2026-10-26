@@ -77,9 +77,7 @@ class ExportLinesTests(MediaTestCase):
     def test_exported_png_url_on_page_data(self):
         export.export_lines(mushaf_id=self.mushaf.id, page_number=1, user=default_user())
         data = coordinates.page_to_dict(self.page)
-        self.assertTrue(
-            data["lines"][0]["line_png"].startswith(f"/media/mushafs/{self.mushaf.id}/lines/")
-        )
+        self.assertTrue(data["lines"][0]["line_png"].startswith(f"/media/mushafs/{self.mushaf.id}/lines/"))
 
     def test_zip_bundles_exported_lines(self):
         export.export_lines(mushaf_id=self.mushaf.id, page_number=1, user=default_user())
