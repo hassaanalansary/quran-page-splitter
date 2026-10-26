@@ -53,7 +53,6 @@ export const wordPlaybackEn = {
   risk: {
     count: "PAWs don't close",
     look: "ink to look at",
-    box: "box wider than its ink",
     line: "line not settled",
     noInk: "no ink",
     marks: "marks don't fit its text",

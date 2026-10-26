@@ -23,9 +23,11 @@ Everything else keeps the frozen engine's scoring.
 **What is stored.** The page's working *draft* lives on ``CalibrationReview.payload``
 and changes with every save. Only three moments are written as immutable
 ``CalibrationRevision`` rows: what the engine proposed when the page was processed
-(the prediction record the evaluation compares against), each confirmation (the only
-source of examples), and archived hand-corrected boundaries. Nearest examples are
-not stored at all — the inspector asks for one blob's when it is selected.
+(the prediction record the evaluation compares against) and each confirmation (the
+only source of examples); a third kind, ``legacy``, archived hand-corrected boundaries
+when those still existed. Nearest examples are not stored at all — the inspector asks
+for one blob's when it is selected. Confirming a page also writes its words
+(``LineWord``), which is the only way words are written.
 
 **The document.** One JSON shape travels between here and the editor::
 
@@ -36,8 +38,8 @@ not stored at all — the inspector asks for one blob's when it is selected.
     issues                    what the last alignment found worth saying
 
 and every line carries ``blobs`` (geometry, evidence, role, who decided it,
-allocations to words, attention flags) and ``words`` (edges, and whether an edge
-was set by hand). All x and y are **page** pixels.
+allocations to words, attention flags) and ``words`` (edges, always the extent of
+the ink given to the word). All x and y are **page** pixels.
 """
 
 from __future__ import annotations
@@ -86,7 +88,6 @@ from core.word_boundary.examples import FEATURE_VERSION
 from core.word_boundary.ink import attach_marks
 from core.word_boundary.library import COMPARISONS, DEFAULT_COMPARISON, Library, build_library, comparison
 from core.word_boundary.results import InkComponent, WordLine
-from quran.models import CountingSystem
 from quran.services import words as words_service
 
 logger = logging.getLogger(__name__)
@@ -174,13 +175,6 @@ def _follows_text(mushaf: Mushaf) -> bool:
     """
     rawi = mushaf.rawi
     return rawi is not None and rawi.name.lower() == "hafs"
-
-
-def _system(mushaf: Mushaf) -> CountingSystem | None:
-    try:
-        return word_inputs.counting_system_for(mushaf)
-    except LookupError:
-        return None
 
 
 # ---------------------------------------------------------------------------
@@ -471,18 +465,6 @@ def _short_weights(stream: list[Doc], table: FusionTable) -> dict[int, int]:
 # ---------------------------------------------------------------------------
 # Reading a page
 # ---------------------------------------------------------------------------
-def _page_words(mushaf: Mushaf, page: int) -> Doc:
-    row = Page.objects.filter(mushaf=mushaf, page_number=page).first()
-    if row is None:
-        return {"page": page, "lines": [], "issues": []}
-    system = _system(mushaf)
-    return {
-        "page": page,
-        "lines": word_coordinates.page_words(row, system),
-        "issues": [asdict(issue) for issue in word_coordinates.coherence(row, system)],
-    }
-
-
 def _sources_current(mushaf: Mushaf, rows: list[Doc]) -> bool:
     """Whether every row's snapshot still describes the line it was taken from.
 
@@ -542,16 +524,11 @@ def page_document(mushaf: Mushaf, page: int) -> Doc:
         revision=review.revision if review else 0,
         confirmed_revision=review.confirmed_revision if review else None,
     )
-    for key in ("lines", "context", "issues", "legacy_lines", "stream"):
+    for key in ("lines", "context", "issues", "stream"):
         document.setdefault(key, [])
-    # Drafts stored before boxes held their marks show them held now; the next save
-    # stores it. Nothing is written by reading.
-    for row in document["lines"] + document["context"]:
-        _fit_words(row)
     document.setdefault("profile", {"signature": "", "mode": "shadow", "pages": [], "examples": 0})
     document["processed"] = bool(document["lines"])
     document["settings"] = settings_document(mushaf)
-    document["words"] = _page_words(mushaf, page)
     _attach_urls(mushaf, document)
     # Stale snapshots stay readable — the reviewer can see what they had — but no
     # longer accept edits: labels only mean something against the current pixels.
@@ -780,8 +757,8 @@ def process_page(
     at this moment — with calibration's proposals beside it, not applied — is also
     written as an immutable ``processed`` revision: the prediction record. It is what
     the evaluation compares the eventual confirmation against, so it is taken before
-    anything a person did is put back on the page — decisions carried from an earlier
-    draft, cuts corrected in the word editor — and never touched afterwards. Beside it
+    anything a person did is put back on the page — the decisions carried from an
+    earlier draft — and never touched afterwards. Beside it
     goes the draft as its reviewer first sees it (:func:`_shown`), so a report can say
     what they corrected.
     """
@@ -846,10 +823,8 @@ def process_page(
     alive()
 
     # The draft: that reading, with what people already decided put back on it.
-    decided, worded = _carry_decisions(document, before)
-    if decided:
+    if _carry_decisions(document, before):
         document = align_document(mushaf, document, calibration_locks=document["profile"]["mode"] == "experimental")
-    _keep_legacy_edges(document, _hand_made(mushaf, page), skip=worded)
     _apply_text_types(mushaf, document)
     alive()
     shown = _shown(document)
@@ -862,7 +837,6 @@ def process_page(
         if review.revision != expected_revision:
             _refuse("stale_revision")
         review.revision += 1
-        document["legacy_lines"] = review.payload.get("legacy_lines", [])
         document["processed_revision"] = review.revision
         review.payload = document
         review.save(update_fields=["revision", "payload", "updated_at"])
@@ -881,19 +855,19 @@ def process_page(
     return True
 
 
-def _carry_decisions(document: Doc, before: dict[str, Doc]) -> tuple[bool, frozenset[str]]:
+def _carry_decisions(document: Doc, before: dict[str, Doc]) -> bool:
     """Put an earlier draft's decisions back on the lines that did not change.
 
     A line whose sources are unchanged keeps its snapshot, and so its blob ids: what
     the reviewer decided about blob 23 still means blob 23. A changed line has a new
     snapshot and starts over — its old labels described other pixels. Allocations
-    and dragged words outside the new span are dropped with the span.
+    outside the new span are dropped with the span. Words are not carried: their
+    boxes come from the ink, which the next reading gives them.
 
-    Returns whether anything was carried, and the rows whose words were.
+    Returns whether anything was carried.
     """
     stream = {word["id"] for word in document["stream"]}
     carried = False
-    worded: set[str] = set()
     for row in document["lines"]:
         old = before.get(row["snapshot_id"])
         if old is None:
@@ -922,16 +896,7 @@ def _carry_decisions(document: Doc, before: dict[str, Doc]) -> tuple[bool, froze
                 if blob["erased"]:
                     _erase(blob)
                     carried = True
-        dragged = [
-            word
-            for word in old["words"]
-            if word.get("override") and (word["word_id"] is None or word["word_id"] in stream)
-        ]
-        if dragged:
-            row["words"] = dragged
-            worded.add(row["snapshot_id"])
-            carried = True
-    return carried, frozenset(worded)
+    return carried
 
 
 def _as_constraint(row: Doc) -> Doc:
@@ -985,9 +950,6 @@ def _shown(document: Doc) -> Doc:
     """
     lines = []
     for row in document["lines"]:
-        # The editor shows every box widened to its ink (``page_document``).
-        fitted = copy.deepcopy(row)
-        _fit_words(fitted)
         lines.append(
             {
                 "snapshot_id": row["snapshot_id"],
@@ -1003,100 +965,10 @@ def _shown(document: Doc) -> Doc:
                     for blob in row["blobs"]
                     if not blob.get("erased")
                 },
-                "words": [[word["word_id"], word["start_x"], word["end_x"]] for word in fitted["words"]],
+                "words": [[word["word_id"], word["start_x"], word["end_x"]] for word in row["words"]],
             }
         )
     return {"lines": lines}
-
-
-def _cuts_of(line: Line) -> list[Doc]:
-    """A line's stored cuts, in the order they are read."""
-    return [
-        {"word_id": row.word_id, "start_x": row.start_x, "end_x": row.end_x}
-        for row in sorted(line.words.all(), key=lambda row: row.position)
-    ]
-
-
-def _overlay_cuts(row: Doc, cuts: list[Doc], references: dict[int, Doc]) -> None:
-    """Put a line's hand-made cuts on its draft row, as edges no reading may move.
-
-    Every cut becomes an override, which each later alignment keeps. The ink nobody
-    has decided about yet is then given to the word whose cut it sits in, so each
-    word's count reads against the boundaries as the hand drew them — not against
-    the engine's own reading, which those boundaries replaced. Roles are left as
-    they were read: a cut says where a word is, not what its ink is.
-    """
-    labelled: list[Doc] = []
-    unlabelled: list[Doc] = []
-    for cut in cuts:
-        ident = cut["word_id"]
-        if ident is not None and ident not in references:
-            continue  # a word outside this span is not this draft's to hold
-        reference = references.get(ident, {}) if ident is not None else {}
-        (labelled if ident is not None else unlabelled).append(
-            {
-                "word_id": ident,
-                "text": reference.get("text", ""),
-                "aya": reference.get("aya", ""),
-                "expected_paws": reference.get("paws", 0),
-                "start_x": int(cut["start_x"]),
-                "end_x": int(cut["end_x"]),
-                "override": True,
-                "shared": False,
-            }
-        )
-    if not labelled and not unlabelled:
-        return
-    row["words"] = _in_reading_order(labelled, unlabelled)
-    for blob in row["blobs"]:
-        if blob["role"] not in TEXT_ROLES or blob.get("ownership_explicit"):
-            continue
-        center = blob["x"] + blob["w"] / 2
-        owner = next((word["word_id"] for word in labelled if word["end_x"] <= center < word["start_x"]), None)
-        blob["allocations"] = (
-            [{"word_id": owner, "paws": 1 if blob["role"] == "body" else 0}] if owner is not None else []
-        )
-    # Cuts made while boxes held bodies only leave the marks they were given outside.
-    _fit_words(row)
-
-
-def _hand_made(mushaf: Mushaf, page: int) -> dict[str, list[Doc]]:
-    """This page's hand-made lines' cuts, by line id — as the draft rows name them."""
-    lines = (
-        Line.objects.filter(word_coordinates.HAND_MADE, page__mushaf=mushaf, page__page_number=page)
-        .distinct()
-        .prefetch_related("words")
-    )
-    return {str(line.pk): _cuts_of(line) for line in lines}
-
-
-def _keep_legacy_edges(document: Doc, hand_made: dict[str, list[Doc]], *, skip: frozenset[str] = frozenset()) -> None:
-    """Words a person corrected in the word editor keep their corrected edges.
-
-    ``skip`` names rows whose words already came from this page's previous draft:
-    those edges are the calibration reviewer's own, and no older than the cuts.
-    """
-    references = {word["id"]: word for word in document["stream"]}
-    for row in document["lines"]:
-        cuts = hand_made.get(row["line_id"])
-        if cuts is not None and row["snapshot_id"] not in skip:
-            _overlay_cuts(row, cuts, references)
-
-
-def absorb_legacy_edits(payload: Doc, lines: list[Line]) -> None:
-    """Bring cuts corrected in the word editor into this page's open draft.
-
-    Whichever editor touched a line last is what the draft shows. Without this, a
-    line corrected in the word editor after the page was processed here would be
-    overwritten by the page's next confirmation, which writes every line's words.
-    Called by ``word_coordinates.preserve_legacy_edits`` inside its transaction.
-    """
-    rows = {row["line_id"]: row for row in payload.get("lines", [])}
-    references = {word["id"]: word for word in payload.get("stream", [])}
-    for line in lines:
-        row = rows.get(str(line.pk))
-        if row is not None:
-            _overlay_cuts(row, _cuts_of(line), references)
 
 
 def _frozen_record(mushaf: Mushaf, page: int, start: tuple[int, int], end: tuple[int, int], user: User | None) -> Doc:
@@ -1239,12 +1111,6 @@ def _read(
     source = WordBoundaryInput(lines=images, words=stream, ijam=cast(IjamMode, mushaf.ijam_mode))
     aligned = detect_prepared(source, inks)
 
-    overrides = {
-        word["word_id"]: row["snapshot_id"]
-        for row in rows
-        for word in row["words"]
-        if word["word_id"] is not None and word.get("override")
-    }
     # Where the reading put each word, over every line at once: a word it moved to
     # another line is not missing from the one it left.
     placed = {
@@ -1259,7 +1125,7 @@ def _read(
         if row.get("approved"):
             continue
         fresh = copy.deepcopy(row)
-        _apply_outcome(fresh, outcome, ink, cut, original, overrides, units, placed)
+        _apply_outcome(fresh, outcome, ink, cut, original, units, placed)
         readings.append((row, fresh, outcome))
 
     scope = None if affected_ayas is None else _changed_ayas(readings, affected_ayas, original)
@@ -1404,10 +1270,10 @@ def _within(before: Doc, after: Doc, scope: set[str], original: dict[int, Doc]) 
     # Unrelated ayat keep exactly what the draft had.
     merged["blobs"] = [blob if new else old[blob["id"]] for blob, new in zip(after["blobs"], fresh, strict=True)]
     merged["words"] = _in_reading_order(
-        [word for word in after["words"] if word["word_id"] is not None and word["aya"] in scope]
-        + [word for word in before["words"] if word["word_id"] is not None and word["aya"] not in scope],
-        [word for word in before["words"] if word["word_id"] is None],
+        [word for word in after["words"] if word["aya"] in scope]
+        + [word for word in before["words"] if word["aya"] not in scope]
     )
+    _box_words(merged)  # each box from the ink the merged line gives its word
     return merged
 
 
@@ -1546,9 +1412,8 @@ def _edges_from_ink(row: Doc, word_id: int) -> tuple[int, int] | None:
     """A word's right and left edge, from its assigned bodies and marks.
 
     Where a body is shared with the word before — to the right — the word starts
-    inside it, at its middle; shared with the word after, it ends there. The middle
-    is only a first guess at a cut that lies somewhere inside one blob of ink, and
-    the reviewer's to drag.
+    inside it, at its middle; shared with the word after, it ends there: the cut lies
+    somewhere inside that one blob of ink, and its middle is as near as ink can say.
     """
     start: int | None = None
     end: int | None = None
@@ -1567,38 +1432,25 @@ def _edges_from_ink(row: Doc, word_id: int) -> tuple[int, int] | None:
     return start, end
 
 
-def _own_extent(row: Doc, word_id: int) -> tuple[int, int] | None:
-    """The right and left edge of the ink this word owns alone: its bodies and marks
-    that no other word shares."""
-    right: int | None = None
-    left: int | None = None
-    for blob in row["blobs"]:
-        owners = {allocation["word_id"] for allocation in blob.get("allocations") or []}
-        if blob["role"] not in TEXT_ROLES or owners != {word_id}:
-            continue
-        right = blob["x"] + blob["w"] if right is None else max(right, blob["x"] + blob["w"])
-        left = blob["x"] if left is None else min(left, blob["x"])
-    return None if right is None or left is None else (right, left)
+def _box_words(row: Doc) -> None:
+    """Every word's box from the ink given to it. In place.
 
-
-def _fit_words(row: Doc) -> None:
-    """Widen every word's box to hold all the ink it owns alone. In place.
-
-    A word's box spans its bodies *and* its marks (the user's rule, 2026-09-27). A box
-    set by hand -- dragged in the editor, or a cut carried in from the word editor --
-    keeps where the hand put it, except that it may never leave the word's own ink
-    outside: a hand widens a box, or moves the cut inside a body two words share, and
-    that shared body is the one piece of ink left out of the reckoning here. A box
-    nobody set is its ink's extent already, and does not change. The editor's
-    ``fitWord`` does the same arithmetic.
+    A word's box spans its bodies *and* its marks (the user's rule, 2026-09-27), and
+    nothing else sets it: no edge is placed by hand. A word with no ink keeps the
+    edges it had — a box needs numbers; its count says 0 of N. ``shared`` says the
+    word holds a body with another word, so one of its edges is that body's middle.
+    The editor's ``recalculate`` does the same arithmetic.
     """
     for word in row["words"]:
-        if word["word_id"] is None:
-            continue
-        extent = _own_extent(row, word["word_id"])
-        if extent is not None:
-            word["start_x"] = max(word["start_x"], extent[0])
-            word["end_x"] = min(word["end_x"], extent[1])
+        ident = word["word_id"]
+        edges = _edges_from_ink(row, ident)
+        if edges is not None:
+            word["start_x"], word["end_x"] = edges
+        word["shared"] = any(
+            blob["role"] == "body" and len(blob.get("allocations") or []) > 1
+            for blob in row["blobs"]
+            if ident in {allocation["word_id"] for allocation in blob.get("allocations") or []}
+        )
 
 
 def _apply_outcome(
@@ -1607,7 +1459,6 @@ def _apply_outcome(
     ink: Any,
     cut: set[int],
     original: dict[int, Doc],
-    overrides: dict[int, str],
     units: dict[int, list[int]],
     placed: set[int],
 ) -> None:
@@ -1645,7 +1496,7 @@ def _apply_outcome(
     locked = {blob.label: blob.lock_source for blob in ink.components if blob.locked_role is not None}
     # A role the library priced and the reading kept is calibration's decision.
     priced = {blob.label: blob.library_role for blob in ink.components if blob.library_role is not None}
-    missing_ids = {word["word_id"] for word in row["words"] if word["word_id"] is not None} - placed
+    missing_ids = {word["word_id"] for word in row["words"]} - placed
     here = {
         member for box in outcome.words if box.word_id is not None for member in units.get(box.word_id, [box.word_id])
     }
@@ -1678,7 +1529,7 @@ def _apply_outcome(
             _finish_text_lock(blob, word_id if word_id in here else None)
         blob["attention"] = _attention(blob, component, cut, conflicts, released)
 
-    previous = {word["word_id"]: word for word in row["words"] if word["word_id"] is not None}
+    previous = {word["word_id"]: word for word in row["words"]}
     fresh_words: list[Doc] = []
     for box in outcome.words:
         if box.word_id is None:
@@ -1694,7 +1545,6 @@ def _apply_outcome(
                     "expected_paws": original.get(box.word_id, {}).get("paws", box.expected_paws),
                     "start_x": edges[0],
                     "end_x": edges[1],
-                    "override": False,
                     "shared": False,
                 }
             )
@@ -1711,30 +1561,16 @@ def _apply_outcome(
                     "expected_paws": original[member]["paws"],
                     "start_x": edges[0],
                     "end_x": edges[1],
-                    "override": False,
                     "shared": True,
                 }
             )
 
-    words: list[Doc] = []
-    for fresh in fresh_words:
-        set_on = overrides.get(fresh["word_id"])
-        if set_on is not None and set_on != row["snapshot_id"]:
-            continue  # its edges were set by hand on another line; that placement wins
-        kept = previous.get(fresh["word_id"])
-        if kept is not None and kept.get("override"):
-            fresh.update(start_x=kept["start_x"], end_x=kept["end_x"], override=True)
-        words.append(fresh)
-    placed = {word["word_id"] for word in words}
-    for word_id, kept in previous.items():
-        # A hand-set word the engine did not place here stays where the hand put it.
-        if word_id not in placed and (overrides.get(word_id) == row["snapshot_id"] or word_id in missing_ids):
-            words.append(kept)
+    # A word of this row the reading placed nowhere stays, with the ink it kept.
+    words = fresh_words + [kept for word_id, kept in previous.items() if word_id in missing_ids]
     if outcome.status == "unresolved" and row["words"] and not words:
         words = row["words"]  # never trade a reviewer's words for nothing
-    unlabelled = [word for word in row["words"] if word["word_id"] is None]
-    row["words"] = _in_reading_order(words, unlabelled)
-    _fit_words(row)
+    row["words"] = _in_reading_order(words)
+    _box_words(row)
     row["status"] = "partial" if missing_ids else outcome.status
     row["reason"] = "preview-kept-missing-words" if missing_ids else outcome.reason
 
@@ -1896,18 +1732,9 @@ def _finish_text_lock(blob: Doc, word_id: int | None) -> None:
         blob.update(subtype=blob.get("text_type") or "smallLetter", subtype_source="text")
 
 
-def _in_reading_order(labelled: list[Doc], unlabelled: list[Doc]) -> list[Doc]:
-    """Labelled words by their place in the text; unlabelled ones where they sit.
-
-    The text's own order is the reading order. A word with no label has no place in
-    the text, so it goes where its right edge puts it among the others — the same
-    rule ``word_coordinates._place`` uses for a stored unlabelled cut.
-    """
-    ordered = sorted(labelled, key=lambda word: word["word_id"])
-    for word in unlabelled:
-        at = next((i for i, other in enumerate(ordered) if other["start_x"] < word["start_x"]), len(ordered))
-        ordered.insert(at, word)
-    return ordered
+def _in_reading_order(words: list[Doc]) -> list[Doc]:
+    """Words by their place in the text — the text's own order is the reading order."""
+    return sorted(words, key=lambda word: word["word_id"])
 
 
 def _attention(
@@ -1962,25 +1789,22 @@ def _blob_ayas(blob: Doc, row: Doc, references: dict[int, Doc]) -> set[str]:
 def _apply_edits(mushaf: Mushaf, review: CalibrationReview, data: Doc) -> Doc:
     """The draft with the client's edits applied — validated, never trusted.
 
-    The client sends every editable line whole: every blob's decisions and every
-    word's edges. Unknown blobs, words outside the span, a structural blob given a
-    text role, marks carrying PAWs — all refused as one invalid edit.
+    The client sends every editable line whole: every blob's decisions. Unknown
+    blobs, words outside the span, a structural blob given a text role, marks
+    carrying PAWs — all refused as one invalid edit. Words are not sent: each box is
+    taken again from the ink its word now has, and an aya is read again only when
+    its ink changed.
     """
     if data["revision"] != review.revision:
         _refuse("stale_revision")
     document: Doc = copy.deepcopy(review.payload)
     if not _sources_current(mushaf, document.get("lines", [])):
         _refuse("stale_source")
-    # As the editor was shown them (see ``page_document``): a box widened only to
-    # hold its marks is not an edit, and must not send its aya to be read again.
-    for row in document["lines"]:
-        _fit_words(row)
     incoming = {line["snapshot_id"]: line for line in data["lines"]}
     if len(incoming) != len(data["lines"]) or set(incoming) != {row["snapshot_id"] for row in document["lines"]}:
         _refuse("invalid_edits", 422)
     references = {word["id"]: word for word in document["stream"]}
     pending = set(document.get("pending_ayas", []))
-    used: set[int] = set()
     for row in document["lines"]:
         edit = incoming[row["snapshot_id"]]
         blobs = {blob["id"]: blob for blob in edit["blobs"]}
@@ -1994,33 +1818,7 @@ def _apply_edits(mushaf: Mushaf, review: CalibrationReview, data: Doc) -> Doc:
                 for key in ("role", "explicit", "allocations", "ownership_explicit", "erased")
             ):
                 pending.update(_blob_ayas(before, row, references) | _blob_ayas(blob, row, references))
-        words = []
-        for word in edit["words"]:
-            ident = word["word_id"]
-            if ident is not None and (ident not in references or ident in used):
-                _refuse("invalid_edits", 422)
-            if word["start_x"] <= word["end_x"]:
-                _refuse("invalid_edits", 422)
-            if ident is not None:
-                used.add(ident)
-            reference = references.get(ident, {})
-            words.append(
-                {
-                    "word_id": ident,
-                    "text": reference.get("text", ""),
-                    "aya": reference.get("aya", ""),
-                    "expected_paws": reference.get("paws", 0),
-                    "start_x": int(word["start_x"]),
-                    "end_x": int(word["end_x"]),
-                    "override": bool(word.get("override")),
-                    "shared": bool(word.get("shared")),
-                }
-            )
-        _fit_words({"blobs": row["blobs"], "words": words})
-        if row["words"] != words:
-            old = {w["word_id"]: w for w in row["words"]}
-            pending.update(w["aya"] for w in words if old.get(w["word_id"]) != w)
-        row["words"] = words
+        _box_words(row)
     document["pending_ayas"] = sorted(pending)
     return document
 
@@ -2134,7 +1932,6 @@ def preview(mushaf: Mushaf, page: int, data: Doc) -> Doc:
         processed=True,
         stale=False,
         preview=True,
-        words=_page_words(mushaf, page),
     )
     _attach_urls(mushaf, document)
     return document
@@ -2162,8 +1959,6 @@ def exceptions(document: Doc) -> list[Doc]:
                 for allocation in blob.get("allocations", []):
                     assigned[allocation["word_id"]] = assigned.get(allocation["word_id"], 0) + allocation["paws"]
         for word in row["words"]:
-            if word["word_id"] is None:
-                continue
             got = assigned.get(word["word_id"], 0)
             if got != word["expected_paws"]:
                 found.append(
@@ -2193,13 +1988,13 @@ def save(mushaf: Mushaf, page: int, data: Doc, *, confirm: bool = False, user: U
     and an immutable ``confirmed`` revision — the only thing examples come from.
     Counts that do not close are allowed, but only when acknowledged.
 
-    ``realign`` is how a preview is accepted. The edits carry decisions and edges,
-    never the engine's verdicts — a line's status, a blob's attention — so storing
+    ``realign`` is how a preview is accepted. The edits carry decisions, never the
+    engine's verdicts — a line's status, a blob's attention — so storing
     them as they came would keep the verdicts of the reading *before* the preview.
     The page is read again under the same edits instead; the search is
     deterministic, so what is stored is what the preview showed.
     """
-    # Match the ordinary word editor's Page -> Review lock order.
+    # Page, then review: always in this order, so two saves cannot deadlock.
     page_row = Page.objects.select_for_update().filter(mushaf=mushaf, page_number=page).first()
     review = CalibrationReview.objects.select_for_update().filter(mushaf=mushaf, page_number=page).first()
     if review is None or not review.payload.get("lines"):
@@ -2239,8 +2034,6 @@ def save(mushaf: Mushaf, page: int, data: Doc, *, confirm: bool = False, user: U
                 }
                 for row in document["lines"]
             ],
-            counting_system=_system(mushaf),
-            preserve_legacy=False,
         )
     review.revision += 1
     document["request"] = {"id": request_id, "hash": request_hash}
@@ -2882,7 +2675,7 @@ def _calibrated(mushaf: Mushaf, processed: Doc) -> Doc:
     document.pop("shown", None)
     document.setdefault("context", [])
     for row in document["lines"]:
-        row["words"] = [word for word in row["words"] if word.get("override")]
+        row["words"] = []
         for blob in row["blobs"]:
             blob.update(explicit=False, ownership_explicit=False, allocations=[], role=blob["initial_role"])
     try:

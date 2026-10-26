@@ -44,7 +44,6 @@ const word: CalibrationWord = {
   expected_paws: 1,
   start_x: 120,
   end_x: 110,
-  override: false,
   shared: false,
 };
 const second: CalibrationWord = { ...word, word_id: 2, text: "second", start_x: 110, end_x: 100 };

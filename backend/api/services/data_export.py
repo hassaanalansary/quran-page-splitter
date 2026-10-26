@@ -25,8 +25,8 @@ Inside the zip::
 as it stands — every blob with its class, its mark type and its words, and the words'
 boxes — and says how far it got (``calibration.state``): ``confirmed`` (approved, and
 unchanged since), ``edited`` (approved, then changed) or ``draft`` (processed, never
-approved: nobody has checked it). A page never calibrated exports the word boxes a word
-run or the cuts editor stored, and no blobs (``none``). The export hides nothing; which
+approved: nobody has checked it). A page never calibrated exports whatever word boxes
+are stored for it — from older data, or a bundle — and no blobs (``none``). The export hides nothing; which
 states a downstream app trusts is its own call.
 
 **The maps** are RGB PNGs the size of the line PNG, each pixel a number

@@ -7,22 +7,14 @@ import {
   coordinatesUrl,
   mushafStatus,
   useStats,
+  useCalibrationPages,
   useTemplates,
-  useWordsCoverage,
   type MushafDetail,
 } from "@/lib/api";
 
 import { pipelineSteps, STATUS_META, STEP_ROUTES, type StepSlug } from "./details/helpers";
 
-const STEP_SLUGS: StepSlug[] = [
-  "setup",
-  "templates",
-  "process",
-  "review",
-  "finalize",
-  "word-run",
-  "word-cuts",
-];
+const STEP_SLUGS: StepSlug[] = ["setup", "templates", "process", "review", "finalize", "ink"];
 
 /** Unified top bar for every mushaf page (workspace steps + the details hub):
  * breadcrumb → hub, status pill, a status-aware 6-step nav, and quick actions. */
@@ -40,14 +32,16 @@ export function MushafHeader({
   const { t } = useTranslation();
   const { data: templates } = useTemplates(mushaf.id);
   const { data: stats } = useStats(mushaf.id);
-  // Held for 30s (see useWordsCoverage): the header reads it on every workspace
-  // page, and without it the sixth step could never show a tick.
-  const { data: wordCoverage } = useWordsCoverage(mushaf.id);
+  // Without it the sixth step could never show a tick.
+  const { data: calibrationPages } = useCalibrationPages(mushaf.id);
   const templatesReady =
     !!templates &&
     ["sura_header", "aya_separator"].every((t) => templates.some((tpl) => tpl.type === t));
   const stepState = new Map(
-    pipelineSteps(mushaf, templatesReady, stats, null, wordCoverage).map((s) => [s.slug, s.state]),
+    pipelineSteps(mushaf, templatesReady, stats, null, calibrationPages).map((s) => [
+      s.slug,
+      s.state,
+    ]),
   );
   const statusKey = mushafStatus(mushaf);
   const status = STATUS_META[statusKey];

@@ -321,9 +321,9 @@ export function RoleExamples({
             <span className="font-semibold">{t(`calibration.role.${example.role}`)}</span>
             {example.subtype ? ` · ${subtype(example.subtype)}` : ""} ·{" "}
             <Link
-              to="/mushafs/$mushafId/word-cuts"
+              to="/mushafs/$mushafId/ink"
               params={{ mushafId }}
-              search={{ page: example.page_number, mode: "calibrate" }}
+              search={{ page: example.page_number }}
               className="underline underline-offset-2 hover:text-orange"
             >
               {t("calibration.exampleFrom", {

@@ -9,8 +9,8 @@ import type {
   PageSummary,
   Rect,
   Run,
-  WordCoverage,
 } from "@/lib/api";
+import type { CalibrationPageState } from "@/lib/calibration/types";
 
 // ── Status pill (top chrome) ─────────────────────────────────────────────────
 export const STATUS_META: Record<MushafStatus, { label: string; dot: string }> = {
@@ -256,16 +256,9 @@ export function activityMeta(event: ActivityEvent): { dot: string; text: string 
 
 // ── Pipeline derivation ──────────────────────────────────────────────────────
 /** The slug is the URL and the i18n key, and `finalize` keeps both even though
- * that step now reads "Lines" — it stopped being the final one when Words landed
- * after it, and renaming the route would break every saved link for a label. */
-export type StepSlug =
-  | "setup"
-  | "templates"
-  | "process"
-  | "review"
-  | "finalize"
-  | "word-run"
-  | "word-cuts";
+ * that step now reads "Lines" — it stopped being the final one when the word steps
+ * landed after it, and renaming the route would break every saved link for a label. */
+export type StepSlug = "setup" | "templates" | "process" | "review" | "finalize" | "ink";
 
 export type StepInfo = {
   slug: StepSlug;
@@ -281,7 +274,7 @@ export function pipelineSteps(
   templatesReady: boolean,
   stats: MushafStats | undefined,
   abortPage: number | null,
-  wordCoverage?: WordCoverage,
+  calibrationPages?: CalibrationPageState[],
 ): StepInfo[] {
   const logical = mushaf.logical_page_count;
   const processed = mushaf.processed_page_count;
@@ -358,45 +351,22 @@ export function pipelineSteps(
             detail: i18n.t("details.step_pngsProgress", { done: exported, total: linesCut }),
           };
 
-  // Words is the one step with no "how far through" to report until it has run at
-  // all: coverage lists only pages that hold Line rows, so an empty list means the
-  // engine has never been over this mushaf, not that it found nothing.
-  //
-  // Split in two the way the pages are: the run is done once anything has been
-  // read, and the cuts are done once nothing is left flagged. Reading "Words done,
-  // Cuts active" is the honest state of a mushaf the engine has covered and nobody
-  // has checked — which one combined step could not say.
-  const wordPages = wordCoverage?.pages.filter((p) => p.lines_with_words > 0) ?? [];
-  const flaggedLines = wordPages.reduce((n, p) => n + p.needs_review, 0);
-  const hasWords = wordPages.length > 0;
-  const wordRun: StepInfo = {
-    slug: "word-run",
-    label: i18n.t("header.steps.word-run"),
-    state: hasWords ? "done" : "todo",
-    detail: hasWords
-      ? i18n.t("details.step_wordsDone", { pages: wordPages.length })
-      : i18n.t("details.step_wordsTodo"),
+  // Ink: every page calibrated by hand or processed after the calibration — done
+  // once every page has a reading, whoever made it; confirming is what the count of
+  // confirmed pages says.
+  const inkPages = calibrationPages ?? [];
+  const inkProcessed = inkPages.filter((p) => p.processed).length;
+  const inkDetail = i18n.t("details.step_ink", {
+    confirmed: inkPages.filter((p) => p.confirmed_revision !== null).length,
+    processed: inkProcessed,
+    total: logical,
+  });
+  const ink: StepInfo = {
+    slug: "ink",
+    label: i18n.t("header.steps.ink"),
+    state: inkProcessed === 0 ? "todo" : inkProcessed >= logical ? "done" : "active",
+    detail: inkDetail,
   };
-  const wordCuts: StepInfo = !hasWords
-    ? {
-        slug: "word-cuts",
-        label: i18n.t("header.steps.word-cuts"),
-        state: "todo",
-        detail: i18n.t("details.step_wordsTodo"),
-      }
-    : flaggedLines === 0 && wordCoverage?.complete
-      ? {
-          slug: "word-cuts",
-          label: i18n.t("header.steps.word-cuts"),
-          state: "done",
-          detail: i18n.t("details.step_wordsDone", { pages: wordPages.length }),
-        }
-      : {
-          slug: "word-cuts",
-          label: i18n.t("header.steps.word-cuts"),
-          state: "active",
-          detail: i18n.t("details.step_wordsFlagged", { count: flaggedLines }),
-        };
 
   return [
     {
@@ -419,8 +389,7 @@ export function pipelineSteps(
     process,
     review,
     finalize,
-    wordRun,
-    wordCuts,
+    ink,
   ];
 }
 
@@ -430,7 +399,7 @@ export function continueTarget(
   templatesReady: boolean,
   summaries: PageSummary[] | undefined,
   stats: MushafStats | undefined,
-  wordCoverage?: WordCoverage,
+  calibrationPages?: CalibrationPageState[],
 ): { slug: StepSlug; sub: string; reviewPage?: number } {
   const processed = mushaf.processed_page_count;
   const reviewed = mushaf.reviewed_page_count;
@@ -454,21 +423,14 @@ export function continueTarget(
   if (exported === 0)
     return { slug: "finalize", sub: i18n.t("details.cta_finalize", { count: 0 }) };
 
-  // Words comes last, and only once the lines are out: the engine reads a line
-  // image with Finalize's erase strokes already punched out of it (see
-  // export.render_line_image), so running before that is reading the wrong ink.
-  // A flagged page sends you to the cuts, with the page; nothing read yet sends
-  // you to the run. The two used to be one destination because they were one page.
-  const flagged = (wordCoverage?.pages ?? []).find((p) => p.needs_review > 0);
-  if (flagged) {
-    return {
-      slug: "word-cuts",
-      sub: i18n.t("details.cta_wordsReview", { page: flagged.page }),
-      reviewPage: flagged.page,
-    };
-  }
-  if (!wordCoverage?.pages.some((p) => p.lines_with_words > 0)) {
-    return { slug: "word-run", sub: i18n.t("details.cta_wordsRun") };
+  // Ink comes last, and only once the lines are out: a line is read with Finalize's
+  // erase strokes already punched out of it, so reading before that is reading the
+  // wrong ink. Continue goes to the first page with no reading yet.
+  const read = new Set((calibrationPages ?? []).filter((p) => p.processed).map((p) => p.page));
+  let next = 1;
+  while (next <= mushaf.logical_page_count && read.has(next)) next += 1;
+  if (next <= mushaf.logical_page_count) {
+    return { slug: "ink", sub: i18n.t("details.cta_ink", { page: next }), reviewPage: next };
   }
   return { slug: "finalize", sub: i18n.t("details.cta_finalize", { count: exported }) };
 }
@@ -479,6 +441,5 @@ export const STEP_ROUTES = {
   process: "/mushafs/$mushafId/process",
   review: "/mushafs/$mushafId/review",
   finalize: "/mushafs/$mushafId/finalize",
-  "word-run": "/mushafs/$mushafId/word-run",
-  "word-cuts": "/mushafs/$mushafId/word-cuts",
+  ink: "/mushafs/$mushafId/ink",
 } as const satisfies Record<StepSlug, string>;

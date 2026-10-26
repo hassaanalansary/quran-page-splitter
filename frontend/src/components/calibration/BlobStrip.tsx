@@ -20,8 +20,6 @@ import {
   labelsInRect,
   needsLook,
   noiseFor,
-  OVERSHOOT_PX,
-  overshoot,
   passesFilter,
   selectIds,
   typedByText,
@@ -44,8 +42,6 @@ const ERASED_RGB: [number, number, number] = [201, 42, 42];
 /** Screen px the ring around a mark that may be noise is at the least — a speck is a
  * pixel or two. */
 const NOISE_RING = 14;
-/** Screen px of grab band either side of a word's edge. */
-const EDGE_GRAB = 6;
 /** A pointer that moves further than this between down and up drew a rectangle. */
 const CLICK_SLOP = 4;
 /** Screen px each mark's slot in the type lane takes, and each lane row's height. */
@@ -64,8 +60,8 @@ type Point = { x: number; y: number };
  * line's label raster says which blob every pixel belongs to, so a click resolves
  * to the blob actually under the pointer and the tint follows the ink exactly.
  *
- * Page pixels throughout, like the word cuts: the raster is the line's own crop of
- * the page at native size, and `scale` is the only conversion.
+ * Page pixels throughout: the raster is the line's own crop of the page at native
+ * size, and `scale` is the only conversion.
  */
 export function BlobStrip({
   line,
@@ -75,7 +71,6 @@ export function BlobStrip({
   focused = false,
   selection,
   onSelect,
-  mode,
   dim,
   disabled,
   selectable = !disabled,
@@ -87,8 +82,6 @@ export function BlobStrip({
   tanween,
   noise,
   showTypes = false,
-  onWordEdge,
-  onWordEdgeCommit,
 }: {
   line: CalibrationLine;
   scale: number;
@@ -98,8 +91,6 @@ export function BlobStrip({
   focused?: boolean;
   selection: BlobSelection;
   onSelect: (selection: BlobSelection) => void;
-  /** Blobs: select and label ink. Words: drag word edges. */
-  mode: "blobs" | "words";
   /** Fade every blob that is not asking for a look. */
   dim: boolean;
   /** Read-only: a neighbouring page's line, a stale draft, or a preview on show. */
@@ -123,10 +114,6 @@ export function BlobStrip({
   movedWords?: Set<number>;
   /** Label every mark with its type in a lane under the line. */
   showTypes?: boolean;
-  /** Live, during a drag — no history entry. */
-  onWordEdge?: (index: number, start: number, end: number) => void;
-  /** The pointer-up ending a drag. */
-  onWordEdgeCommit?: () => void;
 }) {
   const { t } = useTranslation();
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -245,7 +232,7 @@ export function BlobStrip({
     return { x: (event.clientX - bounds.left) / scale, y: (event.clientY - bounds.top) / scale };
   };
 
-  const canSelect = selectable && mode === "blobs" && raster !== null;
+  const canSelect = selectable && raster !== null;
 
   // One slot per mark, where it sits: its type if a person gave one, else the type
   // it is expected to be, else a dot saying nothing knows yet. Two rows, so marks
@@ -338,32 +325,6 @@ export function BlobStrip({
     }
   };
 
-  /** Drag one edge of a word; listeners on the window for the length of the drag. */
-  const beginEdgeDrag = (index: number, handle: "start" | "end", event: ReactPointerEvent) => {
-    if (disabled || mode !== "words" || !onWordEdge) return;
-    event.stopPropagation();
-    event.preventDefault();
-    const word = line.words[index];
-    const strip = (event.currentTarget as HTMLElement).closest("[data-strip]");
-    if (!strip) return;
-    let moved = false;
-    const move = (e: PointerEvent) => {
-      const x = line.bbox.x + (e.clientX - strip.getBoundingClientRect().left) / scale;
-      moved = true;
-      if (handle === "start") onWordEdge(index, x, word.end_x);
-      else onWordEdge(index, word.start_x, x);
-    };
-    const up = () => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-      window.removeEventListener("pointercancel", up);
-      if (moved) onWordEdgeCommit?.();
-    };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
-    window.addEventListener("pointercancel", up);
-  };
-
   return (
     <div className="flex flex-col" style={{ marginLeft }} data-line={line.snapshot_id}>
       <div className="flex items-center gap-2 text-[10.5px] text-text-muted">
@@ -398,7 +359,6 @@ export function BlobStrip({
               title={word.text}
             >
               {word.word_id === null ? "∅" : `${count.got}/${count.want}`}
-              {word.override ? " ✎" : ""}
             </span>
           );
         })}
@@ -431,10 +391,8 @@ export function BlobStrip({
           }}
         />
 
-        {/* Words: a thin outline from where each starts to where it ends — dashed
-            when taken from its ink, solid once set by hand, red when set by hand and
-            reaching past its ink. Draggable edges in Words mode; in Blobs mode they
-            stay out of the pointer's way. */}
+        {/* Words: a thin dashed outline from where each starts to where it ends —
+            the extent of its ink — out of the pointer's way. */}
         {line.words.map((word, index) => (
           <div
             key={`${word.word_id ?? "u"}-${index}`}
@@ -447,51 +405,33 @@ export function BlobStrip({
               outline:
                 word.word_id !== null && movedWords?.has(word.word_id)
                   ? "2px solid var(--info)"
-                  : overshoot(line, word) > OVERSHOOT_PX
-                    ? "2px solid var(--error)"
-                    : `1px ${word.override ? "solid" : "dashed"} color-mix(in oklab, var(--orange) 70%, transparent)`,
+                  : "1px dashed color-mix(in oklab, var(--orange) 70%, transparent)",
               background:
                 word.word_id !== null && movedWords?.has(word.word_id)
                   ? "color-mix(in oklab, var(--info) 12%, transparent)"
                   : undefined,
               outlineOffset: -1,
             }}
-          >
-            {mode === "words" && !disabled && (
-              <>
-                <div
-                  className="pointer-events-auto absolute top-0 cursor-ew-resize"
-                  style={{ left: -EDGE_GRAB / 2, width: EDGE_GRAB, height }}
-                  onPointerDown={(event) => beginEdgeDrag(index, "end", event)}
-                />
-                <div
-                  className="pointer-events-auto absolute top-0 cursor-ew-resize"
-                  style={{ right: -EDGE_GRAB / 2, width: EDGE_GRAB, height }}
-                  onPointerDown={(event) => beginEdgeDrag(index, "start", event)}
-                />
-              </>
-            )}
-          </div>
+          />
         ))}
 
         {/* A dot over every blob asking for a look — findable at any zoom. */}
-        {mode === "blobs" &&
-          line.blobs
-            .filter((blob) => isSelected(selection, line.snapshot_id, blob.id))
-            .map((blob) => (
-              <span
-                key={`selected-${blob.id}`}
-                data-blob-outline={`${line.snapshot_id}:${blob.id}`}
-                className="pointer-events-none absolute border-2 border-black"
-                style={{
-                  left: (blob.x - line.bbox.x) * scale - 2,
-                  top: (blob.y - line.bbox.y) * scale - 2,
-                  width: blob.w * scale + 4,
-                  height: blob.h * scale + 4,
-                  borderStyle: blob.role === "mark" ? "dashed" : "solid",
-                }}
-              />
-            ))}
+        {line.blobs
+          .filter((blob) => isSelected(selection, line.snapshot_id, blob.id))
+          .map((blob) => (
+            <span
+              key={`selected-${blob.id}`}
+              data-blob-outline={`${line.snapshot_id}:${blob.id}`}
+              className="pointer-events-none absolute border-2 border-black"
+              style={{
+                left: (blob.x - line.bbox.x) * scale - 2,
+                top: (blob.y - line.bbox.y) * scale - 2,
+                width: blob.w * scale + 4,
+                height: blob.h * scale + 4,
+                borderStyle: blob.role === "mark" ? "dashed" : "solid",
+              }}
+            />
+          ))}
         {!line.readonly &&
           line.blobs.filter(needsLook).map((blob) => (
             <span

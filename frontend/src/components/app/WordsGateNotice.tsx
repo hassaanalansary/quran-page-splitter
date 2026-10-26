@@ -1,9 +1,8 @@
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 
-/** The page is only editable once detection AND review have settled it: the run
- * anchors on the aya ornaments whose positions Review is where you fix. Shared by
- * the cuts and the calibration editors, which have the same prerequisite. */
+/** The page is only editable in Ink once detection AND review have settled it: the
+ * reading anchors on the aya ornaments whose positions Review is where you fix. */
 export function WordsGateNotice({
   mushafId,
   page,

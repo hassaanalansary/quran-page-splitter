@@ -1,6 +1,5 @@
-"""Explicit, backup-first restart of calibration; never run by an ordinary word job."""
+"""Explicit, backup-first restart of calibration; never run by an ordinary job."""
 
-import copy
 import shutil
 from pathlib import Path
 from typing import Any
@@ -11,10 +10,8 @@ from django.db import transaction
 from api.models import (
     ActivityTypeChoices,
     CalibrationReview,
-    CalibrationRevisionKind,
     CalibrationSettings,
     LineWord,
-    LineWordStatus,
     Mushaf,
     Page,
     ProcessJob,
@@ -23,7 +20,10 @@ from api.services import activity, bundle, calibration
 
 
 class Command(BaseCommand):
-    help = "Preview a calibration restart. --apply requires --backup; old manual cuts and history are retained."
+    help = (
+        "Preview a calibration restart. --apply requires --backup; the pages' words are cleared "
+        "(words exist only by confirmation) and their history is retained."
+    )
 
     def add_arguments(self, parser: CommandParser) -> None:
         parser.add_argument("mushaf_id")
@@ -43,24 +43,8 @@ class Command(BaseCommand):
         for review in CalibrationReview.objects.select_for_update().filter(mushaf=mushaf).order_by("page_number"):
             if not review.payload.get("lines") and review.confirmed_revision is None:
                 continue
-            first = review.revisions.filter(kind=CalibrationRevisionKind.PROCESSED).order_by("number").first()
-            if first is None or not calibration._sources_current(mushaf, first.payload.get("lines", [])):
-                raise CommandError(
-                    f"Page {review.page_number}: original geometry is unavailable or changed; nothing reset."
-                )
-            # The *latest* archive before calibration began: each one carries every
-            # hand-cut line seen so far, so the last is the complete, current set.
-            legacy = (
-                review.revisions.filter(kind=CalibrationRevisionKind.LEGACY, number__lt=first.number)
-                .order_by("-number")
-                .first()
-            )
-            old = {row["line_number"]: row for row in legacy.payload.get("legacy_lines", [])} if legacy else {}
-            plans.append((review, first, old))
-            self.stdout.write(
-                f"Page {review.page_number}: restart labels; restore {len(old)} pre-calibration manual lines; "
-                "other lines return to the first canonical reading."
-            )
+            plans.append(review)
+            self.stdout.write(f"Page {review.page_number}: restart labels; clear its words.")
         if not options["apply"]:
             self.stdout.write(
                 f"DRY RUN: {len(plans)} pages. Nothing changed. Use --apply --backup <new-file.zip> to proceed."
@@ -82,40 +66,14 @@ class Command(BaseCommand):
             raise CommandError(f"Backup failed; nothing reset: {exc}") from exc
         finally:
             archive.close()
-        for review, first, old in plans:
+        for review in plans:
             page = pages.get(review.page_number)
             if page is None:
                 raise CommandError(f"Page {review.page_number} disappeared; transaction rolled back.")
-            for row in first.payload["lines"]:
-                line = page.lines.get(pk=row["line_id"])
-                legacy = old.get(row["line_number"])
-                words = legacy["words"] if legacy else row["words"]
-                LineWord.objects.filter(line=line).delete()
-                LineWord.objects.bulk_create(
-                    [
-                        LineWord(
-                            line=line,
-                            word_id=w["word_id"],
-                            position=w.get("position", i),
-                            start_x=w["start_x"],
-                            end_x=w["end_x"],
-                        )
-                        for i, w in enumerate(words)
-                    ]
-                )
-                LineWordStatus.objects.update_or_create(
-                    line=line,
-                    defaults={
-                        "edited": bool(legacy),
-                        "status": row.get("status") or "scored",
-                        "reason": row.get("reason") or "",
-                        "deviations": 0,
-                        "ties": 0,
-                    },
-                )
+            LineWord.objects.filter(line__page=page).delete()
             review.revision += 1
             review.confirmed_revision = None
-            review.payload = {"legacy_lines": copy.deepcopy(list(old.values()))}
+            review.payload = {}
             review.save(update_fields=["revision", "confirmed_revision", "payload", "updated_at"])
             activity.emit(
                 mushaf,

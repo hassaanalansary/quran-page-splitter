@@ -12,7 +12,7 @@ from api.models import CalibrationReview, CalibrationRevision, Page, ProcessJob,
 from api.services import calibration as calibration_service
 from api.services import calibration_batch
 from api.services import calibration_progress as progress
-from api.tests.test_calibration_api import CalibrationApiTestCase, drawn_pages
+from api.tests.test_calibration_api import DOT, CalibrationApiTestCase, drawn_pages
 
 
 class BatchTestCase(CalibrationApiTestCase):
@@ -42,7 +42,7 @@ class PlanTests(BatchTestCase):
         self.assertEqual(response.status_code, 200, response.content)
         plan = response.json()
         self.assertEqual(plan["pages"], {"new": [1, 2]})
-        self.assertEqual((plan["process"], plan["untouched"]), (2, 0))
+        self.assertEqual((plan["process"], plan["drafted"]), (2, 0))
         self.assertFalse(ProcessJob.objects.exists())
 
     def test_pages_review_has_not_finished_are_named_and_left_alone(self):
@@ -69,17 +69,28 @@ class RunTests(BatchTestCase):
         polled = self.client.get(f"/api/mushafs/{self.mushaf.id}/calibration/job").json()["job"]
         self.assertEqual(polled["id"], job["id"])
 
-    def test_a_confirmed_page_and_one_being_worked_on_are_left_alone(self):
+    def test_a_confirmed_page_is_left_alone_and_a_worked_on_draft_keeps_its_decisions(self):
+        """A draft someone worked on is a draft like any other: processed again on
+        request, with the decisions on its blobs put back. Only confirming a page
+        keeps it from being processed over."""
         self.process(1)
         self.assertEqual(self.confirm(1, self.draft(self.document(1))).status_code, 200)
         self.process(2)
-        self.assertEqual(self.put(2, self.draft(self.document(2))).status_code, 200)
-        before = (self.processings(1), self.processings(2))
-        self.assertEqual(self.batch(dry_run=True).json()["pages"], {"confirmed": [1], "edited": [2]})
-        self.assertEqual(self.batch().status_code, 422)
-        self.assertEqual((self.processings(1), self.processings(2)), before)
+        document = self.document(2)
+        body = self.draft(document)
+        dot = self.blob_at(document["lines"][0], DOT[0])["id"]
+        next(blob for blob in body["lines"][0]["blobs"] if blob["id"] == dot).update(
+            role="mark", explicit=True, subtype="ijamDot"
+        )
+        self.assertEqual(self.put(2, body).status_code, 200)
+        self.assertEqual(self.batch(dry_run=True).json()["pages"], {"confirmed": [1], "drafted": [2]})
+        report = self.batch(refresh=True).json()["job"]["report"]
+        self.assertEqual((report["processed"], report["skipped"]), ([2], {"confirmed": [1]}))
+        self.assertEqual((self.processings(1), self.processings(2)), (1, 2))
+        kept = self.blob_at(self.document(2)["lines"][0], DOT[0])
+        self.assertEqual((kept["explicit"], kept["subtype"], kept["decision_source"]), (True, "ijamDot", "human"))
 
-    def test_an_untouched_draft_is_kept_or_refreshed_on_request(self):
+    def test_a_current_draft_is_kept_or_refreshed_on_request(self):
         self.process(1)
         response = self.batch()
         report = response.json()["job"]["report"]
@@ -90,29 +101,31 @@ class RunTests(BatchTestCase):
         self.assertEqual(report["processed"], [1, 2])
         self.assertEqual((self.processings(1), self.processings(2)), (2, 2))
 
-    def test_an_untouched_draft_whose_lines_changed_is_processed_again(self):
+    def test_a_draft_whose_lines_changed_is_processed_again(self):
         self.process(1)
         self.process(2)
         Segment.objects.filter(line__page__page_number=1, line__line_number=1).update(bbox_w=480)
-        self.assertEqual(self.batch(dry_run=True).json()["pages"], {"untouched": [1, 2]})
+        self.assertEqual(self.batch(dry_run=True).json()["pages"], {"drafted": [1, 2]})
         report = self.batch().json()["job"]["report"]
         self.assertEqual((report["processed"], report["skipped"]), ([1], {"current": [2]}))
         self.assertFalse(self.document(1)["stale"])
 
-    def test_a_page_edited_while_the_batch_runs_is_not_processed_over(self):
+    def test_a_draft_saved_after_it_was_decided_is_not_processed_over(self):
         self.process(2)
         document = self.document(2)
 
-        def edit_page_2(mushaf, number, *, refresh):
-            # Someone saves page 2 in the moment before the batch reaches it.
+        def reach_then_save(mushaf, number, *, refresh):
+            reached = real_reach(mushaf, number, refresh=refresh)
+            # Someone saves page 2 after the batch decided it, before it is stored.
             if number == 2:
                 calibration_service.save(mushaf, 2, self.draft(document), user=self.user)
-            return real_reach(mushaf, number, refresh=refresh)
+            return reached
 
         real_reach = calibration_batch._reach
-        with mock.patch.object(calibration_batch, "_reach", side_effect=edit_page_2):
+        with mock.patch.object(calibration_batch, "_reach", side_effect=reach_then_save):
             report = self.batch(refresh=True).json()["job"]["report"]
-        self.assertEqual((report["processed"], report["skipped"]), ([1], {"edited": [2]}))
+        self.assertEqual(report["processed"], [1])
+        self.assertEqual([failure["page"] for failure in report["failed"]], [2])
         self.assertEqual(self.processings(2), 1)
 
     def test_a_stop_ends_the_batch_between_pages_and_keeps_what_it_did(self):

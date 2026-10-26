@@ -3,8 +3,7 @@
 // Attention flags, gate reasons and the like arrive as the backend's own strings
 // ("search-override", "insufficient_support"). `t()` is checked against the
 // catalog's literal keys, so each is mapped here to a key that exists — returned
-// as a literal type, so the caller's `t()` keeps checking it (the same trick as
-// `issueKey` in the word-cuts route). A string the catalog has not heard of yet
+// as a literal type, so the caller's `t()` keeps checking it. A string the catalog has not heard of yet
 // maps to null, and the caller shows it as it came rather than hiding it.
 import { useCallback } from "react";
 import { useTranslation } from "react-i18next";

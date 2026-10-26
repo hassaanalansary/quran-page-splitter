@@ -8,26 +8,25 @@ and the pages are reviewed and confirmed afterwards in any order. The readiness 
 What a batch does to each page of its range::
 
     no draft yet                              processed               new
-    a draft nobody touched, still current     left alone              current
+    a draft, still current                    left alone              current
                                                 — or processed again  refresh   (with ``refresh``)
-    a draft nobody touched, whose lines
-      or neighbours changed since             processed again         stale
-    a draft someone worked on                 left alone              edited
+    a draft whose lines or neighbours
+      changed since                           processed again         stale
     a confirmed page                          left alone              confirmed
     not reviewed, not numbered, not there     left alone              not_reviewed, not_numbered, missing
 
-**Nothing a person did is processed over.** *Touched* is anything stored on the draft
-since it was processed: a draft save, an accepted preview, a cut corrected in the word
-editor — ``word_coordinates.preserve_legacy_edits`` bumps the revision too. Each page
-is decided again just before it is processed, so a page edited while the batch runs
-is skipped when the batch gets there, and ``process_page``'s revision check refuses
-one edited in the seconds between.
+**What a person decided is kept.** A draft someone worked on is processed again like
+any other: every word's box comes from the ink given to it, and the decisions on its
+blobs — roles, owners, types, erases — are put back on every line whose pixels did not
+change (``calibration._carry_decisions``). Only a confirmed page is never processed
+over. ``process_page``'s revision check refuses a draft saved in the seconds between
+deciding a page and storing it.
 
 **The learning is fixed per page when it is processed**, as for one page: the pages
 confirmed before it at that moment. A page confirmed while the batch runs teaches the
 pages processed after it. Mark types are guessed whenever a page is opened, so those
-always learn from every confirmed page — and ``refresh`` re-processes untouched drafts
-when the learning has grown since.
+always learn from every confirmed page — and ``refresh`` re-processes drafts when the
+learning has grown since.
 """
 
 from __future__ import annotations
@@ -59,9 +58,9 @@ Doc = dict[str, Any]
 
 #: Why a page is processed.
 PROCESS = ("new", "refresh", "stale")
-#: Why a page is left alone. ``untouched`` is only ever a plan's word: such a draft is
+#: Why a page is left alone. ``drafted`` is only ever a plan's word: such a draft is
 #: processed again when its sources changed (``stale``), and otherwise left (``current``).
-SKIP = ("current", "edited", "confirmed", "not_reviewed", "not_numbered", "missing")
+SKIP = ("current", "confirmed", "not_reviewed", "not_numbered", "missing")
 
 
 def _numbered(mushaf: Mushaf, first: int, last: int) -> set[int]:
@@ -90,14 +89,12 @@ def _reviews(mushaf: Mushaf, first: int, last: int) -> dict[int, Doc]:
         "page_number",
         "revision",
         "confirmed_revision",
-        "payload__processed_revision",
         "payload__lines__0__snapshot_id",
     )
     return {
         row["page_number"]: {
             "revision": row["revision"],
             "confirmed_revision": row["confirmed_revision"],
-            "processed_revision": row["payload__processed_revision"],
             "drafted": row["payload__lines__0__snapshot_id"] is not None,
         }
         for row in rows
@@ -105,7 +102,7 @@ def _reviews(mushaf: Mushaf, first: int, last: int) -> dict[int, Doc]:
 
 
 def _decide(page: Page | None, numbered: bool, review: Doc | None, *, refresh: bool) -> str:
-    """What the batch does to one page — see the module docstring. ``untouched`` is
+    """What the batch does to one page — see the module docstring. ``drafted`` is
     settled when the page is reached, by whether its sources are still current."""
     if page is None:
         return "missing"
@@ -117,9 +114,7 @@ def _decide(page: Page | None, numbered: bool, review: Doc | None, *, refresh: b
         return "new"
     if review["confirmed_revision"] is not None:
         return "confirmed"
-    if review["processed_revision"] != review["revision"]:
-        return "edited"
-    return "refresh" if refresh else "untouched"
+    return "refresh" if refresh else "drafted"
 
 
 def _check_range(mushaf: Mushaf, first: int, last: int) -> None:
@@ -132,7 +127,7 @@ def plan(mushaf: Mushaf, first: int, last: int, *, refresh: bool = False) -> Doc
     """What a batch over ``first``..``last`` would do, page by page. Stores nothing.
 
     ``pages`` lists the page numbers under each reason; ``process`` counts the pages
-    sure to be processed, ``untouched`` the drafts processed again only if their
+    sure to be processed, ``drafted`` the drafts processed again only if their
     sources changed. ``process_seconds`` is what a page has taken here lately.
     """
     _check_range(mushaf, first, last)
@@ -154,7 +149,7 @@ def plan(mushaf: Mushaf, first: int, last: int, *, refresh: bool = False) -> Doc
         "refresh": refresh,
         "pages": found,
         "process": sum(len(found.get(reason, [])) for reason in PROCESS),
-        "untouched": len(found.get("untouched", [])),
+        "drafted": len(found.get("drafted", [])),
         "process_seconds": calibration_progress.cost(mushaf)["process_seconds"],
         "experimental": calibration.settings_document(mushaf)["experimental"],
     }
@@ -172,7 +167,7 @@ def start(
     """Start processing ``first``..``last`` as one background job. Refuses a range in
     which there is nothing it could process."""
     planned = plan(mushaf, first, last, refresh=refresh)
-    if not planned["process"] and not planned["untouched"]:
+    if not planned["process"] and not planned["drafted"]:
         raise HttpError(422, i18n.t("calibration_batch_nothing", first=first, last=last))
     report: Doc = {
         "first": first,
@@ -205,7 +200,7 @@ def _reach(mushaf: Mushaf, number: int, *, refresh: bool) -> tuple[str, int]:
     review = reviews.get(number)
     reason = _decide(page, number in _numbered(mushaf, number, number), review, refresh=refresh)
     revision = review["revision"] if review else 0
-    if reason != "untouched":
+    if reason != "drafted":
         return reason, revision
     stored = CalibrationReview.objects.get(mushaf=mushaf, page_number=number)
     current = calibration._sources_current(mushaf, stored.payload.get("lines", [])) and calibration._context_current(

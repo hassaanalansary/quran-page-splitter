@@ -14,7 +14,6 @@ import {
   expectationsOf,
   expectedType,
   extendSelection,
-  fitWord,
   highlights,
   isTyped,
   passesFilter,
@@ -30,9 +29,6 @@ import {
   stepLine,
   stepWord,
   wordAt,
-  handSetBoxes,
-  overshoot,
-  resetAllEdges,
   changedWords,
   galleryGroups,
   stepGallery,
@@ -53,13 +49,11 @@ import {
   inkOf,
   labelAt,
   labelsInRect,
-  mergePreview,
   newRequestId,
   pageExceptions,
   pushHistory,
   releaseDecisions,
   requestIds,
-  resetWordEdges,
   selectIds,
   setErased,
   setException,
@@ -69,7 +63,6 @@ import {
   noiseOf,
   needsLook,
   unassignMarks,
-  setWordEdges,
   shareBetween,
   stepAttention,
   stepHistory,
@@ -109,7 +102,6 @@ function word(id: number, right: number, left: number): CalibrationWord {
     expected_paws: 1,
     start_x: right,
     end_x: left,
-    override: false,
     shared: false,
   };
 }
@@ -186,16 +178,14 @@ const sel = (ids: number[], snapshot = "s1") => ({ snapshot, ids });
   assert.equal(pick(lines, 5).role, "ornament");
 }
 
-// Assigning a body moves the count and both words' edges, and clears their overrides.
+// Assigning a body moves the count and both words' edges.
 {
-  let lines = setWordEdges([line()], "s1", 0, 620, 575);
-  assert.equal(lines[0].words[0].override, true);
-  lines = assignToWord(lines, sel([3]), 1);
+  const lines = assignToWord([line()], sel([3]), 1);
   assert.deepEqual(pick(lines, 3).allocations, [{ word_id: 1, paws: 1 }]);
   assert.equal(pick(lines, 3).ownership_explicit, true);
   assert.equal(pick(lines, 3).explicit, false, "ownership does not decide the role");
   const [first, second] = lines[0].words;
-  assert.deepEqual([first.start_x, first.end_x, first.override], [620, 460, false]);
+  assert.deepEqual([first.start_x, first.end_x], [620, 460]);
   assert.deepEqual(wordCount(lines[0], second), { got: 0, want: 1, ok: false });
 }
 
@@ -246,35 +236,6 @@ const sel = (ids: number[], snapshot = "s1") => ({ snapshot, ids });
   );
 }
 
-// Reset takes the edges from the bodies again.
-{
-  let lines = setWordEdges([line()], "s1", 2, 400, 300);
-  lines = resetWordEdges(lines, "s1", 2);
-  assert.deepEqual(
-    [lines[0].words[2].start_x, lines[0].words[2].end_x, lines[0].words[2].override],
-    [370, 340, false],
-  );
-}
-
-// Dragged edges stay inside the line and never cross.
-{
-  const lines = setWordEdges([line()], "s1", 0, 50, 900);
-  const edited = lines[0].words[0];
-  assert.ok(edited.end_x <= 699 && edited.start_x > edited.end_x && edited.start_x <= 700);
-}
-
-// A preview replaces the alignment but keeps every dragged edge.
-{
-  const current = setWordEdges([line()], "s1", 1, 495, 455);
-  const preview = [{ ...line(), words: [word(1, 610, 580), word(2, 480, 470), word(3, 370, 340)] }];
-  const merged = mergePreview(current, preview);
-  assert.deepEqual(
-    [merged[0].words[1].start_x, merged[0].words[1].end_x, merged[0].words[1].override],
-    [495, 455, true],
-  );
-  assert.equal(merged[0].words[0].override, false);
-}
-
 // Read-only context is never edited, nor sent.
 {
   const lines = [line(), line("ctx", true)];
@@ -284,6 +245,8 @@ const sel = (ids: number[], snapshot = "s1") => ({ snapshot, ids });
   assert.equal(draft.lines.length, 1);
   assert.equal(draft.revision, 3);
   assert.equal(draft.lines[0].blobs[0].ownership_explicit, false);
+  // Blob decisions only: every box is the server's to take from the ink.
+  assert.ok(!("words" in draft.lines[0]));
 }
 
 // Any edit changes the signature; releasing a decision takes it back off.
@@ -441,15 +404,6 @@ assert.deepEqual(inkOf(line(), null), []);
   assert.deepEqual(pick(broken, 3).allocations, [{ word_id: 2, paws: 0 }]);
 }
 
-// Giving a word a mark keeps its drag, but the box widens to hold the mark.
-{
-  let lines = setWordEdges([line()], "s1", 2, 380, 330);
-  lines = assignToWord(lines, sel([2]), 3);
-  const third = lines[0].words[2];
-  assert.deepEqual([third.start_x, third.end_x, third.override], [620, 330, true]);
-  assert.deepEqual(pick(lines, 2).allocations, [{ word_id: 3, paws: 0 }]);
-}
-
 // A mixed selection gives PAWs only to bodies.
 {
   const lines = assignToWord([line()], sel([1, 2]), 3, 1);
@@ -457,25 +411,21 @@ assert.deepEqual(inkOf(line(), null), []);
   assert.deepEqual(pick(lines, 2).allocations, [{ word_id: 3, paws: 0 }]);
 }
 
-// Reassigning ordinary ink does not erase an internal cut in shared ink: the box
-// widens to its new ink, and the cut inside the shared body stays where it was.
+// Ordinary ink given to a word that shares a body: the box reaches the new ink, and
+// still ends at the shared body's middle.
 {
   let lines = shareBetween([line()], sel([3]), [
     { word_id: 2, paws: 1 },
     { word_id: 3, paws: 1 },
   ]);
-  lines = setWordEdges(lines, "s1", 1, 490, 477);
   lines = assignToWord(lines, sel([1]), 2);
-  assert.deepEqual(
-    [lines[0].words[1].start_x, lines[0].words[1].end_x, lines[0].words[1].override],
-    [610, 477, true],
-  );
+  assert.deepEqual([lines[0].words[1].start_x, lines[0].words[1].end_x], [610, 475]);
 }
 
 // Accepting a persisted preview adds a history step instead of resetting history.
 {
   const before = setRole([line()], sel([1]), "body");
-  const accepted = mergePreview(before, [line()]);
+  const accepted = [line()];
   const history = pushHistory(pushHistory(historyOf([line()]), before), accepted);
   assert.equal(currentOf(stepHistory(history, -1)), before);
   assert.equal(currentOf(stepHistory(stepHistory(history, -1), 1)), accepted);
@@ -521,22 +471,13 @@ assert.deepEqual(inkOf(line(), null), []);
   });
 }
 
-// A box always holds the ink its word owns alone: a drag can widen it, or move the
-// cut inside ink two words share, but never leave the word's own marks outside.
+// A box holds all of its word's ink, its marks too, once anything recalculates it.
 {
   // The fixture's first word is drawn as the engine once cut it: its mark sticks out.
   const page = line();
   assert.deepEqual([page.words[0].start_x, page.words[0].end_x], [610, 580]);
-  const fitted = fitWord(page, page.words[0]);
-  assert.deepEqual([fitted.start_x, fitted.end_x], [620, 580]);
-  assert.equal(fitWord(page, page.words[1]), page.words[1], "nothing sticks out: the same word");
-  const dragged = setWordEdges([page], "s1", 0, 600, 590)[0].words[0];
-  assert.deepEqual([dragged.start_x, dragged.end_x, dragged.override], [620, 580, true]);
-  const wide = setWordEdges([page], "s1", 0, 640, 560)[0].words[0];
-  assert.deepEqual([wide.start_x, wide.end_x], [640, 560]);
-  // A preview's reading is fitted too when a drag is kept over it.
-  const kept = mergePreview(setWordEdges([page], "s1", 0, 615, 585), [line()]);
-  assert.deepEqual([kept[0].words[0].start_x, kept[0].words[0].end_x], [620, 580]);
+  const held = assignToWord([page], sel([2]), 1)[0].words[0];
+  assert.deepEqual([held.start_x, held.end_x], [620, 580]);
 }
 
 // Filters: a type is the typed type, else the expected one; doubts only while the
@@ -622,30 +563,6 @@ assert.deepEqual(inkOf(line(), null), []);
   assert.equal(pick(fathas, 6).subtype, "", "a kasra is not shown by the fatha filter");
 }
 
-// Hand-set boxes: how far past their ink they reach; one reset each, or all at once —
-// all but a cut inside a shared body, which one word's reset sends back to the middle.
-{
-  let lines = setWordEdges([line()], "s1", 1, 530, 440);
-  assert.equal(overshoot(lines[0], lines[0].words[1]), 40 + 20);
-  assert.equal(overshoot(lines[0], lines[0].words[0]), 0, "taken from its ink");
-  assert.deepEqual(handSetBoxes(lines), { count: 1, wide: 1 });
-  const reset = resetAllEdges(lines);
-  assert.deepEqual(
-    [reset[0].words[1].start_x, reset[0].words[1].end_x, reset[0].words[1].override],
-    [490, 460, false],
-  );
-  lines = shareBetween([line()], sel([3]), [
-    { word_id: 2, paws: 1 },
-    { word_id: 3, paws: 1 },
-  ]);
-  lines = setWordEdges(lines, "s1", 1, 490, 470);
-  assert.equal(overshoot(lines[0], lines[0].words[1]), 0, "a shared cut is the hand's");
-  assert.deepEqual(handSetBoxes(lines), { count: 0, wide: 0 });
-  assert.equal(resetAllEdges(lines)[0].words[1].end_x, 470, "the page-wide reset keeps it");
-  const middle = resetWordEdges(lines, "s1", 1)[0].words[1];
-  assert.deepEqual([middle.end_x, middle.override], [475, false]);
-}
-
 // Words: stepping through a test finds the next word that passes it, from anywhere.
 {
   const second = { ...line("s2"), line_number: 2 };
@@ -659,7 +576,7 @@ assert.deepEqual(inkOf(line(), null), []);
   );
 }
 
-// Risky words: a count that does not close, ink asking for a look, a box past its ink.
+// Risky words: a count that does not close, ink asking for a look.
 {
   const page = line();
   assert.deepEqual(wordRisks(page, page.words[0]), []);
@@ -668,8 +585,6 @@ assert.deepEqual(inkOf(line(), null), []);
   const looked = line();
   looked.blobs[0].attention = ["uncertain"];
   assert.deepEqual(wordRisks(looked, looked.words[0]), ["look"]);
-  const wide = setWordEdges([line()], "s1", 2, 420, 330)[0];
-  assert.deepEqual(wordRisks(wide, wide.words[2]), ["box"]);
 }
 
 // A preview's moved words: an edge beyond a pixel, a line change, a word dropped.

@@ -375,16 +375,6 @@ class ProcessJob(BaseModel):
         null=True, blank=True, help_text="Word runs only: lines written so far. Detection counts pages instead."
     )
     log_url = models.CharField(max_length=255, blank=True, default="")
-    #: Word runs only. Detection hangs its log off the ``ProcessingRun`` it
-    #: creates; a word run creates no such row — it writes ``LineWord`` rows
-    #: directly — so the job itself is what points at the file. Same directory,
-    #: same format, same viewer; see ``services.run_logs``.
-    log_path = models.CharField(
-        max_length=255,
-        blank=True,
-        default="",
-        help_text="Path (relative to settings.LOG_DIR) of this run's detailed log file.",
-    )
     report = models.JSONField(
         null=True,
         blank=True,
@@ -533,8 +523,9 @@ class LineWord(BaseModel):
     label. That argument only holds while the engine's x is right, and the engine is
     predicted to be wrong — a badly read line comes back with its words out of
     order along the page, and sorting by geometry then reports the mushaf as reading
-    in an order it does not. So ``position`` carries the sequence, the engine's x is
-    a suggestion about placement, and a human's correction is the final word on both.
+    in an order it does not. So ``position`` carries the sequence, and the edges are
+    the extent of the ink a reviewer confirmed for the word — rows are written only
+    when a page is confirmed in calibration.
     """
 
     line = models.ForeignKey(Line, on_delete=models.CASCADE, related_name="words")
@@ -585,46 +576,6 @@ class LineWord(BaseModel):
 
     def __str__(self) -> str:
         return f"word {self.word_id or '?'} ends at x={self.end_x}"
-
-
-class LineWordStatusChoices(models.TextChoices):
-    EXACT = "exact", "Exact"
-    SCORED = "scored", "Scored"
-    PARTIAL = "partial", "Partial"
-    UNRESOLVED = "unresolved", "Unresolved"
-
-
-class LineWordStatus(BaseModel):
-    """How much the boundary engine trusted its own reading of one line.
-
-    Its own table rather than columns on :class:`Line`, because ``Line`` belongs to
-    the detection pipeline and this is a different engine's opinion of it.
-
-    The point is triage. A sura-7 run comes back with 136 of 388 lines ``scored``, so
-    a reviewer who can see this checks 136 lines instead of eyeballing 3,320 words.
-    """
-
-    line = models.OneToOneField(Line, on_delete=models.CASCADE, related_name="word_status")
-    status = models.CharField(max_length=16, choices=LineWordStatusChoices.choices)
-    reason = models.TextField(
-        blank=True, default="", help_text="Why it is not exact, e.g. '2 word(s) off-count; 3 equal-cost readings'."
-    )
-    deviations = models.PositiveSmallIntegerField(
-        default=0, help_text="Words that closed on more or fewer ink blobs than their spelling demands."
-    )
-    ties = models.PositiveSmallIntegerField(default=0, help_text="Equal-cost readings the parser could not separate.")
-    edited = models.BooleanField(
-        default=False,
-        help_text="A human has corrected this line since; the engine's verdict is no longer the truth about it.",
-    )
-
-    class Meta:
-        db_table = "line_word_status"
-        verbose_name = "Line Word Status"
-        verbose_name_plural = "Line Word Statuses"
-
-    def __str__(self) -> str:
-        return f"line {self.line_id}: {self.status}"
 
 
 class CalibrationSnapshot(BaseModel):

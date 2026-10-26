@@ -24,7 +24,7 @@ const LISTED = 30;
  *
  * Confirmation is of the whole page — never only of what was flagged, because an
  * unflagged blob is not thereby right — and it is the one act that changes things
- * outside this editor: the page's word cuts are replaced, and its blobs become the
+ * outside this editor: the page's words are written, and its blobs become the
  * examples later pages are read against. So it says both, and lists what still
  * disagrees with the text for the reviewer to acknowledge by hand.
  */

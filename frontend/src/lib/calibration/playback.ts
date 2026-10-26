@@ -111,7 +111,8 @@ export function paintPlaybackInk(
   return pixels;
 }
 
-/** Crop includes owned marks and fragments even when a dragged edge excludes them. */
+/** Crop includes owned marks and fragments even where the box stops short of them —
+ * at the middle of a body two words share. */
 export function wordCrop(entry: PlaybackWord) {
   const { line, word } = entry;
   const blobs = wordBlobs(entry);

@@ -35,8 +35,7 @@ import type {
 /** Reasons a batch leaves a page alone, in the order the plan lists them. */
 const LEFT_ALONE = [
   "confirmed",
-  "edited",
-  "untouched",
+  "drafted",
   "current",
   "not_reviewed",
   "not_numbered",
@@ -54,8 +53,9 @@ const LISTED_RANGES = 8;
  * how the reviewer sees the page-by-page work paying off.
  *
  * **A batch** processes a range of pages in one background job, the same job table
- * and the same one-run-at-a-time rule as processing one page. Confirmed pages and
- * drafts someone worked on are never processed over. While it runs, its progress
+ * and the same one-run-at-a-time rule as processing one page. Confirmed pages are
+ * never processed over; a draft processed again keeps every decision on its blobs.
+ * While it runs, its progress
  * takes the meter's place, and every page it finishes can be opened and reviewed.
  */
 export function BulkPanel({
@@ -516,7 +516,7 @@ function BatchForm({
     asked.refresh === refresh
       ? plan.data
       : null;
-  const count = current ? current.process + current.untouched : 0;
+  const count = current ? current.process + current.drafted : 0;
 
   return (
     <section className="flex flex-col gap-3">
@@ -585,7 +585,7 @@ function BatchForm({
         >
           {start.isPending
             ? t("calibration.bulk.starting")
-            : current && current.process === 0 && current.untouched > 0
+            : current && current.process === 0 && current.drafted > 0
               ? t("calibration.bulk.startChanged")
               : t("calibration.bulk.start", { count: current?.process ?? 0 })}
         </Button>
@@ -612,7 +612,7 @@ function PlanSummary({
   const { t } = useTranslation();
   const duration = useDuration();
   const alone = LEFT_ALONE.filter((reason) => plan.pages[reason]?.length);
-  const pages = plan.process + plan.untouched;
+  const pages = plan.process + plan.drafted;
   return (
     <div className="flex flex-col gap-2 rounded-md border border-border p-3 text-[12px] leading-snug">
       <span className="font-semibold text-text-primary">

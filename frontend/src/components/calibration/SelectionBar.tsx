@@ -119,7 +119,6 @@ export function SelectionBar({
       ["A", t("calibration.bar.keyAccept")],
       ["B · M", t("calibration.bar.keyRole")],
       ["Del", t("calibration.bar.keyErase")],
-      ["R", t("calibration.bar.keyReset")],
       ["N", t("calibration.bar.keyLook")],
       ["Esc", t("calibration.bar.keyClear")],
       ["Enter", t("calibration.bar.keyOpen")],
@@ -643,9 +642,9 @@ function TypeEvidencePanel({
             {candidate.examples.map((example) => (
               <Link
                 key={`${example.snapshot_id}:${example.blob_id}`}
-                to="/mushafs/$mushafId/word-cuts"
+                to="/mushafs/$mushafId/ink"
                 params={{ mushafId }}
-                search={{ page: example.page_number, mode: "calibrate" }}
+                search={{ page: example.page_number }}
                 title={t("calibration.bar.exampleTitle", {
                   page: example.page_number,
                   line: example.line_number,

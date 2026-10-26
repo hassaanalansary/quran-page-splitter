@@ -5,7 +5,7 @@
 // line's own crop of the page (its `bbox`), and `labels_url` is a raster the same
 // size in which every pixel's blob id is encoded as R + 256·G + 65536·B (0 is
 // background): the map clicks are hit-tested against.
-import type { BatchReason, PageWords, Rect } from "../api/types";
+import type { BatchReason, Rect } from "../api/types";
 
 export type BlobRole = "body" | "mark" | "ornament" | "symbol";
 export type TextRole = "body" | "mark";
@@ -70,11 +70,10 @@ export type CalibrationWord = {
   text: string;
   aya: string;
   expected_paws: number;
-  /** The word's RIGHT edge — the larger number; Arabic runs right to left. */
+  /** The word's RIGHT edge — the larger number; Arabic runs right to left. Both
+   * edges are the extent of the ink given to the word. */
   start_x: number;
   end_x: number;
-  /** The edges were dragged by hand; alignment keeps them. */
-  override: boolean;
   /** The word shares a blob with a neighbour, printed touching across the break. */
   shared: boolean;
 };
@@ -153,7 +152,6 @@ export type CalibrationDocument = {
   lines: CalibrationLine[];
   context: CalibrationLine[];
   issues: string[];
-  words: PageWords;
   processed_revision?: number;
 };
 
@@ -179,7 +177,6 @@ export type CalibrationDraft = {
       | "allocations"
       | "erased"
     >[];
-    words: Pick<CalibrationWord, "word_id" | "start_x" | "end_x" | "override" | "shared">[];
   }[];
 };
 
@@ -439,8 +436,8 @@ export type BatchPlan = {
   pages: Partial<Record<BatchReason, number[]>>;
   /** Pages sure to be processed. */
   process: number;
-  /** Drafts nobody touched, processed again only if their lines changed. */
-  untouched: number;
+  /** Drafts not confirmed, processed again only if their lines changed. */
+  drafted: number;
   /** What a page has taken to process here lately; null before any has. */
   process_seconds: number | null;
   experimental: boolean;

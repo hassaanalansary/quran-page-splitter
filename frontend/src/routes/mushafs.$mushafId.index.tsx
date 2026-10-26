@@ -12,12 +12,12 @@ import { RunsTab } from "@/components/app/details/RunsTab";
 import { SettingsTab } from "@/components/app/details/SettingsTab";
 import {
   useActivity,
+  useCalibrationPages,
   useMushaf,
   usePageSummaries,
   useRuns,
   useStats,
   useTemplates,
-  useWordsCoverage,
 } from "@/lib/api";
 
 export const Route = createFileRoute("/mushafs/$mushafId/")({ component: MushafDetailsPage });
@@ -35,7 +35,7 @@ function MushafDetailsPage() {
   const { data: runs } = useRuns(mushafId);
   const { data: activity } = useActivity(mushafId);
   const { data: templates } = useTemplates(mushafId);
-  const { data: wordCoverage } = useWordsCoverage(mushafId);
+  const { data: calibrationPages } = useCalibrationPages(mushafId);
   const [tab, setTab] = useState<Tab>("overview");
 
   const templatesReady =
@@ -66,8 +66,8 @@ function MushafDetailsPage() {
     );
   }
 
-  const steps = pipelineSteps(mushaf, templatesReady, stats, abortPage, wordCoverage);
-  const cta = continueTarget(mushaf, templatesReady, summaries, stats, wordCoverage);
+  const steps = pipelineSteps(mushaf, templatesReady, stats, abortPage, calibrationPages);
+  const cta = continueTarget(mushaf, templatesReady, summaries, stats, calibrationPages);
 
   return (
     <div className="flex h-screen w-full flex-col overflow-hidden bg-bg-page">

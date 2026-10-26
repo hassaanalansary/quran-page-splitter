@@ -52,7 +52,6 @@ from api.models import (
     EraseStroke,
     Line,
     LineWord,
-    LineWordStatus,
     Mushaf,
     Page,
     Segment,
@@ -111,11 +110,10 @@ def serialize_tree(mushaf: Mushaf) -> list[dict]:
 
     for line in (
         Line.objects.filter(page__mushaf=mushaf)
-        .select_related("page", "word_status")
+        .select_related("page")
         .prefetch_related("words")
         .order_by("line_number")
     ):
-        status = getattr(line, "word_status", None)
         lines_by_page.setdefault(line.page.page_number, []).append(
             {
                 "line_number": line.line_number,
@@ -131,15 +129,6 @@ def serialize_tree(mushaf: Mushaf) -> list[dict]:
                     {"word_id": word.word_id, "position": word.position, "start_x": word.start_x, "end_x": word.end_x}
                     for word in line.words.all()
                 ],
-                "word_status": {
-                    "status": status.status,
-                    "reason": status.reason,
-                    "deviations": status.deviations,
-                    "ties": status.ties,
-                    "edited": status.edited,
-                }
-                if status
-                else None,
             }
         )
 
@@ -258,21 +247,8 @@ def write_tree(target: Mushaf, pages: list[dict]) -> None:
         ],
         batch_size=BATCH_SIZE,
     )
-    LineWordStatus.objects.bulk_create(
-        [
-            LineWordStatus(
-                line=new_line_by_key[(page_number, line["line_number"])],
-                **{
-                    key: value
-                    for key, value in line["word_status"].items()
-                    if key in ("status", "reason", "deviations", "ties", "edited")
-                },
-            )
-            for page_number, line in line_rows
-            if line.get("word_status")
-        ],
-        batch_size=BATCH_SIZE,
-    )
+    # A bundle written before word statuses were dropped still carries a
+    # ``word_status`` per line; nothing reads it.
 
 
 def serialize_calibration(mushaf: Mushaf) -> dict:

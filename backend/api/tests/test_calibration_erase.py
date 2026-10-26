@@ -83,8 +83,7 @@ class SkipTests(SimpleTestCase):
         fresh = draft_blob(exception="", allocations=[{"word_id": 1, "paws": 0}])
         earlier = draft_blob(erased=True, allocations=[], subtype="", exception="")
         document = {"stream": [WORD], "lines": [{"snapshot_id": "a", "blobs": [fresh], "words": []}]}
-        carried, _ = calibration._carry_decisions(document, {"a": {"blobs": [earlier], "words": []}})
-        self.assertTrue(carried)
+        self.assertTrue(calibration._carry_decisions(document, {"a": {"blobs": [earlier], "words": []}}))
         self.assertEqual((fresh["erased"], fresh["allocations"], fresh["subtype"]), (True, [], ""))
 
 

@@ -120,10 +120,6 @@ MESSAGES: dict[str, dict[str, str]] = {
         "en": "The span {from_sura}:{from_aya}..{to_sura}:{to_aya} runs backwards through this mushaf.",
         "ar": "النطاق {from_sura}:{from_aya}..{to_sura}:{to_aya} يسير عكسيًا في هذا المصحف.",
     },
-    "no_active_word_run": {
-        "en": "No word detection run is in progress for this mushaf.",
-        "ar": "لا توجد عملية كشف كلمات جارية لهذا المصحف.",
-    },
     "calibration_not_found": {
         "en": "Page {page} has nothing to calibrate — it is not processed in this mushaf.",
         "ar": "لا يوجد في الصفحة {page} ما يُعاير — فهي غير معالَجة في هذا المصحف.",

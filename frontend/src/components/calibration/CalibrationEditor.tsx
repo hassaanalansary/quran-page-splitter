@@ -60,7 +60,6 @@ import {
   expectedType,
   extendSelection,
   galleryGroups,
-  handSetBoxes,
   markChecksOf,
   markCheckOf,
   tanweenOf,
@@ -70,20 +69,15 @@ import {
   newRequestId,
   noiseFor,
   noiseOf,
-  OVERSHOOT_PX,
-  overshoot,
   pageExceptions,
   passesFilter,
   pushHistory,
   releaseDecisions,
   requestIds,
-  resetAllEdges,
-  resetWordEdges,
   setErased,
   setException,
   setRole,
   setSubtype,
-  setWordEdges,
   shareBetween,
   stepAttention,
   stepBlob,
@@ -115,7 +109,6 @@ import type {
   TypeEvidence,
 } from "@/lib/calibration/types";
 import { revealInScroller } from "@/lib/reveal";
-import { wordsPlace } from "@/lib/words/place";
 
 import { BlobStrip } from "./BlobStrip";
 import { BulkPanel } from "./BulkPanel";
@@ -130,10 +123,9 @@ import { SelectionBar, type EvidenceTab } from "./SelectionBar";
 import { HOTKEY_TYPES, subtypeGlyph } from "./subtypes";
 
 const PAD = 20;
-/** Screen px between stacked strips — constant, like the cuts editor's. */
+/** Screen px between stacked strips — constant at every zoom. */
 const GAP = 18;
-/** Zoom is fit-relative, as in the cuts editor: 1 is the text column filling the
- * canvas's width. */
+/** Zoom is fit-relative: 1 is the text column filling the canvas's width. */
 const MIN_ZOOM = 0.25;
 const FIT_ZOOM = 1;
 const MAX_ZOOM = 8;
@@ -147,6 +139,11 @@ const LISTED = 20;
 const docKey = (doc: CalibrationDocument) =>
   `${doc.page}:${doc.revision}:${doc.processed ? 1 : 0}:${doc.stale ? 1 : 0}`;
 
+/** The page a location shows. Read defensively: a blocker's `search` is the union of
+ * every route's schema, and most of them have no page. */
+const pageOf = (location: { search: unknown }) =>
+  (location.search as { page?: unknown } | undefined)?.page;
+
 /** A preview on show: the re-read page, and the exact draft that produced it — the
  * one an acceptance sends back. */
 type Preview = { doc: CalibrationDocument; draft: CalibrationDraft; signature: string };
@@ -156,15 +153,16 @@ type Preview = { doc: CalibrationDocument; draft: CalibrationDraft; signature: s
  * as, and the decisions that correct it.
  *
  * **The loop.** Process the page (a background job) → look at what asks for a look,
- * correct roles and ownership, drag word edges → preview the page re-read under
- * those decisions, accept or discard → save the draft as often as you like →
- * confirm the page. Only a confirmation feeds calibration: a draft is never an
- * example, and neither is a preview.
+ * correct roles and ownership → preview the page re-read under those decisions,
+ * accept or discard → save the draft as often as you like → confirm the page. Only
+ * a confirmation feeds calibration: a draft is never an example, and neither is a
+ * preview. Every word's box is the extent of the ink given to it; no edge is placed
+ * by hand.
  *
- * **Two modes, one picture.** Blobs mode selects ink (click, Shift-click, or drag a
- * rectangle) and labels it. Words mode drags word edges. Both paint every blob by
- * the role it currently has, and both show each word's PAW count against what its
- * spelling needs.
+ * **Two modes.** Blobs mode selects ink (click, Shift-click, or drag a rectangle)
+ * and labels it, painting every blob by the role it currently has and each word's
+ * PAW count against what its spelling needs. The gallery lays the same ink out by
+ * type or role.
  *
  * **What is held here.** The page's editable lines, with an undo history of whole
  * states; the server's answer is only taken again when it is genuinely new, and
@@ -175,15 +173,12 @@ export function CalibrationEditor({
   page,
   pageCount,
   onPageChange,
-  modeSwitch,
   isRTL,
 }: {
   mushafId: string;
   page: number;
   pageCount: number;
   onPageChange: (page: number) => void;
-  /** The step's Cuts | Calibrate switch, first in the panel. */
-  modeSwitch: ReactNode;
   isRTL: boolean;
 }) {
   const { t } = useTranslation();
@@ -208,7 +203,7 @@ export function CalibrationEditor({
   const [preview, setPreview] = useState<Preview | null>(null);
   /** A newer answer arrived over unsaved edits and was not taken. */
   const [held, setHeld] = useState(false);
-  const [mode, setMode] = useState<"blobs" | "words" | "gallery">("blobs");
+  const [mode, setMode] = useState<"blobs" | "gallery">("blobs");
   /** The gallery groups marks by type, or all ink by role — at one zoom. */
   const [galleryKind, setGalleryKind] = useState<GalleryKind>("types");
   const [galleryZoom, setGalleryZoom] = useState(2);
@@ -245,8 +240,8 @@ export function CalibrationEditor({
   const signature = useMemo(() => editSignature(lines), [lines]);
   const dirty = builtPage === page && signature !== base;
 
-  // Latest values for handlers that outlive the render they were made in: a drag's
-  // window listeners, and mutations whose answer lands renders later.
+  // Latest values for handlers that outlive the render they were made in: mutations
+  // whose answer lands renders later.
   const linesRef = useRef(lines);
   linesRef.current = lines;
   const dirtyRef = useRef(dirty);
@@ -528,9 +523,7 @@ export function CalibrationEditor({
     onSuccess: ({ at, fresh, sentSignature }) => {
       adopt(at, fresh, sentSignature);
       setConfirmOpen(false);
-      // The page's words are the product now, and one more page is evidence.
-      void queryClient.invalidateQueries({ queryKey: queryKeys.pageWords(mushafId, at) });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.wordsCoverage(mushafId) });
+      // One more page is evidence.
       void queryClient.invalidateQueries({ queryKey: calibrationKeys.evaluation(mushafId) });
       // The meter moves with every confirmation — that is what it is for.
       void queryClient.invalidateQueries({ queryKey: calibrationKeys.readiness(mushafId) });
@@ -762,7 +755,6 @@ export function CalibrationEditor({
     return { count, expected };
   }, [lines, selectionFilter, expectations, doubts]);
 
-  const handSet = useMemo(() => handSetBoxes(lines), [lines]);
   const gallery = useMemo(
     () =>
       mode === "gallery"
@@ -797,15 +789,13 @@ export function CalibrationEditor({
   };
 
   // ── leaving ────────────────────────────────────────────────────────────────
-  // Blocks a page change and a switch to the cuts editor too, not only leaving the
-  // step: the lines are rebuilt per page, so either would drop them unasked.
+  // Blocks a page change too, not only leaving the step: the lines are rebuilt per
+  // page, so it would drop them unasked.
   useBlocker({
     enableBeforeUnload: () => dirtyRef.current,
     shouldBlockFn: ({ current, next }) => {
       if (!dirtyRef.current) return false;
-      if (current.pathname === next.pathname && wordsPlace(current) === wordsPlace(next)) {
-        return false;
-      }
+      if (current.pathname === next.pathname && pageOf(current) === pageOf(next)) return false;
       return !window.confirm(t("calibration.leaveConfirm"));
     },
   });
@@ -856,11 +846,6 @@ export function CalibrationEditor({
       } else if (key === "a" && editable && selection.ids.length) {
         event.preventDefault();
         commit(acceptExpected(lines, expectations, selection));
-      } else if (key === "r" && editable && selection.ids.length) {
-        // The word the selection is in: its box taken from its ink again.
-        event.preventDefault();
-        const index = wordAt(lines, selection);
-        if (index !== null) commit(resetWordEdges(lines, selection.snapshot, index));
       } else if (
         event.shiftKey &&
         /^(Digit|Numpad)[0-9]$/.test(event.code) &&
@@ -1153,7 +1138,6 @@ export function CalibrationEditor({
               focused={line.snapshot_id === focus}
               selection={selection}
               onSelect={select}
-              mode={mode}
               selectionFilter={selectionFilter}
               pickAll={pickAll && highlights(selectionFilter)}
               movedWords={moved ?? undefined}
@@ -1165,14 +1149,6 @@ export function CalibrationEditor({
               dim={dim}
               selectable={!line.readonly}
               disabled={line.readonly || !editable}
-              onWordEdge={(index, start, end) =>
-                setLines((current) => setWordEdges(current, line.snapshot_id, index, start, end))
-              }
-              // Through the ref: the drag's listeners were attached when it began,
-              // and a closure over `lines` would push the pre-drag state.
-              onWordEdgeCommit={() =>
-                setHistory((current) => pushHistory(current, linesRef.current))
-              }
             />
           </div>
         ))}
@@ -1217,17 +1193,13 @@ export function CalibrationEditor({
             aria-label={t("calibration.modeLabel")}
             className="flex h-[26px] flex-none overflow-hidden rounded-sm border border-border-strong"
           >
-            {(["blobs", "words", "gallery"] as const).map((value) => (
+            {(["blobs", "gallery"] as const).map((value) => (
               <button
                 key={value}
                 type="button"
                 aria-pressed={mode === value}
                 title={t(
-                  value === "blobs"
-                    ? "calibration.modeBlobsHelp"
-                    : value === "words"
-                      ? "calibration.modeWordsHelp"
-                      : "calibration.modeGalleryHelp",
+                  value === "blobs" ? "calibration.modeBlobsHelp" : "calibration.modeGalleryHelp",
                 )}
                 onClick={() => setMode(value)}
                 className={`cursor-pointer px-2.5 text-[11.5px] font-medium transition-colors ${
@@ -1236,53 +1208,45 @@ export function CalibrationEditor({
                     : "bg-white text-text-secondary hover:bg-bg-surface"
                 }`}
               >
-                {t(
-                  value === "blobs"
-                    ? "calibration.modeBlobs"
-                    : value === "words"
-                      ? "calibration.modeWords"
-                      : "calibration.modeGallery",
-                )}
+                {t(value === "blobs" ? "calibration.modeBlobs" : "calibration.modeGallery")}
               </button>
             ))}
           </div>
 
           <span className="mx-1 h-5 w-px flex-none bg-border" />
-          {mode !== "words" && (
-            <span className="flex flex-none items-center gap-1.5">
-              <select
-                aria-label={t("calibration.selectionFilter")}
-                title={t("calibration.filter.help")}
-                className="h-8 max-w-[220px] flex-none rounded-sm border border-border-strong bg-white px-2 text-[12px]"
-                value={selectionFilter}
-                onChange={(event) => {
-                  setSelectionFilter(event.target.value as BlobFilter);
-                  setSelection(NO_SELECTION);
-                }}
-              >
-                <option value="all">{t("calibration.selectAllBlobs")}</option>
-                <option value="mark">{t("calibration.selectMarks")}</option>
-                <option value="body">{t("calibration.selectBodies")}</option>
-                <optgroup label={t("calibration.filter.types")}>
-                  {filterTypes.map(({ subtype, typed, expected }) => (
-                    <option key={subtype} value={typeFilter(subtype)}>
-                      {`${subtypeGlyph(subtype)}  ${typeName(subtype)} · ${
-                        expected
-                          ? t("calibration.filter.count", { count: typed + expected, expected })
-                          : typed + expected
-                      }`}
-                    </option>
-                  ))}
-                  <option value="untyped">
-                    {t("calibration.filter.untyped", { count: tally.untyped })}
+          <span className="flex flex-none items-center gap-1.5">
+            <select
+              aria-label={t("calibration.selectionFilter")}
+              title={t("calibration.filter.help")}
+              className="h-8 max-w-[220px] flex-none rounded-sm border border-border-strong bg-white px-2 text-[12px]"
+              value={selectionFilter}
+              onChange={(event) => {
+                setSelectionFilter(event.target.value as BlobFilter);
+                setSelection(NO_SELECTION);
+              }}
+            >
+              <option value="all">{t("calibration.selectAllBlobs")}</option>
+              <option value="mark">{t("calibration.selectMarks")}</option>
+              <option value="body">{t("calibration.selectBodies")}</option>
+              <optgroup label={t("calibration.filter.types")}>
+                {filterTypes.map(({ subtype, typed, expected }) => (
+                  <option key={subtype} value={typeFilter(subtype)}>
+                    {`${subtypeGlyph(subtype)}  ${typeName(subtype)} · ${
+                      expected
+                        ? t("calibration.filter.count", { count: typed + expected, expected })
+                        : typed + expected
+                    }`}
                   </option>
-                  <option value="doubtful">
-                    {t("calibration.filter.doubtful", { count: tally.doubtful })}
-                  </option>
-                </optgroup>
-              </select>
-            </span>
-          )}
+                ))}
+                <option value="untyped">
+                  {t("calibration.filter.untyped", { count: tally.untyped })}
+                </option>
+                <option value="doubtful">
+                  {t("calibration.filter.doubtful", { count: tally.doubtful })}
+                </option>
+              </optgroup>
+            </select>
+          </span>
           {mode !== "gallery" && (
             <>
               <IconButton
@@ -1373,7 +1337,7 @@ export function CalibrationEditor({
           </div>
         </div>
 
-        {mode !== "words" && processed && highlights(selectionFilter) && (
+        {processed && highlights(selectionFilter) && (
           <div
             className="flex flex-shrink-0 flex-wrap items-center gap-x-4 gap-y-1 border-b border-border px-3 py-1.5 text-[11.5px] text-text-secondary"
             style={{ background: `rgb(${HIGHLIGHT_RGB.join(",")} / 0.07)` }}
@@ -1511,8 +1475,6 @@ export function CalibrationEditor({
       </div>
 
       <Aside status={status} footer={footer}>
-        {modeSwitch}
-
         <BulkPanel
           mushafId={mushafId}
           page={page}
@@ -1606,15 +1568,11 @@ export function CalibrationEditor({
             current={
               selection.snapshot === focusLine.snapshot_id ? wordAt(shownLines, selection) : null
             }
-            editable={editable}
             onSelect={(ids) => selectWord({ snapshot: focusLine.snapshot_id, ids })}
             onStep={(delta) => {
               const next = stepWord(shownLines, selection, delta);
               if (next) selectWord(next);
             }}
-            onReset={(index) => commit(resetWordEdges(lines, focusLine.snapshot_id, index))}
-            handSet={handSet}
-            onResetAll={() => commit(resetAllEdges(lines))}
             checks={checks}
           />
         )}
@@ -1859,30 +1817,20 @@ function PageCard({
   );
 }
 
-/** The focused line's words: each with its count, and — for one dragged by hand —
- * the way back to edges taken from its ink. A row selects that word's ink and shows
- * it; the arrows above step word by word across the page, as Ctrl+← → do. */
+/** The focused line's words, each with its count. A row selects that word's ink and
+ * shows it; the arrows above step word by word across the page, as Ctrl+← → do. */
 function WordList({
   line,
   current,
-  editable,
   onSelect,
   onStep,
-  onReset,
-  handSet,
-  onResetAll,
   checks,
 }: {
   line: CalibrationLine;
   /** The word the selection is in, on this line. */
   current: number | null;
-  editable: boolean;
   onSelect: (ids: number[]) => void;
   onStep: (delta: 1 | -1) => void;
-  onReset: (index: number) => void;
-  /** The page's hand-set boxes, and how many reach past their ink. */
-  handSet: { count: number; wide: number };
-  onResetAll: () => void;
   /** Every word's marks against its text's. */
   checks: MarkChecks;
 }) {
@@ -1912,29 +1860,6 @@ function WordList({
             : t("calibration.wordNav.keys")}
         </span>
       </div>
-      <p className="-mt-1.5 text-[10.5px] leading-snug text-text-muted">
-        {t("calibration.boxes.legend")}
-      </p>
-      {handSet.count > 0 && (
-        <div
-          className={`flex items-center justify-between gap-2 rounded-sm px-2 py-1.5 text-[11px] leading-snug ${
-            handSet.wide ? "bg-error-bg text-error" : "bg-bg-surface text-text-secondary"
-          }`}
-        >
-          <span>
-            {t("calibration.boxes.summary", { count: handSet.count, wide: handSet.wide })}
-          </span>
-          <Button
-            variant="outline"
-            className="h-7 flex-none px-2 text-[11px]"
-            disabled={!editable}
-            onClick={onResetAll}
-            title={t("calibration.boxes.resetAllHelp")}
-          >
-            {t("calibration.boxes.resetAll")}
-          </Button>
-        </div>
-      )}
       {line.words.length === 0 ? (
         <p className="text-[12px] text-text-muted">{t("calibration.noWords")}</p>
       ) : (
@@ -1999,26 +1924,7 @@ function WordList({
                       {check.ok ? "✓" : "≠"}
                     </span>
                   )}
-                  {overshoot(line, word) > OVERSHOOT_PX && (
-                    <span
-                      className="flex-none rounded-sm bg-error-bg px-1 text-[10px] font-semibold tabular-nums text-error"
-                      title={t("calibration.boxes.overshootHelp", { px: overshoot(line, word) })}
-                    >
-                      {t("calibration.boxes.overshoot", { px: overshoot(line, word) })}
-                    </span>
-                  )}
                 </button>
-                {word.override && (
-                  <button
-                    type="button"
-                    title={t("calibration.resetEdges")}
-                    disabled={!editable}
-                    onClick={() => onReset(index)}
-                    className="h-4 w-4 flex-none cursor-pointer rounded-sm border border-border-strong text-[10px] leading-none text-text-muted hover:border-orange hover:text-orange disabled:cursor-default disabled:opacity-40"
-                  >
-                    ↺
-                  </button>
-                )}
               </div>
             );
           })}

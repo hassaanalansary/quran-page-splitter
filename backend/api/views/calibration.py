@@ -1,6 +1,6 @@
 """Calibration endpoints: process a page, correct it, preview, confirm, evaluate.
 
-Page-at-a-time like review and the word cuts, because that is how a person works:
+Page-at-a-time like review, because that is how a person works:
 one page processed, reviewed and confirmed before the next is read from it. See
 ``api.services.calibration`` for the loop and what each step stores.
 
@@ -61,20 +61,9 @@ class BlobEditIn(Schema):
     erased: bool = False
 
 
-class WordEditIn(Schema):
-    word_id: int | None = None
-    #: The word's RIGHT edge, and the larger number — Arabic runs right to left.
-    start_x: int = Field(ge=0)
-    end_x: int = Field(ge=0)
-    #: The edges were dragged by hand; the next alignment keeps them.
-    override: bool = False
-    shared: bool = False
-
-
 class LineEditIn(Schema):
     snapshot_id: str
     blobs: list[BlobEditIn]
-    words: list[WordEditIn]
 
 
 class DraftIn(Schema):

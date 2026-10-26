@@ -1,9 +1,7 @@
-"""Per-run artefacts on disk: minted, pruned, and read back the same way for both engines.
+"""Per-run artefacts on disk: minted, pruned, and read back the same way.
 
-Detection and word detection each write one detailed log per run, and both are read
-by the same live viewer. What differs is only the row that points at the file — a
-``ProcessingRun`` for detection, the ``ProcessJob`` itself for a word run, which has
-no run row of its own. So the paths live here and each side keeps its own pointer.
+Detection writes one detailed log per run, read by a live viewer; the
+``ProcessingRun`` row is what points at the file. The paths live here.
 
 A run also leaves a **machine-readable report** beside its log, sharing the token:
 ``<token>.log`` to read, ``<token>.json`` to grep and diff across runs. The pair is
@@ -98,14 +96,13 @@ def stale_entries(listing: Callable[[], Iterable[Path]], keep: int) -> list[Path
 def prune(directory: Path, keep: int | None = None) -> int:
     """Keep the newest ``keep`` run logs under *directory*; delete the rest.
 
-    A whole-mushaf run logs several MB and a whole-sura word run rather more, which
-    is the storage this reclaims — the rows themselves are a few hundred bytes and
-    are kept, so pruned runs still appear in the history.
+    A whole-mushaf run logs several MB, which is the storage this reclaims — the
+    rows themselves are a few hundred bytes and are kept, so pruned runs still
+    appear in the history.
 
     Rows that pointed at a deleted file have their pointer cleared, which is what
     makes the UI honest: the "view the log" affordances disappear instead of
-    offering a dead link. **Both** tables are swept, because both mint from this
-    directory and neither knows which files the other owns.
+    offering a dead link.
 
     Best-effort on the filesystem side: failing to delete an old log is never a
     reason to fail the run that triggered the sweep.
@@ -113,7 +110,7 @@ def prune(directory: Path, keep: int | None = None) -> int:
     # Imported here rather than at module scope: the services this module serves
     # are imported by ``api.models``' own callers, and a top-level import would
     # close that loop.
-    from api.models import ProcessingRun, ProcessJob
+    from api.models import ProcessingRun
 
     keep = retention(keep)
     if keep < 0:
@@ -131,7 +128,6 @@ def prune(directory: Path, keep: int | None = None) -> int:
 
     if pruned:
         ProcessingRun.objects.filter(log_path__in=pruned).update(log_path="")
-        ProcessJob.objects.filter(log_path__in=pruned).update(log_path="", log_url="")
         logger.info("Pruned %d old run log(s) from %s", len(pruned), directory)
     return len(pruned)
 

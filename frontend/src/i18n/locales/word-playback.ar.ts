@@ -55,7 +55,6 @@ export const wordPlaybackAr: typeof wordPlaybackEn = {
   risk: {
     count: "الأجزاء لا تكتمل",
     look: "حبر يحتاج نظرة",
-    box: "مربّع أعرض من حبره",
     line: "سطر لم يستقرّ",
     noInk: "بلا حبر",
     marks: "علامات لا توافق نصّها",

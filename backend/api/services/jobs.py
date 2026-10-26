@@ -49,8 +49,7 @@ from ninja.errors import HttpError
 
 from accounts.models import User
 from api import i18n
-from api.models import ActivityTypeChoices, Mushaf, ProcessJob, ProcessJobKindChoices, ProcessJobStateChoices
-from api.services import activity as activity_service
+from api.models import Mushaf, ProcessJob, ProcessJobKindChoices, ProcessJobStateChoices
 from api.services import processing as processing_service
 from api.services import word_runs
 
@@ -153,8 +152,8 @@ def _of_kind(rows: QuerySet[ProcessJob], kind: Kinds) -> QuerySet[ProcessJob]:
 def latest_for(mushaf_id: uuid.UUID, *, kind: Kinds = None) -> ProcessJob | None:
     """The mushaf's most recent job, running or settled (None if never run).
 
-    ``kind`` narrows it to one engine, which is what each poller wants: a word run
-    appearing in the processing panel would be read as a detection run that had
+    ``kind`` narrows it to one engine, which is what each poller wants: a calibration
+    run appearing in the processing panel would be read as a detection run that had
     somehow lost its page counter.
     """
     _settle_dead_jobs()
@@ -186,10 +185,10 @@ def ensure_idle(mushaf_id: uuid.UUID) -> None:
     """409 if this mushaf already has a run in flight, **of either kind**.
 
     Two detection runs would race over the same Page rows and the same sura/aya
-    carry-over. A detection run overlapping a *word* run is worse than a race:
-    ``write_coords_to_page`` deletes the page's Line rows and every LineWord goes
-    with them by cascade, halfway through a word run that is still writing more.
-    So a mushaf gets one run at a time whatever the two are.
+    carry-over. A detection run overlapping a *calibration* run is worse than a
+    race: ``write_coords_to_page`` deletes the page's Line rows, which the
+    calibration run is reading and snapshotting. So a mushaf gets one run at a time
+    whatever the two are.
     """
     if active_for(mushaf_id) is not None:
         raise HttpError(409, i18n.t("process_already_running"))
@@ -251,21 +250,19 @@ def start_words(
     mushaf: Mushaf,
     plan: word_runs.RunPlan,
     *,
+    runner: Callable[[ProcessJob], None],
     user: User | None = None,
-    runner: Callable[[ProcessJob], None] | None = None,
     inline: bool | None = None,
-    kind: str = ProcessJobKindChoices.WORDS,
+    kind: str = ProcessJobKindChoices.CALIBRATION,
     current_page: int | None = None,
 ) -> ProcessJob:
-    """Register a word-detection job and set it going.
+    """Register a job that reads words over a span of ayat, and set ``runner`` going.
 
-    Shares the table, the caps and the worker plumbing with detection — see
-    ``ensure_idle`` for why the two must not overlap on one mushaf. What differs is
-    only what the row counts: lines rather than pages, and a span rather than a page
-    range, though the page range is filled in too since the span implies one.
-
-    ``kind`` lets calibration register a one-page run under its own name — the same
-    engine over the same kind of span, polled by a different screen.
+    Calibration processes a page this way (``calibration.start_page``). Shares the
+    table, the caps and the worker plumbing with detection — see ``ensure_idle`` for
+    why the two must not overlap on one mushaf. What differs is only what the row
+    counts: lines rather than pages, and a span rather than a page range, though the
+    page range is filled in too since the span implies one.
     """
     ensure_idle(mushaf.id)
     _ensure_capacity(user)
@@ -285,8 +282,7 @@ def start_words(
         end_aya=plan.end[1],
         heartbeat_at=timezone.now(),
     )
-    work = runner if runner is not None else _word_runner(mushaf, plan, user)
-    return _launch(job, work, inline)
+    return _launch(job, runner, inline)
 
 
 def start_pages(
@@ -340,7 +336,7 @@ def _launch(job: ProcessJob, work: Callable[[ProcessJob], None], inline: bool | 
 def request_cancel(mushaf_id: uuid.UUID, *, kind: Kinds = None, message: str = "no_active_process") -> ProcessJob:
     """Ask the mushaf's running job to stop at its next boundary.
 
-    Detection stops between pages, a word run between chunks; both poll the same
+    Detection stops between pages, calibration between lines; both poll the same
     flag, and both settle with everything they had already written still written.
     """
     job = active_for(mushaf_id, kind=kind)
@@ -436,49 +432,6 @@ def _processing_runner(mushaf: Mushaf, params: dict[str, Any]) -> Callable[[Proc
             abort_info=result["abort_info"],
             end_sura=result["end_sura"],
             end_aya=result["end_aya"],
-        )
-
-    return run
-
-
-def _word_runner(mushaf: Mushaf, plan: word_runs.RunPlan, user: User | None) -> Callable[[ProcessJob], None]:
-    """Bind a mushaf + a settled run plan into the callable a job executes."""
-
-    def run(job: ProcessJob) -> None:
-        def on_progress(lines_done: int) -> None:
-            _touch(job.id, phase="detecting", lines_done=lines_done)
-
-        report = word_runs.run_for_job(
-            mushaf.id,
-            plan,
-            user=user,
-            on_progress=on_progress,
-            cancelled=lambda: cancel_requested(job.id),
-            # What turns the log on: the job row is where its path is recorded, so
-            # a run with no job has nowhere to point and keeps no file.
-            job_id=job.id,
-        )
-        state = ProcessJobStateChoices.CANCELLED if report.cancelled else ProcessJobStateChoices.COMPLETED
-        settle(job.id, state, lines_done=report.lines_done)
-        # Emitted after settling, so the feed never claims a run finished before the
-        # row it refers to says so.
-        activity_service.emit(
-            mushaf,
-            ActivityTypeChoices.WORDS_DETECTED,
-            {
-                "from": f"{plan.start[0]}:{plan.start[1]}",
-                "to": f"{plan.end[0]}:{plan.end[1]}",
-                "lines": report.lines_done,
-                "words": report.words_written,
-                "unresolved": len(report.unresolved),
-                "cancelled": report.cancelled,
-                # Only meaningful on a long span, and only these two say what a run
-                # over a whole mushaf actually covered: where it stopped, and which
-                # stretches it stepped over because no pages stand behind them.
-                "resume_at": f"{report.resume_at[0]}:{report.resume_at[1]}" if report.resume_at else None,
-                "gaps": len(plan.gaps),
-            },
-            actor=user,
         )
 
     return run

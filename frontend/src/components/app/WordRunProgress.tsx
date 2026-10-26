@@ -3,13 +3,11 @@ import { useTranslation } from "react-i18next";
 import type { ProcessJob } from "@/lib/api";
 
 /**
- * Progress for a word run, which counts **lines**.
+ * Progress for processing one page in Ink, which counts **lines**.
  *
- * Its own component rather than the processing footer's, because a word run
+ * Its own component rather than the processing footer's, because a page's run
  * leaves `pages_saved` at zero for the whole of it — the two runs share a table
- * but not a unit. Shared between the run page and the cuts page: the run is
- * started on one and can perfectly well finish while you are correcting a page on
- * the other, and both want to say how far along it is.
+ * but not a unit.
  */
 export function WordRunProgress({ job }: { job: ProcessJob }) {
   const { t } = useTranslation();

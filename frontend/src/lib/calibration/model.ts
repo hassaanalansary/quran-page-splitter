@@ -13,12 +13,8 @@
 //     turning it back makes it an ordinary one-PAW body again;
 //   * a word's box spans all the ink it owns, bodies and marks alike — so a mark
 //     given to a word stretches it, and one taken away shrinks it;
-//   * a dragged edge is an override the next alignment keeps — until the reviewer
-//     reassigns that word's bodies, which recalculates it and clears the override.
-//     Moving a mark never clears one: a mark is not a statement about the cut. But
-//     a dragged box still holds all the ink its word owns alone (`fitWord`): a drag
-//     widens a box, or moves the cut inside a body two words share — it never
-//     leaves the word's own ink outside.
+//   * nothing else sets a box: no edge is placed by hand, and a draft carries blob
+//     decisions only — the server takes every box from the ink again.
 import type {
   Allocation,
   BlobException,
@@ -121,13 +117,6 @@ export function draftOf(
             erased: !!erased,
           }),
         ),
-        words: line.words.map(({ word_id, start_x, end_x, override, shared }) => ({
-          word_id,
-          start_x,
-          end_x,
-          override,
-          shared,
-        })),
       })),
   };
 }
@@ -300,9 +289,9 @@ function ownersOf(blob: CalibrationBlob): number[] {
  * `_edges_from_ink`, pixel for pixel.
  *
  * Where a body is shared with the word before (to the right, a smaller id), the
- * word starts at the body's middle; shared with the word after, it ends there. The
- * middle is only a first guess at a cut that lies somewhere inside one piece of
- * ink — the reviewer's to drag. Null when the word has no ink of its own. */
+ * word starts at the body's middle; shared with the word after, it ends there: the
+ * cut lies somewhere inside that one piece of ink, and its middle is as near as ink
+ * can say. Null when the word has no ink of its own. */
 export function edgesFromInk(
   line: CalibrationLine,
   wordId: number,
@@ -321,46 +310,10 @@ export function edgesFromInk(
   return start === null || end === null || start <= end ? null : { start_x: start, end_x: end };
 }
 
-/** The right and left edge of the ink only this word owns: its bodies and marks
- * that no other word shares. The server's `_own_extent`. */
-function ownExtent(line: CalibrationLine, wordId: number): { right: number; left: number } | null {
-  let right: number | null = null;
-  let left: number | null = null;
-  for (const blob of line.blobs) {
-    if (!isText(blob) || !blob.allocations.length) continue;
-    if (!blob.allocations.every((allocation) => allocation.word_id === wordId)) continue;
-    right = right === null ? blob.x + blob.w : Math.max(right, blob.x + blob.w);
-    left = left === null ? blob.x : Math.min(left, blob.x);
-  }
-  return right === null || left === null ? null : { right, left };
-}
-
-/** A word's box, widened to hold all the ink it owns alone — the server's
- * `_fit_words`, pixel for pixel. A box set by hand keeps where the hand put it, but
- * never leaves its word's own bodies or marks outside; the cut inside a body two
- * words share stays the hand's to place. */
-export function fitWord(line: CalibrationLine, word: CalibrationWord): CalibrationWord {
-  if (word.word_id === null) return word;
-  const extent = ownExtent(line, word.word_id);
-  if (!extent) return word;
-  const start_x = Math.max(word.start_x, extent.right);
-  const end_x = Math.min(word.end_x, extent.left);
-  return start_x === word.start_x && end_x === word.end_x ? word : { ...word, start_x, end_x };
-}
-
-/** Recalculate the named words' edges from the bodies and marks that belong to them.
- *
- * `clear` is an explicit reassignment: it recalculates even a hand-dragged word and
- * drops the override, because the reviewer has just said which ink the word is — all
- * but a cut inside a body two words share, which ink cannot place, unless `force`
- * says the reviewer asked for exactly that word. A word left with no body keeps its
- * old edges (a box needs numbers); its badge says 0 of N. */
-function recalculate(
-  line: CalibrationLine,
-  words: Set<number>,
-  clear: boolean,
-  force = false,
-): CalibrationLine {
+/** Recalculate the named words' edges from the bodies and marks that belong to them
+ * — the server's `_box_words`. A word left with no ink keeps its old edges (a box
+ * needs numbers); its badge says 0 of N. */
+function recalculate(line: CalibrationLine, words: Set<number>): CalibrationLine {
   if (!words.size) return line;
   return {
     ...line,
@@ -373,15 +326,8 @@ function recalculate(
           blob.allocations.length > 1 &&
           blob.allocations.some((allocation) => allocation.word_id === id),
       );
-      // An internal cut in shared ink is not recoverable from component bounds.
-      const next = {
-        ...word,
-        shared,
-        override: clear && (!shared || force) ? false : word.override,
-      };
-      if (next.override) return fitWord(line, next);
       const edges = edgesFromInk(line, id);
-      return edges ? { ...next, ...edges } : next;
+      return edges ? { ...word, shared, ...edges } : { ...word, shared };
     }),
   };
 }
@@ -436,7 +382,7 @@ export function setRole(
         decision_source: "human" as const,
       };
     });
-    return recalculate({ ...line, blobs }, affected, false);
+    return recalculate({ ...line, blobs }, affected);
   });
 }
 
@@ -470,7 +416,7 @@ export function setErased(
         attention: [],
       };
     });
-    return recalculate({ ...line, blobs }, affected, false);
+    return recalculate({ ...line, blobs }, affected);
   });
 }
 
@@ -607,7 +553,7 @@ export function unassignMarks(
         decision_source: "human" as const,
       };
     });
-    return recalculate({ ...line, blobs }, affected, false);
+    return recalculate({ ...line, blobs }, affected);
   });
 }
 
@@ -636,9 +582,8 @@ export function releaseDecisions(
  *
  * Bodies carry `paws` each (1 an ordinary letter piece, 0 a broken fragment, 2 two
  * bodies printed touching); marks carry none. This records ownership — it does not
- * change anybody's role. Every word that gained or lost a *body* recalculates, and
- * its dragged override is cleared: the reviewer has just said which ink it is.
- * Marks also resize automatic extents, but do not clear deliberate dragged edges. */
+ * change anybody's role. Every word that gained or lost ink takes its box from its
+ * ink again. */
 export function assignToWord(
   lines: CalibrationLine[],
   selection: BlobSelection,
@@ -662,7 +607,7 @@ export function assignToWord(
       const share: Allocation = { word_id: wordId, paws: blob.role === "body" ? count : 0 };
       return { ...blob, allocations: [share], ownership_explicit: true };
     });
-    return recalculate(recalculate({ ...line, blobs }, affected, true), markWords, false);
+    return recalculate({ ...line, blobs }, new Set([...affected, ...markWords]));
   });
 }
 
@@ -670,8 +615,8 @@ export function assignToWord(
  *
  * Each word is given its own share of the blob's PAWs, so both counts close on
  * their own. The alignment reads the joined words as one unit and splits them
- * again at this blob; until a hand drags it, the cut between them sits at the
- * blob's middle (see `edgesFromInk`). */
+ * again at this blob; the cut between them sits at the blob's middle (see
+ * `edgesFromInk`). */
 export function shareBetween(
   lines: CalibrationLine[],
   selection: BlobSelection,
@@ -690,117 +635,7 @@ export function shareBetween(
         ownership_explicit: true,
       };
     });
-    return recalculate({ ...line, blobs }, affected, false);
-  });
-}
-
-/** Drag a word's edge by hand: an override the next alignment keeps — held open
- * wide enough for the word's own ink (see `fitWord`). */
-export function setWordEdges(
-  lines: CalibrationLine[],
-  snapshot: string,
-  index: number,
-  start: number,
-  end: number,
-): CalibrationLine[] {
-  if (!Number.isFinite(start) || !Number.isFinite(end)) return lines;
-  return lines.map((line) => {
-    if (line.readonly || line.snapshot_id !== snapshot || !line.words[index]) return line;
-    const left = line.bbox.x;
-    const right = line.bbox.x + line.bbox.w;
-    const end_x = Math.max(left, Math.min(right - 1, Math.round(end)));
-    const start_x = Math.max(end_x + 1, Math.min(right, Math.round(start)));
-    return {
-      ...line,
-      words: line.words.map((word, i) =>
-        i === index ? fitWord(line, { ...word, start_x, end_x, override: true }) : word,
-      ),
-    };
-  });
-}
-
-/** Drop a word's hand-set edges and take them from its ink again — a cut inside a
- * shared body too, which goes back to the body's middle. */
-export function resetWordEdges(
-  lines: CalibrationLine[],
-  snapshot: string,
-  index: number,
-): CalibrationLine[] {
-  return lines.map((line) => {
-    const word = line.words[index];
-    if (line.readonly || line.snapshot_id !== snapshot || !word || word.word_id === null)
-      return line;
-    return recalculate(line, new Set([word.word_id]), true, true);
-  });
-}
-
-/** Take every hand-set box on the page from its ink again, as one edit — except a
- * cut inside a body two words share, which only a hand can place. */
-export function resetAllEdges(lines: CalibrationLine[]): CalibrationLine[] {
-  return lines.map((line) => {
-    if (line.readonly) return line;
-    const ids = new Set(
-      line.words
-        .filter((word) => word.override && !word.shared && word.word_id !== null)
-        .map((word) => word.word_id as number),
-    );
-    return ids.size ? recalculate(line, ids, true) : line;
-  });
-}
-
-/** Page px a hand-set box reaches past its word's ink, both sides together: 0 for a
- * box taken from its ink, for a cut inside a shared body, and for a word with none. */
-export function overshoot(line: CalibrationLine, word: CalibrationWord): number {
-  if (!word.override || word.shared || word.word_id === null) return 0;
-  const ink = edgesFromInk(line, word.word_id);
-  if (!ink) return 0;
-  return Math.max(0, word.start_x - ink.start_x) + Math.max(0, ink.end_x - word.end_x);
-}
-
-/** A box further than this past its ink is not a hair's difference: it holds nothing
- * of its word, and a confirmation would write it as the word's cut. */
-export const OVERSHOOT_PX = 3;
-
-/** The page's hand-set boxes that a page-wide reset would take from their ink, and
- * how many of those reach past it. */
-export function handSetBoxes(lines: CalibrationLine[]) {
-  let count = 0;
-  let wide = 0;
-  for (const line of lines) {
-    if (line.readonly) continue;
-    for (const word of line.words) {
-      if (!word.override || word.shared || word.word_id === null) continue;
-      count += 1;
-      if (overshoot(line, word) > OVERSHOOT_PX) wide += 1;
-    }
-  }
-  return { count, wide };
-}
-
-/** Take a preview's alignment, keeping every edge the reviewer dragged by hand.
- * One call, so accepting a preview is one undo step. */
-export function mergePreview(
-  current: CalibrationLine[],
-  preview: CalibrationLine[],
-): CalibrationLine[] {
-  return current.map((line) => {
-    if (line.readonly) return line;
-    const next = preview.find((candidate) => candidate.snapshot_id === line.snapshot_id);
-    if (!next) return line;
-    const dragged = new Map(
-      line.words
-        .filter((word) => word.override && word.word_id !== null)
-        .map((word) => [word.word_id, word]),
-    );
-    return {
-      ...next,
-      words: next.words.map((word) => {
-        const kept = word.word_id === null ? undefined : dragged.get(word.word_id);
-        return kept
-          ? fitWord(next, { ...word, start_x: kept.start_x, end_x: kept.end_x, override: true })
-          : word;
-      }),
-    };
+    return recalculate({ ...line, blobs }, affected);
   });
 }
 
@@ -919,8 +754,8 @@ export function typeCounts(lines: CalibrationLine[], expectations: Expectations)
 }
 
 /** Everything the server's guesses depend on — which blobs are marks, which are
- * typed as what, and which are erased. A change here asks for new guesses; dragging an
- * edge does not. */
+ * typed as what, and which are erased. A change here asks for new guesses; giving ink
+ * to another word does not. */
 export function typingSignature(lines: CalibrationLine[]): string {
   return lines
     .filter((line) => !line.readonly)
@@ -1234,10 +1069,9 @@ export function stepWord(
 // ── What needs a look, word by word ──────────────────────────────────────────
 
 /** Why a word deserves a look before the page is confirmed: its count does not
- * close, some of its ink asks for a look, its hand-set box reaches past its ink, its
- * line was not settled, or it owns no ink at all. Signals, never verdicts — a word
- * with none of them is not thereby right. */
-export type WordRisk = "count" | "look" | "box" | "line" | "noInk" | "marks";
+ * close, some of its ink asks for a look, its line was not settled, or it owns no ink
+ * at all. Signals, never verdicts — a word with none of them is not thereby right. */
+export type WordRisk = "count" | "look" | "line" | "noInk" | "marks";
 
 /** What about a word is worth a look — `marks` when its marks do not fit its text,
  * given the text's `checks`. */
@@ -1254,7 +1088,6 @@ export function wordRisks(
   if (!ink.length) risks.push("noInk");
   else if (!wordCount(line, word).ok) risks.push("count");
   if (ink.some(needsLook)) risks.push("look");
-  if (overshoot(line, word) > OVERSHOOT_PX) risks.push("box");
   if (line.status === "partial" || line.status === "unresolved") risks.push("line");
   const check = checks ? markCheckOf(line.snapshot_id, word.word_id, checks) : null;
   if (check && !check.ok) risks.push("marks");
