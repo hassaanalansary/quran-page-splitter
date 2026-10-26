@@ -89,6 +89,7 @@ def embraced(row: Doc) -> set[int]:
         blob
         for blob in row["blobs"]
         if blob["role"] == "mark"
+        and not blob.get("erased")
         and blob["y"] + blob["h"] / 2 < top
         and 0.6 <= blob["w"] / max(blob["h"], 1) <= 1.6
         and blob["area"] >= 0.5 * blob["w"] * blob["h"]
@@ -204,7 +205,7 @@ def apply_text_types(rows: list[Doc], checks: dict[str, dict[int, WordCheck]]) -
         per_word = checks.get(row["snapshot_id"], {})
         sure = {ident: check.types[ident] for check in per_word.values() for ident in check.sure}
         for blob in row["blobs"]:
-            if blob["role"] != "mark" or human_typed(blob) or blob.get("text_role"):
+            if blob["role"] != "mark" or human_typed(blob) or blob.get("text_role") or blob.get("erased"):
                 continue
             kind = sure.get(blob["id"])
             if kind:

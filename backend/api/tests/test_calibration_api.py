@@ -18,6 +18,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import mock
 
+import numpy as np
 from django.core.files.base import ContentFile
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
@@ -38,7 +39,7 @@ from api.models import (
     Segment,
     Template,
 )
-from api.services import bundle, cloning, word_coordinates
+from api.services import bundle, cloning, coordinates, data_export, export, word_coordinates
 from api.services import calibration as calibration_service
 from api.services import calibration_snapshots as snapshots
 from api.services import mushaf as mushaf_service
@@ -1221,3 +1222,75 @@ class TypeDoubtTests(CalibrationApiTestCase):
         (example,) = best["examples"]
         self.assertEqual((example["page_number"], example["copies"]), (1, 2))
         self.assertEqual((example["crop"]["w"], bool(example["image_url"])), (BAR[1] - BAR[0], True))
+
+
+class EraseTests(CalibrationApiTestCase):
+    """The stray speck by word 1, erased: noise the line's cutting left, not ink of
+    the text — read around, kept through processing, cut out of the line's PNG."""
+
+    def setUp(self):
+        super().setUp()
+        with drawn_pages(stray=True):
+            self.client.post(self.url(1, "/process"))
+        self.doc = self.document(1)
+
+    def erase(self, document: dict, erased: bool = True) -> dict:
+        body = self.draft(document, realign=True)
+        self.draft_blob(body, 0, STRAY[0])["erased"] = erased
+        response = self.put(1, body)
+        self.assertEqual(response.status_code, 200, response.content)
+        return response.json()
+
+    def exported_alpha(self) -> tuple[np.ndarray, tuple[int, int]]:
+        picture = io.BytesIO()
+        _drawn_page(stray=True).save(picture, format="PNG")
+        with mock.patch.object(export.pdf, "render_page", return_value=picture.getvalue()):
+            export.export_lines(user=default_user(), mushaf_id=self.mushaf.id, page_number=1)
+        line = Line.objects.get(page__mushaf=self.mushaf, page__page_number=1, line_number=1)
+        with line.line_png.open("rb") as handle:
+            alpha = np.asarray(Image.open(handle).convert("RGBA").getchannel("A"))
+        return alpha, export._origin(line, coordinates.page_column(line.page))
+
+    def png_state(self) -> dict:
+        page = Page.objects.get(mushaf=self.mushaf, page_number=1)
+        document, _ = data_export._page(data_export._Context.of(self.mushaf), page, images=False, maps=False)
+        return document["lines"][0]
+
+    def test_erased_ink_belongs_to_no_word_and_the_word_reads_without_it(self):
+        line = self.doc["lines"][0]
+        # Read at first as word 1's mark, so word 1's box reaches out to hold it.
+        self.assertTrue(self.blob_at(line, STRAY[0])["allocations"])
+        self.assertEqual(line["words"][0]["end_x"], STRAY[0])
+        line = self.erase(self.doc)["lines"][0]
+        stray = self.blob_at(line, STRAY[0])
+        self.assertEqual((stray["erased"], stray["allocations"], stray["attention"]), (True, [], []))
+        self.assertEqual(line["words"][0]["end_x"], BODIES[0][0])
+
+    def test_an_erase_holds_when_the_page_is_processed_again(self):
+        saved = self.erase(self.doc)
+        with drawn_pages(stray=True):
+            calibration_service.process_page(self.mushaf, 1, expected_revision=saved["revision"], user=default_user())
+        line = self.document(1)["lines"][0]
+        self.assertEqual(self.blob_at(line, STRAY[0])["erased"], True)
+        self.assertEqual(line["words"][0]["end_x"], BODIES[0][0])
+
+    def test_an_ornament_is_not_erased(self):
+        body = self.draft(self.doc)
+        next(blob for blob in body["lines"][0]["blobs"] if blob["role"] == "ornament")["erased"] = True
+        self.assertEqual(self.put(1, body).status_code, 422)
+
+    def test_the_line_image_is_exported_without_it(self):
+        self.erase(self.doc)
+        alpha, (left, top) = self.exported_alpha()
+        middle = LINE_TOPS[0] + 2 - top
+        self.assertEqual(alpha[middle, STRAY[0] + 2 - left], 0)
+        self.assertGreater(alpha[middle, DOT[0] + 2 - left], 0)
+
+    def test_the_data_export_says_a_png_was_cut_with_other_erases(self):
+        saved = self.erase(self.doc)
+        self.exported_alpha()
+        line = self.png_state()
+        self.assertFalse(line["png"]["outdated"])
+        self.assertTrue(next(blob for blob in line["blobs"] if blob["box"]["page"][0] == STRAY[0])["erased"])
+        self.erase(saved, erased=False)
+        self.assertTrue(self.png_state()["png"]["outdated"])

@@ -52,6 +52,7 @@ from dataclasses import asdict, dataclass, field
 from itertools import pairwise
 from typing import Any, NoReturn, cast
 
+import numpy as np
 from django.db import transaction
 from ninja.errors import HttpError
 
@@ -219,11 +220,12 @@ def _eligible(blob: Doc) -> bool:
     """Whether a confirmed blob may teach the matcher body-versus-mark.
 
     Not ornaments or symbols — they are structure, not text. Not anything flagged
-    as an exception. And not a body standing for other than exactly one PAW: a
-    broken fragment (0) or fused pair (2) is letter ink whose *count* is unusual,
-    and teaching its shape as an ordinary body would teach the wrong thing.
+    as an exception, nor ink a person erased. And not a body standing for other than
+    exactly one PAW: a broken fragment (0) or fused pair (2) is letter ink whose
+    *count* is unusual, and teaching its shape as an ordinary body would teach the
+    wrong thing.
     """
-    if blob["role"] not in TEXT_ROLES or blob.get("exception"):
+    if blob["role"] not in TEXT_ROLES or blob.get("exception") or blob.get("erased"):
         return False
     if blob["role"] == "body" and blob.get("allocations"):
         return bool(sum(allocation["paws"] for allocation in blob["allocations"]) == 1)
@@ -746,10 +748,16 @@ def _approved_rows(mushaf: Mushaf, pages: set[int]) -> dict[str, Doc]:
         if revision is None:
             continue
         for row in revision.payload.get("lines", []):
-            # Content-based so unchanged approvals and gallery copies stay valid.
+            # Content-based so unchanged approvals and gallery copies stay valid. An
+            # erase is named only where there is one, so approvals stored before it
+            # existed keep their fingerprints.
             fingerprint = snapshots.digest(
                 {
-                    "blobs": [{key: blob.get(key) for key in ("id", "role", "allocations")} for blob in row["blobs"]],
+                    "blobs": [
+                        {key: blob.get(key) for key in ("id", "role", "allocations")}
+                        | ({"erased": True} if blob.get("erased") else {})
+                        for blob in row["blobs"]
+                    ],
                     "words": row["words"],
                 }
             )
@@ -907,6 +915,13 @@ def _carry_decisions(document: Doc, before: dict[str, Doc]) -> tuple[bool, froze
             if earlier.get("ownership_explicit") and (allocations or not earlier.get("allocations")):
                 blob.update(ownership_explicit=True, allocations=allocations)
                 carried = True
+            if "erased" in earlier and blob["initial_role"] in TEXT_ROLES:
+                # The same pixels, so the same noise: the erase holds, and so does the
+                # mark of a blob erased once and restored, which the export looks for.
+                blob["erased"] = bool(earlier["erased"])
+                if blob["erased"]:
+                    _erase(blob)
+                    carried = True
         dragged = [
             word
             for word in old["words"]
@@ -986,6 +1001,7 @@ def _shown(document: Doc) -> Doc:
                         "look": _needs_look(blob),
                     }
                     for blob in row["blobs"]
+                    if not blob.get("erased")
                 },
                 "words": [[word["word_id"], word["start_x"], word["end_x"]] for word in fitted["words"]],
             }
@@ -1195,6 +1211,10 @@ def _read(
     for row in rows:
         image, ink = snapshots.load(stored[row["snapshot_id"]])
         cut = set(snapshots.select_span(ink, stored[row["snapshot_id"]].metadata, start, end))
+        erased = {blob["id"] for blob in row["blobs"] if blob.get("erased")}
+        if erased:
+            _without(ink, erased)
+            cut -= erased
         decided = {blob["id"]: blob for blob in row["blobs"]}
         for blob in ink.components:
             edited = decided.get(blob.label)
@@ -1256,6 +1276,33 @@ def _read(
     tied = {row["snapshot_id"] for row, _, outcome in readings if outcome.end_sequences > 1}
     result["shortages"] = _shortages(result, tied)
     return result
+
+
+def _without(ink: Any, erased: set[int]) -> None:
+    """Take the blobs a person erased off a line's ink, as ``select_span`` takes those
+    outside the span: the engine reads the components it is handed and nothing else,
+    so erased ink is never placed, counted or given to a word. In place."""
+    ink.components = [blob for blob in ink.components if blob.label not in erased]
+    ink.bodies = [blob for blob in ink.bodies if blob.label not in erased]
+    ink.marks = [blob for blob in ink.marks if blob.label not in erased]
+
+
+def _erase(blob: Doc) -> None:
+    """A draft blob a person erased: noise the line's cutting and cleaning left, not ink
+    of the text. In place. It belongs to no word, has no type and asks for no look; the
+    reading never sees it (:func:`_without`) and the line PNG is exported without it
+    (:func:`erased_ink`). Its role stays as it was, for a restore."""
+    blob.update(
+        erased=True,
+        allocations=[],
+        ownership_explicit=False,
+        subtype="",
+        subtype_explicit=False,
+        exception="",
+        attention=[],
+    )
+    for key in ("subtype_source", "text_role", "text_word"):
+        blob.pop(key, None)
 
 
 def _shortages(document: Doc, tied: set[str]) -> list[Doc]:
@@ -1604,6 +1651,9 @@ def _apply_outcome(
     }
 
     for blob in row["blobs"]:
+        if blob.get("erased"):
+            _erase(blob)  # the reading never saw it
+            continue
         component = components.get(blob["id"])
         retained_missing = any(a["word_id"] in missing_ids for a in blob["allocations"])
         if component is not None and not blob["explicit"] and not retained_missing:
@@ -1746,7 +1796,7 @@ def _small_letters(row: Doc, references: dict[int, Doc]) -> dict[int, int]:
 
     Returns blob id → the word it belongs to.
     """
-    texts = [blob for blob in row["blobs"] if blob["role"] in TEXT_ROLES]
+    texts = [blob for blob in row["blobs"] if blob["role"] in TEXT_ROLES and not blob.get("erased")]
     areas = [blob["area"] for blob in texts if blob["role"] == "body"]
     if not areas:
         return {}
@@ -1940,7 +1990,8 @@ def _apply_edits(mushaf: Mushaf, review: CalibrationReview, data: Doc) -> Doc:
             before = copy.deepcopy(blob)
             _merge_blob(blob, blobs[blob["id"]], references)
             if any(
-                before.get(key) != blob.get(key) for key in ("role", "explicit", "allocations", "ownership_explicit")
+                before.get(key) != blob.get(key)
+                for key in ("role", "explicit", "allocations", "ownership_explicit", "erased")
             ):
                 pending.update(_blob_ayas(before, row, references) | _blob_ayas(blob, row, references))
         words = []
@@ -1978,6 +2029,10 @@ def _merge_blob(blob: Doc, new: Doc, references: dict[int, Doc]) -> None:
     role = new["role"]
     structural = blob["initial_role"] in ("ornament", "symbol")
     if (structural and role != blob["initial_role"]) or (not structural and role not in TEXT_ROLES):
+        _refuse("invalid_edits", 422)
+    # Only text ink is erased: an ornament or a symbol is the page's structure.
+    erased = bool(new.get("erased"))
+    if erased and structural:
         _refuse("invalid_edits", 422)
     if new.get("exception", "") not in EXCEPTIONS:
         _refuse("invalid_edits", 422)
@@ -2019,6 +2074,12 @@ def _merge_blob(blob: Doc, new: Doc, references: dict[int, Doc]) -> None:
     elif blob.get("decision_source") == "human":
         # Released: nobody has decided it now, and the next reading says who does.
         blob["decision_source"] = "search"
+    if erased:
+        _erase(blob)
+    elif blob.get("erased"):
+        # Restored: ink of the text again, which the next reading places. The key
+        # stays, false, so the export can tell a PNG cut before the restore.
+        blob["erased"] = False
 
 
 def _joinable(word_ids: list[int], references: dict[int, Doc], role: str) -> bool:
@@ -2086,6 +2147,8 @@ def exceptions(document: Doc) -> list[Doc]:
     for row in document.get("lines", []):
         assigned: dict[int, int] = {}
         for blob in row["blobs"]:
+            if blob.get("erased"):
+                continue
             if blob.get("exception"):
                 found.append(
                     {
@@ -2209,14 +2272,15 @@ def _typed(blob: Doc) -> bool:
 
     A type with no ``subtype_explicit`` predates the flag, and every type then was
     set by hand. A type the text set (``subtype_source`` "text") counts as typed: the
-    text named that mark, and a person confirms the page it is on. Flagged ink teaches
-    nothing, as for roles.
+    text named that mark, and a person confirms the page it is on. Flagged ink and
+    erased ink teach nothing, as for roles.
     """
     return (
         blob["role"] == "mark"
         and bool(blob.get("subtype"))
         and (bool(blob.get("subtype_explicit", True)) or blob.get("subtype_source") == "text")
         and not blob.get("exception")
+        and not blob.get("erased")
     )
 
 
@@ -2242,7 +2306,8 @@ def _typed_samples(stored: dict[str, CalibrationSnapshot], rows: list[Doc]) -> l
 
 
 def _page_marks(mushaf: Mushaf, rows: list[Doc]) -> tuple[dict[str, CalibrationSnapshot], list[tuple[Doc, Doc, Any]]]:
-    """The rows' snapshots by id, and every mark on them with its descriptor."""
+    """The rows' snapshots by id, and every mark on them with its descriptor — not the
+    erased ones, which are no mark of the text."""
     stored = {
         str(s.pk): s
         for s in CalibrationSnapshot.objects.filter(mushaf=mushaf, pk__in=[row["snapshot_id"] for row in rows])
@@ -2250,14 +2315,11 @@ def _page_marks(mushaf: Mushaf, rows: list[Doc]) -> tuple[dict[str, CalibrationS
     marks: list[tuple[Doc, Doc, Any]] = []
     for row in rows:
         snapshot = stored.get(row["snapshot_id"])
-        if snapshot is None or not any(blob["role"] == "mark" for blob in row["blobs"]):
+        present = [blob for blob in row["blobs"] if blob["role"] == "mark" and not blob.get("erased")]
+        if snapshot is None or not present:
             continue
         features = snapshots.blob_features(snapshot)
-        marks += [
-            (row, blob, features[blob["id"]])
-            for blob in row["blobs"]
-            if blob["role"] == "mark" and blob["id"] in features
-        ]
+        marks += [(row, blob, features[blob["id"]]) for blob in present if blob["id"] in features]
     return stored, marks
 
 
@@ -2445,6 +2507,59 @@ def type_evidence(mushaf: Mushaf, page: int, data: Doc) -> Doc:
 
 
 # ---------------------------------------------------------------------------
+# Erased ink, for the export
+# ---------------------------------------------------------------------------
+#: Pixels an erased blob's cut reaches past its own into the background around it. Its
+#: anti-aliased fringe is fainter than the ink threshold, so the blob's own pixels alone
+#: would leave a ghost of it in the PNG. Never into another blob.
+ERASE_FRINGE = 1
+
+
+def erased_ink(mushaf: Mushaf, page: int, lines: list[Line]) -> dict[str, tuple[np.ndarray, int, int]]:
+    """The ink a person erased on a page, to cut out of its line PNGs: line id → a mask
+    of it (:func:`erased_mask`), and the page x and y of the mask's top-left corner.
+
+    From the page's draft as it stands — what the v2 export writes too. Only for a line
+    whose snapshot still describes it: an erase names blobs of the pixels it was made
+    on, and a line measured again has other pixels and other ids.
+    """
+    review = _review(mushaf, page)
+    rows = {row["line_id"]: row for row in (review.payload.get("lines") or [])} if review else {}
+    erasing = {
+        key: (line, ids)
+        for line in lines
+        if (key := str(line.pk)) in rows and (ids := {blob["id"] for blob in rows[key]["blobs"] if blob.get("erased")})
+    }
+    if not erasing:
+        return {}
+    stored = {
+        str(s.pk): s
+        for s in CalibrationSnapshot.objects.filter(mushaf=mushaf, pk__in=[rows[key]["snapshot_id"] for key in erasing])
+    }
+    found = {}
+    for key, (line, ids) in erasing.items():
+        snapshot = stored.get(rows[key]["snapshot_id"])
+        if snapshot is None or snapshots.source_fingerprint(line) != snapshot.fingerprint:
+            continue
+        box = snapshot.metadata["bbox"]
+        found[key] = (erased_mask(snapshots.read_raster(snapshot), ids), int(box["x"]), int(box["y"]))
+    return found
+
+
+def erased_mask(raster: np.ndarray, erased: set[int]) -> np.ndarray:
+    """The pixels of the ``erased`` blobs of a label raster, grown ``ERASE_FRINGE``
+    pixels into the background around them — never into another blob."""
+    own = np.isin(raster, list(erased))
+    height, width = own.shape
+    padded = np.pad(own, ERASE_FRINGE)
+    grown = own.copy()
+    for dy in range(2 * ERASE_FRINGE + 1):
+        for dx in range(2 * ERASE_FRINGE + 1):
+            grown |= padded[dy : dy + height, dx : dx + width]
+    return grown & ((raster == 0) | own)
+
+
+# ---------------------------------------------------------------------------
 # The inspector
 # ---------------------------------------------------------------------------
 def examples(mushaf: Mushaf, page: int, snapshot_id: str, blob_id: int) -> Doc:
@@ -2625,7 +2740,7 @@ def _evaluate_page(mushaf: Mushaf, page: int, processed: Doc, confirmed: Doc) ->
         (row["snapshot_id"], blob["id"]): blob["role"]
         for row in confirmed.get("lines", [])
         for blob in row["blobs"]
-        if blob["role"] in TEXT_ROLES
+        if blob["role"] in TEXT_ROLES and not blob.get("erased")
     }
     truth_words = _placements(confirmed.get("lines", []), page)
     canonical = processed

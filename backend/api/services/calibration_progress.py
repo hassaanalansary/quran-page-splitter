@@ -116,7 +116,7 @@ def _page(page: int, processed: CalibrationRevision, confirmed: CalibrationRevis
     final = {
         (row["snapshot_id"], blob["id"]): blob for row in confirmed.payload.get("lines", []) for blob in row["blobs"]
     }
-    text = {key for key, blob in final.items() if blob["role"] in calibration.TEXT_ROLES}
+    text = {key for key, blob in final.items() if blob["role"] in calibration.TEXT_ROLES and not blob.get("erased")}
     engine = learned = learned_wrong = 0
     for row in processed.payload.get("lines", []):
         for blob in row["blobs"]:
@@ -148,7 +148,7 @@ def _page(page: int, processed: CalibrationRevision, confirmed: CalibrationRevis
     for row in shown["lines"]:
         for ident, first in row["blobs"].items():
             blob = final.get((row["snapshot_id"], int(ident)))
-            if blob is None:
+            if blob is None or blob.get("erased"):
                 continue
             small = blob["role"] == "mark" and blob.get("subtype") == "smallLetter"
             counts["looks"] += first["look"]

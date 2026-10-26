@@ -56,6 +56,9 @@ class BlobEditIn(Schema):
     #: "" | mixed | broken | fused | uncertain.
     exception: str = ""
     allocations: list[AllocationIn] = Field(default_factory=list)
+    #: Not ink of the text — noise the line's cutting left. Text blobs only; read
+    #: around, taught nothing, and cut out of the exported line image.
+    erased: bool = False
 
 
 class WordEditIn(Schema):

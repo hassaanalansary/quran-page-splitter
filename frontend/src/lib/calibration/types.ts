@@ -59,6 +59,10 @@ export type CalibrationBlob = {
   decision_source: DecisionSource;
   proposed_role: TextRole | null;
   proposal: Proposal;
+  /** A person erased it: noise the line's cutting left, not ink of the text. It
+   * belongs to no word, is read around, teaches nothing, and the exported line image
+   * is cut without it. `false` once restored; absent on a blob never erased. */
+  erased?: boolean;
 };
 
 export type CalibrationWord = {
@@ -173,6 +177,7 @@ export type CalibrationDraft = {
       | "subtype_explicit"
       | "exception"
       | "allocations"
+      | "erased"
     >[];
     words: Pick<CalibrationWord, "word_id" | "start_x" | "end_x" | "override" | "shared">[];
   }[];

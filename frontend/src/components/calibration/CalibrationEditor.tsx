@@ -77,6 +77,7 @@ import {
   requestIds,
   resetAllEdges,
   resetWordEdges,
+  setErased,
   setException,
   setRole,
   setSubtype,
@@ -826,6 +827,10 @@ export function CalibrationEditor({
       } else if ((key === "b" || key === "m") && editable && selection.ids.length) {
         event.preventDefault();
         commit(setRole(lines, selection, key === "b" ? "body" : "mark"));
+      } else if (key === "delete" && editable && selection.ids.length) {
+        // Erase the selection — or, when all of it is erased already, restore it.
+        event.preventDefault();
+        commit(setErased(lines, selection, !selectedBlobs.every((blob) => blob.erased)));
       } else if (key === "a" && editable && selection.ids.length) {
         event.preventDefault();
         commit(acceptExpected(lines, expectations, selection));
@@ -1461,6 +1466,7 @@ export function CalibrationEditor({
             onAddPart={(part) => commit(addSubtypePart(lines, selection, part, expectations))}
             onAccept={() => commit(acceptExpected(lines, expectations, selection))}
             onException={(value) => commit(setException(lines, selection, value))}
+            onErase={(erased) => commit(setErased(lines, selection, erased))}
             onAssign={(wordId, paws) => commit(assignToWord(lines, selection, wordId, paws))}
             onShare={(shares) => commit(shareBetween(lines, selection, shares))}
             onRelease={() => commit(releaseDecisions(lines, selection))}

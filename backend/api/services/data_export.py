@@ -101,6 +101,8 @@ names the aya it closes) or "symbol" (a sajda or rub' sign; "symbol" names it). 
 may carry a "type" (fatha, kasra, sukun, shadda, ...; two types joined by "+" are two
 marks printed as one blob), set by a person or by the Quran text ("type_by"). "words"
 lists the word ids a blob belongs to; "paws" is how many pieces of its word a body is.
+A blob marked "erased" is no ink of the text - noise a person erased: it belongs to no
+word, and the line PNG and both maps are cut without it.
 
 A map pixel holds R + 256*G + 65536*B, 0 for background. In a word map, k means the
 line's words[k-1]; in a blob map, the blob whose "id" it is.
@@ -109,7 +111,8 @@ Each page says how far its calibration got: "confirmed" (approved, unchanged sin
 "edited" (approved, then changed), "draft" (processed, never approved - unchecked), or
 "none" (never calibrated: word boxes only, no blobs). "stale": the page's lines changed
 after it was processed. Export the line images again after editing lines, or a PNG's
-placement may no longer match it ("png.outdated" says when its size does not).
+placement may no longer match it ("png.outdated" says when its size does not, or when
+it was cut with other erases than the page has now).
 """
 
 
@@ -286,6 +289,8 @@ def _blob(blob: Doc, place: _Placement, ornaments: dict[int, str], symbols: dict
         entry["set_by"] = SET_BY.get(blob.get("decision_source", "search"), "engine")
         if blob.get("exception"):
             entry["flag"] = blob["exception"]
+        if blob.get("erased"):
+            entry["erased"] = True
     elif role == "ornament":
         entry["aya"] = ornaments.get(blob["id"]) or None
     elif role == "symbol":
@@ -321,8 +326,8 @@ def _encode(values: np.ndarray) -> bytes:
     return snapshots.png_bytes(snapshots.encode_labels(values))
 
 
-def _maps(row: Doc, snapshot: CalibrationSnapshot, place: _Placement, words: list[Doc]) -> tuple[bytes, bytes]:
-    """The line's word map and blob map, laid exactly over its PNG."""
+def _laid(snapshot: CalibrationSnapshot, place: _Placement) -> np.ndarray:
+    """The line's blob ids laid exactly over its PNG, the PNG's size."""
     raster = snapshots.read_raster(snapshot)
     width, height = place.canvas
     ids = np.zeros((height, width), dtype=np.int32)
@@ -335,6 +340,16 @@ def _maps(row: Doc, snapshot: CalibrationSnapshot, place: _Placement, words: lis
     h = min(raster.shape[0] - sy, height - ty)
     if w > 0 and h > 0:
         ids[ty : ty + h, tx : tx + w] = raster[sy : sy + h, sx : sx + w]
+    return ids
+
+
+def _maps(row: Doc, snapshot: CalibrationSnapshot, place: _Placement, words: list[Doc]) -> tuple[bytes, bytes]:
+    """The line's word map and blob map, laid exactly over its PNG — without the ink a
+    person erased, which the PNG is cut without."""
+    ids = _laid(snapshot, place)
+    erased = [blob["id"] for blob in row["blobs"] if blob.get("erased")]
+    if erased:
+        ids[np.isin(ids, erased)] = 0
 
     position = {word["word_id"]: index + 1 for index, word in enumerate(words) if word["word_id"] is not None}
     edges = {word["word_id"]: (word["end_x"], word["start_x"]) for word in words if word["word_id"] is not None}
@@ -361,6 +376,36 @@ def _maps(row: Doc, snapshot: CalibrationSnapshot, place: _Placement, words: lis
         chosen = np.asarray([position[owner] for owner in owners], dtype=np.int32)[np.argmin(distance, axis=0)]
         word_map[rows, cols] = chosen
     return _encode(word_map), _encode(ids)
+
+
+def _cut_otherwise(line: Line, row: Doc, snapshot: CalibrationSnapshot, place: _Placement, data: bytes | None) -> bool:
+    """Whether a line's stored PNG was cut with other erases than its draft has now: a
+    blob erased since still shows in it, or one restored since is still cut out of it.
+
+    Read from the PNG's own pixels — an export stores nothing else about what it cut.
+    Asked only of a current line that has had an erase, so a mushaf nobody erased in
+    pays nothing for it.
+    """
+    erased = [blob["id"] for blob in row["blobs"] if blob.get("erased")]
+    restored = [blob["id"] for blob in row["blobs"] if blob.get("erased") is False]
+    try:
+        if data is None:
+            with line.line_png.open("rb") as handle:
+                data = handle.read()
+        with Image.open(io.BytesIO(data)) as image:
+            alpha = np.asarray(image.convert("RGBA").getchannel("A"))
+    except Exception:  # an unreadable PNG says nothing about its erases
+        return False
+    ids = _laid(snapshot, place)
+    if alpha.shape != ids.shape:
+        return True
+    if erased and bool((alpha[np.isin(ids, erased)] > 0).any()):
+        return True
+    for ident in restored:
+        shown = alpha[ids == ident]
+        if shown.size and not (shown > 0).any():
+            return True
+    return False
 
 
 def _words_of(row: Doc | None, line: Line) -> list[Doc]:
@@ -425,6 +470,7 @@ def _page(context: _Context, page: Page, *, images: bool, maps: bool) -> tuple[D
         str(snapshot.pk): snapshot
         for snapshot in CalibrationSnapshot.objects.filter(mushaf=mushaf, pk__in=[row["snapshot_id"] for row in rows])
     }
+    state = _calibration_state(mushaf, review, rows)
 
     files: list[tuple[str, bytes]] = []
     out_lines = []
@@ -444,6 +490,14 @@ def _page(context: _Context, page: Page, *, images: bool, maps: bool) -> tuple[D
         by_id = {word["word_id"]: word for word in words if word["word_id"] is not None}
         ink = _ink_boxes(row, by_id) if row is not None else {}
         snapshot = stored.get(row["snapshot_id"]) if row is not None else None
+        if (
+            png.get("outdated") is False
+            and row is not None
+            and snapshot is not None
+            and not state.get("stale")
+            and any("erased" in blob for blob in row["blobs"])
+        ):
+            png["outdated"] = _cut_otherwise(line, row, snapshot, place, data)
         ornaments, symbols = _structure(snapshot)
         blob_ids: dict[int, list[int]] = {}
         for blob in row["blobs"] if row is not None else []:
@@ -502,7 +556,7 @@ def _page(context: _Context, page: Page, *, images: bool, maps: bool) -> tuple[D
         "pdf_page": pdf.logical_to_pdf_index(mushaf.first_quran_pdf_page, page.page_number, page.source_pdf_page),
         "size": list(size) if size else None,
         "reviewed": page.reviewed,
-        "calibration": _calibration_state(mushaf, review, rows),
+        "calibration": state,
         "lines": out_lines,
     }
     return document, files

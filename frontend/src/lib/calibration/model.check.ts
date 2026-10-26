@@ -61,9 +61,11 @@ import {
   requestIds,
   resetWordEdges,
   selectIds,
+  setErased,
   setException,
   setRole,
   setSubtype,
+  needsLook,
   unassignMarks,
   setWordEdges,
   shareBetween,
@@ -290,6 +292,52 @@ const sel = (ids: number[], snapshot = "s1") => ({ snapshot, ids });
   const decided = setRole(base, sel([1]), "body");
   assert.notEqual(editSignature(decided), editSignature(base));
   assert.equal(editSignature(releaseDecisions(decided, sel([1]))), editSignature(base));
+}
+
+// An erased blob is no ink of the text: it leaves its word, which shrinks to the ink
+// it has left, loses its type and flag, asks for nothing — and is sent as erased.
+// Restored, it is ink again, unowned until the next preview reads it.
+{
+  const initial = line();
+  initial.blobs[1] = {
+    ...initial.blobs[1],
+    subtype: "ijamDot",
+    subtype_explicit: true,
+    exception: "uncertain",
+    attention: ["ambiguous"],
+    x: 560,
+  };
+  initial.words[0] = { ...initial.words[0], end_x: 560 };
+  const erased = setErased([initial], sel([2]), true);
+  const dot = pick(erased, 2);
+  assert.deepEqual(
+    [dot.erased, dot.role, dot.allocations, dot.subtype, dot.exception, needsLook(dot)],
+    [true, "mark", [], "", "", false],
+  );
+  assert.equal(erased[0].words[0].end_x, 580, "the word takes its box from its own ink");
+  assert.equal(pageExceptions(erased).length, 0);
+  assert.equal(teaches(erased).marks, 0);
+  assert.equal(isTyped(dot), false);
+  assert.equal(draftOf({ revision: 1 }, erased, "r").lines[0].blobs[1].erased, true);
+  assert.equal(draftOf({ revision: 1 }, [initial], "r").lines[0].blobs[1].erased, false);
+  assert.notEqual(typingSignature(erased), typingSignature([initial]));
+  // Picked by role, to be restored — never as a kind of mark.
+  assert.equal(passesFilter(dot, "s1", "mark", new Map(), new Map()), true);
+  assert.equal(passesFilter(dot, "s1", "untyped", new Map(), new Map()), false);
+  // Nothing types, assigns or flags erased ink.
+  assert.equal(pick(setSubtype(erased, sel([2]), "fatha"), 2).subtype, "");
+  assert.deepEqual(pick(assignToWord(erased, sel([2]), 1), 2).allocations, []);
+  assert.equal(pick(setException(erased, sel([2]), "broken"), 2).exception, "");
+  const restored = setErased(erased, sel([2]), false);
+  assert.deepEqual([pick(restored, 2).erased, pick(restored, 2).allocations], [false, []]);
+  // Structure is never erased.
+  const withRing = line();
+  withRing.blobs.push({
+    ...blob(5, 200, "body", null),
+    role: "ornament",
+    initial_role: "ornament",
+  });
+  assert.equal(pick(setErased([withRing], sel([5]), true), 5).erased, undefined);
 }
 
 // Attention runs right to left over editable lines and wraps.

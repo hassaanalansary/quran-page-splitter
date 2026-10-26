@@ -107,6 +107,7 @@ export function draftOf(
             subtype_explicit,
             exception,
             allocations,
+            erased,
           }) => ({
             id,
             role,
@@ -116,6 +117,7 @@ export function draftOf(
             subtype_explicit: subtype_explicit ?? !!subtype,
             exception,
             allocations,
+            erased: !!erased,
           }),
         ),
         words: line.words.map(({ word_id, start_x, end_x, override, shared }) => ({
@@ -216,7 +218,7 @@ export function pageExceptions(lines: CalibrationLine[]): PageException[] {
   for (const line of lines) {
     if (line.readonly) continue;
     for (const blob of line.blobs) {
-      if (blob.exception)
+      if (blob.exception && !blob.erased)
         found.push({ kind: "flagged", line_number: line.line_number, detail: blob.exception });
     }
     for (const word of line.words) {
@@ -238,8 +240,10 @@ export function pageExceptions(lines: CalibrationLine[]): PageException[] {
 
 // ── Attention ────────────────────────────────────────────────────────────────
 
-/** A blob the reviewer should look at: flagged by the server, or by them. */
+/** A blob the reviewer should look at: flagged by the server, or by them. Never an
+ * erased one: it is no ink of the text. */
 export function needsLook(blob: CalibrationBlob): boolean {
+  if (blob.erased) return false;
   return activeAttention(blob).length > 0 || blob.exception === "uncertain";
 }
 
@@ -435,6 +439,40 @@ export function setRole(
   });
 }
 
+/** Erase the selected blobs — noise the line's cutting left, not ink of the text —
+ * or restore them. The server's `_erase`: an erased blob belongs to no word, has no
+ * type, no flag and asks for no look; its role stays, for a restore. Restored, it is
+ * ink again, unowned until the next preview reads it. The words it belonged to take
+ * their boxes from the ink they have left. Ornaments and symbols are never erased. */
+export function setErased(
+  lines: CalibrationLine[],
+  selection: BlobSelection,
+  erased: boolean,
+): CalibrationLine[] {
+  return onLine(lines, selection, (line, chosen) => {
+    const affected = new Set<number>();
+    const blobs = line.blobs.map((blob) => {
+      if (!chosen.has(blob.id) || !isText(blob) || !!blob.erased === erased) return blob;
+      if (!erased) return { ...blob, erased: false };
+      ownersOf(blob).forEach((id) => affected.add(id));
+      return {
+        ...blob,
+        erased: true,
+        allocations: [],
+        ownership_explicit: false,
+        subtype: "",
+        subtype_explicit: false,
+        subtype_source: undefined,
+        text_role: undefined,
+        text_word: undefined,
+        exception: "" as const,
+        attention: [],
+      };
+    });
+    return recalculate({ ...line, blobs }, affected, false);
+  });
+}
+
 export function setException(
   lines: CalibrationLine[],
   selection: BlobSelection,
@@ -443,7 +481,7 @@ export function setException(
   return onLine(lines, selection, (line, chosen) => ({
     ...line,
     blobs: line.blobs.map((blob) =>
-      chosen.has(blob.id) && isText(blob) ? { ...blob, exception } : blob,
+      chosen.has(blob.id) && isText(blob) && !blob.erased ? { ...blob, exception } : blob,
     ),
   }));
 }
@@ -457,7 +495,7 @@ export function setSubtype(
   return onLine(lines, selection, (line, chosen) => ({
     ...line,
     blobs: line.blobs.map((blob) =>
-      chosen.has(blob.id) && blob.role === "mark"
+      chosen.has(blob.id) && blob.role === "mark" && !blob.erased
         ? {
             ...blob,
             subtype: value,
@@ -608,7 +646,7 @@ export function assignToWord(
     const affected = new Set<number>();
     const markWords = new Set<number>();
     const blobs = line.blobs.map((blob) => {
-      if (!chosen.has(blob.id) || !isText(blob)) return blob;
+      if (!chosen.has(blob.id) || !isText(blob) || blob.erased) return blob;
       if (blob.role === "body") {
         affected.add(wordId);
         ownersOf(blob).forEach((id) => affected.add(id));
@@ -639,7 +677,7 @@ export function shareBetween(
   return onLine(lines, selection, (line, chosen) => {
     const affected = new Set<number>(valid.map((share) => share.word_id));
     const blobs = line.blobs.map((blob) => {
-      if (!chosen.has(blob.id) || blob.role !== "body") return blob;
+      if (!chosen.has(blob.id) || blob.role !== "body" || blob.erased) return blob;
       ownersOf(blob).forEach((id) => affected.add(id));
       return {
         ...blob,
@@ -780,6 +818,7 @@ export function expectationsOf(suggestions: TypeSuggestion[]): Expectations {
 export function isTyped(blob: CalibrationBlob): boolean {
   return (
     blob.role === "mark" &&
+    !blob.erased &&
     !!blob.subtype &&
     (blob.subtype_explicit !== false || blob.subtype_source === "text")
   );
@@ -800,7 +839,7 @@ export function typedByText(blob: CalibrationBlob): boolean {
  * look: the confirmed examples, agreeing with its role, or the text. Null when the
  * engine had no doubt, a person decided, or nothing answered it. */
 export function answeredBy(blob: CalibrationBlob): "examples" | "text" | null {
-  if (!isText(blob) || blob.explicit || blob.ownership_explicit) return null;
+  if (!isText(blob) || blob.erased || blob.explicit || blob.ownership_explicit) return null;
   const doubted = (blob.body_score >= 6 && blob.body_score <= 9) || blob.role !== blob.initial_role;
   if (!doubted) return null;
   if (blob.decision_source === "text") return "text";
@@ -814,7 +853,7 @@ export function expectedType(
   snapshot: string,
   expectations: Expectations,
 ): { subtype: string; sure: boolean; confidence: number } | null {
-  if (blob.role !== "mark" || isTyped(blob)) return null;
+  if (blob.role !== "mark" || blob.erased || isTyped(blob)) return null;
   const found = expectations.get(expectationKey(snapshot, blob.id));
   if (found) return found;
   return blob.subtype ? { subtype: blob.subtype, sure: false, confidence: 0 } : null;
@@ -861,7 +900,7 @@ export function typeCounts(lines: CalibrationLine[], expectations: Expectations)
   for (const line of lines) {
     if (line.readonly) continue;
     for (const blob of line.blobs) {
-      if (blob.role !== "mark") continue;
+      if (blob.role !== "mark" || blob.erased) continue;
       marks += 1;
       if (isTyped(blob)) typed += 1;
       const guess = expectedType(blob, line.snapshot_id, expectations);
@@ -874,8 +913,9 @@ export function typeCounts(lines: CalibrationLine[], expectations: Expectations)
   return { marks, typed, expected, sure };
 }
 
-/** Everything the server's guesses depend on — which blobs are marks, and which are
- * typed as what. A change here asks for new guesses; dragging an edge does not. */
+/** Everything the server's guesses depend on — which blobs are marks, which are
+ * typed as what, and which are erased. A change here asks for new guesses; dragging an
+ * edge does not. */
 export function typingSignature(lines: CalibrationLine[]): string {
   return lines
     .filter((line) => !line.readonly)
@@ -883,8 +923,14 @@ export function typingSignature(lines: CalibrationLine[]): string {
       (line) =>
         `${line.snapshot_id}:` +
         line.blobs
-          .filter((blob) => blob.role === "mark")
-          .map((blob) => (isTyped(blob) ? `${blob.id}=${blob.subtype}` : `${blob.id}`))
+          .filter((blob) => blob.role === "mark" || blob.erased)
+          .map((blob) =>
+            blob.erased
+              ? `${blob.id}x`
+              : isTyped(blob)
+                ? `${blob.id}=${blob.subtype}`
+                : `${blob.id}`,
+          )
           .join(","),
     )
     .join("|");
@@ -938,7 +984,7 @@ export function shownType(
   snapshot: string,
   expectations: Expectations,
 ): { subtype: string; typed: boolean; sure: boolean } | null {
-  if (blob.role !== "mark") return null;
+  if (blob.role !== "mark" || blob.erased) return null;
   if (isTyped(blob)) return { subtype: blob.subtype, typed: true, sure: true };
   const guess = expectedType(blob, snapshot, expectations);
   return guess ? { subtype: guess.subtype, typed: false, sure: guess.sure } : null;
@@ -977,6 +1023,8 @@ export function passesFilter(
   if (!isText(blob)) return false;
   if (filter === "all") return true;
   if (filter === "body" || filter === "mark") return blob.role === filter;
+  // Erased ink is no kind of mark — but still picked by role, to be restored.
+  if (blob.erased) return false;
   if (blob.role !== "mark") return false;
   if (filter === "untyped") return !isTyped(blob);
   if (filter === "doubtful") return doubtOf(blob, snapshot, doubts) !== null;
@@ -992,7 +1040,7 @@ export function typeTally(lines: CalibrationLine[], expectations: Expectations, 
     if (line.readonly) continue;
     for (const blob of line.blobs) {
       const shown = shownType(blob, line.snapshot_id, expectations);
-      if (blob.role === "mark" && !isTyped(blob)) untyped += 1;
+      if (blob.role === "mark" && !blob.erased && !isTyped(blob)) untyped += 1;
       if (doubtOf(blob, line.snapshot_id, doubts)) doubtful += 1;
       if (!shown) continue;
       const entry = types.get(shown.subtype) ?? { typed: 0, expected: 0 };
@@ -1226,8 +1274,8 @@ export function changedWords(before: CalibrationLine[], after: CalibrationLine[]
 
 /** What confirming the page would teach later pages: its bodies and marks as examples
  * of their role, its typed marks as examples of their type — the server's `_eligible`
- * and `_typed`, counted. Ink flagged out of the ordinary teaches nothing, and neither
- * does a body standing for other than exactly one PAW. */
+ * and `_typed`, counted. Ink flagged out of the ordinary teaches nothing, nor does ink
+ * erased, nor a body standing for other than exactly one PAW. */
 export function teaches(lines: CalibrationLine[]) {
   let bodies = 0;
   let marks = 0;
@@ -1235,7 +1283,7 @@ export function teaches(lines: CalibrationLine[]) {
   for (const line of lines) {
     if (line.readonly) continue;
     for (const blob of line.blobs) {
-      if (!isText(blob) || blob.exception) continue;
+      if (!isText(blob) || blob.exception || blob.erased) continue;
       if (blob.role === "body") {
         const paws = blob.allocations.reduce((sum, allocation) => sum + allocation.paws, 0);
         if (!blob.allocations.length || paws === 1) bodies += 1;
@@ -1279,7 +1327,7 @@ export function galleryGroups(
   const counts = new Map<string, { typed: number; expected: number }>();
   readingOrder(lines).forEach(({ line, blob }, rank) => {
     if (!passesFilter(blob, line.snapshot_id, filter, expectations, doubts)) return;
-    if (kind === "types" && blob.role !== "mark") return;
+    if (blob.erased || (kind === "types" && blob.role !== "mark")) return;
     let key: string = blob.role;
     let order = 0;
     if (kind === "types") {

@@ -37,6 +37,8 @@ import { useTypeName } from "./labels";
 import { TANWEEN_MARKS, subtypeGlyph } from "./subtypes";
 
 const SELECTED_RGB: [number, number, number] = [234, 88, 12];
+/** Erased ink is hatched in this, over white: still there to pick, plainly not text. */
+const ERASED_RGB: [number, number, number] = [201, 42, 42];
 /** Screen px of grab band either side of a word's edge. */
 const EDGE_GRAB = 6;
 /** A pointer that moves further than this between down and up drew a rectangle. */
@@ -196,6 +198,18 @@ export function BlobStrip({
       const blob = blobs.get(id);
       if (!blob) continue;
       const chosen = isSelected(selection, line.snapshot_id, id);
+      const p = i * 4;
+      if (blob.erased) {
+        // Diagonal stripes, so erased ink reads as struck out at any zoom.
+        const stripe = (((i % raster.width) + Math.floor(i / raster.width)) >> 2) % 2 === 0;
+        const colour = chosen ? SELECTED_RGB : stripe ? ERASED_RGB : ([255, 255, 255] as const);
+        const alpha = stripe ? 0.6 : 0.85;
+        data[p] = Math.round(data[p] * (1 - alpha) + colour[0] * alpha);
+        data[p + 1] = Math.round(data[p + 1] * (1 - alpha) + colour[1] * alpha);
+        data[p + 2] = Math.round(data[p + 2] * (1 - alpha) + colour[2] * alpha);
+        data[p + 3] = 255;
+        continue;
+      }
       const picked = shown?.has(id) ?? false;
       const faded = !chosen && ((shown !== null && !picked) || (dim && !needsLook(blob)));
       const colour = chosen
@@ -206,7 +220,6 @@ export function BlobStrip({
             ? HIGHLIGHT_RGB
             : ROLE_RGB[blob.role];
       const alpha = faded ? 0.8 : chosen || picked ? 0.92 : 0.7;
-      const p = i * 4;
       data[p] = Math.round(data[p] * (1 - alpha) + colour[0] * alpha);
       data[p + 1] = Math.round(data[p + 1] * (1 - alpha) + colour[1] * alpha);
       data[p + 2] = Math.round(data[p + 2] * (1 - alpha) + colour[2] * alpha);
@@ -233,7 +246,7 @@ export function BlobStrip({
     if (!showTypes) return { slots: [], rows: 0 };
     const ends = [-Infinity, -Infinity];
     const slots = line.blobs
-      .filter((blob) => blob.role === "mark")
+      .filter((blob) => blob.role === "mark" && !blob.erased)
       .map((blob) => {
         const typed = isTyped(blob);
         const guess = typed ? null : expectedType(blob, line.snapshot_id, guesses);

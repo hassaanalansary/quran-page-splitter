@@ -68,6 +68,7 @@ export function SelectionBar({
   onAddPart,
   onAccept,
   onException,
+  onErase,
   onAssign,
   onShare,
   onRelease,
@@ -92,6 +93,8 @@ export function SelectionBar({
   onAddPart: (part: string) => void;
   onAccept: () => void;
   onException: (exception: BlobException) => void;
+  /** Erase the selected ink, or restore it. */
+  onErase: (erased: boolean) => void;
   onAssign: (wordId: number, paws: number) => void;
   onShare: (shares: Allocation[]) => void;
   onRelease: () => void;
@@ -110,6 +113,7 @@ export function SelectionBar({
       ["Shift+1–9, 0", t("calibration.bar.keyAddPart")],
       ["A", t("calibration.bar.keyAccept")],
       ["B · M", t("calibration.bar.keyRole")],
+      ["Del", t("calibration.bar.keyErase")],
       ["R", t("calibration.bar.keyReset")],
       ["N", t("calibration.bar.keyLook")],
       ["Esc", t("calibration.bar.keyClear")],
@@ -159,6 +163,9 @@ export function SelectionBar({
     marks.length > 0 && others.some((value) => typedAs(value)) ? marks[0].subtype : "";
   const oneMark = single?.role === "mark" ? single : null;
   const oneText = single && (single.role === "body" || single.role === "mark") ? single : null;
+  const texts = blobs.filter((blob) => blob.role === "body" || blob.role === "mark");
+  /** Every text blob selected is erased: the button restores them. */
+  const erased = texts.length > 0 && texts.every((blob) => blob.erased);
   // A body has no type to explain: its evidence is the role's.
   const showing: EvidenceTab = oneMark ? tab : "role";
 
@@ -168,7 +175,9 @@ export function SelectionBar({
   if (single) {
     const type = shown[0] ?? null;
     headline = t(`calibration.role.${single.role}`);
-    if (single.role === "mark" && type) {
+    if (single.erased) {
+      status = { text: t("calibration.bar.erased"), tone: "none" };
+    } else if (single.role === "mark" && type) {
       headline += ` · ${glyph(type.subtype)} ${typeName(type.subtype)}`;
       status = type.typed
         ? {
@@ -271,6 +280,11 @@ export function SelectionBar({
             </div>
           </div>
 
+          {single?.erased && (
+            <span className="text-[10.5px] leading-snug text-text-muted">
+              {t("calibration.bar.erasedHelp")}
+            </span>
+          )}
           {status?.tone === "expected" && guess?.source && (
             <span className="text-[10.5px] leading-snug text-text-muted">
               {t(
@@ -346,6 +360,19 @@ export function SelectionBar({
                 <Key>{choice === "body" ? "B" : "M"}</Key>
               </Button>
             ))}
+            {texts.length > 0 && (
+              <Button
+                type="button"
+                variant="outline"
+                className="h-7 px-2 text-[12px]"
+                disabled={disabled}
+                onClick={() => onErase(!erased)}
+                title={t(erased ? "calibration.bar.restoreHelp" : "calibration.bar.eraseHelp")}
+              >
+                {t(erased ? "calibration.bar.restore" : "calibration.bar.erase")}
+                <Key>Del</Key>
+              </Button>
+            )}
             {expected > 0 && (
               <Button
                 type="button"

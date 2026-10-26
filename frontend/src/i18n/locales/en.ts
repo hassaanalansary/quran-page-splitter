@@ -851,6 +851,15 @@ export const en = {
       keyType: "type the selected marks (1 fatha … 0 dot)",
       keyAccept: "accept the expected type",
       keyRole: "body · mark",
+      keyErase: "erase the selection as noise · restore it",
+      erase: "Erase",
+      restore: "Restore",
+      eraseHelp:
+        "Not ink of the text — noise the line's cutting or the scan left. The page is read without it, it teaches nothing, and the exported line image is cut without it. (Del)",
+      restoreHelp: "Ink of the text after all: the next preview reads it again. (Del)",
+      erased: "erased",
+      erasedHelp:
+        "Erased: no ink of the text. It belongs to no word, teaches nothing, and the exported line image is cut without it.",
       keyReset: "take the word's box from its ink again",
       keyLook: "the next thing to look at",
       keyClear: "clear the selection",
