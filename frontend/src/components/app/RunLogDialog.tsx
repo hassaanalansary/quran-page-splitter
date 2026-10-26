@@ -115,18 +115,18 @@ export function RunLogDialog({ open, onOpenChange, mushafId, runId, live }: Prop
             <ScrollText size={18} />
             {t("process.logDialogTitle")}
             {live && (
-              <span className="flex items-center gap-1.5 text-[11.5px] font-normal text-text-muted">
-                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-orange" />
+              <span className="flex items-center gap-1.5 text-[11.5px] font-normal text-ink-3">
+                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-lapis" />
                 {behind ? t("process.logCatchingUp") : t("process.logLive")}
               </span>
             )}
           </DialogTitle>
         </DialogHeader>
 
-        <p className="text-[12.5px] leading-[1.6] text-text-secondary">{t("process.logLead")}</p>
+        <p className="text-[12.5px] leading-[1.6] text-ink-2">{t("process.logLead")}</p>
 
         {error && (
-          <div className="rounded-md border border-error-border bg-error-bg px-3 py-2 text-[12px] text-error">
+          <div className="rounded-md border border-stop/20 bg-stop-wash px-3 py-2 text-[12px] text-stop-text">
             {error}
           </div>
         )}
@@ -135,7 +135,7 @@ export function RunLogDialog({ open, onOpenChange, mushafId, runId, live }: Prop
           ref={bodyRef}
           onScroll={onScroll}
           dir="ltr"
-          className="h-[55vh] overflow-auto rounded-md border border-border bg-bg-surface p-3 font-mono text-[11.5px] leading-[1.55] whitespace-pre text-text-secondary"
+          className="h-[55vh] overflow-auto rounded-md border border-rule bg-sheet p-3 font-mono text-[11.5px] leading-[1.55] whitespace-pre text-ink-2"
         >
           {text || (error ? "" : t("process.logEmpty"))}
         </pre>

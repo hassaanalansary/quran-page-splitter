@@ -3,6 +3,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { BusyLabel } from "@/components/app/SatrLoader";
 import { AuthError as ErrorBanner, AuthShell } from "@/components/app/auth/AuthShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,7 +36,7 @@ function ResetPasswordPage() {
   }
 
   const backToSignIn = (
-    <Link to="/auth/login" className="font-medium text-navy hover:underline">
+    <Link to="/auth/login" className="font-medium text-lapis-text hover:underline">
       {t("auth.backToSignIn")}
     </Link>
   );
@@ -47,7 +48,7 @@ function ResetPasswordPage() {
         subtitle={t("auth.reset.doneBody")}
         footer={backToSignIn}
       >
-        <div className="rounded-md border border-success-border bg-success-bg px-3 py-2 text-sm text-success">
+        <div className="rounded-md border border-done/30 bg-done-wash px-3 py-2 text-sm text-done-text">
           {t("auth.reset.done")}
         </div>
       </AuthShell>
@@ -91,7 +92,11 @@ function ResetPasswordPage() {
         {error && <ErrorBanner message={error} />}
 
         <Button type="submit" disabled={mutation.isPending}>
-          {mutation.isPending ? t("common.saving") : t("auth.reset.setPassword")}
+          {mutation.isPending ? (
+            <BusyLabel>{t("common.saving")}</BusyLabel>
+          ) : (
+            t("auth.reset.setPassword")
+          )}
         </Button>
       </form>
     </AuthShell>

@@ -6,7 +6,7 @@ import { wordPlaybackEn } from "./word-playback.en";
 export const en = {
   wordPlayback: wordPlaybackEn,
   common: {
-    appName: "Quran Page Splitter",
+    appName: "SATR",
     save: "Save",
     cancel: "Cancel",
     delete: "Delete",
@@ -26,6 +26,13 @@ export const en = {
     ar: "العربية",
     short_en: "EN",
     short_ar: "ع",
+  },
+  theme: {
+    label: "Theme",
+    light: "Light",
+    dark: "Dark",
+    system: "System",
+    switch: "Switch theme",
   },
   auth: {
     emailLabel: "Email",

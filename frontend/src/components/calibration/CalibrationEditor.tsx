@@ -19,6 +19,7 @@ import { toast } from "sonner";
 
 import { CanvasHelp } from "@/components/app/CanvasHelp";
 import { Aside, Hint, PanelCard, Section, StatusLine } from "@/components/app/Panel";
+import { BusyLabel, LoadingState } from "@/components/app/SatrLoader";
 import { WordRunProgress } from "@/components/app/WordRunProgress";
 import { WordsGateNotice } from "@/components/app/WordsGateNotice";
 import { PageJump } from "@/components/canvas/PageJump";
@@ -962,18 +963,24 @@ export function CalibrationEditor({
         !ready || running || processMutation.isPending || dirty || busy || !!preview || held
       }
     >
-      {processingHere || processMutation.isPending
-        ? t("calibration.processing")
-        : stale || contextStale
-          ? t("calibration.processAgain", { page })
-          : t("calibration.process", { page })}
+      {processingHere || processMutation.isPending ? (
+        <BusyLabel>{t("calibration.processing")}</BusyLabel>
+      ) : stale || contextStale ? (
+        t("calibration.processAgain", { page })
+      ) : (
+        t("calibration.process", { page })
+      )}
     </Button>
   );
 
   const footer = preview ? (
     <div className="flex flex-col gap-2">
       <Button onClick={() => acceptMutation.mutate()} disabled={acceptMutation.isPending}>
-        {acceptMutation.isPending ? t("common.saving") : t("calibration.acceptPreview")}
+        {acceptMutation.isPending ? (
+          <BusyLabel>{t("common.saving")}</BusyLabel>
+        ) : (
+          t("calibration.acceptPreview")
+        )}
       </Button>
       <Button
         variant="outline"
@@ -995,7 +1002,11 @@ export function CalibrationEditor({
           onClick={() => previewMutation.mutate()}
           disabled={!editable || contextStale}
         >
-          {previewMutation.isPending ? t("calibration.previewing") : t("calibration.preview")}
+          {previewMutation.isPending ? (
+            <BusyLabel>{t("calibration.previewing")}</BusyLabel>
+          ) : (
+            t("calibration.preview")
+          )}
         </Button>
         <Button
           variant="outline"
@@ -1003,7 +1014,11 @@ export function CalibrationEditor({
           onClick={() => saveMutation.mutate()}
           disabled={!editable || !dirty}
         >
-          {saveMutation.isPending ? t("common.saving") : t("calibration.saveDraft")}
+          {saveMutation.isPending ? (
+            <BusyLabel>{t("common.saving")}</BusyLabel>
+          ) : (
+            t("calibration.saveDraft")
+          )}
         </Button>
       </div>
       <Button onClick={() => setConfirmOpen(true)} disabled={!editable}>
@@ -1052,9 +1067,7 @@ export function CalibrationEditor({
     ) : processingHere && job ? (
       center(
         <>
-          <p className="text-[13px] text-text-secondary">
-            {t("calibration.processStarted", { page })}
-          </p>
+          <p className="text-[13px] text-ink-2">{t("calibration.processStarted", { page })}</p>
           <div className="w-64">
             <WordRunProgress job={job} />
           </div>
@@ -1069,20 +1082,22 @@ export function CalibrationEditor({
         </>,
       )
     ) : !doc || builtPage !== page ? (
-      center(<p className="text-[12.5px] text-text-muted">{t("calibration.loadingPage")}</p>)
+      center(
+        <LoadingState className="text-[12.5px] text-ink-3">
+          {t("calibration.loadingPage")}
+        </LoadingState>,
+      )
     ) : batchHere && !processed ? (
-      center(<p className="text-[13px] text-text-secondary">{t("calibration.bulk.here")}</p>)
+      center(<p className="text-[13px] text-ink-2">{t("calibration.bulk.here")}</p>)
     ) : !processed ? (
       center(
         <>
-          <p className="text-[13px] leading-relaxed text-text-secondary">
-            {t("calibration.processIntro")}
-          </p>
+          <p className="text-[13px] leading-relaxed text-ink-2">{t("calibration.processIntro")}</p>
           {processButton}
         </>,
       )
     ) : !column ? (
-      center(<p className="text-[12.5px] text-text-muted">{t("calibration.noLines")}</p>)
+      center(<p className="text-[12.5px] text-ink-3">{t("calibration.noLines")}</p>)
     ) : mode === "gallery" ? (
       <MarkGallery
         groups={gallery}
@@ -1173,7 +1188,7 @@ export function CalibrationEditor({
       className={`flex min-h-0 flex-1 flex-col overflow-hidden [&>aside]:max-h-[45%] [&>aside]:w-full [&>aside]:border-t lg:[&>aside]:max-h-none lg:[&>aside]:w-[340px] lg:[&>aside]:border-t-0 ${isRTL ? "lg:flex-row-reverse" : "lg:flex-row"}`}
     >
       <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        <div className="flex h-11 flex-shrink-0 items-center gap-2 overflow-x-auto border-b border-border bg-white px-3">
+        <div className="flex h-11 flex-shrink-0 items-center gap-2 overflow-x-auto border-b border-rule bg-card px-3">
           <WordPlayback
             mushafId={mushafId}
             page={page}
@@ -1191,7 +1206,7 @@ export function CalibrationEditor({
           <div
             role="group"
             aria-label={t("calibration.modeLabel")}
-            className="flex h-[26px] flex-none overflow-hidden rounded-sm border border-border-strong"
+            className="flex h-[26px] flex-none overflow-hidden rounded-sm border border-rule-2"
           >
             {(["blobs", "gallery"] as const).map((value) => (
               <button
@@ -1203,9 +1218,7 @@ export function CalibrationEditor({
                 )}
                 onClick={() => setMode(value)}
                 className={`cursor-pointer px-2.5 text-[11.5px] font-medium transition-colors ${
-                  mode === value
-                    ? "bg-navy text-white"
-                    : "bg-white text-text-secondary hover:bg-bg-surface"
+                  mode === value ? "bg-lapis text-on-lapis" : "bg-card text-ink-2 hover:bg-sheet"
                 }`}
               >
                 {t(value === "blobs" ? "calibration.modeBlobs" : "calibration.modeGallery")}
@@ -1213,12 +1226,12 @@ export function CalibrationEditor({
             ))}
           </div>
 
-          <span className="mx-1 h-5 w-px flex-none bg-border" />
+          <span className="mx-1 h-5 w-px flex-none bg-rule" />
           <span className="flex flex-none items-center gap-1.5">
             <select
               aria-label={t("calibration.selectionFilter")}
               title={t("calibration.filter.help")}
-              className="h-8 max-w-[220px] flex-none rounded-sm border border-border-strong bg-white px-2 text-[12px]"
+              className="h-8 max-w-[220px] flex-none rounded-sm border border-rule-2 bg-card px-2 text-[12px]"
               value={selectionFilter}
               onChange={(event) => {
                 setSelectionFilter(event.target.value as BlobFilter);
@@ -1256,7 +1269,7 @@ export function CalibrationEditor({
               >
                 <Minus size={13} />
               </IconButton>
-              <span className="w-11 flex-none text-center text-[11px] font-medium tabular-nums text-text-secondary">
+              <span className="w-11 flex-none text-center text-[11px] font-medium tabular-nums text-ink-2">
                 {Math.round(zoom * 100)}%
               </span>
               <IconButton
@@ -1276,7 +1289,7 @@ export function CalibrationEditor({
             </>
           )}
 
-          <span className="mx-1 h-5 w-px flex-none bg-border" />
+          <span className="mx-1 h-5 w-px flex-none bg-rule" />
           <IconButton
             label={t("words.undo")}
             disabled={!editable || history.index <= 0}
@@ -1292,7 +1305,7 @@ export function CalibrationEditor({
             <Redo2 size={13} />
           </IconButton>
 
-          <span className="mx-1 h-5 w-px flex-none bg-border" />
+          <span className="mx-1 h-5 w-px flex-none bg-rule" />
           <IconButton
             label={t("calibration.prevLook")}
             disabled={!looks}
@@ -1300,7 +1313,7 @@ export function CalibrationEditor({
           >
             <ChevronLeft size={13} />
           </IconButton>
-          <span className="flex-none whitespace-nowrap text-center text-[11px] tabular-nums text-text-secondary">
+          <span className="flex-none whitespace-nowrap text-center text-[11px] tabular-nums text-ink-2">
             {t("calibration.lookCount", { count: looks })}
           </span>
           <IconButton
@@ -1321,10 +1334,7 @@ export function CalibrationEditor({
           <div className="ms-auto flex flex-none items-center gap-3">
             <div className="hidden items-center gap-2 xl:flex">
               {(["body", "mark", "ornament", "symbol"] as const).map((role) => (
-                <span
-                  key={role}
-                  className="flex items-center gap-1 text-[10.5px] text-text-secondary"
-                >
+                <span key={role} className="flex items-center gap-1 text-[10.5px] text-ink-2">
                   <span
                     className="h-2.5 w-2.5 rounded-sm"
                     style={{ background: `rgb(${ROLE_RGB[role].join(",")})` }}
@@ -1339,7 +1349,7 @@ export function CalibrationEditor({
 
         {processed && highlights(selectionFilter) && (
           <div
-            className="flex flex-shrink-0 flex-wrap items-center gap-x-4 gap-y-1 border-b border-border px-3 py-1.5 text-[11.5px] text-text-secondary"
+            className="flex flex-shrink-0 flex-wrap items-center gap-x-4 gap-y-1 border-b border-rule px-3 py-1.5 text-[11.5px] text-ink-2"
             style={{ background: `rgb(${HIGHLIGHT_RGB.join(",")} / 0.07)` }}
           >
             <span className="flex items-center gap-1.5">
@@ -1381,12 +1391,12 @@ export function CalibrationEditor({
         )}
 
         {preview && (
-          <div className="flex flex-shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-border bg-orange-tint px-3 py-1.5 text-[11.5px] leading-snug text-text-secondary">
+          <div className="flex flex-shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-rule bg-lapis-wash px-3 py-1.5 text-[11.5px] leading-snug text-ink-2">
             <span>{t("calibration.previewBanner")}</span>
-            <span className="flex items-center gap-1.5 font-medium text-text-primary">
+            <span className="flex items-center gap-1.5 font-medium text-ink">
               <span
                 className="h-2.5 w-2.5 flex-none rounded-sm border-2"
-                style={{ borderColor: "var(--info)" }}
+                style={{ borderColor: "var(--lapis)" }}
               />
               {t("calibration.previewMoved", { count: moved?.size ?? 0 })}
             </span>
@@ -1425,7 +1435,7 @@ export function CalibrationEditor({
           </div>
         )}
 
-        <div ref={scrollRef} className="raqam-canvas-grid flex-1 overflow-auto">
+        <div ref={scrollRef} className="canvas-well flex-1 overflow-auto">
           {canvas}
         </div>
 
@@ -1490,7 +1500,7 @@ export function CalibrationEditor({
 
         {processed && types.marks > 0 && (
           <PanelCard title={t("calibration.types.title")}>
-            <p className="text-[11.5px] text-text-secondary">
+            <p className="text-[11.5px] text-ink-2">
               {t("calibration.types.summary", {
                 typed: types.typed,
                 marks: types.marks,
@@ -1498,7 +1508,7 @@ export function CalibrationEditor({
                 sure: types.sure,
               })}
             </p>
-            <p className="-mt-1 text-[10.5px] leading-snug text-text-muted">
+            <p className="-mt-1 text-[10.5px] leading-snug text-ink-3">
               {learnedFrom.examples + learnedFrom.here
                 ? t("calibration.types.learnedFrom", {
                     examples: learnedFrom.examples,
@@ -1507,7 +1517,7 @@ export function CalibrationEditor({
                 : t("calibration.types.nothingYet")}
             </p>
             {tally.doubtful > 0 && (
-              <div className="flex items-center justify-between gap-2 rounded-sm bg-warning-bg px-2 py-1.5 text-[11.5px] leading-snug text-[#8a4b0d]">
+              <div className="flex items-center justify-between gap-2 rounded-sm bg-warn-wash px-2 py-1.5 text-[11.5px] leading-snug text-warn-text">
                 <span>{t("calibration.types.doubtful", { count: tally.doubtful })}</span>
                 <Button
                   variant="outline"
@@ -1531,7 +1541,7 @@ export function CalibrationEditor({
             >
               {t("calibration.types.acceptSure", { count: types.sure })}
             </Button>
-            <label className="flex cursor-pointer items-center gap-2 text-[11.5px] text-text-secondary">
+            <label className="flex cursor-pointer items-center gap-2 text-[11.5px] text-ink-2">
               <input
                 type="checkbox"
                 checked={showTypes}
@@ -1579,7 +1589,7 @@ export function CalibrationEditor({
 
         {processed && found.length > 0 && (
           <PanelCard title={t("calibration.exceptionsTitle", { count: found.length })}>
-            <p className="-mt-1 text-[10.5px] leading-snug text-text-muted">
+            <p className="-mt-1 text-[10.5px] leading-snug text-ink-3">
               {t("calibration.exceptionsNote")}
             </p>
             <div className="flex flex-col gap-1">
@@ -1591,20 +1601,20 @@ export function CalibrationEditor({
                     const target = lines.find((line) => line.line_number === item.line_number);
                     if (target) showLine(target.snapshot_id);
                   }}
-                  className="flex cursor-pointer flex-col gap-0.5 rounded border border-border p-1.5 text-start transition-colors hover:border-orange hover:bg-orange-tint"
+                  className="flex cursor-pointer flex-col gap-0.5 rounded border border-rule p-1.5 text-start transition-colors hover:border-lapis hover:bg-lapis-wash"
                 >
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-warning">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-warn-text">
                     {problem(item.kind)} · {t("words.onLine", { n: item.line_number })}
                   </span>
                   {item.detail && (
-                    <span dir="auto" className="text-[11px] leading-snug text-text-secondary">
+                    <span dir="auto" className="text-[11px] leading-snug text-ink-2">
                       {item.kind === "flagged" ? exception(item.detail) : item.detail}
                     </span>
                   )}
                 </button>
               ))}
               {found.length > LISTED && (
-                <span className="text-[10.5px] text-text-muted">
+                <span className="text-[10.5px] text-ink-3">
                   {t("calibration.moreExceptions", { count: found.length - LISTED })}
                 </span>
               )}
@@ -1614,7 +1624,7 @@ export function CalibrationEditor({
 
         {processed && shortages.length > 0 && (
           <PanelCard title={t("calibration.shortagesTitle", { count: shortages.length })}>
-            <p className="-mt-1 text-[10.5px] leading-snug text-text-muted">
+            <p className="-mt-1 text-[10.5px] leading-snug text-ink-3">
               {t("calibration.shortagesNote")}
             </p>
             <div className="flex flex-col gap-1">
@@ -1628,12 +1638,12 @@ export function CalibrationEditor({
                     type="button"
                     disabled={!short.length}
                     onClick={() => short[0] && showLine(short[0].snapshot)}
-                    className="flex cursor-pointer flex-col gap-0.5 rounded border border-border p-1.5 text-start transition-colors hover:border-orange hover:bg-orange-tint disabled:cursor-default"
+                    className="flex cursor-pointer flex-col gap-0.5 rounded border border-rule p-1.5 text-start transition-colors hover:border-lapis hover:bg-lapis-wash disabled:cursor-default"
                   >
-                    <span className="text-[10px] font-semibold uppercase tracking-wider text-warning">
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-warn-text">
                       {t("calibration.shortageAya", { aya: item.aya, count: item.short })}
                     </span>
-                    <span dir="auto" className="text-[11px] leading-snug text-text-secondary">
+                    <span dir="auto" className="text-[11px] leading-snug text-ink-2">
                       {item.certain && short.length
                         ? t("calibration.shortageLikely", {
                             words: short.map((word) => word.text).join("، "),
@@ -1649,7 +1659,7 @@ export function CalibrationEditor({
 
         {processed && suspects.length > 0 && (
           <PanelCard title={t("calibration.noise.title", { count: suspects.length })}>
-            <p className="-mt-1 text-[10.5px] leading-snug text-text-muted">
+            <p className="-mt-1 text-[10.5px] leading-snug text-ink-3">
               {t("calibration.noise.note")}
             </p>
             <div className="flex flex-col gap-1">
@@ -1661,13 +1671,13 @@ export function CalibrationEditor({
                     setMode("blobs");
                     selectAndReveal({ snapshot: line.snapshot_id, ids: [blob.id] });
                   }}
-                  className="flex cursor-pointer flex-col gap-0.5 rounded border border-border p-1.5 text-start transition-colors hover:border-orange hover:bg-orange-tint"
+                  className="flex cursor-pointer flex-col gap-0.5 rounded border border-rule p-1.5 text-start transition-colors hover:border-lapis hover:bg-lapis-wash"
                 >
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-warning">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-warn-text">
                     {t(`calibration.noise.${item.kind}`)} ·{" "}
                     {t("words.onLine", { n: line.line_number })}
                   </span>
-                  <span className="text-[11px] leading-snug text-text-secondary">
+                  <span className="text-[11px] leading-snug text-ink-2">
                     {t("calibration.noise.detail", { w: blob.w, h: blob.h, area: blob.area })}
                     {item.edge ? ` · ${t("calibration.noise.edge")}` : ""}
                   </span>
@@ -1700,7 +1710,7 @@ export function CalibrationEditor({
               {doc?.issues.map((issue) => (
                 <span
                   key={issue}
-                  className="rounded-sm bg-bg-surface px-1.5 py-0.5 font-mono text-[10.5px] text-text-secondary"
+                  className="rounded-sm bg-sheet px-1.5 py-0.5 font-mono text-[10.5px] text-ink-2"
                 >
                   {issue}
                 </span>
@@ -1715,7 +1725,7 @@ export function CalibrationEditor({
             defaultOpen={false}
             badge={
               doc.settings.experimental ? (
-                <span className="rounded-sm bg-warning-bg px-1.5 py-px text-[10px] text-[#8a4b0d]">
+                <span className="rounded-sm bg-warn-wash px-1.5 py-px text-[10px] text-warn-text">
                   {t("calibration.experimentalBadge")}
                 </span>
               ) : undefined
@@ -1778,9 +1788,9 @@ function PageCard({
   return (
     <PanelCard title={t("calibration.pageTitle", { page })}>
       <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[11.5px]">
-        <dt className="text-text-muted">{t("calibration.draft")}</dt>
+        <dt className="text-ink-3">{t("calibration.draft")}</dt>
         <dd className="tabular-nums">{t("calibration.revision", { revision })}</dd>
-        <dt className="text-text-muted">{t("calibration.confirmation")}</dt>
+        <dt className="text-ink-3">{t("calibration.confirmation")}</dt>
         <dd>
           {confirmedRevision === null
             ? t("calibration.notConfirmed")
@@ -1788,7 +1798,7 @@ function PageCard({
               ? t("calibration.confirmedAt", { revision: confirmedRevision })
               : t("calibration.editedSinceConfirm", { revision: confirmedRevision })}
         </dd>
-        <dt className="text-text-muted">{t("calibration.learning")}</dt>
+        <dt className="text-ink-3">{t("calibration.learning")}</dt>
         <dd>
           {profile.pages.length
             ? t("calibration.learningFrom", {
@@ -1799,7 +1809,7 @@ function PageCard({
             : t("calibration.learningNone")}
         </dd>
       </dl>
-      <p className="text-[10.5px] leading-snug text-text-muted">
+      <p className="text-[10.5px] leading-snug text-ink-3">
         {t(
           profile.mode === "experimental"
             ? "calibration.experimentalNote"
@@ -1809,7 +1819,7 @@ function PageCard({
       <a
         href={exportUrl(mushafId, { page })}
         download
-        className="text-[11.5px] font-semibold text-orange hover:text-orange-hover"
+        className="text-[11.5px] font-semibold text-lapis-text hover:text-lapis-text/80"
       >
         {t("calibration.downloadPage")}
       </a>
@@ -1854,14 +1864,14 @@ function WordList({
         <IconButton label={t("calibration.wordNav.next")} onClick={() => onStep(1)}>
           <ChevronDown size={13} />
         </IconButton>
-        <span className="text-[11px] text-text-muted">
+        <span className="text-[11px] text-ink-3">
           {current !== null
             ? t("calibration.wordNav.position", { index: current + 1, count: line.words.length })
             : t("calibration.wordNav.keys")}
         </span>
       </div>
       {line.words.length === 0 ? (
-        <p className="text-[12px] text-text-muted">{t("calibration.noWords")}</p>
+        <p className="text-[12px] text-ink-3">{t("calibration.noWords")}</p>
       ) : (
         <div ref={list} className="flex max-h-[min(45vh,28rem)] flex-col gap-1 overflow-y-auto">
           {line.words.map((word, index) => {
@@ -1874,7 +1884,7 @@ function WordList({
                 key={`${word.word_id ?? "u"}-${index}`}
                 data-word-row={index}
                 className={`flex flex-none items-center gap-2 rounded border p-1.5 transition-colors ${
-                  active ? "border-orange bg-orange-tint" : "border-border"
+                  active ? "border-lapis bg-lapis-wash" : "border-rule"
                 }`}
               >
                 <button
@@ -1884,23 +1894,21 @@ function WordList({
                   onClick={() => onSelect(ink)}
                   className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-start disabled:cursor-default"
                 >
-                  <span className="w-4 flex-none text-[10px] tabular-nums text-text-muted">
+                  <span className="w-4 flex-none text-[10px] tabular-nums text-ink-3">
                     {index + 1}
                   </span>
-                  <span className="min-w-0 flex-1 truncate text-[13px] text-text-primary" dir="rtl">
+                  <span className="min-w-0 flex-1 truncate text-[13px] text-ink" dir="rtl">
                     {word.text || t("calibration.unlabelledWord")}
                   </span>
-                  <span className="flex-none text-[10px] tabular-nums text-text-muted">
-                    {word.aya}
-                  </span>
+                  <span className="flex-none text-[10px] tabular-nums text-ink-3">{word.aya}</span>
                   {word.shared && (
-                    <span className="flex-none text-[10px] text-text-muted">
+                    <span className="flex-none text-[10px] text-ink-3">
                       {t("calibration.shared")}
                     </span>
                   )}
                   <span
                     className={`flex-none rounded-sm px-1 text-[10px] font-semibold tabular-nums ${
-                      count.ok ? "text-orange" : "bg-warning text-white"
+                      count.ok ? "text-lapis-text" : "bg-warn text-on-warn"
                     }`}
                     title={t("calibration.countHelp")}
                   >
@@ -1909,7 +1917,7 @@ function WordList({
                   {check && (
                     <span
                       className={`flex-none rounded-sm px-1 text-[10px] font-semibold ${
-                        check.ok ? "text-text-muted" : "bg-warning-bg text-[#8a4b0d]"
+                        check.ok ? "text-ink-3" : "bg-warn-wash text-warn-text"
                       }`}
                       title={t(
                         check.ok
@@ -1955,10 +1963,8 @@ function IconButton({
       aria-pressed={active}
       disabled={disabled}
       onClick={onClick}
-      className={`flex h-[26px] w-[26px] flex-none cursor-pointer items-center justify-center rounded-sm border border-border-strong transition-colors disabled:cursor-default disabled:opacity-40 ${
-        active
-          ? "border-orange bg-orange text-white"
-          : "bg-white text-text-secondary hover:bg-bg-surface"
+      className={`flex h-[26px] w-[26px] flex-none cursor-pointer items-center justify-center rounded-sm border border-rule-2 transition-colors disabled:cursor-default disabled:opacity-40 ${
+        active ? "border-lapis bg-lapis text-on-lapis" : "bg-card text-ink-2 hover:bg-sheet"
       }`}
     >
       {children}

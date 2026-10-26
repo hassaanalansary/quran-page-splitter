@@ -9,6 +9,8 @@ import { CreateMushafDialog } from "@/components/app/CreateMushafDialog";
 import { ImportBundleDialog } from "@/components/app/ImportBundleDialog";
 import { LanguageSwitcher } from "@/components/app/LanguageSwitcher";
 import { MushafStatusBadge } from "@/components/app/MushafStatusBadge";
+import { SatrLockup } from "@/components/app/SatrLockup";
+import { ThemeButton } from "@/components/app/ThemeSwitcher";
 import { UserMenu } from "@/components/app/UserMenu";
 import { Button } from "@/components/ui/button";
 import { requireSessionOrGallery } from "@/lib/auth/guard";
@@ -34,21 +36,17 @@ function HomePage() {
   const [importOpen, setImportOpen] = useState(false);
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-bg-page">
-      <header className="flex h-[52px] flex-shrink-0 items-center border-b border-border bg-white px-6">
-        <div className="flex items-center gap-2.5">
-          <span className="mt-px h-2 w-2 rounded-[2px] bg-orange" />
-          <span className="font-display text-[15px] font-bold leading-none text-navy">
-            {t("common.appName")}
-          </span>
-        </div>
+    <div className="flex h-screen flex-col overflow-hidden bg-paper">
+      <header className="flex h-[52px] flex-shrink-0 items-center border-b border-rule bg-card px-6">
+        <SatrLockup />
         <div className="ms-auto flex items-center gap-3">
           <Link
             to="/gallery"
-            className="text-[12px] font-semibold text-text-secondary transition-colors hover:text-navy"
+            className="text-[12px] font-semibold text-ink-2 transition-colors hover:text-lapis-text"
           >
             {t("gallery.navLink")}
           </Link>
+          <ThemeButton />
           <LanguageSwitcher />
           <UserMenu />
         </div>
@@ -58,8 +56,8 @@ function HomePage() {
         <div className="mx-auto max-w-6xl px-8 py-9">
           <div className="mb-7 flex flex-wrap items-end justify-between gap-3">
             <div>
-              <h1 className="font-display text-2xl font-bold text-navy">{t("home.title")}</h1>
-              <p className="mt-1 text-sm text-text-secondary">{t("home.subtitle")}</p>
+              <h1 className="font-display text-2xl font-bold text-lapis-text">{t("home.title")}</h1>
+              <p className="mt-1 text-sm text-ink-2">{t("home.subtitle")}</p>
             </div>
             {/* Importing from here rather than from a mushaf: the bundle names
                 its own mushaf by checksum, so there is nothing to look up first. */}
@@ -75,14 +73,14 @@ function HomePage() {
           </div>
 
           {isError ? (
-            <div className="rounded-lg border border-error-border bg-error-bg px-4 py-3 text-sm text-error">
+            <div className="rounded-lg border border-stop/20 bg-stop-wash px-4 py-3 text-sm text-stop-text">
               {error instanceof Error ? error.message : t("home.loadFailed")}
             </div>
           ) : (
             <div className="grid grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-5">
               {isPending
                 ? Array.from({ length: 4 }).map((_, i) => (
-                    <div key={i} className="aspect-[3/4.3] animate-pulse rounded-xl bg-bg-muted" />
+                    <div key={i} className="aspect-[3/4.3] animate-pulse rounded-xl bg-sunk" />
                   ))
                 : mushafs.map((m) => <MushafCard key={m.id} mushaf={m} />)}
               {!isPending && <AddCard onClick={() => setCreateOpen(true)} />}
@@ -112,10 +110,10 @@ function MushafCard({ mushaf }: { mushaf: Mushaf }) {
   });
 
   return (
-    <div className="group relative overflow-hidden rounded-xl border border-border bg-white shadow-[var(--shadow-sm)] transition hover:-translate-y-0.5 hover:border-border-strong hover:shadow-[var(--shadow-md)]">
+    <div className="group relative overflow-hidden rounded-xl border border-rule bg-card shadow-[var(--shadow-card)] transition hover:-translate-y-0.5 hover:border-rule-2 hover:shadow-[var(--shadow-lift)]">
       <Link to="/mushafs/$mushafId" params={{ mushafId: mushaf.id }} className="block">
         {/* Thumbnail */}
-        <div className="relative aspect-[3/4] overflow-hidden bg-bg-muted">
+        <div className="relative aspect-[3/4] overflow-hidden bg-sunk">
           {!imgFailed ? (
             <img
               src={mushaf.thumbnail_url ?? pageImageUrl(mushaf.id, 1, mushaf.updated_at)}
@@ -126,13 +124,13 @@ function MushafCard({ mushaf }: { mushaf: Mushaf }) {
               className="h-full w-full object-cover object-top"
             />
           ) : (
-            <div className="flex h-full items-center justify-center text-[11px] text-text-muted">
+            <div className="flex h-full items-center justify-center text-[11px] text-ink-3">
               {t("home.noPreview")}
             </div>
           )}
           <MushafStatusBadge mushaf={mushaf} className="absolute start-2 top-2" />
           {mushaf.visibility === "published" && (
-            <span className="absolute bottom-2 start-2 flex items-center gap-1 rounded-pill bg-success-bg px-2 py-0.5 text-[10px] font-semibold text-success">
+            <span className="absolute bottom-2 start-2 flex items-center gap-1 rounded-pill bg-done-wash px-2 py-0.5 text-[10px] font-semibold text-done-text">
               <Globe size={9} />
               {t("gallery.publishedBadge")}
             </span>
@@ -140,9 +138,9 @@ function MushafCard({ mushaf }: { mushaf: Mushaf }) {
         </div>
 
         {/* Footer */}
-        <div className="border-t border-border px-3 py-2.5">
-          <h3 className="truncate text-[13px] font-semibold text-text-primary">{mushaf.name}</h3>
-          <div className="mt-1 flex items-center justify-between text-[11px] text-text-muted">
+        <div className="border-t border-rule px-3 py-2.5">
+          <h3 className="truncate text-[13px] font-semibold text-ink">{mushaf.name}</h3>
+          <div className="mt-1 flex items-center justify-between text-[11px] text-ink-3">
             <span>
               {t("home.pages", {
                 done: mushaf.processed_page_count,
@@ -162,7 +160,7 @@ function MushafCard({ mushaf }: { mushaf: Mushaf }) {
           if (window.confirm(t("home.deleteConfirm", { name: mushaf.name }))) remove.mutate();
         }}
         disabled={remove.isPending}
-        className="absolute end-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-md bg-white/80 text-text-secondary opacity-0 backdrop-blur transition hover:bg-error-bg hover:text-error group-hover:opacity-100 disabled:opacity-40"
+        className="absolute end-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-md bg-card/80 text-ink-2 opacity-0 backdrop-blur transition hover:bg-stop-wash hover:text-stop-text group-hover:opacity-100 disabled:opacity-40"
       >
         <Trash2 size={14} />
       </button>
@@ -176,7 +174,7 @@ function AddCard({ onClick }: { onClick: () => void }) {
     <button
       type="button"
       onClick={onClick}
-      className="group flex aspect-[3/4.3] flex-col items-center justify-center gap-3 cursor-pointer rounded-xl border-2 border-dashed border-border-strong bg-white/40 text-text-secondary transition hover:border-orange hover:bg-orange-tint hover:text-orange"
+      className="group flex aspect-[3/4.3] flex-col items-center justify-center gap-3 cursor-pointer rounded-xl border-2 border-dashed border-rule-2 bg-card/40 text-ink-2 transition hover:border-lapis hover:bg-lapis-wash hover:text-lapis-text"
     >
       <span className="flex h-12 w-12 items-center justify-center rounded-full border-2 border-current">
         <Plus size={22} />

@@ -3,6 +3,7 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { LogOut } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
+import { ThemeMenuChoice } from "@/components/app/ThemeSwitcher";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -31,7 +32,7 @@ export function UserMenu() {
     },
   });
 
-  if (isPending) return <div className="h-7 w-7 animate-pulse rounded-full bg-bg-muted" />;
+  if (isPending) return <div className="h-7 w-7 animate-pulse rounded-full bg-sunk" />;
 
   if (!user) {
     return (
@@ -50,21 +51,23 @@ export function UserMenu() {
         <button
           type="button"
           aria-label={label}
-          className="flex h-7 w-7 items-center justify-center rounded-full bg-navy text-xs font-semibold text-white outline-none transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-orange"
+          className="flex h-7 w-7 items-center justify-center rounded-full bg-lapis text-xs font-semibold text-on-lapis outline-none transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-lapis"
         >
           {initial}
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-56">
+      <DropdownMenuContent align="end" className="w-64">
         <DropdownMenuLabel className="font-normal">
-          <div dir="auto" className="text-xs text-text-muted">
+          <div dir="auto" className="text-xs text-ink-3">
             {t("auth.menu.signedInAs")}
           </div>
           {/* Addresses are LTR even in the Arabic UI. */}
-          <div dir="ltr" className="truncate text-sm font-medium text-navy">
+          <div dir="ltr" className="truncate text-sm font-medium text-lapis-text">
             {user.email ?? label}
           </div>
         </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <ThemeMenuChoice />
         <DropdownMenuSeparator />
         <DropdownMenuItem
           onSelect={() => signOut.mutate()}

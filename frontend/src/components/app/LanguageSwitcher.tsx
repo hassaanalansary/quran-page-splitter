@@ -9,7 +9,7 @@ export function LanguageSwitcher() {
 
   return (
     <div
-      className="flex items-center gap-0.5 rounded-pill border border-border p-0.5"
+      className="flex items-center gap-0.5 rounded-pill border border-rule p-0.5"
       role="group"
       aria-label={t("lang.label")}
     >
@@ -23,7 +23,7 @@ export function LanguageSwitcher() {
             aria-pressed={active}
             title={t(`lang.${lng}` as const)}
             className={`min-w-[26px] rounded-pill px-2 py-0.5 text-[11px] font-semibold leading-none transition-colors ${
-              active ? "bg-orange text-white" : "text-text-secondary hover:bg-bg-surface"
+              active ? "bg-lapis text-on-lapis" : "text-ink-2 hover:bg-sheet"
             }`}
           >
             {t(`lang.short_${lng}` as const)}

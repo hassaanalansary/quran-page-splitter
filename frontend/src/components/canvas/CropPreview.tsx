@@ -58,19 +58,16 @@ export function CropPreview({ imageUrl, rect, caption, height = 220, mirrored = 
 
   return (
     <div>
-      <div
-        className="raqam-canvas-grid overflow-hidden rounded-md border border-border"
-        style={{ height }}
-      >
+      <div className="canvas-well overflow-hidden rounded-md border border-rule" style={{ height }}>
         {rect ? (
           <canvas ref={canvasRef} className="h-full w-full" />
         ) : (
-          <div className="flex h-full items-center justify-center px-3 text-center text-[11px] text-text-muted">
+          <div className="flex h-full items-center justify-center px-3 text-center text-[11px] text-ink-3">
             {t("canvas.cropPreviewEmpty")}
           </div>
         )}
       </div>
-      {caption && <p className="mt-1 text-center text-[10.5px] text-text-muted">{caption}</p>}
+      {caption && <p className="mt-1 text-center text-[10.5px] text-ink-3">{caption}</p>}
     </div>
   );
 }

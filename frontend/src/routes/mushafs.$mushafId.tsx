@@ -2,6 +2,7 @@ import { createFileRoute, Outlet, useParams, useRouterState } from "@tanstack/re
 import { useTranslation } from "react-i18next";
 
 import { MushafHeader } from "@/components/app/MushafHeader";
+import { LoadingState } from "@/components/app/SatrLoader";
 import { useMushaf } from "@/lib/api";
 import { requireSession } from "@/lib/auth/guard";
 
@@ -30,19 +31,21 @@ function WorkspaceLayout() {
   if (!step) return <Outlet />;
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-bg-page">
+    <div className="flex h-screen flex-col overflow-hidden bg-paper">
       {mushaf ? (
         <MushafHeader mushaf={mushaf} activeSlug={step.slug} />
       ) : (
-        <div className="h-[60px] flex-shrink-0 border-b border-border bg-white" />
+        <div className="h-[60px] flex-shrink-0 border-b border-rule bg-card" />
       )}
 
       <div className="flex flex-1 overflow-hidden">
         {isPending ? (
-          <Centered>{t("workspace.loadingMushaf")}</Centered>
+          <Centered>
+            <LoadingState>{t("workspace.loadingMushaf")}</LoadingState>
+          </Centered>
         ) : isError ? (
           <Centered>
-            <span className="text-error">
+            <span className="text-stop-text">
               {error instanceof Error ? error.message : t("workspace.loadFailed")}
             </span>
           </Centered>
@@ -56,8 +59,6 @@ function WorkspaceLayout() {
 
 function Centered({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex flex-1 items-center justify-center text-sm text-text-secondary">
-      {children}
-    </div>
+    <div className="flex flex-1 items-center justify-center text-sm text-ink-2">{children}</div>
   );
 }

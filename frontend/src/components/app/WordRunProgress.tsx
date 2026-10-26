@@ -14,15 +14,12 @@ export function WordRunProgress({ job }: { job: ProcessJob }) {
   const pct = job.total > 0 ? Math.round((job.lines_done / job.total) * 100) : 0;
   return (
     <div className="flex flex-col gap-1">
-      <div className="flex items-center justify-between text-[11px] text-text-secondary">
+      <div className="flex items-center justify-between text-[11px] text-ink-2">
         <span>{t("words.progress", { done: job.lines_done, total: job.total })}</span>
         <span className="tabular-nums">{pct}%</span>
       </div>
-      <div className="h-1.5 w-full overflow-hidden rounded-full bg-bg-surface">
-        <div
-          className="h-full rounded-full bg-orange transition-all"
-          style={{ width: `${pct}%` }}
-        />
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-sheet">
+        <div className="h-full rounded-full bg-lapis transition-all" style={{ width: `${pct}%` }} />
       </div>
     </div>
   );

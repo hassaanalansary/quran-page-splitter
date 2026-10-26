@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { Aside, Field, Hint, PanelCard, StatusLine } from "@/components/app/Panel";
 import { CanvasHelp } from "@/components/app/CanvasHelp";
 import { InfoTip } from "@/components/app/InfoTip";
+import { BusyLabel } from "@/components/app/SatrLoader";
 import { TourOverlay } from "@/components/app/tour/TourOverlay";
 import { useStepTour, type TourStep } from "@/components/app/tour/useStepTour";
 import { FilmstripViewer } from "@/components/canvas/FilmstripViewer";
@@ -156,7 +157,7 @@ function SetupPage() {
         footer={
           <div data-tour="setup-save" className="flex flex-col gap-2">
             <Button onClick={() => save.mutate()} disabled={!canSave}>
-              {save.isPending ? t("common.saving") : t("setup.saveRange")}
+              {save.isPending ? <BusyLabel>{t("common.saving")}</BusyLabel> : t("setup.saveRange")}
             </Button>
             <Button asChild variant="outline">
               <Link to="/mushafs/$mushafId/templates" params={{ mushafId }}>
@@ -169,7 +170,7 @@ function SetupPage() {
         {!processed && (
           <div data-tour="setup-mark">
             <PanelCard title={t("setup.markFromCurrent")}>
-              <div className="text-[12px] text-text-secondary">
+              <div className="text-[12px] text-ink-2">
                 {t("setup.currentlyViewing", { page: physical })}
               </div>
               <div className="flex flex-wrap gap-1.5">
@@ -217,12 +218,12 @@ function SetupPage() {
               />
             </Field>
           </div>
-          <div className="flex items-center justify-between text-[12px] text-text-secondary">
+          <div className="flex items-center justify-between text-[12px] text-ink-2">
             <span>
               {valid ? (
                 t("setup.logicalPages", { count: last - first + 1 })
               ) : (
-                <span className="text-error">{t("setup.rangeError", { max: pdfPages })}</span>
+                <span className="text-stop-text">{t("setup.rangeError", { max: pdfPages })}</span>
               )}
             </span>
             <span className="flex items-center gap-1">
@@ -234,7 +235,7 @@ function SetupPage() {
                   setLast(pdfPages);
                   setSaved(false);
                 }}
-                className="font-medium text-orange hover:underline disabled:text-text-muted disabled:no-underline"
+                className="font-medium text-lapis-text hover:underline disabled:text-ink-3 disabled:no-underline"
               >
                 {t("setup.resetFull")}
               </button>
@@ -259,15 +260,13 @@ function ProgressChip({ label, value, done }: { label: string; value?: string; d
   return (
     <span
       className={`inline-flex items-center gap-1 rounded-pill border px-2 py-[2px] text-[10.5px] font-medium ${
-        done
-          ? "border-success/40 bg-success/10 text-success"
-          : "border-border-strong bg-white text-text-muted"
+        done ? "border-done/40 bg-done/10 text-done-text" : "border-rule-2 bg-card text-ink-3"
       }`}
     >
       {done ? (
         <Check size={11} strokeWidth={3} />
       ) : (
-        <span className="h-1.5 w-1.5 rounded-full bg-border-strong" />
+        <span className="h-1.5 w-1.5 rounded-full bg-rule-2" />
       )}
       {value ? `${label}: ${value}` : label}
     </span>
@@ -295,7 +294,7 @@ function NumberInput({
       max={max}
       disabled={disabled}
       onChange={(e) => onChange(Number(e.target.value) || 0)}
-      className="h-9 w-full rounded-md border-[1.5px] border-border-strong bg-white px-2.5 text-right text-sm text-text-primary outline-none focus:border-orange focus:shadow-[0_0_0_3px_var(--orange-glow)] disabled:bg-bg-surface disabled:text-text-muted"
+      className="h-9 w-full rounded-md border-[1.5px] border-rule-2 bg-card px-2.5 text-right text-sm text-ink outline-none focus:border-lapis focus:ring-3 focus:ring-lapis/15 disabled:bg-sheet disabled:text-ink-3"
     />
   );
 }

@@ -112,7 +112,7 @@ export function FilmstripViewer({
       <div
         tabIndex={0}
         onKeyDown={onKeyDown}
-        className="raqam-canvas-grid relative flex-1 overflow-hidden outline-none"
+        className="canvas-well relative flex-1 overflow-hidden outline-none"
       >
         <div
           className="absolute inset-0"
@@ -132,8 +132,8 @@ export function FilmstripViewer({
               // RTL like a mushaf/Arabic book: higher page numbers sit to the LEFT.
               transform: `translateX(calc(-50% + ${-dp * 100}% + ${-dp * GAP}px))`,
               transition: "transform 440ms cubic-bezier(0.22,0.61,0.36,1)",
-              borderColor: isCurrent ? "var(--orange)" : "var(--border)",
-              boxShadow: isCurrent ? "var(--shadow-page)" : "var(--shadow-sm)",
+              borderColor: isCurrent ? "var(--lapis)" : "var(--rule)",
+              boxShadow: isCurrent ? "var(--shadow-lift)" : "var(--shadow-card)",
               opacity: isCurrent ? 1 : 0.5,
               zIndex: isCurrent ? 2 : 1,
             };
@@ -184,8 +184,8 @@ export function FilmstripViewer({
                     className="h-full w-full object-contain"
                   />
                 ) : (
-                  <div className="flex h-full w-full items-center justify-center bg-bg-surface">
-                    <span className="font-display text-3xl font-bold text-text-muted/60">{p}</span>
+                  <div className="flex h-full w-full items-center justify-center bg-sheet">
+                    <span className="font-display text-3xl font-bold text-ink-3/60">{p}</span>
                   </div>
                 )}
               </button>
@@ -206,7 +206,7 @@ export function FilmstripViewer({
         />
 
         {/* Footer overlay: page indicator + jump */}
-        <div className="absolute bottom-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-3 rounded-pill border border-border bg-white/90 px-3 py-1.5 shadow-[var(--shadow-sm)] backdrop-blur">
+        <div className="absolute bottom-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-3 rounded-pill border border-rule bg-card/90 px-3 py-1.5 shadow-[var(--shadow-card)] backdrop-blur">
           {jumping ? (
             <input
               autoFocus
@@ -224,7 +224,7 @@ export function FilmstripViewer({
                 }
               }}
               onBlur={commitJump}
-              className="h-6 w-16 rounded border border-border-strong px-2 text-center text-[13px] tabular-nums outline-none focus:border-orange"
+              className="h-6 w-16 rounded border border-rule-2 px-2 text-center text-[13px] tabular-nums outline-none focus:border-lapis"
             />
           ) : (
             <button
@@ -233,15 +233,15 @@ export function FilmstripViewer({
                 setJumpValue("");
                 setJumping(true);
               }}
-              className="text-[13px] font-semibold tabular-nums text-text-primary hover:text-orange"
+              className="text-[13px] font-semibold tabular-nums text-ink hover:text-lapis-text"
               title={t("canvas.jumpTitle")}
             >
               {t("canvas.pageJump", { page })}
             </button>
           )}
-          <span className="text-[12px] text-text-muted">/ {pageCount}</span>
+          <span className="text-[12px] text-ink-3">/ {pageCount}</span>
           {renderLabel && (
-            <span className="border-s border-border ps-3 text-[12px] text-text-secondary">
+            <span className="border-s border-rule ps-3 text-[12px] text-ink-2">
               {renderLabel(page)}
             </span>
           )}
@@ -250,7 +250,7 @@ export function FilmstripViewer({
 
       {/* Compact pager rail */}
       <div
-        className={`flex h-11 flex-shrink-0 items-center justify-center gap-1 border-t border-border bg-white px-3 ${isRTL ? "flex-row" : "flex-row-reverse"}`}
+        className={`flex h-11 flex-shrink-0 items-center justify-center gap-1 border-t border-rule bg-card px-3 ${isRTL ? "flex-row" : "flex-row-reverse"}`}
       >
         {pagerItems(page, pageCount).map((item, i) =>
           item === "gap" ? (
@@ -262,7 +262,7 @@ export function FilmstripViewer({
                 setJumping(true);
               }}
               title={t("canvas.jumpToPage")}
-              className="px-1 text-[12px] text-text-muted hover:text-orange"
+              className="px-1 text-[12px] text-ink-3 hover:text-lapis-text"
             >
               …
             </button>
@@ -274,8 +274,8 @@ export function FilmstripViewer({
               className={[
                 "h-7 min-w-7 rounded px-2 text-[12px] font-medium tabular-nums transition-colors",
                 item === page
-                  ? "bg-orange text-white"
-                  : "bg-bg-surface text-text-secondary hover:bg-bg-muted hover:text-text-primary",
+                  ? "bg-lapis text-on-lapis"
+                  : "bg-sheet text-ink-2 hover:bg-sunk hover:text-ink",
               ].join(" ")}
             >
               {item}
@@ -304,7 +304,7 @@ function ChevronButton({
       disabled={disabled}
       aria-label={side === "left" ? t("canvas.prevPage") : t("canvas.nextPage")}
       className={[
-        "absolute top-1/2 z-10 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-white/90 text-text-secondary shadow-[var(--shadow-md)] backdrop-blur transition hover:text-orange disabled:cursor-not-allowed disabled:opacity-30",
+        "absolute top-1/2 z-10 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-rule bg-card/90 text-ink-2 shadow-[var(--shadow-lift)] backdrop-blur transition hover:text-lapis-text disabled:cursor-not-allowed disabled:opacity-30",
         side === "left" ? "left-3" : "right-3",
       ].join(" ")}
     >

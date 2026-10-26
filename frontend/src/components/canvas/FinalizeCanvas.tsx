@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 
 import { Eraser, Redo2, Undo2 } from "lucide-react";
 
+import { LoadingState } from "@/components/app/SatrLoader";
 import { ChevronNav } from "@/components/canvas/ChevronNav";
 import { PageJump } from "@/components/canvas/PageJump";
 import { PageRail } from "@/components/canvas/PageRail";
@@ -257,13 +258,12 @@ export function FinalizeCanvas({
     const srcLayer = bg === "dark" ? whiteInkRef.current : transparentRef.current;
     rectsRef.current = [];
     if (!ready || !srcLayer || lines.length === 0) {
-      ctx.fillStyle = bg === "dark" ? "#9a9a9a" : "#6b6860";
-      ctx.font = "13px ui-monospace, monospace";
-      ctx.fillText(
-        !imageUrl || lines.length === 0 ? t("canvas.fin_noLines") : t("canvas.fin_rendering"),
-        16,
-        28,
-      );
+      // Still rendering: the writing loader over the canvas says so.
+      if (!imageUrl || lines.length === 0) {
+        ctx.fillStyle = bg === "dark" ? "#9a9a9a" : "#6b6860";
+        ctx.font = "13px ui-monospace, monospace";
+        ctx.fillText(t("canvas.fin_noLines"), 16, 28);
+      }
       return;
     }
 
@@ -615,7 +615,7 @@ export function FinalizeCanvas({
           presets on the end, page navigation floating over the page itself. */}
       <div
         data-tour="canvas-toolbar"
-        className="flex h-9 flex-shrink-0 items-center gap-2 border-b border-border bg-white px-3"
+        className="flex h-9 flex-shrink-0 items-center gap-2 border-b border-rule bg-card px-3"
       >
         <div className="flex items-center gap-1">
           <ToolButton
@@ -644,7 +644,7 @@ export function FinalizeCanvas({
           </ToolButton>
         </div>
 
-        <div className="mx-1 h-5 w-px bg-border" />
+        <div className="mx-1 h-5 w-px bg-rule" />
 
         <Segmented<FinalizeBg>
           value={bg}
@@ -670,7 +670,7 @@ export function FinalizeCanvas({
         </div>
       </div>
 
-      <div className="raqam-canvas-grid relative flex-1 overflow-hidden">
+      <div className="canvas-well relative flex-1 overflow-hidden">
         <ChevronNav page={page} pageCount={pageCount} onPageChange={onPageChange} />
         <canvas
           ref={canvasRef}
@@ -687,7 +687,12 @@ export function FinalizeCanvas({
           className="h-full w-full"
           style={{ display: "block", cursor, touchAction: "none" }}
         />
-        <div className="absolute bottom-3 left-1/2 z-10 -translate-x-1/2 rounded-pill border border-border bg-white/90 px-3 py-1.5 shadow-[var(--shadow-sm)] backdrop-blur">
+        {imageUrl && lines.length > 0 && !ready && (
+          <LoadingState className="pointer-events-none absolute inset-0 justify-center text-[12.5px] text-ink-3">
+            {t("canvas.fin_rendering")}
+          </LoadingState>
+        )}
+        <div className="absolute bottom-3 left-1/2 z-10 -translate-x-1/2 rounded-pill border border-rule bg-card/90 px-3 py-1.5 shadow-[var(--shadow-card)] backdrop-blur">
           <PageJump page={page} pageCount={pageCount} onPageChange={onPageChange} label={label} />
         </div>
       </div>
@@ -833,7 +838,7 @@ function Segmented<T extends string>({
   return (
     <div
       title={title}
-      className="flex h-[30px] overflow-hidden rounded-sm border-[1.5px] border-border-strong"
+      className="flex h-[30px] overflow-hidden rounded-sm border-[1.5px] border-rule-2"
     >
       {options.map((o, i) => (
         <button
@@ -842,10 +847,8 @@ function Segmented<T extends string>({
           onClick={() => onChange(o.v)}
           className={[
             "px-[9px] text-[11.5px] font-medium transition-colors cursor-pointer",
-            i < options.length - 1 ? "border-e border-border" : "",
-            value === o.v
-              ? "bg-bg-muted text-text-primary"
-              : "bg-white text-text-secondary hover:bg-bg-surface",
+            i < options.length - 1 ? "border-e border-rule" : "",
+            value === o.v ? "bg-sunk text-ink" : "bg-card text-ink-2 hover:bg-sheet",
           ].join(" ")}
         >
           {o.label}

@@ -298,8 +298,8 @@ function Player({
         event.stopPropagation();
       }}
     >
-      <div className="flex flex-none flex-wrap items-center gap-x-4 gap-y-2 border-b border-border pb-2 text-[12px]">
-        <span className="text-text-muted">
+      <div className="flex flex-none flex-wrap items-center gap-x-4 gap-y-2 border-b border-rule pb-2 text-[12px]">
+        <span className="text-ink-3">
           {t(preview ? "wordPlayback.preview" : "wordPlayback.live")}
         </span>
         <Toggle label={t("wordPlayback.types")} checked={types} set={setTypes} />
@@ -329,7 +329,7 @@ function Player({
         </div>
       )}
       {assets.failed && assets.settled && (
-        <div role="alert" className="flex items-center gap-2 text-[12px] text-error">
+        <div role="alert" className="flex items-center gap-2 text-[12px] text-stop-text">
           {t("wordPlayback.error")}
           <Control label={t("wordPlayback.retry")} onClick={() => setAttempt((n) => n + 1)}>
             <RotateCcw size={16} />
@@ -349,16 +349,16 @@ function Player({
           selected={selectedBlob?.id ?? null}
           onJump={jump}
         />
-        <section className="flex min-h-0 min-w-0 flex-col gap-2 overflow-y-auto border-t border-border pt-2 md:border-s md:border-t-0 md:ps-3 md:pt-0">
+        <section className="flex min-h-0 min-w-0 flex-col gap-2 overflow-y-auto border-t border-rule pt-2 md:border-s md:border-t-0 md:ps-3 md:pt-0">
           <div className="flex items-baseline justify-between gap-2">
             <strong dir="rtl" className="min-w-0 break-words text-xl leading-relaxed">
               {current.word.text || t("wordPlayback.unlabelled")}
             </strong>
-            <span className="flex-none text-[11px] text-text-muted">
+            <span className="flex-none text-[11px] text-ink-3">
               {t("wordPlayback.aya", { aya: current.word.aya })}
             </span>
           </div>
-          <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-text-secondary">
+          <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-ink-2">
             <span>{t("wordPlayback.line", { line: current.line.line_number })}</span>
             <span>
               {t("wordPlayback.bodies", { count: blobs.filter((b) => b.role === "body").length })}
@@ -366,7 +366,7 @@ function Player({
             <span>
               {t("wordPlayback.marks", { count: blobs.filter((b) => b.role === "mark").length })}
             </span>
-            <span className={count.ok ? "" : "font-semibold text-error"}>
+            <span className={count.ok ? "" : "font-semibold text-stop-text"}>
               {t("wordPlayback.paws", count)}
             </span>
           </div>
@@ -375,7 +375,7 @@ function Player({
               {wordRisks(current.line, current.word, checks).map((risk) => (
                 <span
                   key={risk}
-                  className="rounded-sm bg-warning-bg px-1.5 py-0.5 text-[10.5px] text-[#8a4b0d]"
+                  className="rounded-sm bg-warn-wash px-1.5 py-0.5 text-[10.5px] text-warn-text"
                 >
                   {t(`wordPlayback.risk.${risk}`)}
                 </span>
@@ -394,7 +394,7 @@ function Player({
               setSelected(id);
             }}
           />
-          {!blobs.length && <p className="text-[12px] text-warning">{t("wordPlayback.noInk")}</p>}
+          {!blobs.length && <p className="text-[12px] text-warn-text">{t("wordPlayback.noInk")}</p>}
           <div className="flex flex-wrap gap-2 text-[11px]">
             {[...new Set(blobs.filter((b) => b.role === "mark").map(typeOf))].map((type) => (
               <span key={type} className="flex items-center gap-1">
@@ -409,7 +409,7 @@ function Player({
               {t("wordPlayback.components")}
             </caption>
             <thead>
-              <tr className="border-b border-border text-text-muted">
+              <tr className="border-b border-rule text-ink-3">
                 <th className="w-12 py-1 text-start">{t("wordPlayback.id")}</th>
                 <th className="text-start">{t("wordPlayback.role")}</th>
                 <th className="w-10 text-end">{t("wordPlayback.contribution")}</th>
@@ -419,7 +419,7 @@ function Player({
               {blobs.map((blob) => (
                 <tr
                   key={blob.id}
-                  className={`border-b border-border ${selected === blob.id ? "bg-orange-tint" : ""}`}
+                  className={`border-b border-rule ${selected === blob.id ? "bg-lapis-wash" : ""}`}
                 >
                   <td className="py-1 align-top">
                     <button
@@ -444,7 +444,7 @@ function Player({
                       {blob.role === "body" ? t("wordPlayback.body") : typeLabel(typeOf(blob))}
                     </span>
                     {blob.role === "mark" && (
-                      <span className="text-[10px] text-text-muted">
+                      <span className="text-[10px] text-ink-3">
                         {t(
                           isTyped(blob)
                             ? "wordPlayback.confirmed"
@@ -455,7 +455,7 @@ function Player({
                       </span>
                     )}
                     {blob.allocations.length > 1 && (
-                      <span className="block text-[10px] text-text-muted">
+                      <span className="block text-[10px] text-ink-3">
                         {t("wordPlayback.shared")}
                       </span>
                     )}
@@ -471,7 +471,7 @@ function Player({
             </tbody>
           </table>
           {selectedBlob && (
-            <div className="flex flex-col gap-1 border-b border-border pb-2 text-[11px]">
+            <div className="flex flex-col gap-1 border-b border-rule pb-2 text-[11px]">
               <span>
                 {t("wordPlayback.source")}:{" "}
                 {t(`calibration.source.${selectedBlob.decision_source}`)}
@@ -506,7 +506,7 @@ function Player({
               </Button>
             </div>
           )}
-          <p className="text-[11px] text-text-muted">
+          <p className="text-[11px] text-ink-3">
             {t("wordPlayback.detached", {
               count: current.line.blobs.filter(
                 (b) => (b.role === "body" || b.role === "mark") && !b.allocations.length,
@@ -515,7 +515,7 @@ function Player({
           </p>
         </section>
       </div>
-      <div className="flex flex-none flex-col gap-2 border-t border-border pt-2">
+      <div className="flex flex-none flex-col gap-2 border-t border-rule pt-2">
         <input
           type="range"
           min={0}
@@ -523,7 +523,7 @@ function Player({
           value={safeIndex}
           onChange={(e) => jump(Number(e.target.value))}
           aria-label={t("wordPlayback.jump")}
-          className="w-full accent-orange"
+          className="w-full accent-lapis"
           dir="rtl"
         />
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -531,7 +531,7 @@ function Player({
             aria-label={t("wordPlayback.jump")}
             value={safeIndex}
             onChange={(e) => jump(Number(e.target.value))}
-            className="h-9 min-w-0 max-w-full flex-1 rounded-sm border border-border-strong bg-white px-2 text-[12px] md:max-w-72"
+            className="h-9 min-w-0 max-w-full flex-1 rounded-sm border border-rule-2 bg-card px-2 text-[12px] md:max-w-72"
           >
             {entries.map((entry, i) => (
               <option key={`${entry.line.snapshot_id}:${entry.wordIndex}`} value={i}>
@@ -577,7 +577,7 @@ function Player({
             aria-label={t("wordPlayback.speed")}
             value={speed}
             onChange={(e) => setSpeed(e.target.value as keyof typeof SPEEDS)}
-            className="h-9 rounded-sm border border-border-strong bg-white px-2 text-[12px]"
+            className="h-9 rounded-sm border border-rule-2 bg-card px-2 text-[12px]"
           >
             {Object.keys(SPEEDS).map((value) => (
               <option key={value} value={value}>
@@ -704,7 +704,7 @@ function PageInk({
   ]);
   return (
     <div
-      className="flex min-h-0 min-w-0 items-center justify-center overflow-hidden bg-bg-surface"
+      className="flex min-h-0 min-w-0 items-center justify-center overflow-hidden bg-sheet"
       tabIndex={0}
       aria-label={t("wordPlayback.fullPage", { page, index: index + 1 })}
     >
@@ -802,7 +802,7 @@ function WordInk({
     }
   }, [raster, entry, types, distinguishTypes, dim, selected, crop.x, crop.y, crop.w, crop.h]);
   return (
-    <div className="flex h-32 flex-none items-center justify-center overflow-hidden border-y border-border bg-white">
+    <div className="flex h-32 flex-none items-center justify-center overflow-hidden border-y border-rule bg-white">
       <canvas
         ref={canvas}
         width={Math.ceil(crop.w)}
@@ -841,7 +841,7 @@ function Swatch({ color, dashed = false }: { color: readonly number[]; dashed?: 
       className="h-3 w-3 flex-none border-2"
       style={{
         borderColor: `rgb(${color.join(",")})`,
-        background: dashed ? "white" : `rgb(${color.join(",")})`,
+        background: dashed ? "var(--card)" : `rgb(${color.join(",")})`,
         borderStyle: dashed ? "dashed" : "solid",
       }}
     />
@@ -862,7 +862,7 @@ function Toggle({
         type="checkbox"
         checked={checked}
         onChange={(e) => set(e.target.checked)}
-        className="accent-orange"
+        className="accent-lapis"
       />
       {label}
     </label>
@@ -889,7 +889,7 @@ function Control({
       aria-pressed={active}
       onClick={onClick}
       disabled={disabled}
-      className={`flex h-9 w-9 flex-none cursor-pointer items-center justify-center rounded-sm border border-border-strong disabled:cursor-default disabled:opacity-40 ${active ? "bg-orange text-white" : "bg-white text-text-primary hover:bg-bg-surface"}`}
+      className={`flex h-9 w-9 flex-none cursor-pointer items-center justify-center rounded-sm border border-rule-2 disabled:cursor-default disabled:opacity-40 ${active ? "bg-lapis text-on-lapis" : "bg-card text-ink hover:bg-sheet"}`}
     >
       {children}
     </button>

@@ -30,8 +30,8 @@ function VerifyEmailPage() {
   if (state === "working") {
     return (
       <AuthShell title={t("auth.verify.verifying")}>
-        <div className="h-1.5 w-full overflow-hidden rounded-full bg-bg-muted">
-          <div className="h-full w-1/3 animate-pulse rounded-full bg-navy" />
+        <div className="h-1.5 w-full overflow-hidden rounded-full bg-sunk">
+          <div className="h-full w-1/3 animate-pulse rounded-full bg-lapis" />
         </div>
       </AuthShell>
     );
@@ -46,8 +46,8 @@ function VerifyEmailPage() {
       <div
         className={
           ok
-            ? "rounded-md border border-success-border bg-success-bg px-3 py-2 text-sm text-success"
-            : "rounded-md border border-error-border bg-error-bg px-3 py-2 text-sm text-error"
+            ? "rounded-md border border-done/30 bg-done-wash px-3 py-2 text-sm text-done-text"
+            : "rounded-md border border-stop/20 bg-stop-wash px-3 py-2 text-sm text-stop-text"
         }
       >
         {ok ? t("auth.verify.success") : t("auth.verify.failed")}

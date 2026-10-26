@@ -5,11 +5,18 @@ import type { ReactNode } from "react";
 import type { LineType } from "@/lib/api";
 
 /** Per-type accent, matching the line-box colours on the canvas so the panel
- * reads as the same object (orange = text, navy = sura header, green = besmella). */
+ * reads as the same object (lapis = text, gold = sura header, green = besmella). */
 const LINE_TYPE_COLOR: Record<LineType, string> = {
-  text: "var(--orange)",
-  sura_header: "var(--navy)",
-  besmella: "var(--success)",
+  text: "var(--lapis)",
+  sura_header: "var(--gold)",
+  besmella: "var(--done)",
+};
+
+/** The text on a LINE_TYPE_COLOR chip. */
+const LINE_TYPE_ON: Record<LineType, string> = {
+  text: "var(--on-lapis)",
+  sura_header: "var(--on-gold)",
+  besmella: "var(--on-done)",
 };
 
 /** One line as the navigator shows it. `key` is whatever the page uses for
@@ -51,19 +58,19 @@ export function LineNavigator({
   // Before the auto-select effect runs, fall back to the first line for display.
   const safeIdx = idx >= 0 ? idx : 0;
   const current: NavigatorLine | undefined = lines[safeIdx];
-  const color = current ? LINE_TYPE_COLOR[current.type] : "var(--orange)";
+  const color = current ? LINE_TYPE_COLOR[current.type] : "var(--lapis)";
 
   return (
-    <div className="rounded-md border border-border bg-white">
-      <div className="flex items-center justify-between border-b border-border bg-orange-tint px-3 py-2">
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-orange">
+    <div className="rounded-md border border-rule bg-card">
+      <div className="flex items-center justify-between border-b border-rule bg-lapis-wash px-3 py-2">
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-lapis-text">
           {title}
         </span>
         {onAdd && (
           <button
             type="button"
             onClick={onAdd}
-            className="flex cursor-pointer items-center gap-1 rounded-sm border-[1.5px] border-orange bg-white px-2 py-[3px] text-[11px] font-semibold text-orange hover:bg-orange hover:text-white"
+            className="flex cursor-pointer items-center gap-1 rounded-sm border-[1.5px] border-lapis bg-card px-2 py-[3px] text-[11px] font-semibold text-lapis-text hover:bg-lapis hover:text-on-lapis"
           >
             <Plus size={12} /> {addLabel}
           </button>
@@ -71,7 +78,7 @@ export function LineNavigator({
       </div>
 
       {total === 0 || !current ? (
-        <p className="px-3 py-3 text-[12px] text-text-muted">{emptyText}</p>
+        <p className="px-3 py-3 text-[12px] text-ink-3">{emptyText}</p>
       ) : (
         <div className="flex items-stretch">
           <NavArrow
@@ -83,7 +90,7 @@ export function LineNavigator({
           <button
             type="button"
             onClick={() => onSelect(current.key)}
-            className="flex flex-1 cursor-pointer flex-col gap-1 border-x border-border px-3 py-2 text-start transition-colors"
+            className="flex flex-1 cursor-pointer flex-col gap-1 border-x border-rule px-3 py-2 text-start transition-colors"
             onMouseEnter={(e) =>
               (e.currentTarget.style.background = `color-mix(in oklab, ${color} 8%, transparent)`)
             }
@@ -99,7 +106,7 @@ export function LineNavigator({
               </span>
             </span>
             {current.summary && (
-              <span className="truncate text-[11.5px] text-text-secondary">{current.summary}</span>
+              <span className="truncate text-[11.5px] text-ink-2">{current.summary}</span>
             )}
           </button>
           <NavArrow
@@ -132,7 +139,7 @@ function NavArrow({
       aria-label={title}
       disabled={disabled}
       onClick={onClick}
-      className="flex w-10 flex-none cursor-pointer items-center justify-center transition-colors bg-bg-surface text-navy hover:bg-transparent disabled:cursor-not-allowed disabled:text-text-muted disabled:opacity-40 disabled:hover:bg-transparent"
+      className="flex w-10 flex-none cursor-pointer items-center justify-center transition-colors bg-sheet text-lapis-text hover:bg-transparent disabled:cursor-not-allowed disabled:text-ink-3 disabled:opacity-40 disabled:hover:bg-transparent"
     >
       {dir === "up" ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
     </button>
@@ -143,8 +150,8 @@ export function TypeChip({ type }: { type: LineType }) {
   const { t } = useTranslation();
   return (
     <span
-      className="rounded-pill px-[6px] py-[1px] text-[9.5px] font-semibold uppercase tracking-wider text-white"
-      style={{ background: LINE_TYPE_COLOR[type] }}
+      className="rounded-pill px-[6px] py-[1px] text-[9.5px] font-semibold uppercase tracking-wider"
+      style={{ background: LINE_TYPE_COLOR[type], color: LINE_TYPE_ON[type] }}
     >
       {t(`review.chip_${type}`)}
     </span>

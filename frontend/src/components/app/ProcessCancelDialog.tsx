@@ -37,19 +37,19 @@ export function ProcessCancelDialog({ open, onOpenChange, onConfirm, job }: Prop
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <OctagonX size={17} className="text-error" />
+            <OctagonX size={17} className="text-stop-text" />
             {t("process.cancelConfirmTitle")}
           </DialogTitle>
           <DialogDescription>{t("process.cancelConfirmIntro")}</DialogDescription>
         </DialogHeader>
 
         <div className="flex flex-col gap-2.5">
-          <div className="rounded-md border border-border bg-bg-surface px-3 py-2.5">
+          <div className="rounded-md border border-rule bg-sheet px-3 py-2.5">
             <Row label={t("process.cancelConfirmSaved")} value={String(done)} good />
             <Row label={t("process.cancelConfirmRemaining")} value={String(remaining)} />
             <Row label={t("process.cancelConfirmResume")} value={String(resumeFrom)} last />
           </div>
-          <p className="text-[12px] leading-[1.55] text-text-secondary">
+          <p className="text-[12px] leading-[1.55] text-ink-2">
             {t("process.cancelConfirmBody", { page: resumeFrom })}
           </p>
         </div>
@@ -61,7 +61,7 @@ export function ProcessCancelDialog({ open, onOpenChange, onConfirm, job }: Prop
           <Button
             type="button"
             onClick={onConfirm}
-            className="bg-error text-white hover:brightness-95"
+            className="bg-stop text-on-stop hover:brightness-95"
           >
             {t("process.cancelConfirmStop")}
           </Button>
@@ -85,11 +85,11 @@ function Row({
   return (
     <div
       className={`flex items-baseline justify-between gap-3 text-[12.5px] ${
-        last ? "" : "mb-1.5 border-b border-border pb-1.5"
+        last ? "" : "mb-1.5 border-b border-rule pb-1.5"
       }`}
     >
-      <span className="text-text-secondary">{label}</span>
-      <span className={`font-mono font-semibold ${good ? "text-success" : "text-text-primary"}`}>
+      <span className="text-ink-2">{label}</span>
+      <span className={`font-mono font-semibold ${good ? "text-done-text" : "text-ink"}`}>
         {value}
       </span>
     </div>

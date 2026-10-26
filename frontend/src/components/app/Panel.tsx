@@ -17,10 +17,10 @@ export function Aside({
   footer?: ReactNode;
 }) {
   return (
-    <aside className="flex w-[340px] flex-shrink-0 flex-col overflow-hidden border-l border-border bg-white">
+    <aside className="flex w-[340px] flex-shrink-0 flex-col overflow-hidden border-l border-rule bg-card">
       <div className="flex flex-1 flex-col gap-4 overflow-y-auto p-4">{children}</div>
       {(status || footer) && (
-        <div className="flex-shrink-0 border-t border-border">
+        <div className="flex-shrink-0 border-t border-rule">
           {status && <div className="px-4 pt-3">{status}</div>}
           {footer && <div className="p-4">{footer}</div>}
         </div>
@@ -31,8 +31,8 @@ export function Aside({
 
 export function PanelCard({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div className="rounded-md border border-border bg-white">
-      <div className="border-b border-border px-3 py-2 text-[12px] font-semibold tracking-[0.02em] text-text-primary">
+    <div className="rounded-md border border-rule bg-card">
+      <div className="border-b border-rule px-3 py-2 text-[12px] font-semibold tracking-[0.02em] text-ink">
         {title}
       </div>
       <div className="flex flex-col gap-3 p-3">{children}</div>
@@ -54,20 +54,20 @@ export function Section({
 }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <div className="rounded-md border border-border bg-white">
+    <div className="rounded-md border border-rule bg-card">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center gap-2 px-3 py-2 text-[12px] font-semibold tracking-[0.02em] text-text-primary transition-colors bg-bg-surface hover:bg-orange-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2"
+        className="flex w-full items-center gap-2 px-3 py-2 text-[12px] font-semibold tracking-[0.02em] text-ink transition-colors bg-sheet hover:bg-lapis-wash focus:outline-none focus-visible:ring-2 focus-visible:ring-lapis focus-visible:ring-offset-2"
       >
         <ChevronDown
           size={14}
-          className={`flex-shrink-0 text-text-muted transition-transform ${open ? "" : "-rotate-90"}`}
+          className={`flex-shrink-0 text-ink-3 transition-transform ${open ? "" : "-rotate-90"}`}
         />
-        <span className="flex-1 text-left text-orange">{title}</span>
+        <span className="flex-1 text-left text-lapis-text">{title}</span>
         {badge}
       </button>
-      {open && <div className="flex flex-col gap-3 border-t border-border p-3">{children}</div>}
+      {open && <div className="flex flex-col gap-3 border-t border-rule p-3">{children}</div>}
     </div>
   );
 }
@@ -85,12 +85,12 @@ export function Field({
 }) {
   return (
     <label className="flex flex-col gap-1">
-      <span className="flex items-center gap-1 text-[11.5px] font-semibold tracking-[0.03em] text-text-secondary">
+      <span className="flex items-center gap-1 text-[11.5px] font-semibold tracking-[0.03em] text-ink-2">
         {label}
         {info && <InfoTip text={info} />}
       </span>
       {children}
-      {hint && <span className="text-[10.5px] text-text-muted">{hint}</span>}
+      {hint && <span className="text-[10.5px] text-ink-3">{hint}</span>}
     </label>
   );
 }
@@ -104,8 +104,8 @@ export function Hint({
 }) {
   const styles =
     tone === "warning"
-      ? "border-[color:var(--warning-border)] bg-warning-bg text-[#92400E]"
-      : "border-border bg-bg-surface text-text-secondary";
+      ? "border-warn/25 bg-warn-wash text-warn-text"
+      : "border-rule bg-sheet text-ink-2";
   return (
     <div className={`rounded-md border px-3 py-2 text-[12px] leading-[1.5] ${styles}`}>
       {children}
@@ -124,24 +124,24 @@ export function StatusLine({
 }) {
   const dot =
     tone === "warning"
-      ? "bg-warning"
+      ? "bg-warn"
       : tone === "error"
-        ? "bg-error"
+        ? "bg-stop"
         : tone === "success"
-          ? "bg-success"
+          ? "bg-done"
           : tone === "info"
-            ? "bg-info"
-            : "bg-orange";
+            ? "bg-lapis"
+            : "bg-gold";
   const text =
     tone === "warning"
-      ? "text-[#8a4b0d]"
+      ? "text-warn-text"
       : tone === "error"
-        ? "text-error"
+        ? "text-stop-text"
         : tone === "success"
-          ? "text-success"
+          ? "text-done-text"
           : tone === "info"
-            ? "text-info"
-            : "text-orange";
+            ? "text-lapis-text"
+            : "text-gold-text";
   return (
     <div className={`flex items-center gap-2 text-[11.5px] ${text}`}>
       <span className={`h-1.5 w-1.5 flex-none rounded-full ${dot}`} aria-hidden />

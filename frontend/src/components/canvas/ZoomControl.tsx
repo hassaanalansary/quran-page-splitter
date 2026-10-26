@@ -19,7 +19,7 @@ const OPTIONS: { v: Zoom; label: string | null }[] = [
 export function ZoomControl({ value, onChange }: Props) {
   const { t } = useTranslation();
   return (
-    <div className="flex h-[30px] overflow-hidden rounded-sm border-[1.5px] border-border-strong">
+    <div className="flex h-[30px] overflow-hidden rounded-sm border-[1.5px] border-rule-2">
       {OPTIONS.map((o, i) => (
         <button
           key={String(o.v)}
@@ -27,10 +27,8 @@ export function ZoomControl({ value, onChange }: Props) {
           onClick={() => onChange(o.v)}
           className={[
             "px-[9px] text-[11.5px] font-medium transition-colors cursor-pointer",
-            i < OPTIONS.length - 1 ? "border-e border-border" : "",
-            value === o.v
-              ? "bg-bg-muted text-text-primary"
-              : "bg-white text-text-secondary hover:bg-bg-surface",
+            i < OPTIONS.length - 1 ? "border-e border-rule" : "",
+            value === o.v ? "bg-sunk text-ink" : "bg-card text-ink-2 hover:bg-sheet",
           ].join(" ")}
         >
           {o.label ?? t("canvas.fit")}

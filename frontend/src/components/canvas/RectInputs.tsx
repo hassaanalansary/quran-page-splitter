@@ -15,7 +15,7 @@ type Props = {
 export function RectInputs({ rect, onChange, max, disabled }: Props) {
   const { t } = useTranslation();
   if (!rect) {
-    return <p className="text-[11px] text-text-muted">{t("canvas.rectHint")}</p>;
+    return <p className="text-[11px] text-ink-3">{t("canvas.rectHint")}</p>;
   }
 
   const apply = (patch: Partial<Rect>) => {
@@ -55,13 +55,13 @@ function Num({
 }) {
   return (
     <label className="flex items-center gap-1.5">
-      <span className="w-3 text-[11px] font-semibold text-text-muted">{label}</span>
+      <span className="w-3 text-[11px] font-semibold text-ink-3">{label}</span>
       <input
         type="number"
         value={Math.round(value)}
         disabled={disabled}
         onChange={(e) => onChange(Math.round(Number(e.target.value) || 0))}
-        className="h-8 w-full rounded border-[1.5px] border-border-strong px-2 text-right text-[12px] tabular-nums outline-none focus:border-orange disabled:cursor-not-allowed disabled:bg-bg-surface disabled:text-text-muted"
+        className="h-8 w-full rounded border-[1.5px] border-rule-2 px-2 text-right text-[12px] tabular-nums outline-none focus:border-lapis disabled:cursor-not-allowed disabled:bg-sheet disabled:text-ink-3"
       />
     </label>
   );

@@ -13,7 +13,7 @@ export function InfoTip({ text }: { text: string }) {
             type="button"
             aria-label={text}
             onClick={(e) => e.preventDefault()}
-            className="inline-flex h-4 w-4 flex-none items-center justify-center rounded-full text-text-muted transition-colors hover:text-orange focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-500"
+            className="inline-flex h-4 w-4 flex-none items-center justify-center rounded-full text-ink-3 transition-colors hover:text-lapis-text focus:outline-none focus-visible:ring-2 focus-visible:ring-lapis"
           >
             <Info size={13} />
           </button>

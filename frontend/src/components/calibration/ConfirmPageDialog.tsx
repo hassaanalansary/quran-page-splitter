@@ -98,18 +98,18 @@ function ConfirmBody({
         <DialogDescription>{t("calibration.confirmIntro")}</DialogDescription>
       </DialogHeader>
 
-      <ul className="flex list-disc flex-col gap-1 ps-5 text-[12.5px] leading-relaxed text-text-secondary">
+      <ul className="flex list-disc flex-col gap-1 ps-5 text-[12.5px] leading-relaxed text-ink-2">
         <li>{t("calibration.confirmWords")}</li>
         <li>{t("calibration.confirmTeaches", teaches)}</li>
       </ul>
 
       {needed ? (
-        <div className="flex flex-col gap-2 rounded-md border border-[color:var(--warning-border)] bg-warning-bg p-3">
-          <div className="flex items-center gap-2 text-[12px] font-semibold text-[#8a4b0d]">
+        <div className="flex flex-col gap-2 rounded-md border border-warn/25 bg-warn-wash p-3">
+          <div className="flex items-center gap-2 text-[12px] font-semibold text-warn-text">
             <TriangleAlert size={14} className="flex-none" />
             {t("calibration.confirmExceptions", { count: exceptions.length })}
           </div>
-          <ul className="flex max-h-48 flex-col gap-1 overflow-y-auto text-[11.5px] text-text-secondary">
+          <ul className="flex max-h-48 flex-col gap-1 overflow-y-auto text-[11.5px] text-ink-2">
             {exceptions.slice(0, LISTED).map((item, index) => (
               <li key={`${item.kind}-${item.line_number}-${index}`}>
                 <span className="font-semibold">{problem(item.kind)}</span>
@@ -119,12 +119,12 @@ function ConfirmBody({
               </li>
             ))}
             {exceptions.length > LISTED && (
-              <li className="text-text-muted">
+              <li className="text-ink-3">
                 {t("calibration.moreExceptions", { count: exceptions.length - LISTED })}
               </li>
             )}
           </ul>
-          <label className="flex cursor-pointer items-start gap-2 text-[12px] text-text-primary">
+          <label className="flex cursor-pointer items-start gap-2 text-[12px] text-ink">
             <Checkbox
               className="mt-0.5"
               checked={acknowledged}
@@ -135,7 +135,7 @@ function ConfirmBody({
           </label>
         </div>
       ) : (
-        <p className="text-[12px] text-success">{t("calibration.confirmClean")}</p>
+        <p className="text-[12px] text-done-text">{t("calibration.confirmClean")}</p>
       )}
 
       <DialogFooter>

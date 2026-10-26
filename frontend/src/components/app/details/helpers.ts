@@ -14,10 +14,10 @@ import type { CalibrationPageState } from "@/lib/calibration/types";
 
 // ── Status pill (top chrome) ─────────────────────────────────────────────────
 export const STATUS_META: Record<MushafStatus, { label: string; dot: string }> = {
-  empty: { label: "Not processed", dot: "var(--text-muted)" },
-  partial: { label: "In progress", dot: "var(--warning)" },
-  processed: { label: "Processed", dot: "var(--navy-light)" },
-  completed: { label: "Completed", dot: "var(--success)" },
+  empty: { label: "Not processed", dot: "var(--ink-4)" },
+  partial: { label: "In progress", dot: "var(--warn)" },
+  processed: { label: "Processed", dot: "var(--lapis)" },
+  completed: { label: "Completed", dot: "var(--done)" },
 };
 
 // ── Formatting ───────────────────────────────────────────────────────────────
@@ -72,31 +72,31 @@ export const RUN_STATUS_META: Record<
 > = {
   completed: {
     label: "Completed",
-    dot: "var(--success)",
-    bg: "bg-success-bg",
-    text: "text-success",
+    dot: "var(--done)",
+    bg: "bg-done-wash",
+    text: "text-done-text",
   },
   aborted_line_detection: {
     label: "Aborted · line mismatch",
-    dot: "var(--warning)",
-    bg: "bg-warning-bg",
-    text: "text-[#8a4b0d]",
+    dot: "var(--warn)",
+    bg: "bg-warn-wash",
+    text: "text-warn-text",
   },
-  running: { label: "Running", dot: "var(--orange)", bg: "bg-bg-surface", text: "text-orange" },
+  running: { label: "Running", dot: "var(--lapis)", bg: "bg-sheet", text: "text-lapis-text" },
   cancelled: {
     label: "Stopped",
-    dot: "var(--text-muted)",
-    bg: "bg-bg-surface",
-    text: "text-text-secondary",
+    dot: "var(--ink-4)",
+    bg: "bg-sheet",
+    text: "text-ink-2",
   },
   // A row left `running` by a crash or a server restart, settled after the fact.
   interrupted: {
     label: "Interrupted",
-    dot: "var(--text-muted)",
-    bg: "bg-bg-surface",
-    text: "text-text-secondary",
+    dot: "var(--ink-4)",
+    bg: "bg-sheet",
+    text: "text-ink-2",
   },
-  error: { label: "Error", dot: "var(--error)", bg: "bg-error-bg", text: "text-error" },
+  error: { label: "Error", dot: "var(--stop)", bg: "bg-stop-wash", text: "text-stop-text" },
 };
 
 /** i18n key for a run's status chip (unknown statuses read as an error).
@@ -157,19 +157,19 @@ export function activityMeta(event: ActivityEvent): { dot: string; text: string 
   switch (event.type) {
     case "mushaf_created":
       return {
-        dot: "var(--text-muted)",
+        dot: "var(--ink-4)",
         text: i18n.t("details.act_uploaded", {
           name: p.pdf_original_name || i18n.t("details.act_pdfFallback"),
         }),
       };
     case "bounds_set":
       return {
-        dot: "var(--navy-light)",
+        dot: "var(--lapis)",
         text: i18n.t("details.act_boundsSet", { first: p.first, last: p.last }),
       };
     case "template_saved":
       return {
-        dot: "var(--success)",
+        dot: "var(--done)",
         text: i18n.t("details.act_templateSaved", {
           // Named from the shared per-type strings. This was a binary ternary and
           // would have called a sajda a sura header.
@@ -180,7 +180,7 @@ export function activityMeta(event: ActivityEvent): { dot: string; text: string 
       const num = runNumberLabel(Number(p.run_number ?? 0));
       if (p.status === "completed") {
         return {
-          dot: "var(--success)",
+          dot: "var(--done)",
           text: i18n.t("details.act_runCompleted", {
             num,
             start: p.page_range_start,
@@ -190,7 +190,7 @@ export function activityMeta(event: ActivityEvent): { dot: string; text: string 
       }
       if (p.status === "aborted_line_detection") {
         return {
-          dot: "var(--warning)",
+          dot: "var(--warn)",
           text: p.abort_page
             ? i18n.t("details.act_runAbortedAt", { num, page: p.abort_page })
             : i18n.t("details.act_runAborted", { num }),
@@ -198,16 +198,16 @@ export function activityMeta(event: ActivityEvent): { dot: string; text: string 
       }
       if (p.status === "cancelled") {
         return {
-          dot: "var(--text-muted)",
+          dot: "var(--ink-4)",
           // `saved`, not `count` — i18next treats `count` as a plural selector.
           text: i18n.t("details.act_runCancelled", { num, saved: Number(p.pages_saved ?? 0) }),
         };
       }
-      return { dot: "var(--error)", text: i18n.t("details.act_runFailed", { num }) };
+      return { dot: "var(--stop)", text: i18n.t("details.act_runFailed", { num }) };
     }
     case "review_saved":
       return {
-        dot: "var(--orange)",
+        dot: "var(--lapis)",
         text:
           p.page_start != null
             ? i18n.t("details.act_reviewRange", {
@@ -219,7 +219,7 @@ export function activityMeta(event: ActivityEvent): { dot: string; text: string 
       };
     case "lines_exported":
       return {
-        dot: "var(--navy-light)",
+        dot: "var(--lapis)",
         text: i18n.t("details.act_linesExported", { page: p.page_number, lines: p.exported }),
       };
     case "words_detected": {
@@ -228,12 +228,12 @@ export function activityMeta(event: ActivityEvent): { dot: string; text: string 
       const span = `${p.from ?? "?"} → ${p.to ?? "?"}`;
       if (p.cancelled) {
         return {
-          dot: "var(--text-muted)",
+          dot: "var(--ink-4)",
           text: i18n.t("details.act_wordsStopped", { span, lines: Number(p.lines ?? 0) }),
         };
       }
       return {
-        dot: Number(p.unresolved ?? 0) > 0 ? "var(--warning)" : "var(--success)",
+        dot: Number(p.unresolved ?? 0) > 0 ? "var(--warn)" : "var(--done)",
         text: i18n.t("details.act_wordsDetected", {
           span,
           words: Number(p.words ?? 0),
@@ -243,14 +243,14 @@ export function activityMeta(event: ActivityEvent): { dot: string; text: string 
     }
     case "words_edited":
       return {
-        dot: "var(--orange)",
+        dot: "var(--lapis)",
         text: i18n.t("details.act_wordsEdited", {
           page: p.page_number,
           lines: Number(p.lines ?? 0),
         }),
       };
     default:
-      return { dot: "var(--text-muted)", text: event.type };
+      return { dot: "var(--ink-4)", text: event.type };
   }
 }
 

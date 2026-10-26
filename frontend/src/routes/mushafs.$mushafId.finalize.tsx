@@ -8,6 +8,7 @@ import { Aside, Field, Hint, PanelCard, Section, StatusLine } from "@/components
 import { CanvasHelp } from "@/components/app/CanvasHelp";
 import { ExportedLineDialog, type ExportedLine } from "@/components/app/ExportedLineDialog";
 import { LineNavigator } from "@/components/app/LineNavigator";
+import { BusyLabel } from "@/components/app/SatrLoader";
 import { TourOverlay } from "@/components/app/tour/TourOverlay";
 import { useStepTour, type TourStep } from "@/components/app/tour/useStepTour";
 import { FinalizeCanvas, type CanvasLine } from "@/components/canvas/FinalizeCanvas";
@@ -403,7 +404,11 @@ function FinalizePage() {
                 onClick={() => saveMutation.mutate()}
                 disabled={!dirty || busy}
               >
-                {saveMutation.isPending ? t("common.saving") : t("finalize.saveCuts")}
+                {saveMutation.isPending ? (
+                  <BusyLabel>{t("common.saving")}</BusyLabel>
+                ) : (
+                  t("finalize.saveCuts")
+                )}
               </Button>
               <Button
                 className="flex-1"
@@ -446,12 +451,12 @@ function FinalizePage() {
                 badges: (
                   <>
                     {l.edited && (
-                      <span className="rounded-pill bg-orange px-1.5 text-[9px] font-bold text-white">
+                      <span className="rounded-pill bg-gold px-1.5 text-[9px] font-bold text-on-gold">
                         {t("finalize.edited")}
                       </span>
                     )}
                     {exported.has(l.line_number) && (
-                      <span className="rounded-pill bg-navy px-1.5 text-[9px] font-bold text-white">
+                      <span className="rounded-pill bg-lapis px-1.5 text-[9px] font-bold text-on-lapis">
                         {t("finalize.png")}
                       </span>
                     )}
@@ -487,7 +492,7 @@ function FinalizePage() {
                         )
                       }
                       onBlur={() => commit(model)}
-                      className="h-8 w-32 rounded border-[1.5px] border-border-strong px-2 text-center text-[12px] tabular-nums outline-none [appearance:textfield] focus:border-orange [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                      className="h-8 w-32 rounded border-[1.5px] border-rule-2 px-2 text-center text-[12px] tabular-nums outline-none [appearance:textfield] focus:border-lapis [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                     />
                     <PadStep
                       label="+"
@@ -536,7 +541,7 @@ function FinalizePage() {
                     {t("finalize.clearLine")}
                   </Button>
                 </div>
-                <p className="text-[10.5px] leading-snug text-text-muted">
+                <p className="text-[10.5px] leading-snug text-ink-3">
                   {sel
                     ? t("finalize.strokeInfo", { line: sel.line_number, count: sel.strokes.length })
                     : t("finalize.selectLineShort")}
@@ -571,19 +576,19 @@ function FinalizePage() {
                     >
                       {t("finalize.revertLine")}
                     </Button>
-                    <p className="text-[10.5px] leading-snug text-text-muted">
+                    <p className="text-[10.5px] leading-snug text-ink-3">
                       {t("finalize.lockNote")}
                     </p>
                   </>
                 ) : (
-                  <p className="text-[12px] text-text-muted">{t("finalize.selectLineBox")}</p>
+                  <p className="text-[12px] text-ink-3">{t("finalize.selectLineBox")}</p>
                 )}
               </Section>
             </div>
 
             {exportedLines.length > 0 && (
               <PanelCard title={t("finalize.exportedTitle", { count: exportedLines.length })}>
-                <p className="-mt-1 text-[10.5px] leading-snug text-text-muted">
+                <p className="-mt-1 text-[10.5px] leading-snug text-ink-3">
                   {t("finalize.exportedNote")}
                 </p>
                 <div className="flex flex-col gap-2">
@@ -593,9 +598,9 @@ function FinalizePage() {
                       type="button"
                       onClick={() => setViewing(l.line_number)}
                       title={t("finalize.viewerOpen", { n: l.line_number })}
-                      className="flex cursor-pointer items-center gap-2 rounded border border-border p-1.5 transition-colors hover:border-orange hover:bg-orange-tint"
+                      className="flex cursor-pointer items-center gap-2 rounded border border-rule p-1.5 transition-colors hover:border-lapis hover:bg-lapis-wash"
                     >
-                      <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded bg-bg-muted text-[10px] font-semibold text-text-secondary">
+                      <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded bg-sunk text-[10px] font-semibold text-ink-2">
                         {l.line_number}
                       </span>
                       <img
@@ -637,7 +642,7 @@ function PadStep({
       aria-label={title}
       disabled={disabled}
       onClick={onClick}
-      className="h-8 w-8 flex-none cursor-pointer rounded border-[1.5px] border-border-strong bg-white text-[14px] font-semibold text-text-secondary transition-colors hover:bg-bg-surface disabled:cursor-not-allowed disabled:opacity-40"
+      className="h-8 w-8 flex-none cursor-pointer rounded border-[1.5px] border-rule-2 bg-card text-[14px] font-semibold text-ink-2 transition-colors hover:bg-sheet disabled:cursor-not-allowed disabled:opacity-40"
     >
       {label}
     </button>
@@ -657,13 +662,13 @@ function EditNum({
 }) {
   return (
     <label className="flex items-center gap-1.5">
-      <span className="w-3 text-[11px] font-semibold text-text-muted">{label}</span>
+      <span className="w-3 text-[11px] font-semibold text-ink-3">{label}</span>
       <input
         type="number"
         value={Math.round(value)}
         onChange={(e) => onChange(Math.round(Number(e.target.value) || 0))}
         onBlur={onCommit}
-        className="h-8 w-full rounded border-[1.5px] border-border-strong px-2 text-right text-[12px] tabular-nums outline-none [appearance:textfield] focus:border-orange [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+        className="h-8 w-full rounded border-[1.5px] border-rule-2 px-2 text-right text-[12px] tabular-nums outline-none [appearance:textfield] focus:border-lapis [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
       />
     </label>
   );

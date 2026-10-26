@@ -51,23 +51,23 @@ export function PublishPanel({ mushaf }: { mushaf: MushafDetail }) {
     : "";
 
   return (
-    <div className="rounded-[11px] border border-border bg-white p-4">
-      <div className="mb-1 flex items-center gap-2 text-[12.5px] font-bold text-text-primary">
+    <div className="rounded-[11px] border border-rule bg-card p-4">
+      <div className="mb-1 flex items-center gap-2 text-[12.5px] font-bold text-ink">
         {isPublished ? (
-          <Globe className="h-3.5 w-3.5 text-success" />
+          <Globe className="h-3.5 w-3.5 text-done-text" />
         ) : (
-          <Lock className="h-3.5 w-3.5 text-text-muted" />
+          <Lock className="h-3.5 w-3.5 text-ink-3" />
         )}
         {isPublished ? t("gallery.publish.liveHeading") : t("gallery.publish.heading")}
       </div>
 
-      <p className="mb-3 text-[10.5px] leading-[1.5] text-text-muted">
+      <p className="mb-3 text-[10.5px] leading-[1.5] text-ink-3">
         {isPublished
           ? t("gallery.publish.liveBody", { date: publishedDate })
           : t("gallery.publish.body")}
       </p>
 
-      <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-[0.06em] text-text-secondary">
+      <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-[0.06em] text-ink-2">
         {t("gallery.publish.descriptionLabel")}
       </label>
       <textarea
@@ -75,7 +75,7 @@ export function PublishPanel({ mushaf }: { mushaf: MushafDetail }) {
         onChange={(e) => setDescription(e.target.value)}
         placeholder={t("gallery.publish.descriptionPlaceholder")}
         rows={3}
-        className="w-full resize-y rounded-lg border-[1.5px] border-border-strong bg-white px-[11px] py-2 text-[12.5px] font-medium text-text-primary outline-none focus:border-orange focus:shadow-[0_0_0_3px_var(--orange-glow)]"
+        className="w-full resize-y rounded-lg border-[1.5px] border-rule-2 bg-card px-[11px] py-2 text-[12.5px] font-medium text-ink outline-none focus:border-lapis focus:ring-3 focus:ring-lapis/15"
       />
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -94,13 +94,16 @@ export function PublishPanel({ mushaf }: { mushaf: MushafDetail }) {
               variant="outline"
               onClick={() => unpublish.mutate()}
               disabled={unpublish.isPending}
-              className="border-error-border text-error hover:bg-error-bg"
+              className="border-stop/20 text-stop-text hover:bg-stop-wash"
             >
               {unpublish.isPending
                 ? t("gallery.publish.unpublishing")
                 : t("gallery.publish.unpublish")}
             </Button>
-            <Link to="/gallery" className="text-[11px] font-semibold text-navy hover:underline">
+            <Link
+              to="/gallery"
+              className="text-[11px] font-semibold text-lapis-text hover:underline"
+            >
               {t("gallery.navLink")}
             </Link>
           </>

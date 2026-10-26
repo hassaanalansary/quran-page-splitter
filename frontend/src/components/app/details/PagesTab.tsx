@@ -62,15 +62,15 @@ export function PagesTab({
 
   if (all.length === 0) {
     return (
-      <div className="flex flex-col items-center gap-3 rounded-[11px] border border-border bg-white px-6 py-14 text-center">
-        <span className="text-[13px] font-semibold text-text-primary">{t("details.pg_none")}</span>
-        <span className="max-w-[380px] text-[11.5px] leading-[1.6] text-text-secondary">
+      <div className="flex flex-col items-center gap-3 rounded-[11px] border border-rule bg-card px-6 py-14 text-center">
+        <span className="text-[13px] font-semibold text-ink">{t("details.pg_none")}</span>
+        <span className="max-w-[380px] text-[11.5px] leading-[1.6] text-ink-2">
           {t("details.pg_noneDesc")}
         </span>
         <Link
           to="/mushafs/$mushafId/process"
           params={{ mushafId }}
-          className="mt-1 rounded-lg bg-navy px-4 py-2 text-[12px] font-bold text-white transition-colors hover:bg-navy-hover"
+          className="mt-1 rounded-lg bg-lapis px-4 py-2 text-[12px] font-bold text-on-lapis transition-colors hover:bg-lapis/90"
         >
           {t("details.pg_goProcess")}
         </Link>
@@ -82,8 +82,8 @@ export function PagesTab({
     <div className="flex h-full min-h-0 flex-col">
       {/* toolbar */}
       <div className="mb-3 flex items-center gap-2">
-        <span className="text-[11.5px] font-bold text-text-primary">{t("details.pg_title")}</span>
-        <span className="text-[11.5px] text-text-muted">
+        <span className="text-[11.5px] font-bold text-ink">{t("details.pg_title")}</span>
+        <span className="text-[11.5px] text-ink-3">
           {t("details.pg_remaining", { count: remaining })}
         </span>
         <div className="ms-auto flex items-center gap-1.5">
@@ -106,7 +106,7 @@ export function PagesTab({
             <Link
               to="/mushafs/$mushafId/process"
               params={{ mushafId }}
-              className="ms-1 rounded-[7px] bg-orange-tint px-[11px] py-1 text-[10.5px] font-bold text-orange transition-colors hover:bg-orange-glow"
+              className="ms-1 rounded-[7px] bg-lapis-wash px-[11px] py-1 text-[10.5px] font-bold text-lapis-text transition-colors hover:bg-lapis/15"
             >
               {t("details.pg_resume", { page: abortPage })}
             </Link>
@@ -115,9 +115,9 @@ export function PagesTab({
       </div>
 
       {/* table */}
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[11px] border border-border bg-white">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[11px] border border-rule bg-card">
         <div className="flex-1 overflow-auto">
-          <div className={`${GRID} sticky top-0 z-10 border-b border-border bg-bg-surface`}>
+          <div className={`${GRID} sticky top-0 z-10 border-b border-rule bg-sheet`}>
             <HeaderButton
               label={t("details.col_page")}
               arrow={arrow("page")}
@@ -152,17 +152,17 @@ export function PagesTab({
           ))}
         </div>
         {/* totals footer */}
-        <div className={`${GRID} shrink-0 border-t border-border bg-bg-surface`}>
-          <div className="col-span-3 px-3 py-2 text-[12px] font-semibold uppercase tracking-[0.05em] text-text-secondary">
+        <div className={`${GRID} shrink-0 border-t border-rule bg-sheet`}>
+          <div className="col-span-3 px-3 py-2 text-[12px] font-semibold uppercase tracking-[0.05em] text-ink-2">
             {t("details.pg_sigma", { count: rows.length })}
           </div>
-          <div className="px-3 py-2 text-center font-mono text-[12px] font-bold font-semibold text-text-primary">
+          <div className="px-3 py-2 text-center font-mono text-[12px] font-bold font-semibold text-ink">
             {totals.lines}
           </div>
-          <div className="px-3 py-2 text-center font-mono text-[12px] font-bold font-semibold text-text-primary">
+          <div className="px-3 py-2 text-center font-mono text-[12px] font-bold font-semibold text-ink">
             {totals.ayat}
           </div>
-          <div className="px-3 py-2 text-center font-mono text-[12px] font-bold font-semibold text-text-muted">
+          <div className="px-3 py-2 text-center font-mono text-[12px] font-bold font-semibold text-ink-3">
             {totals.segments}
           </div>
           <div className="col-span-2" />
@@ -187,8 +187,8 @@ function FilterChip({
       onClick={onClick}
       className={`cursor-pointer rounded-[7px] border px-2.5 py-1 text-[10.5px] font-semibold transition ${
         active
-          ? "border-navy bg-navy text-white"
-          : "border-border bg-white text-text-secondary hover:border-border-strong"
+          ? "border-lapis bg-lapis text-on-lapis"
+          : "border-rule bg-card text-ink-2 hover:border-rule-2"
       }`}
     >
       {label}
@@ -198,7 +198,7 @@ function FilterChip({
 
 function HeaderCell({ label }: { label: string }) {
   return (
-    <div className="flex items-center px-3 py-[9px] text-[12px] font-semibold uppercase tracking-[0.07em] text-text-secondary">
+    <div className="flex items-center px-3 py-[9px] text-[12px] font-semibold uppercase tracking-[0.07em] text-ink-2">
       {label}
     </div>
   );
@@ -219,10 +219,10 @@ function HeaderButton({
     <button
       type="button"
       onClick={onClick}
-      className={`flex cursor-pointer items-center justify-center px-3 py-[9px] text-[12px] font-semibold uppercase tracking-[0.07em] text-text-secondary transition-colors hover:text-navy ${right ? "justify-end" : ""}`}
+      className={`flex cursor-pointer items-center justify-center px-3 py-[9px] text-[12px] font-semibold uppercase tracking-[0.07em] text-ink-2 transition-colors hover:text-lapis-text ${right ? "justify-end" : ""}`}
     >
       {label}
-      <span className="font-bold text-orange">{arrow}</span>
+      <span className="font-bold text-lapis-text">{arrow}</span>
     </button>
   );
 }
@@ -232,53 +232,53 @@ function PageRow({ row, mushafId, zebra }: { row: PageSummary; mushafId: string;
   const firstSura = row.suras[0];
   return (
     <div
-      className={`${GRID} items-center border-t border-border transition-colors hover:bg-orange-tint ${
-        zebra ? "bg-[oklch(0.985_0.004_247)]" : "bg-white"
+      className={`${GRID} items-center border-t border-rule transition-colors hover:bg-lapis-wash ${
+        zebra ? "bg-sheet" : "bg-card"
       }`}
     >
-      <div className="px-3 py-2 font-mono text-[12px] font-bold text-text-primary">
+      <div className="px-3 py-2 font-mono text-[12px] font-bold text-ink">
         {String(row.page_number).padStart(2, "0")}
       </div>
-      <div className="px-3 py-2 font-mono text-[11px] font-medium text-text-muted">
+      <div className="px-3 py-2 font-mono text-[11px] font-medium text-ink-3">
         p.{row.source_pdf_page}
       </div>
       <div className="flex min-w-0 items-center gap-2 px-3 py-[5px]">
         {firstSura ? (
           <>
-            <span className="whitespace-nowrap text-[11.5px] font-medium text-text-primary">
+            <span className="whitespace-nowrap text-[11.5px] font-medium text-ink">
               {firstSura.transliteration}
             </span>
-            <span dir="rtl" className="font-arabic text-[13px] leading-none text-text-secondary">
+            <span dir="rtl" className="font-cite text-[13px] leading-none text-ink-2">
               {firstSura.name_arabic}
             </span>
             {row.suras.length > 1 && (
-              <span className="text-[10px] text-text-muted">+{row.suras.length - 1}</span>
+              <span className="text-[10px] text-ink-3">+{row.suras.length - 1}</span>
             )}
           </>
         ) : (
-          <span className="text-[11px] text-text-muted">—</span>
+          <span className="text-[11px] text-ink-3">—</span>
         )}
         {row.has_header && (
-          <span className="flex-none rounded-[9px] bg-orange-tint px-[5px] py-px text-[8.5px] font-semibold uppercase tracking-[0.04em] text-orange">
+          <span className="flex-none rounded-[9px] bg-lapis-wash px-[5px] py-px text-[8.5px] font-semibold uppercase tracking-[0.04em] text-lapis-text">
             {t("details.pg_header")}
           </span>
         )}
       </div>
-      <div className="px-3 py-2 text-center font-mono text-[11.5px] font-medium text-text-primary">
+      <div className="px-3 py-2 text-center font-mono text-[11.5px] font-medium text-ink">
         {row.lines}
       </div>
-      <div className="px-3 py-2 text-center font-mono text-[11.5px] font-medium text-text-primary">
+      <div className="px-3 py-2 text-center font-mono text-[11.5px] font-medium text-ink">
         {row.ayat}
       </div>
-      <div className="px-3 py-2 text-center font-mono text-[11.5px] font-medium text-text-muted">
+      <div className="px-3 py-2 text-center font-mono text-[11.5px] font-medium text-ink-3">
         {row.segments}
       </div>
       <div className="flex items-center justify-center gap-1.5 px-3 py-2">
         <span
           className="h-[7px] w-[7px] flex-none rounded-full"
-          style={{ background: row.reviewed ? "var(--success)" : "var(--navy-light)" }}
+          style={{ background: row.reviewed ? "var(--done)" : "var(--lapis)" }}
         />
-        <span className="text-[11px] font-medium text-text-secondary">
+        <span className="text-[11px] font-medium text-ink-2">
           {row.reviewed ? t("details.status_reviewed") : t("details.status_processed")}
         </span>
       </div>
@@ -287,7 +287,7 @@ function PageRow({ row, mushafId, zebra }: { row: PageSummary; mushafId: string;
           to="/mushafs/$mushafId/review"
           params={{ mushafId }}
           search={{ page: row.page_number }}
-          className="whitespace-nowrap text-[11px] font-semibold text-orange hover:text-orange-hover"
+          className="whitespace-nowrap text-[11px] font-semibold text-lapis-text hover:text-lapis-text/80"
         >
           {t("details.pg_open")}
         </Link>

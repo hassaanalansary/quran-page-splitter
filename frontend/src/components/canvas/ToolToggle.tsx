@@ -57,8 +57,8 @@ export function ToolButton({
         "flex h-8 w-8 cursor-pointer items-center justify-center rounded-sm transition-colors",
         "disabled:cursor-not-allowed disabled:opacity-30",
         active
-          ? "bg-navy text-white"
-          : "bg-transparent text-text-secondary hover:bg-bg-surface hover:text-text-primary",
+          ? "bg-lapis text-on-lapis"
+          : "bg-transparent text-ink-2 hover:bg-sheet hover:text-ink",
       ].join(" ")}
     >
       {children}

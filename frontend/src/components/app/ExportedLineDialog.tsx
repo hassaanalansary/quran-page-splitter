@@ -53,7 +53,7 @@ export function ExportedLineDialog({
     <Dialog open={line != null} onOpenChange={(open) => !open && onCurrentChange(null)}>
       <DialogContent className="max-w-3xl" onCloseAutoFocus={(e) => e.preventDefault()}>
         <DialogHeader>
-          <DialogTitle className="text-text-primary">
+          <DialogTitle className="text-ink">
             {t("finalize.viewerTitle", { n: line?.line_number ?? 0 })}
           </DialogTitle>
         </DialogHeader>
@@ -61,7 +61,7 @@ export function ExportedLineDialog({
         {line && (
           <>
             <div
-              className={`flex items-center justify-center rounded-md border border-border ${
+              className={`flex items-center justify-center rounded-md border border-rule ${
                 bg === "white" ? "bg-white" : bg === "dark" ? "bg-[#0b0b0b]" : CHECKER
               }`}
             >
@@ -75,7 +75,7 @@ export function ExportedLineDialog({
               />
             </div>
 
-            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-rule pt-3">
               <div className="flex items-center gap-2">
                 <Step
                   title={t("review.prevLine")}
@@ -84,7 +84,7 @@ export function ExportedLineDialog({
                 >
                   <ChevronUp size={16} />
                 </Step>
-                <span className="text-[11.5px] text-text-muted">
+                <span className="text-[11.5px] text-ink-3">
                   {t("review.linePosition", { n: line.line_number, total: lines.length })}
                 </span>
                 <Step
@@ -96,16 +96,14 @@ export function ExportedLineDialog({
                 </Step>
               </div>
 
-              <div className="flex overflow-hidden rounded-sm border border-border-strong">
+              <div className="flex overflow-hidden rounded-sm border border-rule-2">
                 {(["white", "dark", "checker"] as const).map((value) => (
                   <button
                     key={value}
                     type="button"
                     onClick={() => setBg(value)}
                     className={`h-8 cursor-pointer px-2.5 text-[11px] font-semibold transition-colors ${
-                      bg === value
-                        ? "bg-navy text-white"
-                        : "bg-white text-text-secondary hover:bg-bg-surface"
+                      bg === value ? "bg-lapis text-on-lapis" : "bg-card text-ink-2 hover:bg-sheet"
                     }`}
                   >
                     {t(value === "checker" ? "canvas.bg_grid" : `canvas.bg_${value}`)}
@@ -138,7 +136,7 @@ function Step({
       aria-label={title}
       disabled={disabled}
       onClick={onClick}
-      className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border border-border-strong bg-white text-text-secondary transition-colors hover:bg-bg-surface disabled:cursor-not-allowed disabled:opacity-40"
+      className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border border-rule-2 bg-card text-ink-2 transition-colors hover:bg-sheet disabled:cursor-not-allowed disabled:opacity-40"
     >
       {children}
     </button>

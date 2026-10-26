@@ -10,6 +10,7 @@ import { TemplatePreview } from "@/components/canvas/TemplatePreview";
 import { Aside, Field, Hint, Section, StatusLine } from "@/components/app/Panel";
 import { CanvasHelp } from "@/components/app/CanvasHelp";
 import { InfoTip } from "@/components/app/InfoTip";
+import { BusyLabel } from "@/components/app/SatrLoader";
 import { TourOverlay } from "@/components/app/tour/TourOverlay";
 import { useStepTour, type TourStep } from "@/components/app/tour/useStepTour";
 import { ProcessAbortDialog } from "@/components/app/ProcessAbortDialog";
@@ -491,9 +492,9 @@ function ProcessPage() {
       </div>
 
       {previewOpen ? (
-        <div className="flex w-[400px] flex-shrink-0 flex-col gap-3 overflow-auto border-s border-border bg-white p-4">
+        <div className="flex w-[400px] flex-shrink-0 flex-col gap-3 overflow-auto border-s border-rule bg-card p-4">
           <div className="flex items-center justify-between gap-2">
-            <h3 className="text-[12px] font-semibold capitalize text-text-primary">
+            <h3 className="text-[12px] font-semibold capitalize text-ink">
               {t("process.boundsTitle")}
             </h3>
             <button
@@ -501,7 +502,7 @@ function ProcessPage() {
               onClick={togglePreview}
               title={t("process.previewHide")}
               aria-label={t("process.previewHide")}
-              className="flex h-6 w-6 cursor-pointer items-center justify-center rounded text-text-muted transition-colors hover:bg-bg-surface hover:text-orange focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-500"
+              className="flex h-6 w-6 cursor-pointer items-center justify-center rounded text-ink-3 transition-colors hover:bg-sheet hover:text-lapis-text focus:outline-none focus-visible:ring-2 focus-visible:ring-lapis"
             >
               <EyeOff size={14} />
             </button>
@@ -519,7 +520,7 @@ function ProcessPage() {
           onClick={togglePreview}
           title={t("process.previewShow")}
           aria-label={t("process.previewShow")}
-          className="flex w-9 flex-shrink-0 cursor-pointer flex-col items-center gap-2 border-s border-border bg-white py-3 text-text-muted transition-colors hover:bg-bg-surface hover:text-orange focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-500"
+          className="flex w-9 flex-shrink-0 cursor-pointer flex-col items-center gap-2 border-s border-rule bg-card py-3 text-ink-3 transition-colors hover:bg-sheet hover:text-lapis-text focus:outline-none focus-visible:ring-2 focus-visible:ring-lapis"
         >
           <Eye size={15} />
           <span className="text-[11px] tracking-wide [writing-mode:vertical-rl]">
@@ -538,18 +539,22 @@ function ProcessPage() {
                 variant="outline"
                 onClick={() => setCancelConfirmOpen(true)}
                 disabled={cancelling || activeJob.cancel_requested}
-                className="border-error-border text-error hover:bg-error-bg"
+                className="border-stop/20 text-stop-text hover:bg-stop-wash"
               >
                 <OctagonX size={14} />
-                {cancelling || activeJob.cancel_requested
-                  ? t("process.cancelling")
-                  : t("process.cancelButton")}
+                {cancelling || activeJob.cancel_requested ? (
+                  <BusyLabel>{t("process.cancelling")}</BusyLabel>
+                ) : (
+                  t("process.cancelButton")
+                )}
               </Button>
             ) : (
               <Button onClick={() => setConfirmOpen(true)} disabled={!canProcess}>
-                {starting
-                  ? t("process.starting")
-                  : t("process.processButton", { start: rangeStart, end: rangeEnd })}
+                {starting ? (
+                  <BusyLabel>{t("process.starting")}</BusyLabel>
+                ) : (
+                  t("process.processButton", { start: rangeStart, end: rangeEnd })
+                )}
               </Button>
             )}
             {job?.run_id && (
@@ -600,20 +605,22 @@ function ProcessPage() {
 
         <Section title={t("process.boundsTitle")}>
           <div className="flex items-center justify-between text-[12px]">
-            <span className="flex items-center gap-1 text-text-secondary">
+            <span className="flex items-center gap-1 text-ink-2">
               {t("process.region")}
               <InfoTip text={t("process.boundsHelp")} />
             </span>
-            <span className="font-mono text-text-primary">
+            <span className="font-mono text-ink">
               {bounds
                 ? `${Math.round(bounds.w)}×${Math.round(bounds.h)} @ ${Math.round(bounds.x)},${Math.round(bounds.y)}`
                 : "—"}
             </span>
           </div>
           <RectInputs rect={bounds} onChange={setBounds} max={natural} disabled={boundsLocked} />
-          {!boundsOk && <span className="text-[12px] text-error">{t("process.boundsError")}</span>}
+          {!boundsOk && (
+            <span className="text-[12px] text-stop-text">{t("process.boundsError")}</span>
+          )}
           {flipPreview && (
-            <span className="text-[12px]" style={{ color: "var(--navy)" }}>
+            <span className="text-[12px]" style={{ color: "var(--lapis)" }}>
               {t("process.flipHint", { page: preview, start: rangeStart })}
             </span>
           )}
@@ -630,7 +637,7 @@ function ProcessPage() {
               </Field>
             </div>
             {!rangeOk && (
-              <span className="text-[12px] text-error">
+              <span className="text-[12px] text-stop-text">
                 {t("process.rangeError", { max: logicalCount })}
               </span>
             )}
@@ -760,7 +767,7 @@ function ProcessPage() {
 }
 
 const selectClass =
-  "h-9 w-full cursor-pointer rounded-md border-[1.5px] border-border-strong bg-white px-2.5 text-[13px] text-text-primary outline-none focus:border-orange focus:shadow-[0_0_0_3px_var(--orange-glow)]";
+  "h-9 w-full cursor-pointer rounded-md border-[1.5px] border-rule-2 bg-card px-2.5 text-[13px] text-ink outline-none focus:border-lapis focus:ring-3 focus:ring-lapis/15";
 
 /** What the run is doing right now, named after the page it is on — the phase
  * changes several times per page, so this is also the "it hasn't hung" signal. */
@@ -783,13 +790,13 @@ function ProgressFooter({ job, running }: { job: ProcessJob; running: boolean })
   const { t } = useTranslation();
   const pct = job.total > 0 ? Math.round((job.pages_saved / job.total) * 100) : 0;
   const bad = job.state === "aborted_line_detection" || job.state === "error";
-  const tone = bad ? "bg-error" : job.state === "cancelled" ? "bg-text-muted" : "bg-orange";
+  const tone = bad ? "bg-stop" : job.state === "cancelled" ? "bg-ink-3" : "bg-lapis";
   return (
     <div className="flex flex-col gap-1">
-      <div className="h-1.5 w-full overflow-hidden rounded-full bg-bg-muted">
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-sunk">
         <div className={`h-full rounded-full ${tone}`} style={{ width: `${pct}%` }} />
       </div>
-      <span className="text-[11.5px] text-text-muted">
+      <span className="text-[11.5px] text-ink-3">
         {running
           ? t("process.progressActive", { done: job.pages_saved, total: job.total })
           : t("process.progress", { done: job.pages_saved, total: job.total })}
@@ -821,8 +828,8 @@ function OutcomeCard({
   const { t } = useTranslation();
   const neutral = kind === "cancelled";
   const shell = neutral
-    ? "border-border-strong bg-bg-surface text-text-secondary"
-    : "border-error-border bg-error-bg text-error";
+    ? "border-rule-2 bg-sheet text-ink-2"
+    : "border-stop/20 bg-stop-wash text-stop-text";
   const title =
     kind === "error"
       ? t("process.errorDialogTitle")
@@ -880,14 +887,14 @@ function RangeNotice({
   onApply: () => void;
 }) {
   return (
-    <div className="flex items-start gap-1.5 text-[11.5px] leading-[1.45] text-[#8a4b0d]">
+    <div className="flex items-start gap-1.5 text-[11.5px] leading-[1.45] text-warn-text">
       <TriangleAlert size={12} className="mt-[2px] flex-none" />
       <span>
         {text}{" "}
         <button
           type="button"
           onClick={onApply}
-          className="cursor-pointer font-semibold underline underline-offset-2 hover:text-orange"
+          className="cursor-pointer font-semibold underline underline-offset-2 hover:text-lapis-text"
         >
           {action}
         </button>{" "}
@@ -1007,14 +1014,14 @@ function Row({
 }) {
   return (
     <div
-      className={`flex items-center justify-between gap-2 py-1 ${last ? "" : "border-b border-border"}`}
+      className={`flex items-center justify-between gap-2 py-1 ${last ? "" : "border-b border-rule"}`}
     >
       <div className="flex flex-col">
-        <span className="flex items-center gap-1 text-[13px] text-text-primary">
+        <span className="flex items-center gap-1 text-[13px] text-ink">
           {label}
           {info && <InfoTip text={info} />}
         </span>
-        {hint && <span className="text-[10.5px] text-text-muted">{hint}</span>}
+        {hint && <span className="text-[10.5px] text-ink-3">{hint}</span>}
       </div>
       {children}
     </div>
@@ -1046,7 +1053,7 @@ function NumInput({
       onChange={(e) => onChange(Number(e.target.value))}
       className={[
         compact ? "h-[30px] w-[68px]" : "h-9 w-full",
-        "rounded-md border-[1.5px] border-border-strong bg-white px-2 text-right text-[13px] text-text-primary outline-none focus:border-orange focus:shadow-[0_0_0_3px_var(--orange-glow)]",
+        "rounded-md border-[1.5px] border-rule-2 bg-card px-2 text-right text-[13px] text-ink outline-none focus:border-lapis focus:ring-3 focus:ring-lapis/15",
       ].join(" ")}
     />
   );
@@ -1060,10 +1067,10 @@ function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) =>
       aria-checked={value}
       onClick={() => onChange(!value)}
       className="relative h-5 w-9 flex-shrink-0 cursor-pointer rounded-[10px] transition-colors"
-      style={{ background: value ? "var(--orange)" : "var(--border-strong)" }}
+      style={{ background: value ? "var(--lapis)" : "var(--rule-2)" }}
     >
       <span
-        className="absolute top-[3px] h-[14px] w-[14px] rounded-full bg-white transition-all"
+        className="absolute top-[3px] h-[14px] w-[14px] rounded-full bg-card transition-all"
         style={{ left: value ? "19px" : "3px", boxShadow: "0 1px 3px rgba(0,0,0,.2)" }}
       />
     </button>

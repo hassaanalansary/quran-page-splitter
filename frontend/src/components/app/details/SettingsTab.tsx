@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
+import { BusyLabel } from "@/components/app/SatrLoader";
 import { PublishPanel } from "@/components/app/details/PublishPanel";
 import {
   ApiError,
@@ -86,21 +87,19 @@ export function SettingsTab({ mushaf }: { mushaf: MushafDetail }) {
   }
 
   const inputClass =
-    "h-[34px] w-full rounded-lg border-[1.5px] border-border-strong bg-white px-[11px] text-[12.5px] font-medium text-text-primary outline-none focus:border-orange focus:shadow-[0_0_0_3px_var(--orange-glow)]";
+    "h-[34px] w-full rounded-lg border-[1.5px] border-rule-2 bg-card px-[11px] text-[12.5px] font-medium text-ink outline-none focus:border-lapis focus:ring-3 focus:ring-lapis/15";
 
   return (
     <div>
       <div className="grid grid-cols-2 gap-3.5">
         {/* Mushaf card */}
-        <div className="rounded-[11px] border border-border bg-white p-4">
-          <div className="mb-3.5 text-[12.5px] font-bold text-text-primary">
-            {t("details.set_mushaf")}
-          </div>
-          <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-[0.06em] text-text-secondary">
+        <div className="rounded-[11px] border border-rule bg-card p-4">
+          <div className="mb-3.5 text-[12.5px] font-bold text-ink">{t("details.set_mushaf")}</div>
+          <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-[0.06em] text-ink-2">
             {t("details.set_name")}
           </label>
           <input value={name} onChange={(e) => setName(e.target.value)} className={inputClass} />
-          <label className="mb-1.5 mt-[13px] block text-[10px] font-semibold uppercase tracking-[0.06em] text-text-secondary">
+          <label className="mb-1.5 mt-[13px] block text-[10px] font-semibold uppercase tracking-[0.06em] text-ink-2">
             {t("details.set_qiraa")}
           </label>
           <select
@@ -116,10 +115,10 @@ export function SettingsTab({ mushaf }: { mushaf: MushafDetail }) {
               </option>
             ))}
           </select>
-          <div className="mt-[7px] text-[10.5px] leading-[1.5] text-text-muted">
+          <div className="mt-[7px] text-[10.5px] leading-[1.5] text-ink-3">
             {t("details.set_countingFollows")}
             {mushaf.counting_system && (
-              <b className="text-text-secondary">
+              <b className="text-ink-2">
                 {t("details.set_countingDetail", {
                   name: mushaf.counting_system.name,
                   total: mushaf.counting_system.total_ayat,
@@ -133,7 +132,7 @@ export function SettingsTab({ mushaf }: { mushaf: MushafDetail }) {
               same engine the riwaya feeds. Not disabled by `locked` — it changes
               nothing already written, and the only way to know whether it suits a
               mushaf is to run once and read how often a word is reported short. */}
-          <label className="mb-1.5 mt-[13px] block text-[10px] font-semibold uppercase tracking-[0.06em] text-text-secondary">
+          <label className="mb-1.5 mt-[13px] block text-[10px] font-semibold uppercase tracking-[0.06em] text-ink-2">
             {t("details.set_ijam")}
           </label>
           <select
@@ -144,11 +143,11 @@ export function SettingsTab({ mushaf }: { mushaf: MushafDetail }) {
             <option value="report">{t("details.set_ijamReport")}</option>
             <option value="ignore">{t("details.set_ijamIgnore")}</option>
           </select>
-          <div className="mt-[7px] text-[10.5px] leading-[1.5] text-text-muted">
+          <div className="mt-[7px] text-[10.5px] leading-[1.5] text-ink-3">
             {t("details.set_ijamHint")}
           </div>
           {error && (
-            <div className="mt-2.5 rounded-md border border-error-border bg-error-bg px-3 py-2 text-[11.5px] text-error">
+            <div className="mt-2.5 rounded-md border border-stop/20 bg-stop-wash px-3 py-2 text-[11.5px] text-stop-text">
               {error}
             </div>
           )}
@@ -157,21 +156,23 @@ export function SettingsTab({ mushaf }: { mushaf: MushafDetail }) {
               type="button"
               onClick={onSaveMushaf}
               disabled={save.isPending}
-              className="h-8 cursor-pointer rounded-lg bg-navy px-4 text-[11.5px] font-bold text-white transition-colors hover:bg-navy-hover disabled:opacity-50"
+              className="h-8 cursor-pointer rounded-lg bg-lapis px-4 text-[11.5px] font-bold text-on-lapis transition-colors hover:bg-lapis/90 disabled:opacity-50"
             >
-              {save.isPending ? t("common.saving") : t("details.set_saveChanges")}
+              {save.isPending ? (
+                <BusyLabel>{t("common.saving")}</BusyLabel>
+              ) : (
+                t("details.set_saveChanges")
+              )}
             </button>
           </div>
         </div>
 
         {/* Quran range card */}
-        <div className="rounded-[11px] border border-border bg-white p-4">
+        <div className="rounded-[11px] border border-rule bg-card p-4">
           <div className="mb-3.5 flex items-center gap-2">
-            <span className="text-[12.5px] font-bold text-text-primary">
-              {t("details.set_quranRange")}
-            </span>
+            <span className="text-[12.5px] font-bold text-ink">{t("details.set_quranRange")}</span>
             {locked && (
-              <span className="rounded-[9px] bg-bg-muted px-[7px] py-0.5 font-mono text-[8.5px] font-bold tracking-[0.08em] text-text-secondary">
+              <span className="rounded-[9px] bg-sunk px-[7px] py-0.5 font-mono text-[8.5px] font-bold tracking-[0.08em] text-ink-2">
                 {t("details.set_locked")}
               </span>
             )}
@@ -192,7 +193,7 @@ export function SettingsTab({ mushaf }: { mushaf: MushafDetail }) {
               max={mushaf.pdf_page_count}
             />
           </div>
-          <div className="mt-2.5 text-[10.5px] leading-[1.55] text-text-muted">
+          <div className="mt-2.5 text-[10.5px] leading-[1.55] text-ink-3">
             {locked
               ? t("details.set_lockedNote", { count: mushaf.processed_page_count })
               : t("details.set_unlockedNote", { count: mushaf.pdf_page_count })}
@@ -203,21 +204,25 @@ export function SettingsTab({ mushaf }: { mushaf: MushafDetail }) {
                 type="button"
                 onClick={onSaveBounds}
                 disabled={save.isPending}
-                className="h-8 cursor-pointer rounded-lg border border-border-strong bg-white px-4 text-[11.5px] font-semibold text-text-primary transition-colors hover:bg-bg-surface disabled:opacity-50"
+                className="h-8 cursor-pointer rounded-lg border border-rule-2 bg-card px-4 text-[11.5px] font-semibold text-ink transition-colors hover:bg-sheet disabled:opacity-50"
               >
                 {t("details.set_applyBounds")}
               </button>
             </div>
           )}
-          <div className="mt-3 flex items-center gap-2 rounded-lg border border-border bg-bg-surface px-[11px] py-2">
-            <span className="text-[10.5px] text-text-secondary">{t("details.set_thumbNote")}</span>
+          <div className="mt-3 flex items-center gap-2 rounded-lg border border-rule bg-sheet px-[11px] py-2">
+            <span className="text-[10.5px] text-ink-2">{t("details.set_thumbNote")}</span>
             <button
               type="button"
               onClick={() => regenerate.mutate()}
               disabled={regenerate.isPending}
-              className="ms-auto cursor-pointer text-[10.5px] font-semibold text-orange hover:text-orange-hover disabled:opacity-50"
+              className="ms-auto cursor-pointer text-[10.5px] font-semibold text-lapis-text hover:text-lapis-text/80 disabled:opacity-50"
             >
-              {regenerate.isPending ? t("details.set_rendering") : t("details.set_regenerate")}
+              {regenerate.isPending ? (
+                <BusyLabel>{t("details.set_rendering")}</BusyLabel>
+              ) : (
+                t("details.set_regenerate")
+              )}
             </button>
           </div>
         </div>
@@ -229,33 +234,29 @@ export function SettingsTab({ mushaf }: { mushaf: MushafDetail }) {
       </div>
 
       {/* danger zone */}
-      <div className="mt-3.5 overflow-hidden rounded-[11px] border border-[color:var(--error-border)] bg-white">
-        <div className="border-b border-error-bg px-4 py-[11px] text-[10px] font-bold uppercase tracking-[0.08em] text-error">
+      <div className="mt-3.5 overflow-hidden rounded-[11px] border border-stop/20 bg-card">
+        <div className="border-b border-stop-wash px-4 py-[11px] text-[10px] font-bold uppercase tracking-[0.08em] text-stop-text">
           {t("details.set_danger")}
         </div>
-        <div className="flex items-center gap-3.5 border-b border-bg-surface px-4 py-3">
+        <div className="flex items-center gap-3.5 border-b border-sheet px-4 py-3">
           <div className="min-w-0">
-            <div className="text-[12px] font-semibold text-text-primary">
-              {t("details.set_reprocess")}
-            </div>
-            <div className="mt-px text-[11px] text-text-secondary">
+            <div className="text-[12px] font-semibold text-ink">{t("details.set_reprocess")}</div>
+            <div className="mt-px text-[11px] text-ink-2">
               {t("details.set_reprocessDesc", { count: mushaf.processed_page_count })}
             </div>
           </div>
           <Link
             to="/mushafs/$mushafId/process"
             params={{ mushafId: mushaf.id }}
-            className="ms-auto h-[30px] flex-none rounded-lg border border-border-strong bg-white px-[13px] text-[11.5px] font-semibold leading-[30px] text-text-primary transition-colors hover:bg-bg-surface"
+            className="ms-auto h-[30px] flex-none rounded-lg border border-rule-2 bg-card px-[13px] text-[11.5px] font-semibold leading-[30px] text-ink transition-colors hover:bg-sheet"
           >
             {t("details.set_openProcess")}
           </Link>
         </div>
         <div className="flex items-center gap-3.5 px-4 py-3">
           <div className="min-w-0">
-            <div className="text-[12px] font-semibold text-text-primary">
-              {t("details.set_deleteTitle")}
-            </div>
-            <div className="mt-px text-[11px] text-text-secondary">
+            <div className="text-[12px] font-semibold text-ink">{t("details.set_deleteTitle")}</div>
+            <div className="mt-px text-[11px] text-ink-2">
               {t("details.set_deleteDesc", { count: mushaf.processed_page_count })}
             </div>
           </div>
@@ -266,7 +267,7 @@ export function SettingsTab({ mushaf }: { mushaf: MushafDetail }) {
               if (window.confirm(t("details.set_deleteConfirm", { name: mushaf.name })))
                 remove.mutate();
             }}
-            className="ms-auto h-[30px] flex-none cursor-pointer rounded-lg border border-[color:var(--error-border)] bg-error-bg px-[13px] text-[11.5px] font-semibold text-error transition-colors hover:brightness-95 disabled:opacity-50"
+            className="ms-auto h-[30px] flex-none cursor-pointer rounded-lg border border-stop/20 bg-stop-wash px-[13px] text-[11.5px] font-semibold text-stop-text transition-colors hover:brightness-95 disabled:opacity-50"
           >
             {remove.isPending ? t("details.set_deleting") : t("details.set_deleteBtn")}
           </button>
@@ -291,11 +292,11 @@ function RangeField({
 }) {
   return (
     <div>
-      <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.06em] text-text-secondary">
+      <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.06em] text-ink-2">
         {label}
       </div>
       {locked ? (
-        <div className="flex h-[34px] items-center rounded-lg border border-border bg-bg-surface px-[11px] font-mono text-[12.5px] font-semibold text-text-secondary">
+        <div className="flex h-[34px] items-center rounded-lg border border-rule bg-sheet px-[11px] font-mono text-[12.5px] font-semibold text-ink-2">
           PDF p.{value}
         </div>
       ) : (
@@ -305,7 +306,7 @@ function RangeField({
           max={max}
           value={value}
           onChange={(e) => onChange(Number(e.target.value))}
-          className="h-[34px] w-full rounded-lg border-[1.5px] border-border-strong bg-white px-[11px] font-mono text-[12.5px] font-semibold text-text-primary outline-none focus:border-orange focus:shadow-[0_0_0_3px_var(--orange-glow)]"
+          className="h-[34px] w-full rounded-lg border-[1.5px] border-rule-2 bg-card px-[11px] font-mono text-[12.5px] font-semibold text-ink outline-none focus:border-lapis focus:ring-3 focus:ring-lapis/15"
         />
       )}
     </div>

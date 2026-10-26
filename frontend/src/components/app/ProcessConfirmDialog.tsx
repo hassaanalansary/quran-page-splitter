@@ -70,8 +70,8 @@ export function ProcessConfirmDialog({
             value={`${Math.round(bounds.w)}×${Math.round(bounds.h)} @ ${Math.round(bounds.x)},${Math.round(bounds.y)}`}
           />
 
-          <div className="rounded-md border border-border bg-bg-surface p-3">
-            <div className="mb-2 text-[11.5px] font-semibold tracking-[0.03em] text-text-secondary">
+          <div className="rounded-md border border-rule bg-sheet p-3">
+            <div className="mb-2 text-[11.5px] font-semibold tracking-[0.03em] text-ink-2">
               {t("process.confirmSettings")}
             </div>
             <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[12px]">
@@ -95,7 +95,7 @@ export function ProcessConfirmDialog({
             </dl>
           </div>
 
-          <p className="text-[11.5px] text-text-muted">{t("process.confirmCancellable")}</p>
+          <p className="text-[11.5px] text-ink-3">{t("process.confirmCancellable")}</p>
 
           {earlyPages && (
             <Callout title={t("process.earlyPagesTitle")} body={t("process.earlyPagesBody")} />
@@ -123,7 +123,7 @@ export function ProcessConfirmDialog({
 
 function Callout({ title, body }: { title: string; body: string }) {
   return (
-    <div className="flex gap-2 rounded-md border border-[color:var(--warning-border)] bg-warning-bg px-3 py-2.5 text-[12px] leading-[1.55] text-[#92400E]">
+    <div className="flex gap-2 rounded-md border border-warn/25 bg-warn-wash px-3 py-2.5 text-[12px] leading-[1.55] text-warn-text">
       <TriangleAlert size={15} className="mt-[1px] flex-shrink-0" />
       <span>
         <span className="font-semibold">{title}</span>
@@ -136,9 +136,9 @@ function Callout({ title, body }: { title: string; body: string }) {
 
 function SummaryRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-baseline justify-between gap-3 border-b border-border pb-1.5 text-[12.5px]">
-      <span className="text-text-secondary">{label}</span>
-      <span className="font-mono text-text-primary">{value}</span>
+    <div className="flex items-baseline justify-between gap-3 border-b border-rule pb-1.5 text-[12.5px]">
+      <span className="text-ink-2">{label}</span>
+      <span className="font-mono text-ink">{value}</span>
     </div>
   );
 }
@@ -146,8 +146,8 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
 function Setting({ label, value }: { label: string; value: string | number }) {
   return (
     <div className="flex items-baseline justify-between gap-2">
-      <dt className="truncate text-text-secondary">{label}</dt>
-      <dd className="font-mono text-text-primary">{value}</dd>
+      <dt className="truncate text-ink-2">{label}</dt>
+      <dd className="font-mono text-ink">{value}</dd>
     </div>
   );
 }

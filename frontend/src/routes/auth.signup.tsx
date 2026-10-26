@@ -3,6 +3,7 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { BusyLabel } from "@/components/app/SatrLoader";
 import { AuthError as ErrorBanner, AuthShell, GoogleIcon } from "@/components/app/auth/AuthShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -60,12 +61,12 @@ function SignupPage() {
         title={t("auth.signup.checkInbox")}
         subtitle={t("auth.signup.checkInboxBody", { email: sentTo })}
         footer={
-          <Link to="/auth/login" className="font-medium text-navy hover:underline">
+          <Link to="/auth/login" className="font-medium text-lapis-text hover:underline">
             {t("auth.backToSignIn")}
           </Link>
         }
       >
-        <div className="rounded-md border border-success-border bg-success-bg px-3 py-2 text-sm text-success">
+        <div className="rounded-md border border-done/30 bg-done-wash px-3 py-2 text-sm text-done-text">
           {t("auth.signup.checkInbox")}
         </div>
       </AuthShell>
@@ -79,7 +80,7 @@ function SignupPage() {
       footer={
         <>
           {t("auth.signup.haveAccount")}{" "}
-          <Link to="/auth/login" className="font-medium text-navy hover:underline">
+          <Link to="/auth/login" className="font-medium text-lapis-text hover:underline">
             {t("auth.signup.signInInstead")}
           </Link>
         </>
@@ -129,14 +130,14 @@ function SignupPage() {
         {error && <ErrorBanner message={error} />}
 
         <Button type="submit" disabled={mutation.isPending}>
-          {mutation.isPending ? t("common.loading") : t("auth.signUp")}
+          {mutation.isPending ? <BusyLabel>{t("common.loading")}</BusyLabel> : t("auth.signUp")}
         </Button>
       </form>
 
       <div className="my-5 flex items-center gap-3">
-        <span className="h-px flex-1 bg-border" />
-        <span className="text-xs uppercase text-text-muted">{t("auth.or")}</span>
-        <span className="h-px flex-1 bg-border" />
+        <span className="h-px flex-1 bg-rule" />
+        <span className="text-xs uppercase text-ink-3">{t("auth.or")}</span>
+        <span className="h-px flex-1 bg-rule" />
       </div>
 
       <Button

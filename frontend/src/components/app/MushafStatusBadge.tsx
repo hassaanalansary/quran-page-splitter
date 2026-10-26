@@ -3,10 +3,10 @@ import { useTranslation } from "react-i18next";
 import { mushafStatus, type MushafStatus, type PageCounts } from "@/lib/api";
 
 const STATUS_STYLE: Record<MushafStatus, { dot: string; text: string; bg: string }> = {
-  empty: { dot: "var(--text-muted)", text: "text-text-muted", bg: "bg-bg-muted" },
-  partial: { dot: "var(--warning)", text: "text-[#92400E]", bg: "bg-warning-bg" },
-  processed: { dot: "var(--navy-light)", text: "text-navy", bg: "bg-bg-muted" },
-  completed: { dot: "var(--success)", text: "text-success", bg: "bg-success-bg" },
+  empty: { dot: "var(--ink-4)", text: "text-ink-3", bg: "bg-sunk" },
+  partial: { dot: "var(--warn)", text: "text-warn-text", bg: "bg-warn-wash" },
+  processed: { dot: "var(--lapis)", text: "text-lapis-text", bg: "bg-sunk" },
+  completed: { dot: "var(--done)", text: "text-done-text", bg: "bg-done-wash" },
 };
 
 /** How far through the pipeline a mushaf is, as a coloured pill.

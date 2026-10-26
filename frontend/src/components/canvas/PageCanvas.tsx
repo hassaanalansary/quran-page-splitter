@@ -217,7 +217,7 @@ export function PageCanvas({
   return (
     <div
       ref={scrollRef}
-      className="raqam-canvas-grid relative flex-1 overflow-auto outline-none"
+      className="canvas-well relative flex-1 overflow-auto outline-none"
       {...containerProps}
       style={effectiveTool === "hand" ? { cursor: handCursor } : undefined}
     >
@@ -231,9 +231,9 @@ export function PageCanvas({
           }}
         >
           <div
-            className="relative rounded-[4px] border border-border bg-white"
+            className="relative rounded-[4px] border border-rule bg-white"
             style={{
-              boxShadow: "var(--shadow-page)",
+              boxShadow: "var(--shadow-card)",
               width: displayW || "auto",
               height: displayH || "auto",
             }}
@@ -281,7 +281,7 @@ export function PageCanvas({
         </div>
       ) : (
         <div className="flex h-full items-center justify-center">
-          <div className="rounded-md bg-white/80 px-6 py-4 text-[13px] text-text-secondary shadow-[var(--shadow-sm)]">
+          <div className="rounded-md bg-card/80 px-6 py-4 text-[13px] text-ink-2 shadow-[var(--shadow-card)]">
             Add images using the + tile below to begin.
           </div>
         </div>
@@ -368,7 +368,7 @@ function RectOverlay({
         <div
           className="pointer-events-none absolute inset-0"
           style={{
-            background: "color-mix(in oklab, var(--navy) 10%, transparent)",
+            background: "color-mix(in oklab, var(--lapis) 10%, transparent)",
             clipPath: `polygon(0% 0%, 0% 100%, ${left}% 100%, ${left}% ${top}%, ${left + width}% ${top}%, ${left + width}% ${top + height}%, ${left}% ${top + height}%, ${left}% 100%, 100% 100%, 100% 0%)`,
           }}
         />
@@ -383,11 +383,11 @@ function RectOverlay({
           top: `${top}%`,
           width: `${width}%`,
           height: `${height}%`,
-          borderColor: mirrored ? "var(--navy)" : "var(--orange)",
+          borderColor: mirrored ? "var(--gold)" : "var(--lapis)",
           borderStyle: frozen ? "dashed" : "solid",
           backgroundColor: mirrored
-            ? "color-mix(in oklab, var(--navy) 6%, transparent)"
-            : "color-mix(in oklab, var(--orange) 4%, transparent)",
+            ? "color-mix(in oklab, var(--gold) 6%, transparent)"
+            : "color-mix(in oklab, var(--lapis) 4%, transparent)",
           cursor: frozen ? "default" : "move",
           pointerEvents: frozen ? "none" : undefined,
           touchAction: "none",
@@ -408,7 +408,7 @@ function RectOverlay({
               <div
                 key={h.key}
                 onPointerDown={onHandlePointerDown(h.key)}
-                className="absolute h-[12px] w-[12px] rounded-[3px] border-2 border-orange bg-white"
+                className="absolute h-[12px] w-[12px] rounded-[3px] border-2 border-lapis bg-white"
                 style={{ ...h.pos, cursor: h.cursor, touchAction: "none" }}
               />
             ))}
@@ -417,13 +417,14 @@ function RectOverlay({
         {/* label badge — carries the lock toggle, so freezing the box needs no
             panel space and sits where the user is already looking */}
         <div
-          className="pointer-events-none absolute inline-flex items-center gap-1 rounded-pill py-[2px] ps-2 pe-2 text-[10px] font-semibold text-white"
+          className="pointer-events-none absolute inline-flex items-center gap-1 rounded-pill py-[2px] ps-2 pe-2 text-[10px] font-semibold"
           style={{
             top: "-22px",
             left: "0px",
             letterSpacing: "0.04em",
             whiteSpace: "nowrap",
-            background: mirrored ? "var(--navy)" : "var(--orange)",
+            background: mirrored ? "var(--gold)" : "var(--lapis)",
+            color: mirrored ? "var(--on-gold)" : "var(--on-lapis)",
           }}
         >
           <span>
@@ -449,7 +450,7 @@ function RectOverlay({
         </div>
         {/* dimension tag */}
         <div
-          className="pointer-events-none absolute -translate-x-1/2 rounded-[3px] bg-navy px-[7px] py-[2px] text-[10px] font-medium text-white"
+          className="pointer-events-none absolute -translate-x-1/2 rounded-[3px] bg-lapis px-[7px] py-[2px] text-[10px] font-medium text-on-lapis"
           style={{
             bottom: "-22px",
             left: "50%",

@@ -82,13 +82,11 @@ export function AyaPreviewDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl" onCloseAutoFocus={(e) => e.preventDefault()}>
         <DialogHeader>
-          <DialogTitle className="text-text-primary">{title}</DialogTitle>
+          <DialogTitle className="text-ink">{title}</DialogTitle>
         </DialogHeader>
 
         {total === 0 || !current || !natural ? (
-          <p className="py-10 text-center text-[12.5px] text-text-muted">
-            {t("review.previewEmpty")}
-          </p>
+          <p className="py-10 text-center text-[12.5px] text-ink-3">{t("review.previewEmpty")}</p>
         ) : (
           <>
             <div className="flex justify-center">
@@ -112,8 +110,8 @@ export function AyaPreviewDialog({
                       top: `${(r.y / natural.h) * 100}%`,
                       width: `${(r.w / natural.w) * 100}%`,
                       height: `${(r.h / natural.h) * 100}%`,
-                      background: "color-mix(in oklab, var(--orange) 42%, white)",
-                      boxShadow: "inset 0 0 0 1.5px var(--orange)",
+                      background: "color-mix(in oklab, var(--lapis) 42%, white)",
+                      boxShadow: "inset 0 0 0 1.5px var(--lapis)",
                       mixBlendMode: "multiply",
                       borderRadius: 2,
                     }}
@@ -122,15 +120,15 @@ export function AyaPreviewDialog({
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-rule pt-3">
               <div className="min-w-0">
-                <div className="truncate text-[13px] font-semibold text-text-primary">
+                <div className="truncate text-[13px] font-semibold text-ink">
                   {t("review.previewAya", {
                     sura: suraName(current.sura),
                     aya: current.aya,
                   })}
                 </div>
-                <div className="text-[11.5px] text-text-muted">
+                <div className="text-[11.5px] text-ink-3">
                   {t("review.previewPosition", { index: safeIndex + 1, total })}
                 </div>
               </div>
@@ -152,16 +150,14 @@ export function AyaPreviewDialog({
               </div>
 
               <div className="flex items-center gap-2">
-                <div className="ms-1 flex overflow-hidden rounded-sm border border-border-strong">
+                <div className="ms-1 flex overflow-hidden rounded-sm border border-rule-2">
                   {(Object.keys(SPEEDS) as Speed[]).map((s) => (
                     <button
                       key={s}
                       type="button"
                       onClick={() => setSpeed(s)}
                       className={`h-8 cursor-pointer px-2.5 text-[11px] font-semibold transition-colors ${
-                        speed === s
-                          ? "bg-navy text-white"
-                          : "bg-white text-text-secondary hover:bg-bg-surface"
+                        speed === s ? "bg-lapis text-on-lapis" : "bg-card text-ink-2 hover:bg-sheet"
                       }`}
                     >
                       {t(`review.previewSpeed_${s}`)}
@@ -196,8 +192,8 @@ function Round({
       onClick={onClick}
       className={`flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border transition-colors ${
         accent
-          ? "border-orange bg-orange text-white hover:bg-orange-hover"
-          : "border-border-strong bg-white text-text-secondary hover:bg-bg-surface"
+          ? "border-lapis bg-lapis text-on-lapis hover:bg-lapis/90"
+          : "border-rule-2 bg-card text-ink-2 hover:bg-sheet"
       }`}
     >
       {children}

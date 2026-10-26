@@ -125,19 +125,19 @@ export function SelectionBar({
     ];
     return (
       <div
-        className="flex flex-shrink-0 flex-col gap-2 overflow-y-auto border-t border-border bg-white px-3 py-2.5"
+        className="flex flex-shrink-0 flex-col gap-2 overflow-y-auto border-t border-rule bg-card px-3 py-2.5"
         style={{ height: HEIGHT }}
       >
-        <p className="text-[12px] text-text-secondary">{t("calibration.bar.empty")}</p>
+        <p className="text-[12px] text-ink-2">{t("calibration.bar.empty")}</p>
         <dl className="grid grid-cols-[repeat(auto-fill,minmax(210px,1fr))] gap-x-4 gap-y-1">
           {keys.map(([key, what]) => (
             <div key={key} className="flex items-baseline gap-2 text-[11.5px]">
               <dt className="w-[76px] flex-none">
-                <kbd className="rounded-sm border border-border-strong px-1 font-sans text-[10.5px] text-text-primary">
+                <kbd className="rounded-sm border border-rule-2 px-1 font-sans text-[10.5px] text-ink">
                   {key}
                 </kbd>
               </dt>
-              <dd className="text-text-muted">{what}</dd>
+              <dd className="text-ink-3">{what}</dd>
             </div>
           ))}
         </dl>
@@ -215,12 +215,12 @@ export function SelectionBar({
 
   return (
     <div
-      className="flex-shrink-0 overflow-x-auto border-t border-border bg-white"
+      className="flex-shrink-0 overflow-x-auto border-t border-rule bg-card"
       style={{ height: HEIGHT }}
     >
       <div className="grid h-full min-w-[900px] grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)_minmax(0,1.05fr)]">
         {/* ── what it is ── */}
-        <section className="flex min-h-0 flex-col gap-1.5 overflow-y-auto border-e border-border px-3 py-2">
+        <section className="flex min-h-0 flex-col gap-1.5 overflow-y-auto border-e border-rule px-3 py-2">
           <div className="flex items-start gap-2.5">
             {single && line.image_url && (
               <BlobCrop
@@ -234,24 +234,24 @@ export function SelectionBar({
             )}
             <div className="flex min-w-0 flex-1 flex-col gap-0.5">
               <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                <span dir="auto" className="text-[14px] font-semibold text-text-primary">
+                <span dir="auto" className="text-[14px] font-semibold text-ink">
                   {headline}
                 </span>
                 {status && (
                   <span
                     className={`rounded-sm px-1.5 py-px text-[10.5px] ${
                       status.tone === "typed"
-                        ? "bg-navy text-white"
+                        ? "bg-lapis text-on-lapis"
                         : status.tone === "expected"
-                          ? "border border-dashed border-border-strong text-text-secondary"
-                          : "bg-bg-surface text-text-muted"
+                          ? "border border-dashed border-rule-2 text-ink-2"
+                          : "bg-sheet text-ink-3"
                     }`}
                   >
                     {status.text}
                   </span>
                 )}
               </div>
-              <span className="text-[10.5px] tabular-nums text-text-muted">
+              <span className="text-[10.5px] tabular-nums text-ink-3">
                 {single
                   ? `${t("calibration.bar.where", {
                       line: line.line_number,
@@ -262,13 +262,13 @@ export function SelectionBar({
                   : t("calibration.bar.counts", { marks: marks.length, bodies: bodies.length })}
               </span>
               {!single && (breakdown.size > 0 || untyped > 0) && (
-                <span className="flex flex-wrap gap-x-2.5 text-[11px] text-text-secondary">
+                <span className="flex flex-wrap gap-x-2.5 text-[11px] text-ink-2">
                   {[...breakdown.entries()].map(([subtype, count]) => (
                     <span key={subtype}>
                       <span dir="rtl">{glyph(subtype)}</span> {typeName(subtype)} ×
                       {count.typed + count.expected}
                       {count.expected > 0 && (
-                        <span className="text-text-muted">
+                        <span className="text-ink-3">
                           {" "}
                           {t("calibration.bar.expectedCount", { count: count.expected })}
                         </span>
@@ -276,7 +276,7 @@ export function SelectionBar({
                     </span>
                   ))}
                   {untyped > 0 && (
-                    <span className="text-text-muted">
+                    <span className="text-ink-3">
                       {t("calibration.bar.untypedCount", { count: untyped })}
                     </span>
                   )}
@@ -286,18 +286,18 @@ export function SelectionBar({
           </div>
 
           {single?.erased && (
-            <span className="text-[10.5px] leading-snug text-text-muted">
+            <span className="text-[10.5px] leading-snug text-ink-3">
               {t("calibration.bar.erasedHelp")}
             </span>
           )}
           {suspicion && (
-            <div className="rounded-sm bg-warning-bg px-2 py-1 text-[11px] leading-snug text-[#8a4b0d]">
+            <div className="rounded-sm bg-warn-wash px-2 py-1 text-[11px] leading-snug text-warn-text">
               {t(`calibration.noise.${suspicion.kind}Help`)}
               {suspicion.edge ? ` ${t("calibration.noise.edgeHelp")}` : ""}
             </div>
           )}
           {status?.tone === "expected" && guess?.source && (
-            <span className="text-[10.5px] leading-snug text-text-muted">
+            <span className="text-[10.5px] leading-snug text-ink-3">
               {t(
                 guess.source === "text"
                   ? "calibration.bar.fromText"
@@ -310,14 +310,14 @@ export function SelectionBar({
             </span>
           )}
           {guess?.text && (
-            <div className="rounded-sm bg-warning-bg px-2 py-1 text-[11px] leading-snug text-[#8a4b0d]">
+            <div className="rounded-sm bg-warn-wash px-2 py-1 text-[11px] leading-snug text-warn-text">
               {t("calibration.bar.textConflict", {
                 type: `${glyph(guess.text)} ${typeName(guess.text)}`,
               })}
             </div>
           )}
           {doubt && (
-            <div className="rounded-sm bg-warning-bg px-2 py-1 text-[11px] leading-snug text-[#8a4b0d]">
+            <div className="rounded-sm bg-warn-wash px-2 py-1 text-[11px] leading-snug text-warn-text">
               {t(
                 doubt.source === "text"
                   ? "calibration.bar.doubtText"
@@ -334,7 +334,7 @@ export function SelectionBar({
             </div>
           )}
           {single && answeredBy(single) && (
-            <span className="text-[10.5px] leading-snug text-text-muted">
+            <span className="text-[10.5px] leading-snug text-ink-3">
               {t(
                 answeredBy(single) === "text"
                   ? "calibration.bar.answeredText"
@@ -350,7 +350,7 @@ export function SelectionBar({
                 return (
                   <span
                     key={flag}
-                    className="rounded-sm bg-warning-bg px-1.5 py-0.5 text-[10.5px] text-[#8a4b0d]"
+                    className="rounded-sm bg-warn-wash px-1.5 py-0.5 text-[10.5px] text-warn-text"
                     title={help ? t(help) : undefined}
                   >
                     {label ? t(label) : flag}
@@ -422,10 +422,10 @@ export function SelectionBar({
                     aria-pressed={typed}
                     className={`relative flex h-7 min-w-[30px] cursor-pointer items-center justify-center rounded-sm border px-1 text-[15px] leading-none transition-colors disabled:cursor-default disabled:opacity-40 ${
                       typed
-                        ? "border-navy bg-navy text-white"
+                        ? "border-lapis bg-lapis text-on-lapis"
                         : expectedAs(value)
-                          ? "border-dashed border-orange bg-orange-tint text-text-primary"
-                          : "border-border-strong bg-white text-text-primary hover:bg-bg-surface"
+                          ? "border-dashed border-lapis bg-lapis-wash text-ink"
+                          : "border-rule-2 bg-card text-ink hover:bg-sheet"
                     }`}
                   >
                     <span dir="rtl">{glyph(value)}</span>
@@ -438,7 +438,7 @@ export function SelectionBar({
               <select
                 aria-label={t("calibration.bar.moreTypes")}
                 title={t("calibration.bar.moreTypes")}
-                className="h-7 w-[92px] cursor-pointer rounded-sm border border-border-strong bg-white px-1 text-[11.5px] disabled:cursor-default disabled:opacity-40"
+                className="h-7 w-[92px] cursor-pointer rounded-sm border border-rule-2 bg-card px-1 text-[11.5px] disabled:cursor-default disabled:opacity-40"
                 disabled={disabled}
                 value={otherValue}
                 onChange={(event) =>
@@ -458,7 +458,7 @@ export function SelectionBar({
               <select
                 aria-label={t("calibration.bar.addPart")}
                 title={t("calibration.bar.addPartHelp")}
-                className="h-7 w-[92px] cursor-pointer rounded-sm border border-border-strong bg-white px-1 text-[11.5px] disabled:cursor-default disabled:opacity-40"
+                className="h-7 w-[92px] cursor-pointer rounded-sm border border-rule-2 bg-card px-1 text-[11.5px] disabled:cursor-default disabled:opacity-40"
                 disabled={disabled}
                 value=""
                 onChange={(event) => {
@@ -479,11 +479,11 @@ export function SelectionBar({
         </section>
 
         {/* ── its word ── */}
-        <section className="flex min-h-0 flex-col gap-1.5 overflow-y-auto border-e border-border px-3 py-2">
+        <section className="flex min-h-0 flex-col gap-1.5 overflow-y-auto border-e border-rule px-3 py-2">
           <PaneTitle>{t("calibration.belongsTo")}</PaneTitle>
           <div className="flex flex-col gap-0.5">
             {owners.length === 0 ? (
-              <span className="text-[12px] text-text-muted">{t("calibration.bar.noWord")}</span>
+              <span className="text-[12px] text-ink-3">{t("calibration.bar.noWord")}</span>
             ) : (
               owners.map((id) => {
                 const word = line.words.find((candidate) => candidate.word_id === id);
@@ -509,14 +509,14 @@ export function SelectionBar({
                 return (
                   <div key={id} className="flex flex-col gap-0.5">
                     <span className="flex items-center gap-1.5">
-                      <span dir="rtl" className="text-[15px] leading-tight text-text-primary">
+                      <span dir="rtl" className="text-[15px] leading-tight text-ink">
                         {word?.text ?? `#${id}`}
                       </span>
-                      {word && <span className="text-[10.5px] text-text-muted">{word.aya}</span>}
+                      {word && <span className="text-[10.5px] text-ink-3">{word.aya}</span>}
                       {count && (
                         <span
                           className={`rounded-sm px-1 text-[10px] font-semibold tabular-nums ${
-                            count.ok ? "text-orange" : "bg-warning text-white"
+                            count.ok ? "text-lapis-text" : "bg-warn text-on-warn"
                           }`}
                           title={t("calibration.countHelp")}
                         >
@@ -527,7 +527,7 @@ export function SelectionBar({
                     {check && (
                       <span
                         className={`text-[10.5px] leading-snug ${
-                          check.ok ? "text-text-muted" : "text-[#8a4b0d]"
+                          check.ok ? "text-ink-3" : "text-warn-text"
                         }`}
                         title={t("calibration.bar.marksHelp")}
                       >
@@ -554,7 +554,7 @@ export function SelectionBar({
 
         {/* ── why ── */}
         <section className="flex min-h-0 flex-col">
-          <div role="tablist" className="flex flex-none border-b border-border">
+          <div role="tablist" className="flex flex-none border-b border-rule">
             {(["type", "role"] as const).map((value) => (
               <button
                 key={value}
@@ -568,8 +568,8 @@ export function SelectionBar({
                 )}
                 className={`flex-1 cursor-pointer px-2 py-1.5 text-[11.5px] font-medium transition-colors disabled:cursor-default disabled:opacity-40 ${
                   showing === value
-                    ? "border-b-2 border-orange text-text-primary"
-                    : "text-text-muted hover:text-text-secondary"
+                    ? "border-b-2 border-lapis text-ink"
+                    : "text-ink-3 hover:text-ink-2"
                 }`}
               >
                 {t(value === "type" ? "calibration.bar.tabType" : "calibration.bar.tabRole")}
@@ -587,7 +587,7 @@ export function SelectionBar({
             ) : showing === "role" && oneText ? (
               <RoleExamples mushafId={mushafId} page={page} line={line} blob={oneText} />
             ) : (
-              <p className="text-[11px] text-text-muted">
+              <p className="text-[11px] text-ink-3">
                 {t(
                   oneMark || !marks.length ? "calibration.bar.oneBlob" : "calibration.bar.oneMark",
                 )}
@@ -615,26 +615,26 @@ function TypeEvidencePanel({
   const { t } = useTranslation();
   return (
     <div className="flex flex-col gap-1">
-      <p className="text-[10.5px] leading-snug text-text-muted">
+      <p className="text-[10.5px] leading-snug text-ink-3">
         {t(typed ? "calibration.bar.typeHintTyped" : "calibration.bar.typeHintUntyped")}
       </p>
       {!evidence || (evidence.loading && !evidence.data) ? (
-        <span className="text-[11px] text-text-muted">{t("calibration.bar.loadingEvidence")}</span>
+        <span className="text-[11px] text-ink-3">{t("calibration.bar.loadingEvidence")}</span>
       ) : !evidence.data?.candidates.length ? (
-        <span className="text-[11px] text-text-muted">{t("calibration.bar.noEvidence")}</span>
+        <span className="text-[11px] text-ink-3">{t("calibration.bar.noEvidence")}</span>
       ) : (
         evidence.data.candidates.map((candidate, index) => (
           <div key={candidate.subtype} className="flex items-center gap-1.5">
             <span
               className={`w-[96px] flex-none truncate text-[11.5px] ${
-                index === 0 ? "font-semibold text-text-primary" : "text-text-secondary"
+                index === 0 ? "font-semibold text-ink" : "text-ink-2"
               }`}
               title={typeName(candidate.subtype)}
             >
               <span dir="rtl">{glyph(candidate.subtype)}</span> {typeName(candidate.subtype)}
             </span>
             <span
-              className="w-8 flex-none text-[10px] tabular-nums text-text-muted"
+              className="w-8 flex-none text-[10px] tabular-nums text-ink-3"
               title={t("calibration.bar.distanceHelp")}
             >
               {candidate.distance.toFixed(2)}
@@ -651,7 +651,7 @@ function TypeEvidencePanel({
                   distance: example.distance.toFixed(3),
                   copies: example.copies,
                 })}
-                className="rounded-sm outline-offset-1 hover:outline hover:outline-2 hover:outline-orange"
+                className="rounded-sm outline-offset-1 hover:outline hover:outline-2 hover:outline-lapis"
               >
                 <BlobCrop url={example.image_url} {...example.crop} box={32} />
               </Link>
@@ -665,9 +665,7 @@ function TypeEvidencePanel({
 
 function PaneTitle({ children }: { children: ReactNode }) {
   return (
-    <div className="text-[10px] font-semibold uppercase tracking-wider text-text-muted">
-      {children}
-    </div>
+    <div className="text-[10px] font-semibold uppercase tracking-wider text-ink-3">{children}</div>
   );
 }
 

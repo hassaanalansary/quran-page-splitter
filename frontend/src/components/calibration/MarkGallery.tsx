@@ -85,7 +85,7 @@ export function MarkGallery({
         <div
           role="group"
           aria-label={t("calibration.gallery.kindLabel")}
-          className="flex h-[26px] flex-none overflow-hidden rounded-sm border border-border-strong"
+          className="flex h-[26px] flex-none overflow-hidden rounded-sm border border-rule-2"
         >
           {(["types", "roles"] as const).map((value) => (
             <button
@@ -94,19 +94,17 @@ export function MarkGallery({
               aria-pressed={kind === value}
               onClick={() => onKind(value)}
               className={`cursor-pointer px-2.5 text-[11.5px] font-medium transition-colors ${
-                kind === value
-                  ? "bg-navy text-white"
-                  : "bg-white text-text-secondary hover:bg-bg-surface"
+                kind === value ? "bg-lapis text-on-lapis" : "bg-card text-ink-2 hover:bg-sheet"
               }`}
             >
               {t(value === "types" ? "calibration.gallery.byType" : "calibration.gallery.byRole")}
             </button>
           ))}
         </div>
-        <label className="flex items-center gap-1.5 text-[11.5px] text-text-secondary">
+        <label className="flex items-center gap-1.5 text-[11.5px] text-ink-2">
           {t("calibration.gallery.zoom")}
           <select
-            className="h-7 rounded-sm border border-border-strong bg-white px-1.5 text-[11.5px]"
+            className="h-7 rounded-sm border border-rule-2 bg-card px-1.5 text-[11.5px]"
             value={zoom}
             onChange={(event) => onZoom(Number(event.target.value))}
           >
@@ -117,19 +115,19 @@ export function MarkGallery({
             ))}
           </select>
         </label>
-        <span className="text-[11px] text-text-muted">
+        <span className="text-[11px] text-ink-3">
           {t(kind === "types" ? "calibration.gallery.typesHint" : "calibration.gallery.rolesHint")}
         </span>
       </div>
 
       {groups.length === 0 && (
-        <p className="text-[12px] text-text-muted">{t("calibration.gallery.empty")}</p>
+        <p className="text-[12px] text-ink-3">{t("calibration.gallery.empty")}</p>
       )}
 
       {groups.map((group) => (
         <section key={group.key || "untyped"} className="flex flex-col gap-2">
-          <div className="sticky top-0 z-10 flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border bg-white/95 py-1.5 backdrop-blur-sm">
-            <span className="text-[13px] font-semibold text-text-primary">
+          <div className="sticky top-0 z-10 flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-rule bg-card/95 py-1.5 backdrop-blur-sm">
+            <span className="text-[13px] font-semibold text-ink">
               {kind === "roles" ? (
                 t(`calibration.role.${group.key as "body" | "mark"}`)
               ) : group.key ? (
@@ -140,7 +138,7 @@ export function MarkGallery({
                 t("calibration.gallery.noType")
               )}
             </span>
-            <span className="text-[11px] tabular-nums text-text-muted">
+            <span className="text-[11px] tabular-nums text-ink-3">
               {kind === "types" && group.key
                 ? t("calibration.gallery.typeCount", {
                     count: group.items.length,
@@ -256,8 +254,8 @@ function Cell({
       onClick={onClick}
       onDoubleClick={onOpen}
       className={`relative flex-none cursor-pointer overflow-hidden rounded-sm border bg-white ${
-        settled ? "border-border-strong" : "border-dashed border-border-strong"
-      } ${chosen ? "ring-2 ring-orange" : doubtful ? "ring-2 ring-warning" : ""}`}
+        settled ? "border-rule-2" : "border-dashed border-rule-2"
+      } ${chosen ? "ring-2 ring-lapis" : doubtful ? "ring-2 ring-warn" : ""}`}
       style={{
         width: w,
         height: h,
@@ -280,7 +278,7 @@ function Cell({
         />
       )}
       <span
-        className="pointer-events-none absolute rounded-[1px] border border-orange/60"
+        className="pointer-events-none absolute rounded-[1px] border border-lapis/60"
         style={{
           left: w / 2 - (blob.w * zoom) / 2 - 1,
           top: h / 2 - (blob.h * zoom) / 2 - 1,

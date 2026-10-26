@@ -95,12 +95,12 @@ export function PageStage({
       {/* Toolbar */}
       <div
         data-tour="canvas-toolbar"
-        className="flex h-9 flex-shrink-0 items-center gap-2 border-b border-border bg-white px-3"
+        className="flex h-9 flex-shrink-0 items-center gap-2 border-b border-rule bg-card px-3"
       >
         <ToolToggle value={effectiveTool} onChange={setTool} />
         {toolbarExtras && (
           <>
-            <div className="mx-1 h-5 w-px bg-border" />
+            <div className="mx-1 h-5 w-px bg-rule" />
             {toolbarExtras}
           </>
         )}
@@ -127,7 +127,7 @@ export function PageStage({
           onToggleLock={cropping ? crop.onLockToggle : undefined}
         />
         <ChevronNav page={page} pageCount={pageCount} onPageChange={onPageChange} />
-        <div className="absolute bottom-3 left-1/2 z-10 -translate-x-1/2 rounded-pill border border-border bg-white/90 px-3 py-1.5 shadow-[var(--shadow-sm)] backdrop-blur">
+        <div className="absolute bottom-3 left-1/2 z-10 -translate-x-1/2 rounded-pill border border-rule bg-card/90 px-3 py-1.5 shadow-[var(--shadow-card)] backdrop-blur">
           <PageJump
             page={page}
             pageCount={pageCount}
@@ -138,14 +138,14 @@ export function PageStage({
       </div>
 
       {/* Status bar: live cursor + crop dimensions */}
-      <div className="flex h-7 flex-shrink-0 items-center gap-4 border-t border-border bg-white px-3 text-[12px] text-text-muted">
+      <div className="flex h-7 flex-shrink-0 items-center gap-4 border-t border-rule bg-card px-3 text-[12px] text-ink-3">
         <span className="font-mono">
           {cursor ? `x: ${cursor.x}  y: ${cursor.y}` : "x: —  y: —"}
         </span>
         {cropping && (
           <span
             className="ml-auto font-medium"
-            style={{ color: crop.mirrored ? "var(--navy)" : "var(--orange)" }}
+            style={{ color: crop.mirrored ? "var(--gold-text)" : "var(--lapis-text)" }}
           >
             ●{" "}
             {crop.rect

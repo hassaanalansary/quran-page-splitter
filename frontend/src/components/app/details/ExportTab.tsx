@@ -73,21 +73,19 @@ export function ExportTab({
     <div>
       <div className="grid grid-cols-2 gap-3.5">
         {/* Line images · PNG */}
-        <div className="rounded-[11px] border border-border bg-white p-4">
+        <div className="rounded-[11px] border border-rule bg-card p-4">
           <div className="flex items-center gap-2">
-            <span className="flex h-[26px] w-[26px] items-center justify-center rounded-[7px] bg-orange-tint text-[14px] text-orange">
+            <span className="flex h-[26px] w-[26px] items-center justify-center rounded-[7px] bg-lapis-wash text-[14px] text-lapis-text">
               ⤓
             </span>
-            <span className="text-[12.5px] font-bold text-text-primary">
-              {t("details.ex_pngTitle")}
-            </span>
+            <span className="text-[12.5px] font-bold text-ink">{t("details.ex_pngTitle")}</span>
             <span
               className={`ms-auto rounded-pill px-2 py-0.5 text-[10px] font-semibold ${
                 exported === 0
-                  ? "bg-bg-muted text-text-secondary"
+                  ? "bg-sunk text-ink-2"
                   : exported >= linesCut
-                    ? "bg-success-bg text-success"
-                    : "bg-warning-bg text-[#8a4b0d]"
+                    ? "bg-done-wash text-done-text"
+                    : "bg-warn-wash text-warn-text"
               }`}
             >
               {exported === 0
@@ -98,13 +96,13 @@ export function ExportTab({
             </span>
           </div>
           <div className="mt-[15px] flex items-baseline gap-2">
-            <span className="text-[27px] font-extrabold text-navy">{exported}</span>
-            <span className="text-[12px] font-medium text-text-muted">
+            <span className="text-[27px] font-extrabold text-lapis-text">{exported}</span>
+            <span className="text-[12px] font-medium text-ink-3">
               {t("details.ex_ofLines", { count: linesCut })}
             </span>
           </div>
-          <div className="mt-2.5 h-1.5 overflow-hidden rounded-[3px] bg-bg-muted">
-            <div className="h-full bg-success" style={{ width: `${pngPct}%` }} />
+          <div className="mt-2.5 h-1.5 overflow-hidden rounded-[3px] bg-sunk">
+            <div className="h-full bg-done" style={{ width: `${pngPct}%` }} />
           </div>
           <div className="mt-3.5 flex flex-col gap-1.5">
             <KvRow k={t("details.kv_format")} v="transparent PNG" />
@@ -114,7 +112,7 @@ export function ExportTab({
 
           {/* Uniform size. Persisted on the mushaf rather than asked per export,
               so a mushaf cannot end up half padded and half not. */}
-          <label className="mt-3.5 flex cursor-pointer items-start gap-2.5 rounded-lg border border-border bg-bg-surface p-2.5">
+          <label className="mt-3.5 flex cursor-pointer items-start gap-2.5 rounded-lg border border-rule bg-sheet p-2.5">
             <Switch
               checked={mushaf.export_uniform_size}
               disabled={uniformSize.isPending}
@@ -122,16 +120,16 @@ export function ExportTab({
               className="mt-0.5"
             />
             <span className="min-w-0">
-              <span className="block text-[12px] font-semibold text-text-primary">
+              <span className="block text-[12px] font-semibold text-ink">
                 {t("details.ex_uniformLabel")}
               </span>
-              <span className="mt-0.5 block text-[11px] leading-snug text-text-muted">
+              <span className="mt-0.5 block text-[11px] leading-snug text-ink-3">
                 {t("details.ex_uniformHelp")}
               </span>
             </span>
           </label>
           {exported > 0 && (
-            <p className="mt-1.5 text-[11px] leading-snug text-text-muted">
+            <p className="mt-1.5 text-[11px] leading-snug text-ink-3">
               {t("details.ex_uniformReexport")}
             </p>
           )}
@@ -140,7 +138,7 @@ export function ExportTab({
               type="button"
               disabled={!!progress || processed.length === 0}
               onClick={() => exportAll(false)}
-              className="h-[34px] flex-1 cursor-pointer rounded-lg bg-navy text-[12px] font-bold text-white transition-colors hover:bg-navy-hover disabled:cursor-not-allowed disabled:opacity-50"
+              className="h-[34px] flex-1 cursor-pointer rounded-lg bg-lapis text-[12px] font-bold text-on-lapis transition-colors hover:bg-lapis/90 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {progress
                 ? t("details.ex_exporting", { done: progress.done, total: progress.total })
@@ -150,7 +148,7 @@ export function ExportTab({
               type="button"
               disabled={!!progress || reviewedPages.length === 0}
               onClick={() => exportAll(true)}
-              className="h-[34px] cursor-pointer rounded-lg border border-border-strong bg-white px-3 text-[12px] font-semibold text-text-primary transition-colors hover:bg-bg-surface disabled:cursor-not-allowed disabled:opacity-50"
+              className="h-[34px] cursor-pointer rounded-lg border border-rule-2 bg-card px-3 text-[12px] font-semibold text-ink transition-colors hover:bg-sheet disabled:cursor-not-allowed disabled:opacity-50"
             >
               {t("details.ex_reviewedBtn", { count: reviewedPages.length })}
             </button>
@@ -160,7 +158,7 @@ export function ExportTab({
             <a
               href={linesZipUrl(mushaf.id)}
               download
-              className="mt-2 block h-[34px] rounded-lg border border-border-strong bg-white text-center text-[12px] font-semibold leading-[32px] text-text-primary transition-colors hover:bg-bg-surface"
+              className="mt-2 block h-[34px] rounded-lg border border-rule-2 bg-card text-center text-[12px] font-semibold leading-[32px] text-ink transition-colors hover:bg-sheet"
             >
               {t("details.ex_downloadZip")}
             </a>
@@ -168,30 +166,28 @@ export function ExportTab({
         </div>
 
         {/* Aya coordinates · JSON */}
-        <div className="rounded-[11px] border border-border bg-white p-4">
+        <div className="rounded-[11px] border border-rule bg-card p-4">
           <div className="flex items-center gap-2">
-            <span className="flex h-[26px] w-[26px] items-center justify-center rounded-[7px] bg-orange-tint font-mono text-[11px] font-semibold text-orange">
+            <span className="flex h-[26px] w-[26px] items-center justify-center rounded-[7px] bg-lapis-wash font-mono text-[11px] font-semibold text-lapis-text">
               {"{ }"}
             </span>
-            <span className="text-[12.5px] font-bold text-text-primary">
-              {t("details.ex_jsonTitle")}
-            </span>
+            <span className="text-[12.5px] font-bold text-ink">{t("details.ex_jsonTitle")}</span>
             <span
               className={`ms-auto rounded-pill px-2 py-0.5 text-[10px] font-semibold ${
-                ayat > 0 ? "bg-success-bg text-success" : "bg-bg-muted text-text-secondary"
+                ayat > 0 ? "bg-done-wash text-done-text" : "bg-sunk text-ink-2"
               }`}
             >
               {ayat > 0 ? t("details.ex_ready") : t("details.ex_noData")}
             </span>
           </div>
           <div className="mt-[15px] flex items-baseline gap-2">
-            <span className="text-[27px] font-extrabold text-navy">{ayat}</span>
-            <span className="text-[12px] font-medium text-text-muted">
+            <span className="text-[27px] font-extrabold text-lapis-text">{ayat}</span>
+            <span className="text-[12px] font-medium text-ink-3">
               {t("details.ex_ayatAcross", { count: processed.length })}
             </span>
           </div>
-          <div className="mt-2.5 h-1.5 overflow-hidden rounded-[3px] bg-bg-muted">
-            <div className="h-full bg-success" style={{ width: ayat > 0 ? "100%" : "0%" }} />
+          <div className="mt-2.5 h-1.5 overflow-hidden rounded-[3px] bg-sunk">
+            <div className="h-full bg-done" style={{ width: ayat > 0 ? "100%" : "0%" }} />
           </div>
           <div className="mt-3.5 flex flex-col gap-1.5">
             <KvRow k={t("details.kv_schema")} v="aya-bbox/v1" />
@@ -202,7 +198,7 @@ export function ExportTab({
             <a
               href={coordinatesUrl(mushaf.id)}
               download
-              className="h-[34px] flex-1 rounded-lg border border-border-strong bg-white text-center text-[12px] font-bold leading-[34px] text-text-primary transition-colors hover:bg-bg-surface"
+              className="h-[34px] flex-1 rounded-lg border border-rule-2 bg-card text-center text-[12px] font-bold leading-[34px] text-ink transition-colors hover:bg-sheet"
             >
               {t("details.ex_downloadJson")}
             </a>
@@ -214,26 +210,24 @@ export function ExportTab({
 
       {/* review warning */}
       {processed.length > 0 && reviewedPages.length < processed.length && (
-        <div className="mt-3.5 flex items-center gap-3 rounded-[11px] border border-border bg-white px-4 py-[13px]">
-          <span className="flex h-[26px] w-[26px] flex-none items-center justify-center rounded-full bg-warning-bg text-[13px] text-[#8a4b0d]">
+        <div className="mt-3.5 flex items-center gap-3 rounded-[11px] border border-rule bg-card px-4 py-[13px]">
+          <span className="flex h-[26px] w-[26px] flex-none items-center justify-center rounded-full bg-warn-wash text-[13px] text-warn-text">
             !
           </span>
           <div className="min-w-0">
-            <div className="text-[12px] font-semibold text-text-primary">
+            <div className="text-[12px] font-semibold text-ink">
               {t("details.ex_onlyReviewed", {
                 reviewed: reviewedPages.length,
                 total: processed.length,
               })}
             </div>
-            <div className="mt-px text-[11px] text-text-secondary">
-              {t("details.ex_reviewWarn")}
-            </div>
+            <div className="mt-px text-[11px] text-ink-2">{t("details.ex_reviewWarn")}</div>
           </div>
           <Link
             to="/mushafs/$mushafId/review"
             params={{ mushafId: mushaf.id }}
             search={{ page: processed.find((s) => !s.reviewed)?.page_number ?? 1 }}
-            className="ms-auto flex-none text-[11.5px] font-bold text-orange hover:text-orange-hover"
+            className="ms-auto flex-none text-[11.5px] font-bold text-lapis-text hover:text-lapis-text/80"
           >
             {t("details.ex_goReview")}
           </Link>
@@ -263,17 +257,15 @@ function FullExportCard({ mushafId }: { mushafId: string }) {
   ).length;
 
   return (
-    <div className="mt-3.5 rounded-[11px] border border-border bg-white p-4">
+    <div className="mt-3.5 rounded-[11px] border border-rule bg-card p-4">
       <div className="flex items-center gap-2">
-        <span className="flex h-[26px] w-[26px] items-center justify-center rounded-[7px] bg-orange-tint font-mono text-[11px] font-semibold text-orange">
+        <span className="flex h-[26px] w-[26px] items-center justify-center rounded-[7px] bg-lapis-wash font-mono text-[11px] font-semibold text-lapis-text">
           ZIP
         </span>
-        <span className="text-[12.5px] font-bold text-text-primary">
-          {t("details.ex_fullTitle")}
-        </span>
+        <span className="text-[12.5px] font-bold text-ink">{t("details.ex_fullTitle")}</span>
         <span
           className={`ms-auto rounded-pill px-2 py-0.5 text-[10px] font-semibold ${
-            confirmed > 0 ? "bg-success-bg text-success" : "bg-bg-muted text-text-secondary"
+            confirmed > 0 ? "bg-done-wash text-done-text" : "bg-sunk text-ink-2"
           }`}
         >
           {confirmed + drafts > 0
@@ -284,12 +276,12 @@ function FullExportCard({ mushafId }: { mushafId: string }) {
       <div className="mt-[15px] grid grid-cols-1 gap-4 md:grid-cols-2">
         <div>
           <div className="flex items-baseline gap-2">
-            <span className="text-[27px] font-extrabold text-navy">{confirmed}</span>
-            <span className="text-[12px] font-medium text-text-muted">
+            <span className="text-[27px] font-extrabold text-lapis-text">{confirmed}</span>
+            <span className="text-[12px] font-medium text-ink-3">
               {t("details.ex_fullConfirmed")}
             </span>
           </div>
-          <p className="mt-1 text-[11px] leading-snug text-text-secondary">
+          <p className="mt-1 text-[11px] leading-snug text-ink-2">
             {drafts > 0
               ? t("details.ex_fullDrafts", { count: drafts })
               : confirmed > 0
@@ -297,11 +289,11 @@ function FullExportCard({ mushafId }: { mushafId: string }) {
                 : t("details.ex_fullNone")}
           </p>
           <div className="mt-3 flex flex-col gap-2">
-            <label className="flex cursor-pointer items-center gap-2 text-[12px] text-text-primary">
+            <label className="flex cursor-pointer items-center gap-2 text-[12px] text-ink">
               <Checkbox checked={images} onCheckedChange={(value) => setImages(value === true)} />
               {t("details.ex_fullImages")}
             </label>
-            <label className="flex cursor-pointer items-center gap-2 text-[12px] text-text-primary">
+            <label className="flex cursor-pointer items-center gap-2 text-[12px] text-ink">
               <Checkbox checked={maps} onCheckedChange={(value) => setMaps(value === true)} />
               {t("details.ex_fullMaps")}
             </label>
@@ -318,11 +310,11 @@ function FullExportCard({ mushafId }: { mushafId: string }) {
       <a
         href={exportUrl(mushafId, { images, maps })}
         download
-        className="mt-[15px] block h-[34px] rounded-lg bg-navy text-center text-[12px] font-bold leading-[34px] text-white transition-colors hover:bg-navy-hover"
+        className="mt-[15px] block h-[34px] rounded-lg bg-lapis text-center text-[12px] font-bold leading-[34px] text-on-lapis transition-colors hover:bg-lapis/90"
       >
         {t("details.ex_fullDownload")}
       </a>
-      <p className="mt-1.5 text-[11px] leading-snug text-text-muted">{t("details.ex_fullHelp")}</p>
+      <p className="mt-1.5 text-[11px] leading-snug text-ink-3">{t("details.ex_fullHelp")}</p>
     </div>
   );
 }
@@ -330,8 +322,8 @@ function FullExportCard({ mushafId }: { mushafId: string }) {
 function KvRow({ k, v }: { k: string; v: string }) {
   return (
     <div className="flex justify-between">
-      <span className="font-mono text-[10.5px] font-medium text-text-secondary">{k}</span>
-      <span className="font-mono text-[10.5px] font-bold text-text-primary">{v}</span>
+      <span className="font-mono text-[10.5px] font-medium text-ink-2">{k}</span>
+      <span className="font-mono text-[10.5px] font-bold text-ink">{v}</span>
     </div>
   );
 }

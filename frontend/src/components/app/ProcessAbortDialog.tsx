@@ -60,7 +60,7 @@ export function ProcessAbortDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-3xl">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-error">
+          <DialogTitle className="flex items-center gap-2 text-stop-text">
             {isError ? <OctagonAlert size={18} /> : <CircleAlert size={18} />}
             {isError
               ? t("process.errorDialogTitle")
@@ -70,21 +70,19 @@ export function ProcessAbortDialog({
 
         {isError ? (
           <div className="flex flex-col gap-2">
-            <p className="text-[12.5px] leading-[1.6] text-text-secondary">
-              {t("process.errorLead")}
-            </p>
+            <p className="text-[12.5px] leading-[1.6] text-ink-2">{t("process.errorLead")}</p>
             {errorMessage && (
-              <div className="rounded-md border border-error-border bg-error-bg px-3 py-2.5 font-mono text-[12px] leading-[1.5] text-error">
+              <div className="rounded-md border border-stop/20 bg-stop-wash px-3 py-2.5 font-mono text-[12px] leading-[1.5] text-stop-text">
                 {errorMessage}
               </div>
             )}
-            <p className="text-[12px] text-text-muted">
+            <p className="text-[12px] text-ink-3">
               {t("process.progress", { done: pagesSaved, total: pagesSaved })}
             </p>
           </div>
         ) : (
           <div className="flex flex-col gap-3">
-            <div className="rounded-md border border-error-border bg-error-bg px-3 py-2.5 text-[12.5px] leading-[1.6] text-error">
+            <div className="rounded-md border border-stop/20 bg-stop-wash px-3 py-2.5 text-[12.5px] leading-[1.6] text-stop-text">
               <div>{t("process.abortLead", { page: page ?? "?" })}</div>
               <div className="mt-1.5 font-mono text-[11.5px]">
                 {info && (
@@ -100,17 +98,17 @@ export function ProcessAbortDialog({
               </div>
             </div>
 
-            <div className="rounded-md border border-border bg-bg-surface p-3">
-              <div className="mb-2 text-[11.5px] font-semibold tracking-[0.03em] text-text-secondary">
+            <div className="rounded-md border border-rule bg-sheet p-3">
+              <div className="mb-2 text-[11.5px] font-semibold tracking-[0.03em] text-ink-2">
                 {t("process.abortFixTitle")}
               </div>
               <ul className="flex flex-col gap-1.5">
                 {fixes.map((fix, i) => (
                   <li
                     key={i}
-                    className="flex items-start gap-2 text-[12px] leading-[1.55] text-text-secondary"
+                    className="flex items-start gap-2 text-[12px] leading-[1.55] text-ink-2"
                   >
-                    <span className="mt-[2px] flex h-4 w-4 flex-none items-center justify-center rounded-full border border-border-strong text-[9px] font-semibold text-text-muted">
+                    <span className="mt-[2px] flex h-4 w-4 flex-none items-center justify-center rounded-full border border-rule-2 text-[9px] font-semibold text-ink-3">
                       {i + 1}
                     </span>
                     <span>{fix}</span>

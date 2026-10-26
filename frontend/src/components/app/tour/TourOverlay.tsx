@@ -103,18 +103,18 @@ export function TourOverlay({ tour }: { tour: TourController }) {
         type="button"
         aria-label={t("tour.skip")}
         onClick={stop}
-        className={`absolute inset-0 h-full w-full cursor-default ${spot ? "" : "bg-black/55"}`}
+        className={`absolute inset-0 h-full w-full cursor-default ${spot ? "" : "bg-scrim"}`}
       />
 
       {spot && (
         <div
-          className="pointer-events-none absolute rounded-lg ring-2 ring-orange/70"
+          className="pointer-events-none absolute rounded-lg ring-2 ring-lapis/70"
           style={{
             top: spot.top,
             left: spot.left,
             width: spot.width,
             height: spot.height,
-            boxShadow: "0 0 0 9999px rgba(0,0,0,0.55)",
+            boxShadow: "0 0 0 9999px var(--scrim)",
           }}
         />
       )}
@@ -122,23 +122,23 @@ export function TourOverlay({ tour }: { tour: TourController }) {
       <div
         role="dialog"
         aria-modal="true"
-        className="absolute flex flex-col gap-2 rounded-xl border border-border bg-white p-4 shadow-xl"
+        className="absolute flex flex-col gap-2 rounded-xl border border-rule bg-card p-4 shadow-xl"
         style={{ top: cardTop, left: cardLeft, width: CARD_W }}
       >
         <div className="flex items-start gap-2">
-          <h3 className="flex-1 text-[13.5px] font-semibold text-text-primary">{step.title}</h3>
+          <h3 className="flex-1 text-[13.5px] font-semibold text-ink">{step.title}</h3>
           <button
             type="button"
             aria-label={t("tour.skip")}
             onClick={stop}
-            className="-me-1 -mt-1 flex-none rounded p-1 text-text-muted hover:bg-bg-surface hover:text-text-primary"
+            className="-me-1 -mt-1 flex-none rounded p-1 text-ink-3 hover:bg-sheet hover:text-ink"
           >
             <X size={14} />
           </button>
         </div>
-        <p className="text-[12px] leading-[1.5] text-text-secondary">{step.body}</p>
+        <p className="text-[12px] leading-[1.5] text-ink-2">{step.body}</p>
         <div className="mt-1 flex items-center justify-between">
-          <span className="font-mono text-[10.5px] text-text-muted">
+          <span className="font-mono text-[10.5px] text-ink-3">
             {t("tour.stepCount", { current: index + 1, total: steps.length })}
           </span>
           <div className="flex gap-1.5">
@@ -146,7 +146,7 @@ export function TourOverlay({ tour }: { tour: TourController }) {
               <button
                 type="button"
                 onClick={back}
-                className="rounded-md border-[1.5px] border-border-strong bg-white px-2.5 py-1 text-[11.5px] font-medium text-text-secondary hover:bg-bg-surface"
+                className="rounded-md border-[1.5px] border-rule-2 bg-card px-2.5 py-1 text-[11.5px] font-medium text-ink-2 hover:bg-sheet"
               >
                 {t("tour.back")}
               </button>
@@ -154,7 +154,7 @@ export function TourOverlay({ tour }: { tour: TourController }) {
             <button
               type="button"
               onClick={isLast ? stop : next}
-              className="rounded-md bg-orange px-2.5 py-1 text-[11.5px] font-semibold text-white hover:bg-orange-hover"
+              className="rounded-md bg-lapis px-2.5 py-1 text-[11.5px] font-semibold text-on-lapis hover:bg-lapis/90"
             >
               {isLast ? t("tour.done") : t("tour.next")}
             </button>

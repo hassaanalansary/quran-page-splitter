@@ -30,7 +30,7 @@ export function EvaluationComparison({
       }}
     >
       <DialogContent
-        className="flex max-h-[90vh] w-[96vw] max-w-[1600px] flex-col overflow-hidden bg-white"
+        className="flex max-h-[90vh] w-[96vw] max-w-[1600px] flex-col overflow-hidden bg-card"
         aria-describedby={undefined}
       >
         <DialogTitle className="pe-6 text-base tracking-normal">
@@ -44,11 +44,11 @@ export function EvaluationComparison({
         )}
         {data && (
           <div className="min-h-0 overflow-auto">
-            <p className="mb-3 text-xs text-text-secondary">
+            <p className="mb-3 text-xs text-ink-2">
               {t("calibration.confirmedAt", { revision: data.confirmed_revision })}
             </p>
             {data.lines.map((line) => (
-              <section key={line.line_number} className="border-t border-border py-3">
+              <section key={line.line_number} className="border-t border-rule py-3">
                 <h3 className="mb-2 text-xs font-semibold">
                   {t("calibration.lineLabel", { n: line.line_number })}
                 </h3>
@@ -59,7 +59,7 @@ export function EvaluationComparison({
                         {t(`calibration.engine.${engine}`)}
                       </h4>
                       {line.readings[engine].unavailable || !line.image_url ? (
-                        <p className="text-xs text-error">
+                        <p className="text-xs text-stop-text">
                           {t("calibration.comparisonUnavailable")}
                         </p>
                       ) : (

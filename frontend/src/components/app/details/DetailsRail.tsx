@@ -37,15 +37,15 @@ export function DetailsRail({
   }
 
   return (
-    <div className="flex w-[282px] flex-shrink-0 flex-col gap-4 overflow-y-auto border-s border-border bg-white p-4 pb-[18px]">
+    <div className="flex w-[282px] flex-shrink-0 flex-col gap-4 overflow-y-auto border-s border-rule bg-card p-4 pb-[18px]">
       {/* identity */}
       <div className="flex items-start gap-3">
         <Cover mushaf={mushaf} />
         <div className="min-w-0 pt-0.5">
-          <div className="font-display text-[16px] font-extrabold leading-none text-navy">
+          <div className="font-display text-[16px] font-extrabold leading-none text-lapis-text">
             {mushaf.name}
           </div>
-          <div className="mt-2 text-[10.5px] font-medium leading-[1.45] text-text-secondary">
+          <div className="mt-2 text-[10.5px] font-medium leading-[1.45] text-ink-2">
             {mushaf.qiraa ? (
               <span className="capitalize">{mushaf.qiraa}</span>
             ) : (
@@ -54,7 +54,7 @@ export function DetailsRail({
             {mushaf.counting_system && (
               <>
                 <br />
-                <span className="text-text-muted">
+                <span className="text-ink-3">
                   {t("details.rail_counting", {
                     name: mushaf.counting_system.name,
                     total: mushaf.counting_system.total_ayat,
@@ -72,33 +72,33 @@ export function DetailsRail({
           label={t("details.rail_processed")}
           value={processed}
           total={logical}
-          color="var(--navy-light)"
+          color="var(--lapis)"
         />
         <ProgressRow
           label={t("details.rail_reviewed")}
           value={reviewed}
           total={logical}
-          color="var(--orange)"
+          color="var(--gold)"
         />
       </div>
 
       {/* stat trio */}
-      <div className="grid grid-cols-3 gap-px overflow-hidden rounded-lg border border-border bg-border">
+      <div className="grid grid-cols-3 gap-px overflow-hidden rounded-lg border border-rule bg-rule">
         <StatCell value={stats?.ayat_found} label={t("details.rail_ayat")} />
         <StatCell value={stats?.lines_cut} label={t("details.rail_lines")} />
         <StatCell value={stats?.exported_pngs} label={t("details.rail_pngs")} muted />
       </div>
 
       {/* templates */}
-      <div className="border-t border-border pt-3">
+      <div className="border-t border-rule pt-3">
         <div className="mb-2 flex items-baseline justify-between">
-          <span className="text-[9.5px] font-semibold uppercase tracking-[0.1em] text-text-muted">
+          <span className="text-[9.5px] font-semibold uppercase tracking-[0.1em] text-ink-3">
             {t("details.rail_templates")}
           </span>
           <Link
             to="/mushafs/$mushafId/templates"
             params={{ mushafId: mushaf.id }}
-            className="text-[10px] font-semibold text-orange hover:text-orange-hover"
+            className="text-[10px] font-semibold text-lapis-text hover:text-lapis-text/80"
           >
             {t("details.rail_edit")}
           </Link>
@@ -117,8 +117,8 @@ export function DetailsRail({
       </div>
 
       {/* record */}
-      <div className="flex flex-col gap-[7px] border-t border-border pt-3">
-        <div className="text-[9.5px] font-semibold uppercase tracking-[0.1em] text-text-muted">
+      <div className="flex flex-col gap-[7px] border-t border-rule pt-3">
+        <div className="text-[9.5px] font-semibold uppercase tracking-[0.1em] text-ink-3">
           {t("details.rail_record")}
         </div>
         <RecordRow
@@ -136,20 +136,20 @@ export function DetailsRail({
       </div>
 
       {/* coverage map */}
-      <div className="mt-auto border-t border-border pt-3">
+      <div className="mt-auto border-t border-rule pt-3">
         <div className="mb-[9px] flex items-baseline justify-between">
-          <span className="text-[9.5px] font-semibold uppercase tracking-[0.1em] text-text-muted">
+          <span className="text-[9.5px] font-semibold uppercase tracking-[0.1em] text-ink-3">
             {t("details.rail_coverage")}
           </span>
-          <span className="font-mono text-[10px] font-semibold text-text-muted">
+          <span className="font-mono text-[10px] font-semibold text-ink-3">
             {processed}/{logical}
           </span>
         </div>
         <CoverageMap mushafId={mushaf.id} logical={logical} summaries={summaries} />
-        <div className="mt-[9px] flex gap-2.5 text-[9.5px] text-text-secondary">
-          <LegendDot color="var(--success)" label={t("details.rail_reviewed")} />
-          <LegendDot color="var(--orange)" label={t("details.rail_processed")} />
-          <LegendDot color="var(--bg-muted)" label={t("details.rail_todo")} />
+        <div className="mt-[9px] flex gap-2.5 text-[9.5px] text-ink-2">
+          <LegendDot color="var(--done)" label={t("details.rail_reviewed")} />
+          <LegendDot color="var(--lapis)" label={t("details.rail_processed")} />
+          <LegendDot color="var(--sunk)" label={t("details.rail_todo")} />
         </div>
       </div>
       {openTemplate && (
@@ -164,7 +164,7 @@ function Cover({ mushaf }: { mushaf: MushafDetail }) {
   const [failed, setFailed] = useState(false);
   if (failed) {
     return (
-      <div className="flex h-[82px] w-[58px] flex-shrink-0 items-center justify-center rounded border border-border-strong bg-bg-muted text-[9px] text-text-muted">
+      <div className="flex h-[82px] w-[58px] flex-shrink-0 items-center justify-center rounded border border-rule-2 bg-sunk text-[9px] text-ink-3">
         {t("details.rail_noCover")}
       </div>
     );
@@ -175,7 +175,7 @@ function Cover({ mushaf }: { mushaf: MushafDetail }) {
       alt={t("details.rail_coverAlt", { name: mushaf.name })}
       draggable={false}
       onError={() => setFailed(true)}
-      className="h-[82px] w-[58px] flex-shrink-0 rounded border border-border-strong object-cover shadow-[var(--shadow-sm)]"
+      className="h-[82px] w-[58px] flex-shrink-0 rounded border border-rule-2 object-cover shadow-[var(--shadow-card)]"
     />
   );
 }
@@ -195,15 +195,15 @@ function ProgressRow({
   return (
     <div>
       <div className="flex items-baseline justify-between">
-        <span className="text-[9.5px] font-semibold uppercase tracking-[0.1em] text-text-secondary">
+        <span className="text-[9.5px] font-semibold uppercase tracking-[0.1em] text-ink-2">
           {label}
         </span>
-        <span className="font-mono text-[12px] font-bold text-text-primary">
+        <span className="font-mono text-[12px] font-bold text-ink">
           {value}
-          <span className="font-medium text-text-muted">/{total}</span>
+          <span className="font-medium text-ink-3">/{total}</span>
         </span>
       </div>
-      <div className="mt-[5px] h-[5px] overflow-hidden rounded-[3px] bg-bg-muted">
+      <div className="mt-[5px] h-[5px] overflow-hidden rounded-[3px] bg-sunk">
         <div className="h-full" style={{ width: `${pct}%`, background: color }} />
       </div>
     </div>
@@ -220,13 +220,11 @@ function StatCell({
   muted?: boolean;
 }) {
   return (
-    <div className="bg-white px-2.5 py-[9px]">
-      <div
-        className={`font-mono text-[16px] font-bold ${muted ? "text-text-muted" : "text-text-primary"}`}
-      >
+    <div className="bg-card px-2.5 py-[9px]">
+      <div className={`font-mono text-[16px] font-bold ${muted ? "text-ink-3" : "text-ink"}`}>
         {value ?? "…"}
       </div>
-      <div className="mt-0.5 text-[9px] font-medium uppercase tracking-[0.05em] text-text-secondary">
+      <div className="mt-0.5 text-[9px] font-medium uppercase tracking-[0.05em] text-ink-2">
         {label}
       </div>
     </div>
@@ -252,19 +250,19 @@ function TemplateRow({
         <img
           src={template.image_url}
           alt={t("details.rail_templateAlt", { label })}
-          className="h-16 min-w-0 flex-1 rounded-[5px] border border-border-strong bg-white object-contain"
+          className="h-16 min-w-0 flex-1 rounded-[5px] border border-rule-2 bg-white object-contain"
         />
       ) : (
-        <span className="flex h-[30px] min-w-0 flex-1 items-center justify-center rounded-[5px] border border-dashed border-border-strong text-[9.5px] text-text-muted">
+        <span className="flex h-[30px] min-w-0 flex-1 items-center justify-center rounded-[5px] border border-dashed border-rule-2 text-[9.5px] text-ink-3">
           {t("details.rail_notCaptured")}
         </span>
       )}
-      <span className="w-[118px] flex-none text-[10.5px] font-medium text-text-secondary">
+      <span className="w-[118px] flex-none text-[10.5px] font-medium text-ink-2">
         {label}{" "}
         {template ? (
-          <span className="font-bold text-success">✓</span>
+          <span className="font-bold text-done-text">✓</span>
         ) : (
-          <span className="text-text-muted">—</span>
+          <span className="text-ink-3">—</span>
         )}
       </span>
     </div>
@@ -274,9 +272,9 @@ function TemplateRow({
 function RecordRow({ label, value, muted }: { label: string; value: string; muted?: boolean }) {
   return (
     <div className="flex justify-between gap-2">
-      <span className="text-[11px] font-medium text-text-secondary">{label}</span>
+      <span className="text-[11px] font-medium text-ink-2">{label}</span>
       <span
-        className={`truncate font-mono text-[11px] font-semibold ${muted ? "text-text-muted" : "text-text-primary"}`}
+        className={`truncate font-mono text-[11px] font-semibold ${muted ? "text-ink-3" : "text-ink"}`}
         title={value}
       >
         {value}
@@ -305,7 +303,7 @@ function CoverageMap({
       {Array.from({ length: logical }, (_, i) => {
         const n = i + 1;
         const row = byPage.get(n);
-        const bg = row ? (row.reviewed ? "var(--success)" : "var(--orange)") : "var(--bg-muted)";
+        const bg = row ? (row.reviewed ? "var(--done)" : "var(--lapis)") : "var(--sunk)";
         const state = row
           ? row.reviewed
             ? t("details.state_reviewed")
@@ -320,7 +318,7 @@ function CoverageMap({
               className="block h-[6px] w-[6px] rounded-[1px]"
               style={{ background: bg }}
             />
-            <p className="pointer-events-none absolute bottom-full left-1/2 z-[1000] mb-1 -translate-x-1/2 whitespace-nowrap rounded border border-gray-300 bg-black px-2 py-1 text-xs text-white opacity-0 transition-opacity group-hover:opacity-100">
+            <p className="pointer-events-none absolute bottom-full left-1/2 z-[1000] mb-1 -translate-x-1/2 whitespace-nowrap rounded border border-rule bg-toast px-2 py-1 text-xs text-on-toast opacity-0 transition-opacity group-hover:opacity-100">
               {t("details.rail_pageState", { n, state })}
             </p>
           </div>
@@ -351,18 +349,18 @@ function TemplateModal({
   const typeLabel = t(`templates.name_${template.type}`);
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-scrim"
       onClick={onClose}
     >
       <div
-        className="max-h-[90vh] max-w-[90vw] min-w-[300px] flex flex-col overflow-auto rounded-lg bg-white p-4 shadow-lg"
+        className="max-h-[90vh] max-w-[90vw] min-w-[300px] flex flex-col overflow-auto rounded-lg bg-card p-4 shadow-lg"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-3">
-          <span className="text-sm font-semibold text-text-primary capitalize">{typeLabel}</span>
+          <span className="text-sm font-semibold text-ink capitalize">{typeLabel}</span>
           <button
             onClick={onClose}
-            className="text-lg font-bold text-text-muted hover:text-text-primary"
+            className="text-lg font-bold text-ink-3 hover:text-ink"
             aria-label={t("details.rail_closeModal")}
           >
             ✕

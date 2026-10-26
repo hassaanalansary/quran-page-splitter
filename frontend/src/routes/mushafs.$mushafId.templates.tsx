@@ -7,6 +7,7 @@ import { toast } from "sonner";
 
 import { Aside, StatusLine } from "@/components/app/Panel";
 import { CanvasHelp } from "@/components/app/CanvasHelp";
+import { BusyLabel } from "@/components/app/SatrLoader";
 import { TourOverlay } from "@/components/app/tour/TourOverlay";
 import { useStepTour, type TourStep } from "@/components/app/tour/useStepTour";
 import { CroppableImage } from "@/components/canvas/CroppableImage";
@@ -250,11 +251,9 @@ function TemplatesPage() {
       {/* Center: handle the selected template fully — capture, ignore, save */}
       <div
         data-tour="tpl-capture"
-        className="flex w-[400px] flex-shrink-0 flex-col gap-3 overflow-auto border-s border-border bg-white p-4"
+        className="flex w-[400px] flex-shrink-0 flex-col gap-3 overflow-auto border-s border-rule bg-card p-4"
       >
-        <div className="text-[12px] font-semibold capitalize text-text-primary">
-          {label(activeType)}
-        </div>
+        <div className="text-[12px] font-semibold capitalize text-ink">{label(activeType)}</div>
 
         <TemplatePreview mode="template" pageUrl={pageUrl} working={working} />
         <RectInputs rect={working} onChange={setWorking} max={natural} />
@@ -284,11 +283,11 @@ function TemplatesPage() {
           {hasTemplate(activeType) && (
             <span
               className={`flex items-center gap-1.5 text-[11.5px] ${
-                activeDirty ? "text-orange" : "text-success"
+                activeDirty ? "text-lapis-text" : "text-done-text"
               }`}
             >
               <span
-                className={`h-1.5 w-1.5 flex-none rounded-full ${activeDirty ? "bg-orange" : "bg-success"}`}
+                className={`h-1.5 w-1.5 flex-none rounded-full ${activeDirty ? "bg-lapis" : "bg-done"}`}
                 aria-hidden
               />
               {activeDirty ? t("templates.dirtyHint") : t("templates.cleanHint")}
@@ -296,7 +295,7 @@ function TemplatesPage() {
           )}
           <Button onClick={() => saveMutation.mutate(activeType)} disabled={!canSave}>
             {saveMutation.isPending ? (
-              t("common.saving")
+              <BusyLabel>{t("common.saving")}</BusyLabel>
             ) : activeDirty ? (
               t("templates.saveNamed", { label: label(activeType) })
             ) : (
@@ -336,39 +335,39 @@ function TemplatesPage() {
                 onClick={() => selectType(type)}
                 className={`overflow-hidden cursor-pointer rounded-xl border p-3 text-start transition-colors ${
                   active
-                    ? "border-orange ring-2 ring-orange/30 bg-white"
+                    ? "border-lapis ring-2 ring-lapis/30 bg-card"
                     : saved
-                      ? "border-success/80 ring-1 ring-success/30 bg-success/5 hover:bg-success/10"
-                      : "border-border hover:border-border-strong"
+                      ? "border-done/80 ring-1 ring-done/30 bg-done/5 hover:bg-done/10"
+                      : "border-rule hover:border-rule-2"
                 }`}
               >
                 <div className="mb-2 flex items-start gap-2">
-                  <span className="flex-1 text-[13px] font-semibold text-text-primary">{name}</span>
+                  <span className="flex-1 text-[13px] font-semibold text-ink">{name}</span>
                   <span className="flex flex-col items-end gap-1">
                     {dirty ? (
-                      <span className="text-[11px] font-medium text-orange">
+                      <span className="text-[11px] font-medium text-lapis-text">
                         {t("templates.unsaved")}
                       </span>
                     ) : saved ? (
-                      <span className="px-1.5 py-[1px] text-[10px] border-success/40 bg-success-bg rounded-pill border flex items-center gap-1 text-[11px] font-medium text-success">
+                      <span className="px-1.5 py-[1px] text-[10px] border-done/40 bg-done-wash rounded-pill border flex items-center gap-1 text-[11px] font-medium text-done-text">
                         <Check size={12} /> {t("templates.saved")}
                       </span>
                     ) : (
-                      <span className="text-[11px] text-text-muted">{t("templates.notSet")}</span>
+                      <span className="text-[11px] text-ink-3">{t("templates.notSet")}</span>
                     )}
                     {hasIgnore(type) && (
-                      <span className="rounded-pill border border-error/40 bg-error-bg px-1.5 py-[1px] text-[10px] font-medium text-error">
+                      <span className="rounded-pill border border-stop/40 bg-stop-wash px-1.5 py-[1px] text-[10px] font-medium text-stop-text">
                         {t("templates.ignoreChip")}
                       </span>
                     )}
                   </span>
                 </div>
-                <p className="mb-2 text-[11px] text-text-muted">{hint}</p>
-                <div className="flex h-16 w-full items-center justify-center overflow-hidden rounded border border-border bg-bg-surface">
+                <p className="mb-2 text-[11px] text-ink-3">{hint}</p>
+                <div className="flex h-16 w-full items-center justify-center overflow-hidden rounded border border-rule bg-sheet">
                   {url ? (
                     <img src={url} alt={name} className="max-h-full max-w-full object-contain" />
                   ) : (
-                    <span className="text-[10px] text-text-muted">{t("templates.noCrop")}</span>
+                    <span className="text-[10px] text-ink-3">{t("templates.noCrop")}</span>
                   )}
                 </div>
               </button>
@@ -384,7 +383,7 @@ function TemplatesPage() {
 
 function WarnNote({ children }: { children: React.ReactNode }) {
   return (
-    <p className="flex gap-1.5 rounded-md border border-[color:var(--warning-border)] bg-warning-bg px-2.5 py-2 text-[11px] leading-snug text-[#92400E]">
+    <p className="flex gap-1.5 rounded-md border border-warn/25 bg-warn-wash px-2.5 py-2 text-[11px] leading-snug text-warn-text">
       <TriangleAlert size={13} className="mt-[1px] flex-none" />
       <span>{children}</span>
     </p>
@@ -413,18 +412,18 @@ function IgnoreSection({
   const { t } = useTranslation();
   if (!templateUrl) {
     return (
-      <p className="rounded-md border border-border bg-bg-surface px-3 py-2 text-[11px] text-text-muted">
+      <p className="rounded-md border border-rule bg-sheet px-3 py-2 text-[11px] text-ink-3">
         {t("templates.captureFirstToIgnore")}
       </p>
     );
   }
   return (
-    <div className="flex flex-col gap-2 rounded-md border border-border bg-bg-surface p-3">
+    <div className="flex flex-col gap-2 rounded-md border border-rule bg-sheet p-3">
       <div className="flex items-center justify-between gap-2">
-        <span className="flex items-center gap-1.5 text-[12px] font-semibold text-text-primary">
+        <span className="flex items-center gap-1.5 text-[12px] font-semibold text-ink">
           {t("templates.ignoreLabel")}
           {ignoreRect && (
-            <span className="inline-flex items-center gap-1 rounded-pill border border-success/40 bg-success/10 px-1.5 py-[1px] text-[10px] font-medium text-success">
+            <span className="inline-flex items-center gap-1 rounded-pill border border-done/40 bg-done/10 px-1.5 py-[1px] text-[10px] font-medium text-done-text">
               <Check size={10} strokeWidth={3} />
               {Math.round(ignoreRect.w)}×{Math.round(ignoreRect.h)}
             </span>
@@ -435,7 +434,7 @@ function IgnoreSection({
             <button
               type="button"
               onClick={onClear}
-              className="rounded-sm border border-border-strong bg-white px-2 py-[3px] text-[11px] font-medium text-text-secondary hover:bg-bg-surface"
+              className="rounded-sm border border-rule-2 bg-card px-2 py-[3px] text-[11px] font-medium text-ink-2 hover:bg-sheet"
             >
               {t("templates.clearIgnore")}
             </button>
@@ -444,7 +443,7 @@ function IgnoreSection({
             <button
               type="button"
               onClick={onDone}
-              className="rounded-sm bg-orange px-2.5 py-[3px] text-[11px] font-semibold text-white hover:bg-orange-hover"
+              className="rounded-sm bg-lapis px-2.5 py-[3px] text-[11px] font-semibold text-on-lapis hover:bg-lapis/90"
             >
               {t("templates.ignoreDone")}
             </button>
@@ -452,7 +451,7 @@ function IgnoreSection({
             <button
               type="button"
               onClick={onEdit}
-              className="rounded-sm border border-border-strong bg-white px-2 py-[3px] text-[11px] font-medium text-orange hover:bg-orange-tint"
+              className="rounded-sm border border-rule-2 bg-card px-2 py-[3px] text-[11px] font-medium text-lapis-text hover:bg-lapis-wash"
             >
               {ignoreRect ? t("templates.editIgnoreRegion") : t("templates.addIgnoreRegion")}
             </button>
@@ -462,9 +461,7 @@ function IgnoreSection({
 
       {editing ? (
         <>
-          <p className="text-[10.5px] leading-snug text-text-muted">
-            {t("templates.ignoreEditHint")}
-          </p>
+          <p className="text-[10.5px] leading-snug text-ink-3">{t("templates.ignoreEditHint")}</p>
           <ZoomPane imageUrl={templateUrl} height={240}>
             <CroppableImage
               imageUrl={templateUrl}
@@ -480,7 +477,7 @@ function IgnoreSection({
           <ImageWithRedBox imageUrl={templateUrl} red={ignoreRect} />
         </ZoomPane>
       ) : (
-        <p className="text-[11px] text-text-muted">{t("templates.noIgnore")}</p>
+        <p className="text-[11px] text-ink-3">{t("templates.noIgnore")}</p>
       )}
     </div>
   );

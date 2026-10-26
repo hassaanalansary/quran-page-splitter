@@ -31,17 +31,17 @@ function GalleryPage() {
   return (
     <div className="mx-auto max-w-6xl px-8 py-9">
       <div className="mb-7">
-        <h1 className="font-display text-2xl font-bold text-navy">{t("gallery.title")}</h1>
-        <p className="mt-1 max-w-2xl text-sm text-text-secondary">{t("gallery.subtitle")}</p>
+        <h1 className="font-display text-2xl font-bold text-lapis-text">{t("gallery.title")}</h1>
+        <p className="mt-1 max-w-2xl text-sm text-ink-2">{t("gallery.subtitle")}</p>
         {/* Signed out, this page is the front door — say what the app does
                 and where the account gets you, rather than leaving a stranger
                 to infer it from a grid of covers. */}
         {!user && (
-          <p className="mt-3 max-w-2xl text-sm text-text-muted">
+          <p className="mt-3 max-w-2xl text-sm text-ink-3">
             {t("gallery.anonIntro")}{" "}
             <Link
               to="/auth/signup"
-              className="font-semibold text-orange underline-offset-2 hover:underline"
+              className="font-semibold text-lapis-text underline-offset-2 hover:underline"
             >
               {t("gallery.anonIntroCta")}
             </Link>
@@ -50,19 +50,19 @@ function GalleryPage() {
       </div>
 
       {isError ? (
-        <div className="rounded-lg border border-error-border bg-error-bg px-4 py-3 text-sm text-error">
+        <div className="rounded-lg border border-stop/20 bg-stop-wash px-4 py-3 text-sm text-stop-text">
           {error instanceof Error ? error.message : t("gallery.loadFailed")}
         </div>
       ) : isPending ? (
         <div className="grid grid-cols-[repeat(auto-fill,minmax(230px,1fr))] gap-5">
           {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="h-[330px] animate-pulse rounded-xl bg-bg-muted" />
+            <div key={i} className="h-[330px] animate-pulse rounded-xl bg-sunk" />
           ))}
         </div>
       ) : data.items.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border-strong bg-white/50 px-6 py-12 text-center">
-          <p className="text-sm font-medium text-text-primary">{t("gallery.empty")}</p>
-          <p className="mt-1 text-sm text-text-muted">{t("gallery.emptyHint")}</p>
+        <div className="rounded-lg border border-dashed border-rule-2 bg-card/50 px-6 py-12 text-center">
+          <p className="text-sm font-medium text-ink">{t("gallery.empty")}</p>
+          <p className="mt-1 text-sm text-ink-3">{t("gallery.emptyHint")}</p>
         </div>
       ) : (
         <>
@@ -76,7 +76,7 @@ function GalleryPage() {
               <Button variant="outline" onClick={() => setOffset(offset + data.items.length)}>
                 {t("gallery.more")}
               </Button>
-              <span className="text-xs text-text-muted">
+              <span className="text-xs text-ink-3">
                 {t("gallery.showingCount", {
                   shown: offset + data.items.length,
                   total: data.total,
@@ -108,11 +108,11 @@ function GalleryCard({ item }: { item: GalleryItem }) {
   });
 
   return (
-    <div className="flex flex-col overflow-hidden rounded-xl border border-border bg-white shadow-[var(--shadow-sm)] transition hover:border-border-strong hover:shadow-[var(--shadow-md)]">
+    <div className="flex flex-col overflow-hidden rounded-xl border border-rule bg-card shadow-[var(--shadow-card)] transition hover:border-rule-2 hover:shadow-[var(--shadow-lift)]">
       <Link
         to="/gallery/$mushafId"
         params={{ mushafId: item.id }}
-        className="relative block aspect-[3/4] overflow-hidden bg-bg-muted"
+        className="relative block aspect-[3/4] overflow-hidden bg-sunk"
       >
         {item.thumbnail_url && !imgFailed ? (
           <img
@@ -124,36 +124,36 @@ function GalleryCard({ item }: { item: GalleryItem }) {
             className="h-full w-full object-cover object-top"
           />
         ) : (
-          <div className="flex h-full items-center justify-center text-[11px] text-text-muted">
+          <div className="flex h-full items-center justify-center text-[11px] text-ink-3">
             {t("home.noPreview")}
           </div>
         )}
         <MushafStatusBadge mushaf={item} className="absolute start-2 top-2" />
         {item.is_owner && (
-          <span className="absolute end-2 top-2 rounded-pill bg-navy/85 px-2 py-0.5 text-[10px] font-semibold text-white backdrop-blur">
+          <span className="absolute end-2 top-2 rounded-pill bg-lapis/85 px-2 py-0.5 text-[10px] font-semibold text-on-lapis backdrop-blur">
             {t("gallery.yours")}
           </span>
         )}
       </Link>
 
-      <div className="flex flex-1 flex-col border-t border-border px-3 py-2.5">
+      <div className="flex flex-1 flex-col border-t border-rule px-3 py-2.5">
         <Link
           to="/gallery/$mushafId"
           params={{ mushafId: item.id }}
-          className="truncate text-[13px] font-semibold text-text-primary hover:text-orange"
+          className="truncate text-[13px] font-semibold text-ink hover:text-lapis-text"
         >
           {item.name}
         </Link>
-        <p className="mt-0.5 truncate text-[11px] text-text-muted">
+        <p className="mt-0.5 truncate text-[11px] text-ink-3">
           {item.is_owner ? t("gallery.byYou") : t("gallery.by", { name: item.owner_name })}
         </p>
         {item.description && (
-          <p className="mt-1.5 line-clamp-2 text-[11.5px] leading-snug text-text-secondary">
+          <p className="mt-1.5 line-clamp-2 text-[11.5px] leading-snug text-ink-2">
             {item.description}
           </p>
         )}
 
-        <div className="mt-2 flex items-center justify-between text-[11px] text-text-muted">
+        <div className="mt-2 flex items-center justify-between text-[11px] text-ink-3">
           <span>
             {t("gallery.pages", {
               done: item.processed_page_count,
@@ -192,7 +192,7 @@ function GalleryCard({ item }: { item: GalleryItem }) {
               href={galleryCoordinatesUrl(item.id)}
               download
               title={t("gallery.downloadJson")}
-              className="flex h-7 flex-1 items-center justify-center gap-1 rounded-[7px] border border-border-strong text-[11px] font-semibold text-text-secondary transition-colors hover:bg-bg-surface"
+              className="flex h-7 flex-1 items-center justify-center gap-1 rounded-[7px] border border-rule-2 text-[11px] font-semibold text-ink-2 transition-colors hover:bg-sheet"
             >
               <FileJson className="h-3.5 w-3.5" />
               JSON
@@ -201,7 +201,7 @@ function GalleryCard({ item }: { item: GalleryItem }) {
               href={galleryLinesZipUrl(item.id)}
               download
               title={t("gallery.downloadZip")}
-              className="flex h-7 flex-1 items-center justify-center gap-1 rounded-[7px] border border-border-strong text-[11px] font-semibold text-text-secondary transition-colors hover:bg-bg-surface"
+              className="flex h-7 flex-1 items-center justify-center gap-1 rounded-[7px] border border-rule-2 text-[11px] font-semibold text-ink-2 transition-colors hover:bg-sheet"
             >
               <Download className="h-3.5 w-3.5" />
               ZIP

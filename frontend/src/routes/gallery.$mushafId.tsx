@@ -41,7 +41,7 @@ function GalleryDetailPage() {
     <div className="mx-auto max-w-5xl px-8 py-8">
       <Link
         to="/gallery"
-        className="mb-6 inline-flex items-center gap-1.5 text-[12px] font-semibold text-text-secondary transition-colors hover:text-navy"
+        className="mb-6 inline-flex items-center gap-1.5 text-[12px] font-semibold text-ink-2 transition-colors hover:text-lapis-text"
       >
         <ArrowLeft className="h-3.5 w-3.5 rtl:rotate-180" />
         {t("gallery.backToGallery")}
@@ -59,11 +59,11 @@ function GalleryDetailPage() {
         />
       ) : isPending ? (
         <div className="grid gap-8 md:grid-cols-[260px_1fr]">
-          <div className="aspect-[3/4] animate-pulse rounded-xl bg-bg-muted" />
+          <div className="aspect-[3/4] animate-pulse rounded-xl bg-sunk" />
           <div className="space-y-3">
-            <div className="h-8 w-2/3 animate-pulse rounded bg-bg-muted" />
-            <div className="h-4 w-1/3 animate-pulse rounded bg-bg-muted" />
-            <div className="h-24 animate-pulse rounded bg-bg-muted" />
+            <div className="h-8 w-2/3 animate-pulse rounded bg-sunk" />
+            <div className="h-4 w-1/3 animate-pulse rounded bg-sunk" />
+            <div className="h-24 animate-pulse rounded bg-sunk" />
           </div>
         </div>
       ) : (
@@ -76,9 +76,9 @@ function GalleryDetailPage() {
 function NotAvailable({ message }: { message: string }) {
   const { t } = useTranslation();
   return (
-    <div className="rounded-lg border border-dashed border-border-strong bg-white/50 px-6 py-12 text-center">
-      <p className="text-sm font-medium text-text-primary">{message}</p>
-      <p className="mt-1 text-sm text-text-muted">{t("gallery.detail.goneHint")}</p>
+    <div className="rounded-lg border border-dashed border-rule-2 bg-card/50 px-6 py-12 text-center">
+      <p className="text-sm font-medium text-ink">{message}</p>
+      <p className="mt-1 text-sm text-ink-3">{t("gallery.detail.goneHint")}</p>
       <Button asChild size="sm" variant="outline" className="mt-4">
         <Link to="/gallery">{t("gallery.backToGallery")}</Link>
       </Button>
@@ -143,7 +143,7 @@ function DetailBody({ item }: { item: GalleryDetail }) {
   return (
     <div className="grid gap-8 md:grid-cols-[260px_1fr]">
       {/* Cover */}
-      <div className="overflow-hidden rounded-xl border border-border bg-bg-muted shadow-[var(--shadow-sm)]">
+      <div className="overflow-hidden rounded-xl border border-rule bg-sunk shadow-[var(--shadow-card)]">
         <div className="aspect-[3/4]">
           {item.thumbnail_url && !imgFailed ? (
             <img
@@ -154,7 +154,7 @@ function DetailBody({ item }: { item: GalleryDetail }) {
               className="h-full w-full object-cover object-top"
             />
           ) : (
-            <div className="flex h-full items-center justify-center text-[11px] text-text-muted">
+            <div className="flex h-full items-center justify-center text-[11px] text-ink-3">
               {t("home.noPreview")}
             </div>
           )}
@@ -166,41 +166,39 @@ function DetailBody({ item }: { item: GalleryDetail }) {
         <div className="flex flex-wrap items-center gap-2">
           <MushafStatusBadge mushaf={item} size="md" />
           {item.is_owner && (
-            <span className="rounded-pill bg-navy/85 px-2.5 py-1 text-[11px] font-semibold text-white">
+            <span className="rounded-pill bg-lapis/85 px-2.5 py-1 text-[11px] font-semibold text-on-lapis">
               {t("gallery.yours")}
             </span>
           )}
         </div>
 
-        <h1 className="mt-3 font-display text-2xl font-bold text-navy">{item.name}</h1>
-        <p className="mt-1 text-sm text-text-muted">
+        <h1 className="mt-3 font-display text-2xl font-bold text-lapis-text">{item.name}</h1>
+        <p className="mt-1 text-sm text-ink-3">
           {item.is_owner ? t("gallery.byYou") : t("gallery.by", { name: item.owner_name })}
         </p>
 
         {item.description ? (
           // The whole point of this page: the card clamps the description to two
           // lines, so anything longer is only readable here.
-          <p className="mt-5 max-w-2xl whitespace-pre-line text-sm leading-relaxed text-text-secondary">
+          <p className="mt-5 max-w-2xl whitespace-pre-line text-sm leading-relaxed text-ink-2">
             {item.description}
           </p>
         ) : (
-          <p className="mt-5 text-sm italic text-text-muted">{t("gallery.detail.noDescription")}</p>
+          <p className="mt-5 text-sm italic text-ink-3">{t("gallery.detail.noDescription")}</p>
         )}
 
-        <dl className="mt-7 grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-x-6 gap-y-4 border-t border-border pt-6">
+        <dl className="mt-7 grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-x-6 gap-y-4 border-t border-rule pt-6">
           {facts.map((fact) => (
             <div key={fact.label}>
-              <dt className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
+              <dt className="text-[11px] font-semibold uppercase tracking-wide text-ink-3">
                 {fact.label}
               </dt>
-              <dd className="mt-0.5 text-sm font-medium capitalize text-text-primary">
-                {fact.value}
-              </dd>
+              <dd className="mt-0.5 text-sm font-medium capitalize text-ink">{fact.value}</dd>
             </div>
           ))}
         </dl>
 
-        <div className="mt-8 flex flex-wrap items-center gap-2.5 border-t border-border pt-6">
+        <div className="mt-8 flex flex-wrap items-center gap-2.5 border-t border-rule pt-6">
           {item.is_owner ? (
             <Button asChild>
               <Link to="/mushafs/$mushafId" params={{ mushafId: item.id }}>
@@ -253,7 +251,7 @@ function DetailBody({ item }: { item: GalleryDetail }) {
         </div>
 
         {item.exported_line_count === 0 && (
-          <p className="mt-2.5 text-[12px] text-text-muted">{t("gallery.detail.noLineImages")}</p>
+          <p className="mt-2.5 text-[12px] text-ink-3">{t("gallery.detail.noLineImages")}</p>
         )}
       </div>
     </div>

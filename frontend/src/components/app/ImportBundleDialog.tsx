@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
 import { MushafStatusBadge } from "@/components/app/MushafStatusBadge";
+import { BusyLabel } from "@/components/app/SatrLoader";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -123,27 +124,27 @@ export function ImportBundleDialog({
               accept=".zip,application/zip"
               disabled={busy}
               onChange={(e) => onChoose(e.target.files?.[0] ?? null)}
-              className="cursor-pointer file:me-3 file:cursor-pointer file:rounded file:border-0 file:bg-bg-muted file:px-2 file:py-1 file:text-xs file:font-medium"
+              className="cursor-pointer file:me-3 file:cursor-pointer file:rounded file:border-0 file:bg-sunk file:px-2 file:py-1 file:text-xs file:font-medium"
             />
             {file && (
-              <span className="text-xs text-text-muted">
+              <span className="text-xs text-ink-3">
                 {t("bundle.selected", { name: file.name, size: Math.round(file.size / 1024) })}
               </span>
             )}
           </div>
 
           {inspect.isPending && (
-            <p className="text-[11.5px] text-text-muted">{t("bundle.detect.inspecting")}</p>
+            <p className="text-[11.5px] text-ink-3">{t("bundle.detect.inspecting")}</p>
           )}
 
           {detected && <BundleSummary bundle={detected.bundle} />}
 
           {detected && detected.matches.length === 0 && (
-            <div className="rounded-[10px] border border-warning-border bg-warning-bg px-3 py-2.5">
-              <p className="text-[12px] font-bold text-[#8a4b0d]">
+            <div className="rounded-[10px] border border-warn/25 bg-warn-wash px-3 py-2.5">
+              <p className="text-[12px] font-bold text-warn-text">
                 {t("bundle.detect.noMatchTitle")}
               </p>
-              <p className="mt-1 text-[11px] leading-[1.55] text-[#8a4b0d]">
+              <p className="mt-1 text-[11px] leading-[1.55] text-warn-text">
                 {t("bundle.detect.noMatchBody", {
                   pdf: detected.bundle.pdf_original_name || t("common.dash"),
                 })}
@@ -153,7 +154,7 @@ export function ImportBundleDialog({
 
           {detected && detected.matches.length > 0 && (
             <div className="flex flex-col gap-2">
-              <span className="text-[10.5px] font-semibold uppercase tracking-wide text-text-muted">
+              <span className="text-[10.5px] font-semibold uppercase tracking-wide text-ink-3">
                 {detected.matches.length === 1
                   ? t("bundle.detect.matchOne")
                   : t("bundle.detect.matchMany", { count: detected.matches.length })}
@@ -174,14 +175,14 @@ export function ImportBundleDialog({
           )}
 
           {overwrites > 0 && (
-            <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-warning-border bg-warning-bg px-2.5 py-2">
+            <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-warn/25 bg-warn-wash px-2.5 py-2">
               <input
                 type="checkbox"
                 checked={replace}
                 onChange={(e) => setReplace(e.target.checked)}
                 className="mt-0.5 cursor-pointer"
               />
-              <span className="text-[10.5px] leading-[1.5] text-[#8a4b0d]">
+              <span className="text-[10.5px] leading-[1.5] text-warn-text">
                 <b className="block">{t("bundle.replaceLabel")}</b>
                 {t("bundle.replaceWarning", { count: overwrites })}
               </span>
@@ -189,7 +190,7 @@ export function ImportBundleDialog({
           )}
 
           {error && (
-            <div className="rounded-md border border-error-border bg-error-bg px-3 py-2 text-[11.5px] leading-[1.5] text-error">
+            <div className="rounded-md border border-stop/20 bg-stop-wash px-3 py-2 text-[11.5px] leading-[1.5] text-stop-text">
               {error}
             </div>
           )}
@@ -206,11 +207,13 @@ export function ImportBundleDialog({
             }}
             disabled={!target || busy || (overwrites > 0 && !replace)}
           >
-            {apply.isPending
-              ? t("bundle.importing")
-              : target
-                ? t("bundle.detect.importInto", { name: target.name })
-                : t("bundle.import")}
+            {apply.isPending ? (
+              <BusyLabel>{t("bundle.importing")}</BusyLabel>
+            ) : target ? (
+              t("bundle.detect.importInto", { name: target.name })
+            ) : (
+              t("bundle.import")
+            )}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -224,14 +227,14 @@ function BundleSummary({ bundle }: { bundle: BundleSource }) {
   const exported = bundle.exported_at ? new Date(bundle.exported_at) : null;
 
   return (
-    <div className="rounded-[10px] border border-border bg-bg-surface px-3 py-2.5">
+    <div className="rounded-[10px] border border-rule bg-sheet px-3 py-2.5">
       <div className="flex items-center gap-2">
-        <PackageSearch className="h-3.5 w-3.5 text-orange" />
-        <span className="truncate text-[12.5px] font-bold text-text-primary">
+        <PackageSearch className="h-3.5 w-3.5 text-lapis-text" />
+        <span className="truncate text-[12.5px] font-bold text-ink">
           {bundle.name || t("bundle.detect.unnamed")}
         </span>
         {exported && !Number.isNaN(exported.valueOf()) && (
-          <span className="ms-auto shrink-0 text-[10.5px] text-text-muted">
+          <span className="ms-auto shrink-0 text-[10.5px] text-ink-3">
             {t("bundle.detect.exportedAt", { date: exported.toLocaleDateString(i18n.language) })}
           </span>
         )}
@@ -257,8 +260,8 @@ function BundleSummary({ bundle }: { bundle: BundleSource }) {
 function SummaryRow({ k, v }: { k: string; v: string }) {
   return (
     <div className="flex items-center justify-between gap-2 text-[11px]">
-      <dt className="shrink-0 text-text-muted">{k}</dt>
-      <dd className="truncate font-mono text-[10.5px] font-semibold text-text-primary">{v}</dd>
+      <dt className="shrink-0 text-ink-3">{k}</dt>
+      <dd className="truncate font-mono text-[10.5px] font-semibold text-ink">{v}</dd>
     </div>
   );
 }
@@ -280,7 +283,7 @@ function MatchRow({
   return (
     <label
       className={`flex cursor-pointer items-start gap-2.5 rounded-[10px] border p-3 transition ${
-        selected ? "border-orange bg-orange-tint" : "border-border hover:border-border-strong"
+        selected ? "border-lapis bg-lapis-wash" : "border-rule hover:border-rule-2"
       }`}
     >
       <input
@@ -292,10 +295,10 @@ function MatchRow({
       />
       <span className="min-w-0 flex-1">
         <span className="flex items-center gap-2">
-          <span className="truncate text-[13px] font-semibold text-text-primary">{match.name}</span>
+          <span className="truncate text-[13px] font-semibold text-ink">{match.name}</span>
           <MushafStatusBadge mushaf={match} className="ms-auto shrink-0" />
         </span>
-        <span className="mt-1 flex flex-wrap items-center gap-x-2.5 text-[11px] text-text-muted">
+        <span className="mt-1 flex flex-wrap items-center gap-x-2.5 text-[11px] text-ink-3">
           <span>
             {t("home.pages", {
               done: match.processed_page_count,
@@ -305,7 +308,7 @@ function MatchRow({
           {match.qiraa && <span className="capitalize">{match.qiraa}</span>}
         </span>
         {diverges && (
-          <span className="mt-1.5 flex items-start gap-1 text-[10.5px] leading-[1.5] text-[#8a4b0d]">
+          <span className="mt-1.5 flex items-start gap-1 text-[10.5px] leading-[1.5] text-warn-text">
             <AlertTriangle className="mt-px h-3 w-3 shrink-0" />
             {match.bounds_differ
               ? t("bundle.detect.boundsDiffer")

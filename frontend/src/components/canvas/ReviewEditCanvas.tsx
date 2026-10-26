@@ -46,9 +46,16 @@ type Props = {
 };
 
 const TYPE_COLOR: Record<LineType, string> = {
-  text: "var(--orange)",
-  sura_header: "var(--navy)",
-  besmella: "var(--success)",
+  text: "var(--lapis)",
+  sura_header: "var(--gold)",
+  besmella: "var(--done)",
+};
+
+/** The text on a TYPE_COLOR badge. */
+const TYPE_ON: Record<LineType, string> = {
+  text: "var(--on-lapis)",
+  sura_header: "var(--on-gold)",
+  besmella: "var(--on-done)",
 };
 
 const TYPE_LABEL: Record<LineType, string> = {
@@ -306,9 +313,9 @@ export function ReviewEditCanvas({
   }
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden bg-bg-page">
+    <div className="flex flex-1 flex-col overflow-hidden bg-paper">
       {/* Toolbar */}
-      <div className="flex h-9 flex-shrink-0 items-center gap-2 border-b border-border bg-white px-3">
+      <div className="flex h-9 flex-shrink-0 items-center gap-2 border-b border-rule bg-card px-3">
         <ToolToggle value={effectiveTool} onChange={setTool} />
         <div className="ml-auto flex items-center gap-3">
           {statusSlot}
@@ -320,7 +327,7 @@ export function ReviewEditCanvas({
       <div ref={stageRef} className="relative flex flex-1 overflow-hidden">
         <div
           ref={wrapRef}
-          className="raqam-canvas-grid relative flex-1 overflow-auto outline-none"
+          className="canvas-well relative flex-1 overflow-auto outline-none"
           {...containerProps}
           onPointerDown={(e) => {
             containerProps.onPointerDown(e);
@@ -350,7 +357,7 @@ export function ReviewEditCanvas({
                   height: dispH || "auto",
                   display: "block",
                   userSelect: "none",
-                  boxShadow: "var(--shadow-page)",
+                  boxShadow: "var(--shadow-card)",
                   background: "white",
                 }}
               />
@@ -375,14 +382,14 @@ export function ReviewEditCanvas({
             </div>
           ) : (
             <div className="flex h-full items-center justify-center">
-              <div className="rounded-md bg-white/80 px-6 py-4 text-[13px] text-text-secondary shadow-[var(--shadow-sm)]">
+              <div className="rounded-md bg-card/80 px-6 py-4 text-[13px] text-ink-2 shadow-[var(--shadow-card)]">
                 No image for page {page}.
               </div>
             </div>
           )}
         </div>
         <ChevronNav page={page} pageCount={pageCount} onPageChange={onPageChange} />
-        <div className="absolute bottom-3 left-1/2 z-10 -translate-x-1/2 rounded-pill border border-border bg-white/90 px-3 py-1.5 shadow-[var(--shadow-sm)] backdrop-blur">
+        <div className="absolute bottom-3 left-1/2 z-10 -translate-x-1/2 rounded-pill border border-rule bg-card/90 px-3 py-1.5 shadow-[var(--shadow-card)] backdrop-blur">
           <PageJump page={page} pageCount={pageCount} onPageChange={onPageChange} />
         </div>
         {lens && natural && imageUrl && (
@@ -453,7 +460,7 @@ function MagnifierLens({
         backgroundSize: `${dispW * LENS_MAG}px ${dispH * LENS_MAG}px`,
         backgroundPosition: `${LENS_R - imgX * scale * LENS_MAG}px ${LENS_R - imgY * scale * LENS_MAG}px`,
         boxShadow:
-          "0 0 0 3px rgba(0,0,0,0.4), inset 0 0 0 1.5px rgba(255,255,255,0.9), var(--shadow-md)",
+          "0 0 0 3px rgba(0,0,0,0.4), inset 0 0 0 1.5px rgba(255,255,255,0.9), var(--shadow-card)",
       }}
     >
       <div
@@ -524,8 +531,8 @@ function LineOverlay({
     >
       {/* type badge */}
       <div
-        className="pointer-events-none absolute -top-[20px] left-0 whitespace-nowrap rounded-pill px-[6px] py-[1px] text-[10px] font-semibold uppercase tracking-wider text-white"
-        style={{ background: c }}
+        className="pointer-events-none absolute -top-[20px] left-0 whitespace-nowrap rounded-pill px-[6px] py-[1px] text-[10px] font-semibold uppercase tracking-wider"
+        style={{ background: c, color: TYPE_ON[line.type] }}
       >
         L{line.line_number} · {TYPE_LABEL[line.type]}
         {line.type !== "text" && line.sura ? ` · sura ${line.sura}` : ""}
@@ -548,11 +555,15 @@ function LineOverlay({
               style={
                 seg.overflow
                   ? {
-                      background: "var(--error-bg)",
-                      color: "var(--error)",
-                      border: "1px solid var(--error)",
+                      background: "var(--stop-wash)",
+                      color: "var(--stop)",
+                      border: "1px solid var(--stop)",
                     }
-                  : { background: "var(--navy)", color: "white", border: "1px solid var(--border)" }
+                  : {
+                      background: "var(--lapis)",
+                      color: "var(--on-lapis)",
+                      border: "1px solid var(--rule)",
+                    }
               }
             >
               {seg.aya}
@@ -584,12 +595,12 @@ function LineOverlay({
                 cursor: "ew-resize",
                 touchAction: "none",
                 background: sepSelected
-                  ? "var(--navy-light)"
-                  : "color-mix(in oklab, var(--navy) 80%, transparent)",
+                  ? "var(--lapis)"
+                  : "color-mix(in oklab, var(--lapis) 80%, transparent)",
                 borderRadius: "2px",
                 boxShadow: sepSelected
-                  ? "0 0 0 2px color-mix(in oklab, var(--navy-light) 35%, transparent)"
-                  : "0 0 0 1px color-mix(in oklab, var(--navy) 40%, transparent)",
+                  ? "0 0 0 2px color-mix(in oklab, var(--lapis) 35%, transparent)"
+                  : "0 0 0 1px color-mix(in oklab, var(--lapis) 40%, transparent)",
                 zIndex: sepSelected ? 8 : 6,
               }}
             >
@@ -603,14 +614,14 @@ function LineOverlay({
                     e.stopPropagation();
                     onRemoveSep(line.uid, ci);
                   }}
-                  className="sep-del-pop group absolute bottom-full left-1/2 mb-1.5 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border border-white bg-error text-[11px] font-bold leading-none text-white shadow-md hover:bg-white hover:text-error hover:brightness-110"
+                  className="sep-del-pop group absolute bottom-full left-1/2 mb-1.5 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border border-white bg-stop text-[11px] font-bold leading-none text-white shadow-md hover:bg-white hover:text-stop-text hover:brightness-110"
                 >
                   <Trash2 size={14} />
                   {/* notch: a diamond poking out the bottom, pointing down at the
                       separator, tinted to match the button (incl. hover invert) */}
                   <span
                     aria-hidden
-                    className="absolute left-1/2 top-full h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rotate-45 rounded-[2px] border-b border-r border-white bg-error group-hover:bg-white"
+                    className="absolute left-1/2 top-full h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rotate-45 rounded-[2px] border-b border-r border-white bg-stop group-hover:bg-white"
                   />
                 </button>
               )}

@@ -7,6 +7,7 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 
+import { BusyLabel } from "@/components/app/SatrLoader";
 import { mediaUrl } from "@/lib/api";
 import {
   decodeLabels,
@@ -327,17 +328,17 @@ export function BlobStrip({
 
   return (
     <div className="flex flex-col" style={{ marginLeft }} data-line={line.snapshot_id}>
-      <div className="flex items-center gap-2 text-[10.5px] text-text-muted">
-        <span className={`font-semibold tabular-nums ${focused ? "text-orange" : ""}`}>
+      <div className="flex items-center gap-2 text-[10.5px] text-ink-3">
+        <span className={`font-semibold tabular-nums ${focused ? "text-lapis-text" : ""}`}>
           {label}
         </span>
         {line.readonly && (
-          <span className="rounded-sm bg-bg-surface px-1.5 py-px">
+          <span className="rounded-sm bg-sheet px-1.5 py-px">
             {line.approved ? t("calibration.contextConfirmed") : t("calibration.context")}
           </span>
         )}
         {line.status && line.status !== "exact" && !line.readonly && (
-          <span className="text-warning" title={line.reason ?? undefined}>
+          <span className="text-warn-text" title={line.reason ?? undefined}>
             {t(`words.status_${line.status}`)}
           </span>
         )}
@@ -353,7 +354,7 @@ export function BlobStrip({
             <span
               key={`${word.word_id ?? "u"}-${index}`}
               className={`absolute bottom-0.5 -translate-x-full select-none whitespace-nowrap rounded-sm px-[3px] text-[9px] font-semibold leading-[11px] tabular-nums ${
-                count.ok ? "text-orange" : "bg-warning text-white"
+                count.ok ? "text-lapis-text" : "bg-warn text-on-warn"
               }`}
               style={{ left: (word.start_x - line.bbox.x) * scale }}
               title={word.text}
@@ -366,7 +367,7 @@ export function BlobStrip({
 
       <div
         data-strip
-        className={`relative bg-white shadow-[0_0_0_1px_var(--border)] ${line.readonly ? "opacity-60" : ""}`}
+        className={`relative bg-white shadow-[0_0_0_1px_var(--rule)] ${line.readonly ? "opacity-60" : ""}`}
         style={{ width, height }}
       >
         <canvas
@@ -404,11 +405,11 @@ export function BlobStrip({
               height,
               outline:
                 word.word_id !== null && movedWords?.has(word.word_id)
-                  ? "2px solid var(--info)"
-                  : "1px dashed color-mix(in oklab, var(--orange) 70%, transparent)",
+                  ? "2px solid var(--lapis)"
+                  : "1px dashed color-mix(in oklab, var(--lapis) 70%, transparent)",
               background:
                 word.word_id !== null && movedWords?.has(word.word_id)
-                  ? "color-mix(in oklab, var(--info) 12%, transparent)"
+                  ? "color-mix(in oklab, var(--lapis) 12%, transparent)"
                   : undefined,
               outlineOffset: -1,
             }}
@@ -436,7 +437,7 @@ export function BlobStrip({
           line.blobs.filter(needsLook).map((blob) => (
             <span
               key={`look-${blob.id}`}
-              className="pointer-events-none absolute h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-orange shadow-[0_0_0_1.5px_var(--white)]"
+              className="pointer-events-none absolute h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-lapis shadow-[0_0_0_1.5px_var(--card)]"
               style={{
                 left: (blob.x - line.bbox.x + blob.w / 2) * scale,
                 top: Math.max(0, (blob.y - line.bbox.y) * scale - 6),
@@ -469,7 +470,7 @@ export function BlobStrip({
 
         {rectangle && (
           <div
-            className="pointer-events-none absolute bg-[color:color-mix(in_oklab,var(--info)_14%,transparent)] outline outline-1 outline-[color:var(--info)]"
+            className="pointer-events-none absolute bg-[color:color-mix(in_oklab,var(--lapis)_14%,transparent)] outline outline-1 outline-[color:var(--lapis)]"
             style={{
               left: Math.min(rectangle.from.x, rectangle.to.x) * scale,
               top: Math.min(rectangle.from.y, rectangle.to.y) * scale,
@@ -481,7 +482,7 @@ export function BlobStrip({
 
         {!raster && (
           <div
-            className="absolute inset-0 flex items-center justify-center gap-2 text-[11px] text-text-muted"
+            className="absolute inset-0 flex items-center justify-center gap-2 text-[11px] text-ink-3"
             role={error ? "alert" : "status"}
           >
             {error ? (
@@ -496,7 +497,7 @@ export function BlobStrip({
                 </button>
               </>
             ) : (
-              t("calibration.loadingLine")
+              <BusyLabel>{t("calibration.loadingLine")}</BusyLabel>
             )}
           </div>
         )}
@@ -540,13 +541,13 @@ export function BlobStrip({
                 }}
                 className={`absolute flex -translate-x-1/2 items-center justify-center rounded-sm text-[13px] leading-none disabled:cursor-default ${
                   chosen
-                    ? "bg-orange text-white"
+                    ? "bg-lapis text-on-lapis"
                     : typed
                       ? "font-semibold"
                       : subtype
-                        ? "border border-dashed border-border-strong bg-white text-text-secondary"
-                        : "text-text-muted"
-                } ${doubt && !chosen ? "outline outline-2 outline-warning" : ""} ${canSelect ? "cursor-pointer" : ""}`}
+                        ? "border border-dashed border-rule-2 bg-card text-ink-2"
+                        : "text-ink-3"
+                } ${doubt && !chosen ? "outline outline-2 outline-warn" : ""} ${canSelect ? "cursor-pointer" : ""}`}
                 style={{
                   left: x,
                   top: row * ROW + 1,

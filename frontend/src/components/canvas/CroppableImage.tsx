@@ -193,7 +193,8 @@ export function CroppableImage({
           elem={elem}
           fit={fit}
           label={label}
-          color={tone === "red" ? "var(--error)" : "var(--orange)"}
+          color={tone === "red" ? "var(--stop)" : "var(--lapis)"}
+          onColor={tone === "red" ? "var(--on-stop)" : "var(--on-lapis)"}
           onBodyPointerDown={startBody}
           onHandlePointerDown={startHandle}
         />
@@ -208,6 +209,7 @@ function RectOverlay({
   fit,
   label,
   color,
+  onColor,
   onBodyPointerDown,
   onHandlePointerDown,
 }: {
@@ -216,6 +218,8 @@ function RectOverlay({
   fit: { scale: number; offX: number; offY: number };
   label: string;
   color: string;
+  /** The label's text colour on `color`. */
+  onColor: string;
   onBodyPointerDown: (e: React.PointerEvent) => void;
   onHandlePointerDown: (h: HandleKey) => (e: React.PointerEvent) => void;
 }) {
@@ -248,7 +252,7 @@ function RectOverlay({
       <div
         className="pointer-events-none absolute inset-0"
         style={{
-          background: "color-mix(in oklab, var(--navy) 10%, transparent)",
+          background: "color-mix(in oklab, var(--lapis) 10%, transparent)",
           clipPath: `polygon(0% 0%, 0% 100%, ${lp}% 100%, ${lp}% ${tp}%, ${lp + wp}% ${tp}%, ${lp + wp}% ${tp + hp}%, ${lp}% ${tp + hp}%, ${lp}% 100%, 100% 100%, 100% 0%)`,
         }}
       />
@@ -283,11 +287,12 @@ function RectOverlay({
           />
         ))}
         <div
-          className="pointer-events-none absolute rounded-pill px-2 py-[2px] text-[10px] font-semibold text-white"
+          className="pointer-events-none absolute rounded-pill px-2 py-[2px] text-[10px] font-semibold"
           style={{
             top: -22,
             left: 0,
             background: color,
+            color: onColor,
             letterSpacing: "0.04em",
             whiteSpace: "nowrap",
           }}
@@ -295,7 +300,7 @@ function RectOverlay({
           {label}
         </div>
         <div
-          className="pointer-events-none absolute -translate-x-1/2 rounded-[3px] bg-navy px-[7px] py-[2px] text-[10px] font-medium text-white"
+          className="pointer-events-none absolute -translate-x-1/2 rounded-[3px] bg-lapis px-[7px] py-[2px] text-[10px] font-medium text-on-lapis"
           style={{ bottom: -22, left: "50%", whiteSpace: "nowrap" }}
         >
           {Math.round(rect.w)} × {Math.round(rect.h)} px

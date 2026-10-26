@@ -20,17 +20,15 @@ export function RunsTab({ mushafId, runs }: { mushafId: string; runs: Run[] | un
   const { t } = useTranslation();
   if (!runs || runs.length === 0) {
     return (
-      <div className="flex flex-col items-center gap-3 rounded-[11px] border border-border bg-white px-6 py-14 text-center">
-        <span className="text-[13px] font-semibold text-text-primary">
-          {t("details.runs_none")}
-        </span>
-        <span className="max-w-[380px] text-[11.5px] leading-[1.6] text-text-secondary">
+      <div className="flex flex-col items-center gap-3 rounded-[11px] border border-rule bg-card px-6 py-14 text-center">
+        <span className="text-[13px] font-semibold text-ink">{t("details.runs_none")}</span>
+        <span className="max-w-[380px] text-[11.5px] leading-[1.6] text-ink-2">
           {t("details.runs_noneDesc")}
         </span>
         <Link
           to="/mushafs/$mushafId/process"
           params={{ mushafId }}
-          className="mt-1 rounded-lg bg-orange px-4 py-2 text-[12px] font-bold text-white transition-colors hover:bg-orange-hover"
+          className="mt-1 rounded-lg bg-lapis px-4 py-2 text-[12px] font-bold text-on-lapis transition-colors hover:bg-lapis/90"
         >
           {t("details.runs_new")}
         </Link>
@@ -41,16 +39,16 @@ export function RunsTab({ mushafId, runs }: { mushafId: string; runs: Run[] | un
   return (
     <div>
       <div className="mb-3 flex items-center gap-2">
-        <span className="text-[11.5px] font-bold text-text-primary">
+        <span className="text-[11.5px] font-bold text-ink">
           {t("details.runs_count", { count: runs.length })}
         </span>
-        <span className="text-[11.5px] text-text-muted">
+        <span className="text-[11.5px] text-ink-3">
           {t("details.runs_latest", { time: fmtDayTime(runs[0].created_at) })}
         </span>
         <Link
           to="/mushafs/$mushafId/process"
           params={{ mushafId }}
-          className="ms-auto rounded-[7px] bg-orange px-3 py-[5px] text-[10.5px] font-bold text-white transition-colors hover:bg-orange-hover"
+          className="ms-auto rounded-[7px] bg-lapis px-3 py-[5px] text-[10.5px] font-bold text-on-lapis transition-colors hover:bg-lapis/90"
         >
           {t("details.runs_new")}
         </Link>
@@ -81,12 +79,12 @@ function RunCard({ run, mushafId }: { run: Run; mushafId: string }) {
   const settingRows = runSettingsRows(run);
 
   return (
-    <div className="overflow-hidden rounded-[11px] border border-border bg-white">
-      <div className="flex items-center gap-[11px] border-b border-border px-3.5 py-3">
-        <span className="font-mono text-[13px] font-bold text-text-primary">
+    <div className="overflow-hidden rounded-[11px] border border-rule bg-card">
+      <div className="flex items-center gap-[11px] border-b border-rule px-3.5 py-3">
+        <span className="font-mono text-[13px] font-bold text-ink">
           {runNumberLabel(run.run_number)}
         </span>
-        <span className="text-[12px] font-medium text-text-secondary">
+        <span className="text-[12px] font-medium text-ink-2">
           {t("details.runs_pages", { start: run.page_range_start, end: run.page_range_end })}
         </span>
         <span
@@ -95,17 +93,15 @@ function RunCard({ run, mushafId }: { run: Run; mushafId: string }) {
           <span className="h-[5px] w-[5px] rounded-full" style={{ background: meta.dot }} />
           {statusLabel}
         </span>
-        <span className="ms-auto text-[11px] font-medium text-text-muted">
+        <span className="ms-auto text-[11px] font-medium text-ink-3">
           {fmtDayTime(run.created_at)} ·{" "}
-          <b className="text-text-secondary">
-            {t("details.runs_saved", { count: run.pages_saved })}
-          </b>
+          <b className="text-ink-2">{t("details.runs_saved", { count: run.pages_saved })}</b>
         </span>
         {run.log_url && (
           <button
             type="button"
             onClick={() => setLogOpen(true)}
-            className="inline-flex cursor-pointer items-center gap-1 rounded-[7px] border border-border px-2 py-[3px] text-[10.5px] font-semibold text-text-secondary transition-colors hover:border-border-strong hover:text-text-primary"
+            className="inline-flex cursor-pointer items-center gap-1 rounded-[7px] border border-rule px-2 py-[3px] text-[10.5px] font-semibold text-ink-2 transition-colors hover:border-rule-2 hover:text-ink"
           >
             <ScrollText size={12} />
             {t("process.logView")}
@@ -124,21 +120,17 @@ function RunCard({ run, mushafId }: { run: Run; mushafId: string }) {
       )}
 
       <div className="p-3.5">
-        <div className="mb-2 text-[9.5px] font-semibold uppercase tracking-[0.1em] text-text-muted">
+        <div className="mb-2 text-[9.5px] font-semibold uppercase tracking-[0.1em] text-ink-3">
           {t("details.runs_settings")}
         </div>
         <div className="grid grid-cols-2 gap-x-6">
           {settingRows.map((row) => (
             <div
               key={row.label}
-              className="flex items-center justify-between gap-2 border-b border-bg-surface py-1"
+              className="flex items-center justify-between gap-2 border-b border-sheet py-1"
             >
-              <span className="font-mono text-[11px] font-medium text-text-secondary">
-                {row.label}
-              </span>
-              <span className="truncate font-mono text-[11px] font-bold text-text-primary">
-                {row.value}
-              </span>
+              <span className="font-mono text-[11px] font-medium text-ink-2">{row.label}</span>
+              <span className="truncate font-mono text-[11px] font-bold text-ink">{row.value}</span>
             </div>
           ))}
         </div>
@@ -146,18 +138,18 @@ function RunCard({ run, mushafId }: { run: Run; mushafId: string }) {
         <div className="mt-3.5">
           {aborted ? (
             <>
-              <div className="mb-2 text-[9.5px] font-semibold uppercase tracking-[0.1em] text-text-muted">
+              <div className="mb-2 text-[9.5px] font-semibold uppercase tracking-[0.1em] text-ink-3">
                 {t("details.runs_outcome")}
               </div>
               <div className="mb-[9px] flex items-center gap-2.5">
-                <div className="h-1.5 flex-1 overflow-hidden rounded-[3px] bg-bg-muted">
-                  <div className="h-full bg-warning" style={{ width: `${pct}%` }} />
+                <div className="h-1.5 flex-1 overflow-hidden rounded-[3px] bg-sunk">
+                  <div className="h-full bg-warn" style={{ width: `${pct}%` }} />
                 </div>
-                <span className="whitespace-nowrap font-mono text-[10.5px] font-semibold text-text-muted">
+                <span className="whitespace-nowrap font-mono text-[10.5px] font-semibold text-ink-3">
                   {t("details.runs_reached", { page: abortPage ?? "?", end: run.page_range_end })}
                 </span>
               </div>
-              <div className="text-[11.5px] leading-[1.6] text-text-secondary">
+              <div className="text-[11.5px] leading-[1.6] text-ink-2">
                 {expected != null && detected != null
                   ? t("details.runs_mismatchDetail", {
                       expected: String(expected),
@@ -185,14 +177,14 @@ function RunCard({ run, mushafId }: { run: Run; mushafId: string }) {
           ) : (
             <div className="flex items-center gap-3.5">
               <div className="flex flex-1 items-center gap-2">
-                <div className="h-1.5 max-w-[180px] flex-1 overflow-hidden rounded-[3px] bg-bg-muted">
+                <div className="h-1.5 max-w-[180px] flex-1 overflow-hidden rounded-[3px] bg-sunk">
                   <div className="h-full" style={{ width: `${pct}%`, background: meta.dot }} />
                 </div>
-                <span className="font-mono text-[10.5px] font-semibold text-text-muted">
+                <span className="font-mono text-[10.5px] font-semibold text-ink-3">
                   {t("details.runs_progress", { saved: run.pages_saved, total: rangeSize })}
                 </span>
               </div>
-              <span className="text-[11.5px] text-text-secondary">
+              <span className="text-[11.5px] text-ink-2">
                 {run.status === "completed"
                   ? t("details.runs_completedMsg")
                   : run.status === "cancelled"
@@ -205,12 +197,12 @@ function RunCard({ run, mushafId }: { run: Run; mushafId: string }) {
           )}
         </div>
 
-        <div className="mt-3.5 flex flex-wrap items-center gap-x-5 gap-y-1.5 border-t border-bg-surface pt-3">
+        <div className="mt-3.5 flex flex-wrap items-center gap-x-5 gap-y-1.5 border-t border-sheet pt-3">
           <Link
             to="/mushafs/$mushafId/process"
             params={{ mushafId }}
             search={{ run: run.id }}
-            className="text-[11px] font-bold text-orange hover:text-orange-hover"
+            className="text-[11px] font-bold text-lapis-text hover:text-lapis-text/80"
           >
             {t("details.runs_rerun")}
           </Link>
@@ -219,7 +211,7 @@ function RunCard({ run, mushafId }: { run: Run; mushafId: string }) {
               to="/mushafs/$mushafId/process"
               params={{ mushafId }}
               search={{ run: run.id, from: abortPage ?? undefined }}
-              className="text-[11px] font-bold text-text-secondary hover:text-text-primary"
+              className="text-[11px] font-bold text-ink-2 hover:text-ink"
             >
               {abortPage
                 ? t("details.runs_resumeFrom", { page: abortPage })

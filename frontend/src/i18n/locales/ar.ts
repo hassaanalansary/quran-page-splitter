@@ -6,7 +6,7 @@ import { wordPlaybackAr } from "./word-playback.ar";
 export const ar: typeof en = {
   wordPlayback: wordPlaybackAr,
   common: {
-    appName: "مُقسِّم صفحات المصحف",
+    appName: "سَطْر",
     save: "حفظ",
     cancel: "إلغاء",
     delete: "حذف",
@@ -26,6 +26,13 @@ export const ar: typeof en = {
     ar: "العربية",
     short_en: "EN",
     short_ar: "ع",
+  },
+  theme: {
+    label: "المظهر",
+    light: "فاتح",
+    dark: "داكن",
+    system: "النظام",
+    switch: "تبديل المظهر",
   },
   auth: {
     emailLabel: "البريد الإلكتروني",

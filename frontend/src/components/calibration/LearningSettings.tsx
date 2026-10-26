@@ -56,7 +56,7 @@ export function LearningSettings({
   const busy = disabled || mutation.isPending;
   return (
     <>
-      <label className="flex items-center justify-between gap-3 text-[12px] text-text-primary">
+      <label className="flex items-center justify-between gap-3 text-[12px] text-ink">
         {t("calibration.experimentalSwitch")}
         <Switch
           checked={settings.experimental}
@@ -67,7 +67,7 @@ export function LearningSettings({
         />
       </label>
       <div className="flex flex-col gap-1">
-        <label className="flex items-center justify-between gap-3 text-[12px] text-text-primary">
+        <label className="flex items-center justify-between gap-3 text-[12px] text-ink">
           {t("calibration.libraryLimit")}
           <span className="flex items-center gap-1.5">
             <Input
@@ -107,7 +107,7 @@ export function LearningSettings({
             </Button>
           </span>
         </label>
-        <p className="text-[10.5px] leading-snug text-text-muted">
+        <p className="text-[10.5px] leading-snug text-ink-3">
           {t("calibration.libraryLimitHelp", { value: settings.default_limit })}
         </p>
       </div>

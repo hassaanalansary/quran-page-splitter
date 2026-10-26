@@ -17,9 +17,16 @@ type Props = {
 };
 
 const TYPE_COLOR: Record<LineType, string> = {
-  text: "var(--orange)",
-  sura_header: "var(--navy)",
-  besmella: "var(--success)",
+  text: "var(--lapis)",
+  sura_header: "var(--gold)",
+  besmella: "var(--done)",
+};
+
+/** The text on a TYPE_COLOR badge. */
+const TYPE_ON: Record<LineType, string> = {
+  text: "var(--on-lapis)",
+  sura_header: "var(--on-gold)",
+  besmella: "var(--on-done)",
 };
 
 /** Read-only page viewer with selectable line/segment overlays and aya labels. */
@@ -57,9 +64,9 @@ export function ReviewCanvas({
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      <div className="flex h-9 flex-shrink-0 items-center gap-2 border-b border-border bg-white px-3">
+      <div className="flex h-9 flex-shrink-0 items-center gap-2 border-b border-rule bg-card px-3">
         <NavButton label="Prev" disabled={page <= 1} onClick={() => onPageChange(page - 1)} />
-        <span className="text-[12.5px] font-medium text-text-secondary">
+        <span className="text-[12.5px] font-medium text-ink-2">
           Page {page} / {pageCount}
         </span>
         <NavButton
@@ -71,15 +78,15 @@ export function ReviewCanvas({
 
       <div
         ref={scrollRef}
-        className="raqam-canvas-grid relative flex-1 overflow-auto"
+        className="canvas-well relative flex-1 overflow-auto"
         onClick={() => onSelect(null)}
       >
         {imageUrl ? (
           <div className="relative mx-auto my-8" style={{ width: displayW || "auto" }}>
             <div
-              className="relative rounded-[4px] border border-border bg-white"
+              className="relative rounded-[4px] border border-rule bg-white"
               style={{
-                boxShadow: "var(--shadow-page)",
+                boxShadow: "var(--shadow-card)",
                 width: displayW || "auto",
                 height: displayH || "auto",
               }}
@@ -107,7 +114,7 @@ export function ReviewCanvas({
             </div>
           </div>
         ) : (
-          <div className="flex h-full items-center justify-center text-[13px] text-text-secondary">
+          <div className="flex h-full items-center justify-center text-[13px] text-ink-2">
             No page image.
           </div>
         )}
@@ -153,13 +160,13 @@ function LineBox({
           height: `${pct(line.bbox_h, "h")}%`,
           border: `${selected ? 2 : 1.5}px solid ${color}`,
           backgroundColor: selected
-            ? "color-mix(in oklab, var(--orange) 10%, transparent)"
+            ? "color-mix(in oklab, var(--lapis) 10%, transparent)"
             : "transparent",
         }}
       >
         <span
-          className="absolute -top-[7px] left-0 rounded-pill px-1 text-[8px] font-semibold leading-[1.4] text-white"
-          style={{ background: color }}
+          className="absolute -top-[7px] left-0 rounded-pill px-1 text-[8px] font-semibold leading-[1.4]"
+          style={{ background: color, color: TYPE_ON[line.type] }}
         >
           {line.line_number}
         </span>
@@ -184,11 +191,11 @@ function LineBox({
               {seg.has_separator && (
                 <span
                   className="absolute bottom-0 left-0 top-0 w-[2px]"
-                  style={{ background: "var(--orange)" }}
+                  style={{ background: "var(--lapis)" }}
                 />
               )}
               <span
-                className="mb-[1px] rounded-[2px] bg-white/85 px-[3px] text-[8px] font-bold leading-none text-orange"
+                className="mb-[1px] rounded-[2px] bg-white/85 px-[3px] text-[8px] font-bold leading-none text-lapis-text"
                 style={{ fontVariantNumeric: "tabular-nums" }}
               >
                 {seg.aya_number ?? "?"}
@@ -214,7 +221,7 @@ function NavButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="h-8 cursor-pointer rounded-sm border-[1.5px] border-border-strong bg-white px-3 text-[12.5px] font-medium text-text-secondary transition-colors hover:bg-bg-surface hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
+      className="h-8 cursor-pointer rounded-sm border-[1.5px] border-rule-2 bg-card px-3 text-[12.5px] font-medium text-ink-2 transition-colors hover:bg-sheet hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
     >
       {label}
     </button>

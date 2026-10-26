@@ -13,7 +13,7 @@ import {
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 const ICON_BTN =
-  "flex h-8 w-8 items-center justify-center rounded-full cursor-pointer border border-border-strong bg-white/95 text-orange shadow-md backdrop-blur-sm transition-colors hover:bg-bg-surface focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-500";
+  "flex h-8 w-8 items-center justify-center rounded-full cursor-pointer border border-rule-2 bg-card/95 text-lapis-text shadow-md backdrop-blur-sm transition-colors hover:bg-sheet focus:outline-none focus-visible:ring-2 focus-visible:ring-lapis";
 
 /**
  * A compact help cluster pinned to the top-start corner of a canvas (top-left in
@@ -61,20 +61,20 @@ function GuideDialog({ items, onReplayTour }: { items: string[]; onReplayTour?: 
       </TooltipProvider>
       <DialogContent className="max-w-md" onCloseAutoFocus={(e) => e.preventDefault()}>
         <DialogHeader>
-          <DialogTitle className="text-text-primary">{t("guide.title")}</DialogTitle>
+          <DialogTitle className="text-ink">{t("guide.title")}</DialogTitle>
         </DialogHeader>
         <ol className="flex flex-col gap-2">
           {items.map((label, i) => (
             <li key={i} className="flex items-start gap-2.5 text-[13px] leading-[1.5]">
-              <span className="mt-[1px] flex h-5 w-5 flex-none items-center justify-center rounded-full border border-border-strong text-[10px] font-semibold text-text-muted">
+              <span className="mt-[1px] flex h-5 w-5 flex-none items-center justify-center rounded-full border border-rule-2 text-[10px] font-semibold text-ink-3">
                 {i + 1}
               </span>
-              <span className="text-text-secondary">{label}</span>
+              <span className="text-ink-2">{label}</span>
             </li>
           ))}
         </ol>
         {onReplayTour && (
-          <div className="flex justify-end border-t border-border pt-3">
+          <div className="flex justify-end border-t border-rule pt-3">
             <Button
               variant="outline"
               size="sm"
@@ -113,13 +113,13 @@ function Coach({ text }: { text: string }) {
             aria-expanded={open}
             onClick={() => setOpen((o) => !o)}
             style={{ maxWidth: open ? contentWidth : 32 }}
-            className="inline-flex h-8 min-w-0 shrink-0 cursor-pointer items-center overflow-hidden rounded-full border border-border-strong bg-white/95 text-orange shadow-md backdrop-blur-sm transition-[max-width,background-color,color] duration-200 ease-out hover:bg-bg-surface focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-500"
+            className="inline-flex h-8 min-w-0 shrink-0 cursor-pointer items-center overflow-hidden rounded-full border border-rule-2 bg-card/95 text-lapis-text shadow-md backdrop-blur-sm transition-[max-width,background-color,color] duration-200 ease-out hover:bg-sheet focus:outline-none focus-visible:ring-2 focus-visible:ring-lapis"
           >
             <span ref={contentRef} className="flex h-full w-max min-w-max items-center gap-2 px-2">
               <Lightbulb size={16} className="flex-none" />
               <span
                 aria-hidden={!open}
-                className="whitespace-nowrap text-start text-[12px] leading-snug text-text-secondary"
+                className="whitespace-nowrap text-start text-[12px] leading-snug text-ink-2"
               >
                 {text}
               </span>

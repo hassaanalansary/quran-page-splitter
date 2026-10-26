@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
 import { Hint } from "@/components/app/Panel";
+import { BusyLabel } from "@/components/app/SatrLoader";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -84,7 +85,7 @@ export function BulkPanel({
   const busy = isJobRunning(job);
 
   return (
-    <div className="flex flex-col gap-2.5 rounded-md border border-border bg-white p-3">
+    <div className="flex flex-col gap-2.5 rounded-md border border-rule bg-card p-3">
       {running && batch ? (
         <BatchProgress
           job={batch}
@@ -134,16 +135,16 @@ function MeterSummary({ readiness }: { readiness: CalibrationReadiness | undefin
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex items-baseline justify-between gap-2">
-        <span className="text-[12px] font-semibold text-text-primary">
+        <span className="text-[12px] font-semibold text-ink">
           {t("calibration.bulk.meterTitle")}
         </span>
-        <span className="text-[14px] font-bold text-text-primary">
+        <span className="text-[14px] font-bold text-ink">
           {readiness ? `${readiness.score}%` : "…"}
         </span>
       </div>
       <Meter score={readiness?.score ?? 0} level={readiness?.level ?? "keep"} />
       {readiness && (
-        <span className="text-[11px] leading-snug text-text-secondary">
+        <span className="text-[11px] leading-snug text-ink-2">
           {t(`calibration.bulk.level.${readiness.level}`)}
           {pages?.key === "pages" &&
             ` · ${t("calibration.bulk.pagesShort", { count: pages.values.count, target: pages.values.target })}`}
@@ -164,11 +165,11 @@ function Meter({ score, level, tall }: { score: number; level: string; tall?: bo
       aria-valuemax={100}
       aria-valuenow={score}
       className={`w-full overflow-hidden rounded-full ${tall ? "h-2.5" : "h-1.5"} ${
-        ready ? "bg-success-bg" : "bg-orange-glow"
+        ready ? "bg-done-wash" : "bg-lapis/15"
       }`}
     >
       <div
-        className={`h-full rounded-full transition-all ${ready ? "bg-success" : "bg-orange"}`}
+        className={`h-full rounded-full transition-all ${ready ? "bg-done" : "bg-lapis"}`}
         style={{ width: `${Math.max(0, Math.min(100, score))}%` }}
       />
     </div>
@@ -179,39 +180,37 @@ function ReadinessDetails({ readiness }: { readiness: CalibrationReadiness | und
   const { t } = useTranslation();
   const duration = useDuration();
   if (!readiness) {
-    return <p className="text-[12px] text-text-muted">{t("calibration.bulk.loading")}</p>;
+    return <p className="text-[12px] text-ink-3">{t("calibration.bulk.loading")}</p>;
   }
   const { process_seconds: process, review_minutes: review } = readiness.cost;
   return (
-    <section className="flex flex-col gap-3 rounded-md border border-border bg-bg-surface p-3.5">
+    <section className="flex flex-col gap-3 rounded-md border border-rule bg-sheet p-3.5">
       <div className="flex items-end gap-3">
-        <span className="text-[36px] font-extrabold leading-none text-navy">
+        <span className="text-[36px] font-extrabold leading-none text-lapis-text">
           {readiness.score}%
         </span>
         <div className="flex min-w-0 flex-1 flex-col gap-1.5 pb-1">
-          <span className="text-[13px] font-semibold text-text-primary">
+          <span className="text-[13px] font-semibold text-ink">
             {t(`calibration.bulk.level.${readiness.level}`)}
           </span>
           <Meter score={readiness.score} level={readiness.level} tall />
         </div>
       </div>
-      <p className="text-[11.5px] leading-snug text-text-secondary">
-        {t("calibration.bulk.meterIntro")}
-      </p>
+      <p className="text-[11.5px] leading-snug text-ink-2">{t("calibration.bulk.meterIntro")}</p>
       <ul className="flex flex-col gap-2">
         {readiness.checks.map((check) => (
           <CheckRow key={check.key} check={check} />
         ))}
       </ul>
       <LearningChart pages={readiness.pages} />
-      <p className="text-[11px] leading-snug text-text-muted">
+      <p className="text-[11px] leading-snug text-ink-3">
         {process !== null && review !== null
           ? t("calibration.bulk.cost", { process: duration(process), review })
           : process !== null
             ? t("calibration.bulk.costProcess", { process: duration(process) })
             : t("calibration.bulk.costUnknown")}
       </p>
-      <p className="text-[11px] leading-snug text-text-muted">{t("calibration.bulk.meterBlind")}</p>
+      <p className="text-[11px] leading-snug text-ink-3">{t("calibration.bulk.meterBlind")}</p>
     </section>
   );
 }
@@ -224,10 +223,10 @@ const STATE_ICON: Record<ReadinessState, ReactNode> = {
 };
 
 const STATE_STYLE: Record<ReadinessState, string> = {
-  pass: "bg-success-bg text-success",
-  near: "bg-warning-bg text-[#8a4b0d]",
-  fail: "bg-error-bg text-error",
-  unknown: "bg-bg-muted text-text-secondary",
+  pass: "bg-done-wash text-done-text",
+  near: "bg-warn-wash text-warn-text",
+  fail: "bg-stop-wash text-stop-text",
+  unknown: "bg-sunk text-ink-2",
 };
 
 function CheckRow({ check }: { check: ReadinessCheck }) {
@@ -243,10 +242,10 @@ function CheckRow({ check }: { check: ReadinessCheck }) {
         {STATE_ICON[check.state]}
       </span>
       <span className="flex min-w-0 flex-col gap-0.5">
-        <span className="text-[12px] font-semibold text-text-primary">
+        <span className="text-[12px] font-semibold text-ink">
           {t(`calibration.bulk.checkTitle.${check.key}`)}
         </span>
-        <span className="text-[11.5px] leading-snug text-text-secondary">
+        <span className="text-[11.5px] leading-snug text-ink-2">
           <CheckSentence check={check} />
         </span>
       </span>
@@ -323,18 +322,18 @@ function LearningChart({ pages }: { pages: CalibrationReadiness["pages"] }) {
   const { t } = useTranslation();
   const [active, setActive] = useState<number | null>(null);
   if (!pages.length) {
-    return <p className="text-[11.5px] text-text-muted">{t("calibration.bulk.chartEmpty")}</p>;
+    return <p className="text-[11.5px] text-ink-3">{t("calibration.bulk.chartEmpty")}</p>;
   }
   const last = pages[pages.length - 1];
   const shown = active !== null ? pages[active] : null;
   return (
     <figure className="flex flex-col gap-1.5">
-      <figcaption className="text-[11.5px] font-semibold text-text-secondary">
+      <figcaption className="text-[11.5px] font-semibold text-ink-2">
         {t("calibration.bulk.chartTitle")}
       </figcaption>
       {/* Page order runs left to right, whichever way the interface reads. */}
       <div dir="ltr" className="relative flex gap-1.5">
-        <div className="flex h-[88px] w-8 flex-none flex-col justify-between text-end text-[10px] tabular-nums text-text-muted">
+        <div className="flex h-[88px] w-8 flex-none flex-col justify-between text-end text-[10px] tabular-nums text-ink-3">
           <span>100%</span>
           <span>50%</span>
           <span>0%</span>
@@ -343,7 +342,7 @@ function LearningChart({ pages }: { pages: CalibrationReadiness["pages"] }) {
           {[0, 50, 100].map((at) => (
             <div
               key={at}
-              className="absolute inset-x-0 h-px bg-border"
+              className="absolute inset-x-0 h-px bg-rule"
               style={{ bottom: `${at}%` }}
               aria-hidden
             />
@@ -365,7 +364,7 @@ function LearningChart({ pages }: { pages: CalibrationReadiness["pages"] }) {
                 className="relative flex h-full max-w-[24px] flex-1 cursor-default items-end outline-none"
               >
                 <div
-                  className={`w-full rounded-t-[4px] bg-navy-light transition-opacity ${
+                  className={`w-full rounded-t-[4px] bg-lapis transition-opacity ${
                     active !== null && active !== index ? "opacity-50" : ""
                   }`}
                   style={{ height: `${Math.max(entry.coverage, 0.5)}%` }}
@@ -375,14 +374,14 @@ function LearningChart({ pages }: { pages: CalibrationReadiness["pages"] }) {
           </div>
           {shown && active !== null ? (
             <div
-              className="pointer-events-none absolute bottom-full z-10 mb-1 -translate-x-1/2 whitespace-nowrap rounded-md border border-border bg-white px-2 py-1 shadow-md"
+              className="pointer-events-none absolute bottom-full z-10 mb-1 -translate-x-1/2 whitespace-nowrap rounded-md border border-rule bg-card px-2 py-1 shadow-md"
               style={{ left: `${((active + 0.5) / pages.length) * 100}%` }}
             >
-              <div className="text-[12px] font-bold text-text-primary">{shown.coverage}%</div>
-              <div className="text-[10.5px] text-text-secondary">
+              <div className="text-[12px] font-bold text-ink">{shown.coverage}%</div>
+              <div className="text-[10.5px] text-ink-2">
                 {t("calibration.bulk.tooltipPage", { page: shown.page })}
               </div>
-              <div className="text-[10.5px] text-text-secondary">
+              <div className="text-[10.5px] text-ink-2">
                 {shown.fixes !== null
                   ? t("calibration.bulk.tooltipFixes", { fixes: shown.fixes, words: shown.words })
                   : t("calibration.bulk.tooltipWords", { words: shown.words })}
@@ -390,7 +389,7 @@ function LearningChart({ pages }: { pages: CalibrationReadiness["pages"] }) {
             </div>
           ) : (
             <span
-              className="pointer-events-none absolute -translate-x-1/2 text-[10px] font-semibold text-text-secondary"
+              className="pointer-events-none absolute -translate-x-1/2 text-[10px] font-semibold text-ink-2"
               style={{
                 left: `${((pages.length - 0.5) / pages.length) * 100}%`,
                 bottom: `calc(${last.coverage}% + 2px)`,
@@ -401,20 +400,17 @@ function LearningChart({ pages }: { pages: CalibrationReadiness["pages"] }) {
           )}
         </div>
       </div>
-      <div
-        dir="ltr"
-        className="flex justify-between ps-[38px] text-[10px] tabular-nums text-text-muted"
-      >
+      <div dir="ltr" className="flex justify-between ps-[38px] text-[10px] tabular-nums text-ink-3">
         <span>{t("calibration.bulk.axisPage", { page: pages[0].page })}</span>
         {pages.length > 1 && <span>{t("calibration.bulk.axisPage", { page: last.page })}</span>}
       </div>
       <details className="text-[11px]">
-        <summary className="cursor-pointer text-text-secondary">
+        <summary className="cursor-pointer text-ink-2">
           {t("calibration.bulk.tableToggle", { count: pages.length })}
         </summary>
         <table className="mt-1 w-full border-collapse tabular-nums">
           <thead>
-            <tr className="text-text-muted">
+            <tr className="text-ink-3">
               {(["page", "decided", "wrong", "fixes", "words", "minutes"] as const).map(
                 (column) => (
                   <th key={column} className="px-1 pb-1 text-end font-semibold first:text-start">
@@ -426,7 +422,7 @@ function LearningChart({ pages }: { pages: CalibrationReadiness["pages"] }) {
           </thead>
           <tbody>
             {pages.map((entry) => (
-              <tr key={entry.page} className="border-t border-border">
+              <tr key={entry.page} className="border-t border-rule">
                 <td className="py-0.5">{entry.page}</td>
                 <td className="px-1 py-0.5 text-end">{entry.coverage}%</td>
                 <td className="px-1 py-0.5 text-end">{entry.learned_wrong}</td>
@@ -521,7 +517,7 @@ function BatchForm({
   return (
     <section className="flex flex-col gap-3">
       <div className="flex flex-wrap items-end gap-3">
-        <label className="flex flex-col gap-1 text-[11.5px] font-semibold text-text-secondary">
+        <label className="flex flex-col gap-1 text-[11.5px] font-semibold text-ink-2">
           {t("calibration.bulk.from")}
           <input
             type="number"
@@ -529,10 +525,10 @@ function BatchForm({
             max={pageCount}
             value={first}
             onChange={(event) => setFirst(event.target.value)}
-            className="h-9 w-24 rounded-md border-[1.5px] border-border-strong px-2.5 text-[13px] tabular-nums outline-none focus:border-orange"
+            className="h-9 w-24 rounded-md border-[1.5px] border-rule-2 px-2.5 text-[13px] tabular-nums outline-none focus:border-lapis"
           />
         </label>
-        <label className="flex flex-col gap-1 text-[11.5px] font-semibold text-text-secondary">
+        <label className="flex flex-col gap-1 text-[11.5px] font-semibold text-ink-2">
           {t("calibration.bulk.to")}
           <input
             type="number"
@@ -540,14 +536,14 @@ function BatchForm({
             max={pageCount}
             value={last}
             onChange={(event) => setLast(event.target.value)}
-            className="h-9 w-24 rounded-md border-[1.5px] border-border-strong px-2.5 text-[13px] tabular-nums outline-none focus:border-orange"
+            className="h-9 w-24 rounded-md border-[1.5px] border-rule-2 px-2.5 text-[13px] tabular-nums outline-none focus:border-lapis"
           />
         </label>
-        <span className="pb-2 text-[11px] text-text-muted">
+        <span className="pb-2 text-[11px] text-ink-3">
           {t("calibration.bulk.ofPages", { count: pageCount })}
         </span>
       </div>
-      <label className="flex cursor-pointer items-start gap-2 text-[12px] leading-snug text-text-primary">
+      <label className="flex cursor-pointer items-start gap-2 text-[12px] leading-snug text-ink">
         <Checkbox
           checked={refresh}
           onCheckedChange={(value) => setRefresh(value === true)}
@@ -555,9 +551,7 @@ function BatchForm({
         />
         <span>
           {t("calibration.bulk.refresh")}
-          <span className="block text-[11px] text-text-muted">
-            {t("calibration.bulk.refreshHelp")}
-          </span>
+          <span className="block text-[11px] text-ink-3">{t("calibration.bulk.refreshHelp")}</span>
         </span>
       </label>
 
@@ -568,7 +562,7 @@ function BatchForm({
           {plan.error instanceof ApiError ? plan.error.message : t("calibration.requestFailed")}
         </Hint>
       ) : !current ? (
-        <p className="text-[12px] text-text-muted">{t("calibration.bulk.planLoading")}</p>
+        <p className="text-[12px] text-ink-3">{t("calibration.bulk.planLoading")}</p>
       ) : (
         <PlanSummary plan={current} readiness={readiness} />
       )}
@@ -583,11 +577,13 @@ function BatchForm({
           onClick={() => start.mutate()}
           disabled={!current || count === 0 || busy || start.isPending || plan.isFetching}
         >
-          {start.isPending
-            ? t("calibration.bulk.starting")
-            : current && current.process === 0 && current.drafted > 0
-              ? t("calibration.bulk.startChanged")
-              : t("calibration.bulk.start", { count: current?.process ?? 0 })}
+          {start.isPending ? (
+            <BusyLabel>{t("calibration.bulk.starting")}</BusyLabel>
+          ) : current && current.process === 0 && current.drafted > 0 ? (
+            t("calibration.bulk.startChanged")
+          ) : (
+            t("calibration.bulk.start", { count: current?.process ?? 0 })
+          )}
         </Button>
       </div>
     </section>
@@ -614,18 +610,18 @@ function PlanSummary({
   const alone = LEFT_ALONE.filter((reason) => plan.pages[reason]?.length);
   const pages = plan.process + plan.drafted;
   return (
-    <div className="flex flex-col gap-2 rounded-md border border-border p-3 text-[12px] leading-snug">
-      <span className="font-semibold text-text-primary">
+    <div className="flex flex-col gap-2 rounded-md border border-rule p-3 text-[12px] leading-snug">
+      <span className="font-semibold text-ink">
         {t("calibration.bulk.planProcess", { count: plan.process })}
       </span>
       {alone.length > 0 && (
         <div className="flex flex-col gap-1">
-          <span className="text-text-secondary">{t("calibration.bulk.leftAlone")}</span>
-          <ul className="flex flex-col gap-0.5 ps-3 text-[11.5px] text-text-secondary">
+          <span className="text-ink-2">{t("calibration.bulk.leftAlone")}</span>
+          <ul className="flex flex-col gap-0.5 ps-3 text-[11.5px] text-ink-2">
             {alone.map((reason) => (
               <li key={reason}>
                 {t(`calibration.bulk.reason.${reason}`, { count: plan.pages[reason]!.length })}
-                <span className="ms-1.5 font-mono text-[10.5px] text-text-muted" dir="ltr">
+                <span className="ms-1.5 font-mono text-[10.5px] text-ink-3" dir="ltr">
                   {ranges(plan.pages[reason]!)}
                 </span>
               </li>
@@ -634,7 +630,7 @@ function PlanSummary({
         </div>
       )}
       {pages > 0 && (
-        <span className="text-[11.5px] text-text-secondary">
+        <span className="text-[11.5px] text-ink-2">
           {plan.process_seconds !== null
             ? t("calibration.bulk.estimate", {
                 time: duration(plan.process * plan.process_seconds),
@@ -708,26 +704,23 @@ function BatchProgress({
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex items-baseline justify-between gap-2">
-        <span className="text-[12px] font-semibold text-text-primary">
+        <span className="text-[12px] font-semibold text-ink">
           {t("calibration.bulk.progressTitle", {
             first: job.page_range_start,
             last: job.page_range_end,
           })}
         </span>
-        <span className="text-[12px] font-bold tabular-nums text-text-primary">{pct}%</span>
+        <span className="text-[12px] font-bold tabular-nums text-ink">{pct}%</span>
       </div>
-      <div className="h-1.5 w-full overflow-hidden rounded-full bg-orange-glow">
-        <div
-          className="h-full rounded-full bg-orange transition-all"
-          style={{ width: `${pct}%` }}
-        />
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-lapis/15">
+        <div className="h-full rounded-full bg-lapis transition-all" style={{ width: `${pct}%` }} />
       </div>
-      <span className="text-[11px] leading-snug text-text-secondary">
+      <span className="text-[11px] leading-snug text-ink-2">
         {t("calibration.bulk.progressLine", { page: job.current_page ?? "…", processed, skipped })}
         {failed > 0 && ` · ${t("calibration.bulk.progressFailed", { count: failed })}`}
       </span>
       {perPage !== null && remaining > 0 && (
-        <span className="text-[11px] text-text-muted">
+        <span className="text-[11px] text-ink-3">
           {t("calibration.bulk.progressLeft", { time: duration(remaining * perPage) })}
         </span>
       )}
@@ -746,7 +739,7 @@ function LastBatch({ job, report }: { job: ProcessJob; report: CalibrationBatchR
       ? ""
       : ` (${t(job.state === "cancelled" ? "calibration.bulk.lastStopped" : "calibration.bulk.lastBroken")})`;
   return (
-    <div className="flex flex-col gap-0.5 rounded-sm bg-bg-surface px-2 py-1.5 text-[11px] leading-snug text-text-secondary">
+    <div className="flex flex-col gap-0.5 rounded-sm bg-sheet px-2 py-1.5 text-[11px] leading-snug text-ink-2">
       <span>
         {t("calibration.bulk.lastBatch", {
           first: report.first,
@@ -758,7 +751,7 @@ function LastBatch({ job, report }: { job: ProcessJob; report: CalibrationBatchR
         {state}
       </span>
       {failed > 0 && (
-        <span className="text-error" dir="auto">
+        <span className="text-stop-text" dir="auto">
           {t("calibration.bulk.failedPages", {
             pages: ranges(report.failed.map((entry) => entry.page)),
           })}

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
+import { BusyLabel } from "@/components/app/SatrLoader";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -101,7 +102,7 @@ export function CreateMushafDialog({
                 value={selectedQiraa}
                 onChange={(e) => setQiraa(e.target.value)}
                 disabled={!qiraat || qiraat.length === 0}
-                className="h-9 cursor-pointer rounded-md border-[1.5px] border-border-strong bg-white px-2.5 text-sm capitalize outline-none focus:border-orange focus:shadow-[0_0_0_3px_var(--orange-glow)] disabled:cursor-not-allowed disabled:opacity-60"
+                className="h-9 cursor-pointer rounded-md border-[1.5px] border-rule-2 bg-card px-2.5 text-sm capitalize outline-none focus:border-lapis focus:ring-3 focus:ring-lapis/15 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {!qiraat ? (
                   <option value="">{t("createDialog.qiraaLoading")}</option>
@@ -124,10 +125,10 @@ export function CreateMushafDialog({
                 type="file"
                 accept="application/pdf,.pdf"
                 onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-                className="cursor-pointer file:mr-3 file:cursor-pointer file:rounded file:border-0 file:bg-bg-muted file:px-2 file:py-1 file:text-xs file:font-medium"
+                className="cursor-pointer file:mr-3 file:cursor-pointer file:rounded file:border-0 file:bg-sunk file:px-2 file:py-1 file:text-xs file:font-medium"
               />
               {file && (
-                <span className="text-xs text-text-muted">
+                <span className="text-xs text-ink-3">
                   {t("createDialog.fileSize", {
                     name: file.name,
                     size: (file.size / 1024 / 1024).toFixed(1),
@@ -137,7 +138,7 @@ export function CreateMushafDialog({
             </div>
 
             {error && (
-              <div className="rounded-md border border-error-border bg-error-bg px-3 py-2 text-sm text-error">
+              <div className="rounded-md border border-stop/20 bg-stop-wash px-3 py-2 text-sm text-stop-text">
                 {error}
               </div>
             )}
@@ -153,7 +154,11 @@ export function CreateMushafDialog({
               {t("common.cancel")}
             </Button>
             <Button type="submit" disabled={mutation.isPending}>
-              {mutation.isPending ? t("createDialog.creating") : t("createDialog.create")}
+              {mutation.isPending ? (
+                <BusyLabel>{t("createDialog.creating")}</BusyLabel>
+              ) : (
+                t("createDialog.create")
+              )}
             </Button>
           </DialogFooter>
         </form>

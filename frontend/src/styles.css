@@ -3,138 +3,579 @@
 @import "tw-animate-css";
 
 /*
- * Raqam — Mushaf Page Splitter
- * Design tokens converted from the spec hex values to oklch.
- * Light-only tool, no dark theme.
+ * SATR (سَطْر). Design tokens from the redesign (design/redesign/tokens.css),
+ * Direction A "Tablet", in light and dark.
+ *
+ * The raw tokens keep the boards' names (--paper, --lapis-wash…) and live on :root;
+ * @theme maps them onto Tailwind (bg-paper, text-ink-3, border-rule-2…). The dark
+ * values apply under <html data-theme="dark">, which lib/theme.ts sets (and the
+ * inline script in index.html, before first paint) from the Light · Dark · System
+ * preference. The overlay colours (--ov-*) and page scans stay the same in both.
  */
 
-@theme inline {
-  --font-sans: "Outfit", system-ui, sans-serif;
-  --font-display: "Syne", system-ui, sans-serif;
-  --font-arabic: "Amiri", serif;
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
+@theme inline {
+  /* surfaces */
+  --color-paper: var(--paper);
+  --color-sheet: var(--sheet);
+  --color-card: var(--card);
+  --color-well: var(--well);
+  --color-sunk: var(--sunk);
+  --color-page: var(--page);
+  --color-page-frame: var(--page-frame);
+  --color-band: var(--band);
+  --color-band-frame: var(--band-frame);
+
+  /* lines */
+  --color-rule: var(--rule);
+  --color-rule-2: var(--rule-2);
+  --color-rule-soft: var(--rule-soft);
+
+  /* text */
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-ink-4: var(--ink-4);
+  --color-faint: var(--faint);
+
+  /* lapis, gold */
+  --color-lapis: var(--lapis);
+  --color-on-lapis: var(--on-lapis);
+  --color-lapis-text: var(--lapis-text);
+  --color-lapis-wash: var(--lapis-wash);
+  --color-deep: var(--deep);
+  --color-on-deep: var(--on-deep);
+  --color-on-deep-2: var(--on-deep-2);
+  --color-gold: var(--gold);
+  --color-on-gold: var(--on-gold);
+  --color-gold-text: var(--gold-text);
+  --color-gold-wash: var(--gold-wash);
+  --color-gold-on-deep: var(--gold-on-deep);
+
+  /* states */
+  --color-done: var(--done);
+  --color-on-done: var(--on-done);
+  --color-done-text: var(--done-text);
+  --color-done-wash: var(--done-wash);
+  --color-warn: var(--warn);
+  --color-on-warn: var(--on-warn);
+  --color-warn-text: var(--warn-text);
+  --color-warn-wash: var(--warn-wash);
+  --color-stop: var(--stop);
+  --color-on-stop: var(--on-stop);
+  --color-stop-text: var(--stop-text);
+  --color-stop-wash: var(--stop-wash);
+  --color-toast: var(--toast);
+  --color-on-toast: var(--on-toast);
+  --color-scrim: var(--scrim);
+
+  /* the overlay language */
+  --color-ov-bounds: var(--ov-bounds);
+  --color-ov-line: var(--ov-line);
+  --color-ov-aya-cut: var(--ov-aya-cut);
+  --color-ov-word: var(--ov-word);
+  --color-ov-body: var(--ov-body);
+  --color-ov-mark: var(--ov-mark);
+  --color-ov-ornament: var(--ov-ornament);
+  --color-ov-symbol: var(--ov-symbol);
+
+  /* shadcn's names, for the vendored components in components/ui only */
+  --color-background: var(--paper);
+  --color-foreground: var(--ink);
+  --color-card-foreground: var(--ink);
+  --color-popover: var(--card);
+  --color-popover-foreground: var(--ink);
+  --color-primary: var(--lapis);
+  --color-primary-foreground: var(--on-lapis);
+  --color-secondary: var(--sunk);
+  --color-secondary-foreground: var(--ink);
+  --color-muted: var(--sunk);
+  --color-muted-foreground: var(--ink-3);
+  --color-accent: var(--lapis);
+  --color-accent-foreground: var(--on-lapis);
+  --color-destructive: var(--stop);
+  --color-destructive-foreground: var(--on-stop);
+  --color-border: var(--rule);
+  --color-input: var(--rule-2);
+  --color-ring: var(--lapis);
+}
+
+@theme {
+  /* type: Reem Kufi for display, IBM Plex for the UI and data, Amiri for Arabic */
+  --font-ui: "IBM Plex Sans", "IBM Plex Sans Arabic", system-ui, sans-serif;
+  --font-ui-ar: "IBM Plex Sans Arabic", "IBM Plex Sans", sans-serif;
+  --font-sans: var(--font-ui);
+  --font-display: "Reem Kufi", "IBM Plex Sans Arabic", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --font-quran: "Amiri Quran", serif;
+  --font-cite: "Amiri", serif;
+
+  /* shape */
   --radius-xs: 3px;
   --radius-sm: 5px;
   --radius-md: 6px;
   --radius: 8px;
   --radius-lg: 12px;
-  --radius-pill: 20px;
-
-  /* shadcn semantic mapping */
-  --color-background: var(--bg-page);
-  --color-foreground: var(--text-primary);
-  --color-card: var(--white);
-  --color-card-foreground: var(--text-primary);
-  --color-popover: var(--white);
-  --color-popover-foreground: var(--text-primary);
-  --color-primary: var(--navy);
-  --color-primary-foreground: var(--white);
-  --color-secondary: var(--bg-surface);
-  --color-secondary-foreground: var(--text-primary);
-  --color-muted: var(--bg-surface);
-  --color-muted-foreground: var(--text-secondary);
-  --color-accent: var(--orange);
-  --color-accent-foreground: var(--white);
-  --color-destructive: var(--error);
-  --color-destructive-foreground: var(--white);
-  --color-border: var(--border);
-  --color-input: var(--border-strong);
-  --color-ring: var(--orange);
-
-  /* Raqam-specific */
-  --color-bg-page: var(--bg-page);
-  --color-bg-surface: var(--bg-surface);
-  --color-bg-muted: var(--bg-muted);
-  --color-navy: var(--navy);
-  --color-navy-hover: var(--navy-hover);
-  --color-navy-light: var(--navy-light);
-  --color-orange: var(--orange);
-  --color-orange-hover: var(--orange-hover);
-  --color-orange-glow: var(--orange-glow);
-  --color-orange-tint: var(--orange-tint);
-  --color-text-primary: var(--text-primary);
-  --color-text-secondary: var(--text-secondary);
-  --color-text-muted: var(--text-muted);
-  --color-border-strong: var(--border-strong);
-  --color-info: var(--info);
-  --color-info-bg: var(--info-bg);
-  --color-success: var(--success);
-  --color-success-bg: var(--success-bg);
-  --color-warning: var(--warning);
-  --color-warning-bg: var(--warning-bg);
-  --color-error: var(--error);
-  --color-error-bg: var(--error-bg);
+  --radius-control: 6px;
+  --radius-card: 10px;
+  --radius-panel: 12px;
+  --radius-pill: 999px;
 }
 
 :root {
-  /* Backgrounds */
-  --bg-page: oklch(0.984 0.003 247);
-  --bg-surface: oklch(0.968 0.007 247);
-  --bg-muted: oklch(0.929 0.013 255);
-  --white: oklch(1 0 0);
+  color-scheme: light;
 
-  /* Navy */
-  --navy: oklch(0.34 0.07 252);
-  --navy-hover: oklch(0.44 0.1 252);
-  --navy-light: oklch(0.58 0.13 248);
+  /* surfaces */
+  --paper: #f4efe6; /* page background */
+  --sheet: #fbf8f2; /* headers, rails, inspector */
+  --card: #ffffff; /* cards, dialogs, inputs */
+  --well: #e8e0d2; /* the canvas behind a page scan */
+  --sunk: #e8e0d2; /* tracks, segmented controls, chips */
+  --page: #fffdf8; /* a drawn mushaf page; scans stay as scanned */
+  --page-frame: #d8c9a6;
+  --band: #f6eedb;
+  --band-frame: #c3ae80;
 
-  /* Orange */
-  --orange: oklch(0.65 0.17 41);
-  --orange-hover: oklch(0.55 0.16 39);
-  --orange-glow: oklch(0.65 0.17 41 / 0.15);
-  --orange-tint: oklch(0.65 0.17 41 / 0.06);
+  /* lines */
+  --rule: #ddd3c2;
+  --rule-2: #cfc3ae; /* input and secondary-button borders */
+  --rule-soft: #efe8dc; /* separators inside cards */
 
-  /* Semantic */
-  --info: oklch(0.6 0.13 220);
-  --info-bg: oklch(0.94 0.06 220);
-  --success: oklch(0.6 0.13 156);
-  --success-bg: oklch(0.94 0.06 156);
-  --success-border: oklch(0.6 0.13 156 / 0.3);
-  --warning: oklch(0.66 0.16 56);
-  --warning-bg: oklch(0.96 0.05 95);
-  --warning-border: oklch(0.66 0.16 56 / 0.25);
-  --error: oklch(0.59 0.21 27);
-  --error-bg: oklch(0.94 0.03 22);
-  --error-border: oklch(0.59 0.21 27 / 0.2);
+  /* text */
+  --ink: #1f1b16;
+  --ink-2: #4a4338; /* body copy */
+  --ink-3: #5e5648; /* labels, captions */
+  --ink-4: #736a5c; /* timestamps, hints */
+  --faint: #b5a68c; /* decoration only */
 
-  /* Text */
-  --text-primary: oklch(0.27 0.04 257);
-  --text-secondary: oklch(0.51 0.04 257);
-  --text-muted: oklch(0.68 0.03 257);
+  /* lapis: primary actions, selection, links */
+  --lapis: #1e4e8c;
+  --on-lapis: #ffffff;
+  --lapis-text: #1e4e8c;
+  --lapis-wash: #e3eaf4;
+  --deep: #173e70; /* hero bands, the spine's identity block, the SATR tile */
+  --on-deep: #f4efe6;
+  --on-deep-2: #c9d6ea;
 
-  /* Borders */
-  --border: oklch(0.929 0.013 255);
-  --border-strong: oklch(0.85 0.02 255);
+  /* gold: the ornament, "reviewed" progress, the one accent */
+  --gold: #c9962e;
+  --on-gold: #1f1b16;
+  --gold-text: #84600f;
+  --gold-wash: #fbf1dd;
+  --gold-on-deep: #e8c46a;
 
-  /* Shadows */
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.1), 0 2px 6px rgba(0, 0, 0, 0.06);
-  --shadow-page: 0 8px 32px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.06);
+  /* states. --on-warn is the text the boards put on --warn (a count that's off). */
+  --done: #2e6e46;
+  --on-done: #ffffff;
+  --done-text: #24573a;
+  --done-wash: #ddebdf;
+  --warn: #9a5b00;
+  --on-warn: #ffffff;
+  --warn-text: #7a4a00;
+  --warn-wash: #f5e7cf;
+  --stop: #a8321f;
+  --on-stop: #ffffff;
+  --stop-text: #a8321f;
+  --stop-wash: #f7e1dc;
+  --toast: #1f1b16;
+  --on-toast: #f4efe6;
+
+  /* depth */
+  --scrim: rgba(31, 27, 22, 0.45);
+  --shadow-card: 0 10px 28px rgba(31, 27, 22, 0.14);
+  --shadow-lift: 0 12px 28px rgba(31, 27, 22, 0.16); /* a hovered card */
+  --shadow-modal: 0 30px 80px rgba(31, 27, 22, 0.3);
+
+  /* the overlay language: the same in both themes, drawn over page scans */
+  --ov-bounds: #b07d1e; /* text-area bounds, dashed */
+  --ov-line: rgba(30, 78, 140, 0.3); /* a line's box */
+  --ov-aya-cut: #c2410c;
+  --ov-word: #0f766e;
+  --ov-body: #1f1b16; /* ink roles */
+  --ov-mark: #28b4c8; /* the engine's ROLE_RGB.mark */
+  --ov-ornament: #8e4c99;
+  --ov-symbol: #b87a14;
+
+  /* the SATR mark (design/brand/satr/brand.css) */
+  --satr-tile: #173e70;
+  --satr-gold: #c9962e;
+  --satr-mark: #15808f; /* tashkeel on paper */
+  --satr-mark-on-tile: #28b4c8;
+  --satr-mark-pending: #b9af9f; /* loader: a mark found but not yet typed */
+  --satr-ink: #1f1b16;
+  --satr-paper: #f4efe6;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --paper: #17140f;
+  --sheet: #1e1a14;
+  --card: #27221b;
+  --well: #100e0a;
+  --sunk: #352e24;
+  --page: #f3eee3;
+  --page-frame: #cdbd98;
+  --band: #ece3ce;
+  --band-frame: #bca77a;
+
+  --rule: #352e24;
+  --rule-2: #4a4135;
+  --rule-soft: #2e281f;
+
+  --ink: #f1ebdf;
+  --ink-2: #d6cdbd;
+  --ink-3: #c2b8a6;
+  --ink-4: #9c917f;
+  --faint: #6b6152;
+
+  --lapis: #6e9bdb;
+  --on-lapis: #0d1626;
+  --lapis-text: #8db2e6;
+  --lapis-wash: #1d2a3d;
+  --deep: #12233d;
+  --on-deep: #f1ebdf;
+  --on-deep-2: #a9bcd8;
+
+  --gold: #d9a53f;
+  --on-gold: #17140f;
+  --gold-text: #e2b65a;
+  --gold-wash: #3a2e14;
+  --gold-on-deep: #e2b65a;
+
+  --done: #6fb38a;
+  --on-done: #10261a;
+  --done-text: #8fcba5;
+  --done-wash: #1b3325;
+  --warn: #e0a33b;
+  --on-warn: #17140f;
+  --warn-text: #f0c46a;
+  --warn-wash: #3a2c12;
+  --stop: #e8735c;
+  --on-stop: #1f0e0a;
+  --stop-text: #f09583;
+  --stop-wash: #3a1d17;
+  --toast: #f1ebdf;
+  --on-toast: #1f1b16;
+
+  --scrim: rgba(0, 0, 0, 0.62);
+  --shadow-card: 0 12px 32px rgba(0, 0, 0, 0.5);
+  --shadow-lift: 0 14px 36px rgba(0, 0, 0, 0.5);
+  --shadow-modal: 0 30px 80px rgba(0, 0, 0, 0.6);
+
+  --satr-gold: #d9a53f;
+  --satr-mark: #3cc4d6;
+  --satr-mark-pending: #6f675b;
+  --satr-ink: #f1ebdf;
 }
 
 @layer base {
   * {
-    border-color: var(--color-border);
+    border-color: var(--rule);
   }
   html,
   body {
     height: 100%;
   }
   body {
-    background-color: var(--bg-page);
-    color: var(--text-primary);
+    background-color: var(--paper);
+    color: var(--ink);
     font-family: var(--font-sans);
     font-size: 14px;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
+  html:lang(ar) body {
+    font-family: var(--font-ui-ar);
+  }
 }
 
-/* Dot-grid canvas backdrop */
-.raqam-canvas-grid {
-  background-color: var(--bg-surface);
-  background-image: radial-gradient(var(--border-strong) 1px, transparent 1px);
+/* The canvas behind a page scan: the well, dotted. */
+.canvas-well {
+  background-color: var(--well);
+  background-image: radial-gradient(var(--rule-2) 1px, transparent 1px);
   background-size: 24px 24px;
+}
+
+/*
+  The SATR loaders (design/brand/satr/loader), as components/app/SatrLoader.tsx draws
+  them. Writing: the line draws in, the letters are written, the fatha and sukun
+  arrive as found marks and then take the mark colour, ۞ is set, and it loops (2.4 s).
+  Inline: the teeth of س rise in turn under the fatha (1.2 s). Both pulse instead
+  under reduced motion.
+*/
+@keyframes satr-rule {
+  0% {
+    transform: scaleX(0);
+  }
+  30% {
+    transform: scaleX(1);
+  }
+  84% {
+    opacity: 1;
+  }
+  96%,
+  100% {
+    opacity: 0;
+    transform: scaleX(1);
+  }
+}
+@keyframes satr-star {
+  0%,
+  60% {
+    opacity: 0;
+    transform: scale(0.2) rotate(-45deg);
+  }
+  70% {
+    opacity: 1;
+    transform: scale(1) rotate(0);
+  }
+  84% {
+    opacity: 1;
+  }
+  96%,
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes satr-type {
+  0%,
+  58% {
+    stroke: var(--satr-mark-pending);
+  }
+  66%,
+  100% {
+    stroke: var(--satr-mark);
+  }
+}
+@keyframes satr-typef {
+  0%,
+  58% {
+    fill: var(--satr-mark-pending);
+  }
+  66%,
+  100% {
+    fill: var(--satr-mark);
+  }
+}
+@keyframes satr-m0 {
+  0%,
+  46% {
+    stroke-dashoffset: 1.02;
+  }
+  52%,
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes satr-sk {
+  0%,
+  50% {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  56% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  84% {
+    opacity: 1;
+  }
+  96%,
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes satr-fade {
+  0%,
+  84% {
+    opacity: 1;
+  }
+  96%,
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes satr-s0 {
+  0%,
+  4% {
+    stroke-dashoffset: 1.02;
+  }
+  42%,
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes satr-s1 {
+  0%,
+  10% {
+    stroke-dashoffset: 1.02;
+  }
+  20%,
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes satr-s2 {
+  0%,
+  16% {
+    stroke-dashoffset: 1.02;
+  }
+  26%,
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes satr-s3 {
+  0%,
+  22% {
+    stroke-dashoffset: 1.02;
+  }
+  34%,
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes satr-s4 {
+  0%,
+  30% {
+    stroke-dashoffset: 1.02;
+  }
+  46%,
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes satr-pulse {
+  50% {
+    opacity: 0.45;
+  }
+}
+@keyframes satr-tooth {
+  0%,
+  60%,
+  100% {
+    transform: scaleY(0.3);
+  }
+  25% {
+    transform: scaleY(1);
+  }
+}
+@keyframes satr-fatha {
+  0%,
+  30%,
+  85%,
+  100% {
+    opacity: 0;
+  }
+  45%,
+  65% {
+    opacity: 1;
+  }
+}
+@keyframes satr-inline-pulse {
+  50% {
+    opacity: 0.4;
+  }
+}
+
+.satr-ld-rule {
+  transform-box: fill-box;
+  transform-origin: right center;
+  animation: satr-rule 2.4s cubic-bezier(0.3, 0, 0.2, 1) infinite;
+}
+.satr-ld-word,
+.satr-ld-mark {
+  animation: satr-fade 2.4s linear infinite;
+}
+.satr-ld-word path,
+.satr-ld-mark path {
+  stroke-dasharray: 1 2;
+}
+.satr-ld-mark path {
+  animation:
+    satr-m0 2.4s ease-out infinite,
+    satr-type 2.4s linear infinite;
+}
+.satr-ld-s0 {
+  animation: satr-s0 2.4s cubic-bezier(0.45, 0, 0.3, 1) infinite;
+}
+.satr-ld-s1 {
+  animation: satr-s1 2.4s cubic-bezier(0.45, 0, 0.3, 1) infinite;
+}
+.satr-ld-s2 {
+  animation: satr-s2 2.4s cubic-bezier(0.45, 0, 0.3, 1) infinite;
+}
+.satr-ld-s3 {
+  animation: satr-s3 2.4s cubic-bezier(0.45, 0, 0.3, 1) infinite;
+}
+.satr-ld-s4 {
+  animation: satr-s4 2.4s cubic-bezier(0.45, 0, 0.3, 1) infinite;
+}
+.satr-ld-sukun {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation:
+    satr-sk 2.4s ease-out infinite,
+    satr-typef 2.4s linear infinite;
+}
+.satr-ld-star {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: satr-star 2.4s ease-out infinite;
+}
+.satr-li-tooth {
+  transform-box: fill-box;
+  transform-origin: center bottom;
+  animation: satr-tooth 1.2s ease-in-out infinite;
+}
+.satr-li-t2 {
+  animation-delay: 0.15s;
+}
+.satr-li-t3 {
+  animation-delay: 0.3s;
+}
+.satr-li-fatha {
+  animation: satr-fatha 1.2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .satr-ld-rule,
+  .satr-ld-word,
+  .satr-ld-word path,
+  .satr-ld-mark,
+  .satr-ld-mark path,
+  .satr-ld-sukun,
+  .satr-ld-star {
+    animation: none;
+    stroke-dashoffset: 0;
+    opacity: 1;
+    transform: none;
+  }
+  .satr-ld-mark path {
+    stroke: var(--satr-mark);
+  }
+  .satr-ld-sukun {
+    fill: var(--satr-mark);
+  }
+  .satr-ld-all {
+    animation: satr-pulse 1.6s ease-in-out infinite;
+  }
+  .satr-li-tooth {
+    animation: satr-inline-pulse 1.6s ease-in-out infinite;
+    transform: none;
+  }
+  .satr-li-t2 {
+    animation-delay: 0.15s;
+  }
+  .satr-li-t3 {
+    animation-delay: 0.3s;
+  }
+  .satr-li-fatha {
+    animation: none;
+    opacity: 1;
+  }
 }
 
 /*

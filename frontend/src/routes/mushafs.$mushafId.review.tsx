@@ -9,6 +9,7 @@ import { Aside, Field, Hint, StatusLine } from "@/components/app/Panel";
 import { AyaPreviewDialog } from "@/components/app/AyaPreviewDialog";
 import { CanvasHelp } from "@/components/app/CanvasHelp";
 import { LineNavigator } from "@/components/app/LineNavigator";
+import { BusyLabel } from "@/components/app/SatrLoader";
 import { TourOverlay } from "@/components/app/tour/TourOverlay";
 import { useStepTour, type TourStep } from "@/components/app/tour/useStepTour";
 import { ReviewEditCanvas } from "@/components/canvas/ReviewEditCanvas";
@@ -528,7 +529,7 @@ function ReviewPage() {
   const statusSlot = (
     <div className="flex items-center gap-2 text-[11.5px]">
       {unsavedCount > 0 && (
-        <span className="font-medium text-orange">
+        <span className="font-medium text-lapis-text">
           {t("review.unsaved", { count: unsavedCount })}
         </span>
       )}
@@ -537,18 +538,18 @@ function ReviewPage() {
           type="button"
           onClick={nextWarningPage}
           title={t("review.warningTitle")}
-          className="cursor-pointer rounded-sm border border-[color:var(--warning-border)] bg-warning-bg px-1.5 py-0.5 font-medium text-[#8a4b0d]"
+          className="cursor-pointer rounded-sm border border-warn/25 bg-warn-wash px-1.5 py-0.5 font-medium text-warn-text"
         >
           ⚠ {derived.totalWarnings}
         </button>
       )}
-      <div className="flex h-[26px] overflow-hidden rounded-sm border-[1.5px] border-border-strong">
+      <div className="flex h-[26px] overflow-hidden rounded-sm border-[1.5px] border-rule-2">
         <button
           type="button"
           onClick={undo}
           disabled={!canUndo}
           title={t("review.undoTitle")}
-          className="cursor-pointer border-r border-border bg-white px-2 text-text-secondary hover:bg-bg-surface disabled:opacity-40"
+          className="cursor-pointer border-r border-rule bg-card px-2 text-ink-2 hover:bg-sheet disabled:opacity-40"
         >
           ↶
         </button>
@@ -557,7 +558,7 @@ function ReviewPage() {
           onClick={redo}
           disabled={!canRedo}
           title={t("review.redoTitle")}
-          className="cursor-pointer bg-white px-2 text-text-secondary hover:bg-bg-surface disabled:opacity-40"
+          className="cursor-pointer bg-card px-2 text-ink-2 hover:bg-sheet disabled:opacity-40"
         >
           ↷
         </button>
@@ -611,7 +612,7 @@ function ReviewPage() {
                 onClick={saveChanges}
                 disabled={unsavedCount === 0 || saving}
               >
-                {saving ? t("common.saving") : t("review.saveChanges")}
+                {saving ? <BusyLabel>{t("common.saving")}</BusyLabel> : t("review.saveChanges")}
               </Button>
               <Button asChild variant="outline" className="flex-1">
                 <Link to="/mushafs/$mushafId/finalize" params={{ mushafId }} search={{ page }}>
@@ -623,11 +624,13 @@ function ReviewPage() {
         }
       >
         {!store ? (
-          <Hint>{t("review.loadingData")}</Hint>
+          <Hint>
+            <BusyLabel>{t("review.loadingData")}</BusyLabel>
+          </Hint>
         ) : (
           <>
             {currentDerived && (
-              <div className="rounded-md border border-border bg-white px-2.5 py-1.5 text-[11.5px] text-text-secondary">
+              <div className="rounded-md border border-rule bg-card px-2.5 py-1.5 text-[11.5px] text-ink-2">
                 {t("review.enters", {
                   fromSura: suraName(currentDerived.entry.sura),
                   fromAya: currentDerived.entry.aya,
@@ -635,10 +638,12 @@ function ReviewPage() {
                   toAya: Math.max(1, currentDerived.exit.aya - 1),
                 })}
                 {currentEdit?.reviewed && (
-                  <span className="ms-1 font-semibold text-success">{t("review.reviewedTag")}</span>
+                  <span className="ms-1 font-semibold text-done-text">
+                    {t("review.reviewedTag")}
+                  </span>
                 )}
                 {currentDerived.warnings > 0 && (
-                  <span className="ms-1 font-semibold text-[#8a4b0d]">
+                  <span className="ms-1 font-semibold text-warn-text">
                     {t("review.warnTag", { count: currentDerived.warnings })}
                   </span>
                 )}
@@ -690,7 +695,7 @@ function ReviewPage() {
                   }
                 />
               ) : (
-                <p className="py-4 text-center text-[12px] text-text-muted">
+                <p className="py-4 text-center text-[12px] text-ink-3">
                   {currentEdit && currentEdit.lines.length === 0
                     ? t("review.blankPage")
                     : t("review.selectLine")}
@@ -759,15 +764,15 @@ function SelectedLineEditor({
 }) {
   const { t } = useTranslation();
   return (
-    <div className="flex flex-col gap-3 rounded-md border border-border bg-white p-3">
+    <div className="flex flex-col gap-3 rounded-md border border-rule bg-card p-3">
       <div className="flex items-center justify-between">
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-text-muted">
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-3">
           {t("review.lineN", { n: derived.line_number })}
         </span>
         <button
           type="button"
           onClick={onDelete}
-          className="cursor-pointer rounded-sm border border-error-border bg-error-bg px-2 py-[3px] text-[11px] font-medium text-error hover:brightness-95"
+          className="cursor-pointer rounded-sm border border-stop/20 bg-stop-wash px-2 py-[3px] text-[11px] font-medium text-stop-text hover:brightness-95"
         >
           {t("review.deleteLine")}
         </button>
@@ -777,7 +782,7 @@ function SelectedLineEditor({
         <select
           value={edit.type}
           onChange={(e) => onSetType(e.target.value as EditLineType)}
-          className="h-8 w-full cursor-pointer rounded-sm border-[1.5px] border-border-strong bg-white px-2 text-[12.5px]"
+          className="h-8 w-full cursor-pointer rounded-sm border-[1.5px] border-rule-2 bg-card px-2 text-[12.5px]"
         >
           {LINE_TYPE_VALUES.map((value) => (
             <option key={value} value={value}>
@@ -792,7 +797,7 @@ function SelectedLineEditor({
           <select
             value={edit.sura ?? derived.sura}
             onChange={(e) => onSetSura(Number(e.target.value))}
-            className="h-8 w-full cursor-pointer rounded-sm border-[1.5px] border-border-strong bg-white px-2 text-[12.5px]"
+            className="h-8 w-full cursor-pointer rounded-sm border-[1.5px] border-rule-2 bg-card px-2 text-[12.5px]"
           >
             {suras.map((s) => (
               <option key={s.number} value={s.number}>
@@ -804,13 +809,13 @@ function SelectedLineEditor({
       )}
 
       {edit.type === "besmella" && (
-        <div className="rounded-sm border border-border bg-bg-surface px-2.5 py-1.5 text-[11.5px] text-text-secondary">
+        <div className="rounded-sm border border-rule bg-sheet px-2.5 py-1.5 text-[11.5px] text-ink-2">
           {t("review.besmellaNote", { sura: derived.sura })}
         </div>
       )}
 
       <div>
-        <div className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-text-muted">
+        <div className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-ink-3">
           {t("review.bbox")}
         </div>
         <RectInputs rect={edit.bbox} onChange={onUpdateBbox} />
@@ -825,7 +830,7 @@ function SelectedLineEditor({
             <button
               type="button"
               onClick={onAddCut}
-              className="mt-1.5 flex w-full cursor-pointer items-center justify-center gap-1 rounded-sm border-[1.5px] border-dashed border-border-strong px-2 py-[4px] text-[11px] font-medium text-text-secondary transition-colors hover:border-orange hover:bg-orange-tint hover:text-orange"
+              className="mt-1.5 flex w-full cursor-pointer items-center justify-center gap-1 rounded-sm border-[1.5px] border-dashed border-rule-2 px-2 py-[4px] text-[11px] font-medium text-ink-2 transition-colors hover:border-lapis hover:bg-lapis-wash hover:text-lapis-text"
             >
               <Plus size={12} /> {t("review.addSeparator")}
             </button>
@@ -840,10 +845,10 @@ function SelectedLineEditor({
                   onClick={() => onSelectCut(i)}
                   className={[
                     "flex flex-1 items-center gap-2 rounded-sm px-1.5 py-[3px] text-start text-[11.5px]",
-                    sel ? "bg-orange-tint text-orange" : "hover:bg-bg-surface",
+                    sel ? "bg-lapis-wash text-lapis-text" : "hover:bg-sheet",
                   ].join(" ")}
                 >
-                  <span className="w-4 text-text-muted">{i + 1}.</span>
+                  <span className="w-4 text-ink-3">{i + 1}.</span>
                   <span className="font-mono">{t("review.separatorX", { x: Math.round(cx) })}</span>
                 </button>
                 <IconX title={t("review.removeSeparator")} onClick={() => onRemoveCut(i)} />
@@ -871,13 +876,13 @@ function ListCard({
   footer?: React.ReactNode;
 }) {
   return (
-    <div className="rounded-md border border-border bg-white p-2">
-      <div className="mb-1 flex items-center justify-between text-[11px] font-semibold uppercase tracking-wider text-text-muted">
+    <div className="rounded-md border border-rule bg-card p-2">
+      <div className="mb-1 flex items-center justify-between text-[11px] font-semibold uppercase tracking-wider text-ink-3">
         <span>{title}</span>
         <span className="font-normal normal-case">{count}</span>
       </div>
       {count === 0 ? (
-        <p className="py-1 text-[11.5px] text-text-muted">{empty}</p>
+        <p className="py-1 text-[11.5px] text-ink-3">{empty}</p>
       ) : (
         <ul className="flex flex-col gap-1">{children}</ul>
       )}
@@ -900,7 +905,7 @@ function IconX({
       type="button"
       title={title}
       onClick={onClick}
-      className={`cursor-pointer rounded-sm border bg-white p-[5px] text-[10.5px] text-error hover:bg-error-bg hover:brightness-95 ${className ?? ""}`}
+      className={`cursor-pointer rounded-sm border bg-card p-[5px] text-[10.5px] text-stop-text hover:bg-stop-wash hover:brightness-95 ${className ?? ""}`}
     >
       <Trash2 size={14} />
     </button>

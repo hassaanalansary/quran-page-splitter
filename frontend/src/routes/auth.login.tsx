@@ -3,6 +3,7 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { BusyLabel } from "@/components/app/SatrLoader";
 import { AuthError as ErrorBanner, AuthShell, GoogleIcon } from "@/components/app/auth/AuthShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -66,7 +67,7 @@ function LoginPage() {
       footer={
         <>
           {t("auth.login.noAccount")}{" "}
-          <Link to="/auth/signup" className="font-medium text-navy hover:underline">
+          <Link to="/auth/signup" className="font-medium text-lapis-text hover:underline">
             {t("auth.login.createOne")}
           </Link>
         </>
@@ -100,7 +101,7 @@ function LoginPage() {
           />
           <Link
             to="/auth/forgot"
-            className="text-xs text-text-secondary hover:text-navy hover:underline"
+            className="text-xs text-ink-2 hover:text-lapis-text hover:underline"
           >
             {t("auth.login.forgot")}
           </Link>
@@ -109,14 +110,14 @@ function LoginPage() {
         {error && <ErrorBanner message={error} />}
 
         <Button type="submit" disabled={mutation.isPending}>
-          {mutation.isPending ? t("common.loading") : t("auth.signIn")}
+          {mutation.isPending ? <BusyLabel>{t("common.loading")}</BusyLabel> : t("auth.signIn")}
         </Button>
       </form>
 
       <div className="my-5 flex items-center gap-3">
-        <span className="h-px flex-1 bg-border" />
-        <span className="text-xs uppercase text-text-muted">{t("auth.or")}</span>
-        <span className="h-px flex-1 bg-border" />
+        <span className="h-px flex-1 bg-rule" />
+        <span className="text-xs uppercase text-ink-3">{t("auth.or")}</span>
+        <span className="h-px flex-1 bg-rule" />
       </div>
 
       <Button
