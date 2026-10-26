@@ -13,11 +13,13 @@ type matcher makes of each — and reads the answers back as types:
 The embraced pause sign ``∴`` is found from the ink first (:func:`embraced`): three loose
 dots look like any other dots, so the matcher cannot tell them from a letter's. Where
 the text also has it, it is sure; where it has not, it is still the ink's best guess —
-readings differ in where they pause.
+readings differ in where they pause. So are the dots printed inside a pause sign — ج's,
+قلى's (:func:`sign_parts`): the sign's, whatever a dot looks like.
 """
 
 from __future__ import annotations
 
+import statistics
 from collections import defaultdict
 from itertools import combinations
 from typing import Any
@@ -25,7 +27,7 @@ from typing import Any
 from core.text import letters_of, paws, text_marks
 from core.text.marks import Lane
 from core.word_boundary.library import Library
-from core.word_boundary.mark_check import FoundMark, WordCheck, check_word
+from core.word_boundary.mark_check import PAUSE_KINDS, FoundMark, WordCheck, check_word
 from quran.services.quran_text import pause_signs
 
 Doc = dict[str, Any]
@@ -34,6 +36,16 @@ Doc = dict[str, Any]
 #: their middles may be (a letter's dots touch, or nearly), and how alike in size.
 EMBRACED_SPACING = (1.3, 3.5)
 EMBRACED_SIZES = 2.0
+#: Each of its dots against the line's i'jam dots: no longer than this many times their
+#: middle size. A sukun, a wasla, a hamza is roundish and filled too, and a little
+#: bigger: on the first mushaf's pages 15-17, all 15 dots of the 5 triples offered were
+#: one of those or beside one, 19 px across against dots of 11.
+EMBRACED_DOT = 1.6
+#: Types a dot of the embraced sign may be taken for by its shape alone.
+DOT_KINDS = frozenset({"ijamDot", "waqfMuanaqa"})
+#: Pause signs that may hold marks inside their box: every one but the embraced, whose
+#: dots stand apart.
+SIGN_KINDS = PAUSE_KINDS - {"waqfMuanaqa"}
 
 
 def human_typed(blob: Doc) -> bool:
@@ -76,15 +88,18 @@ def letter_positions(text: str, bodies: list[Doc]) -> list[float]:
     return [right - (index + 0.5) * (right - left) / count for index in range(count)]
 
 
-def embraced(row: Doc) -> set[int]:
+def embraced(row: Doc, kinds: dict[int, str] | None = None) -> set[int]:
     """The dots of every embraced pause sign ``∴`` on a line: three loose dots in a
     triangle above the writing line.
 
-    A dot is a small round blob with little empty space in its box. Three make the
-    sign when they are about one size, a little apart — a letter's dots, printed as
-    one blob in the first mushaf, touch or nearly — and not in a row.
+    A dot is a small round blob with little empty space in its box, no bigger than the
+    line's i'jam dots (``EMBRACED_DOT``) — and, where ``kinds`` says what each mark is
+    typed or taken for, taken for a dot (``DOT_KINDS``). Three make the sign when they
+    are about one size, a little apart — a letter's dots, printed as one blob in the
+    first mushaf, touch or nearly — and not in a row.
     """
     top = row["band"][0]
+    kinds = kinds or {}
     dots = [
         blob
         for blob in row["blobs"]
@@ -93,7 +108,11 @@ def embraced(row: Doc) -> set[int]:
         and blob["y"] + blob["h"] / 2 < top
         and 0.6 <= blob["w"] / max(blob["h"], 1) <= 1.6
         and blob["area"] >= 0.5 * blob["w"] * blob["h"]
+        and kinds.get(blob["id"], "ijamDot") in DOT_KINDS
     ]
+    sizes = [max(blob["w"], blob["h"]) for blob in dots if kinds.get(blob["id"]) == "ijamDot"]
+    size = statistics.median(sizes or [max(blob["w"], blob["h"]) for blob in dots] or [0])
+    dots = [blob for blob in dots if max(blob["w"], blob["h"]) <= EMBRACED_DOT * size]
     dots.sort(key=lambda blob: blob["x"])
     found: set[int] = set()
     for index, first in enumerate(dots):
@@ -102,6 +121,27 @@ def embraced(row: Doc) -> set[int]:
         for second, third in combinations(near, 2):
             if _triangle((first, second, third)):
                 found |= {first["id"], second["id"], third["id"]}
+    return found
+
+
+def sign_parts(row: Doc, kinds: dict[int, str]) -> dict[int, str]:
+    """The marks printed as one pause sign: the sign, and a smaller mark whose middle lies
+    in its box — the dot in ج's bowl, the ق's dots inside قلى. Each takes the sign's
+    type; where only the dot's is known, the sign takes the dot's. ``kinds`` is the type
+    each mark is typed or taken for. Returns blob id → that type, for every part.
+    """
+    marks = [blob for blob in row["blobs"] if blob["role"] == "mark" and not blob.get("erased")]
+    found: dict[int, str] = {}
+    for sign in marks:
+        for part in marks:
+            if part is sign or part["area"] >= sign["area"]:
+                continue
+            middle_x, middle_y = part["x"] + part["w"] / 2, part["y"] + part["h"] / 2
+            if not (sign["x"] <= middle_x <= sign["x"] + sign["w"] and sign["y"] <= middle_y <= sign["y"] + sign["h"]):
+                continue
+            kind = next((k for k in (kinds.get(sign["id"]), kinds.get(part["id"])) if k in SIGN_KINDS), None)
+            if kind is not None:
+                found[sign["id"]] = found[part["id"]] = kind
     return found
 
 
@@ -151,7 +191,10 @@ def check_rows(
     guess_of = {(row["snapshot_id"], blob["id"]): found for (row, blob, _), found in zip(marks, guesses, strict=True)}
     checks: dict[str, dict[int, WordCheck]] = {}
     for row in rows:
-        hints = dict.fromkeys(embraced(row), "waqfMuanaqa")
+        kinds = known_kinds(
+            row, {ident: found for (snapshot, ident), found in guess_of.items() if snapshot == row["snapshot_id"]}
+        )
+        hints = {**dict.fromkeys(embraced(row, kinds), "waqfMuanaqa"), **sign_parts(row, kinds)}
         owned: dict[int, list[Doc]] = defaultdict(list)
         for blob in row["blobs"]:
             if blob["role"] in ("body", "mark"):
@@ -190,6 +233,20 @@ def check_rows(
             per_word[ident] = check
         checks[row["snapshot_id"]] = per_word
     return checks
+
+
+def known_kinds(row: Doc, guesses: dict[int, Doc]) -> dict[int, str]:
+    """What each mark of a row is: its type where a person or the text typed it, else the
+    matcher's guess where the matcher is sure."""
+    kinds: dict[int, str] = {}
+    for blob in row["blobs"]:
+        if blob["role"] != "mark" or blob.get("erased"):
+            continue
+        if blob.get("subtype") and (human_typed(blob) or blob.get("subtype_source") == "text"):
+            kinds[blob["id"]] = blob["subtype"]
+        elif (guess := guesses.get(blob["id"])) and guess.get("sure") and guess.get("subtype"):
+            kinds[blob["id"]] = guess["subtype"]
+    return kinds
 
 
 def apply_text_types(rows: list[Doc], checks: dict[str, dict[int, WordCheck]]) -> int:

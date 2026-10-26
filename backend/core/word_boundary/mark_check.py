@@ -33,13 +33,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from core.text.marks import Lane, TextMark
+from core.text.marks import DOTTED_PAUSES, Lane, TextMark
 
 #: Pause signs: a reading's, not the text's alone, so never counted against a word.
 PAUSE_KINDS = frozenset({"waqfSili", "waqfQili", "waqfJim", "waqfMim", "waqfLa", "waqfMuanaqa"})
 #: The order a fused pair's names are written in — "hamza+kasra", never "kasra+hamza".
 COMPOUND_ORDER = (
     "hamza",
+    "kafCurl",
     "wasla",
     "madda",
     "daggerAlif",
@@ -51,6 +52,9 @@ COMPOUND_ORDER = (
     "roundZero",
     "rectZero",
     "tanween",
+    "smallWaw",
+    "smallYa",
+    "smallMeem",
     "smallLetter",
     "ijamDot",
     "waqfSili",
@@ -157,6 +161,9 @@ def _slots(expected: list[TextMark], letter_x: list[float]) -> list[_Slot]:
             accepted = [frozenset({"tanween", mark.base}), frozenset({mark.base, "other"})]
         elif mark.kind == "waqfMuanaqa":
             accepted = [frozenset({"waqfMuanaqa", "ijamDot"})] * mark.pieces
+        elif mark.kind in DOTTED_PAUSES:
+            # The sign, then its dots apart — which look like any letter's dots.
+            accepted = [frozenset({mark.kind}), frozenset({mark.kind, "ijamDot"})]
         else:
             accepted = [frozenset({mark.kind})] * mark.pieces
         anywhere = mark.kind in PAUSE_KINDS

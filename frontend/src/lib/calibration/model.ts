@@ -516,6 +516,7 @@ export function setSubtype(
  * so both name a hamza printed with its kasra "hamza+kasra". */
 export const COMPOUND_ORDER: readonly string[] = [
   "hamza",
+  "kafCurl",
   "wasla",
   "madda",
   "daggerAlif",
@@ -527,6 +528,9 @@ export const COMPOUND_ORDER: readonly string[] = [
   "roundZero",
   "rectZero",
   "tanween",
+  "smallWaw",
+  "smallYa",
+  "smallMeem",
   "smallLetter",
   "ijamDot",
   "waqfSili",

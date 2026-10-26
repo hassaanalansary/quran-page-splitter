@@ -15,7 +15,8 @@ as the small waw and ya are (``بِهِۦ``, ``لَهُۥ``) — and with how it
 * **pieces** says how many separate blobs one mark may come in: a tanween is two strokes
   that may or may not touch (on the first mushaf's pages, a staggered fathatan was one
   blob 15 times and two strokes 23 times), a dot group is up to three dots, and the
-  embraced pause sign ``ۛ`` is three.
+  embraced pause sign ``ۛ`` is three; the pause signs ``ۚ`` and ``ۗ`` are two, the sign and
+  its dots printed apart (``DOTTED_PAUSES``).
 
 A tanween followed by a small meem (iqlab) is printed as *one* vowel stroke and the
 meem, so it is listed as that vowel.
@@ -23,7 +24,10 @@ meem, so it is listed as that vowel.
 The kinds are the types the calibration editor gives marks, so the two sides compare
 directly. The upright rectangular zero ``۠`` is its own kind, and so is the round zero
 ``۟``: a letter written and never read, a different sign from sukun though the two
-look alike in some prints.
+look alike in some prints. The small letters are named by their letter — a small waw,
+ya or meem looks like its letter, not like the others — and the rare small noon and
+seen keep the one name all of them had until 2026-10-26. The curl inside a final ``ك``
+is ``kafCurl``: shaped like a hamza, and no hamza.
 """
 
 from __future__ import annotations
@@ -48,14 +52,14 @@ _COMBINING: dict[str, tuple[str, Lane]] = {
     "\u0655": ("hamza", "below"),
     "\u06df": ("roundZero", "above"),
     "\u06e0": ("rectZero", "above"),
-    "\u06e5": ("smallLetter", "line"),  # small waw, nearly always after a word-final heh
-    "\u06e6": ("smallLetter", "line"),  # small ya, likewise
-    "\u06e7": ("smallLetter", "above"),  # small high ya
-    "\u06e2": ("smallLetter", "above"),  # small high meem: iqlab
-    "\u06ed": ("smallLetter", "below"),  # small low meem: iqlab under a kasratan
-    "\u06e8": ("smallLetter", "above"),  # small high noon
-    "\u06dc": ("smallLetter", "above"),  # small high seen
-    "\u06e3": ("smallLetter", "below"),  # small low seen
+    "\u06e5": ("smallWaw", "line"),  # small waw, nearly always after a word-final heh
+    "\u06e6": ("smallYa", "line"),  # small ya, likewise
+    "\u06e7": ("smallYa", "above"),  # small high ya
+    "\u06e2": ("smallMeem", "above"),  # small high meem: iqlab
+    "\u06ed": ("smallMeem", "below"),  # small low meem: iqlab under a kasratan
+    "\u06e8": ("smallLetter", "above"),  # small high noon: once, in \u0646\u064f\u06e8\u062c\u0650\u064a
+    "\u06dc": ("smallLetter", "above"),  # small high seen: a handful of words
+    "\u06e3": ("smallLetter", "below"),  # small low seen, likewise
     # Other editions' spellings of the same signs.
     "\u06e1": ("sukun", "above"),  # small high dotless head of khah
     "\u06e4": ("madda", "above"),  # small high madda
@@ -77,6 +81,8 @@ _CARRIED: dict[str, tuple[str, Lane, bool]] = {
     "آ": ("madda", "above", False),
     "ٱ": ("wasla", "above", True),
 }
+#: Every kind a small letter is named by.
+SMALL_LETTERS = frozenset({"smallWaw", "smallYa", "smallMeem", "smallLetter"})
 #: Pause signs, as a text with them writes them after a word.
 PAUSES: dict[str, str] = {
     "\u06d6": "waqfSili",
@@ -86,6 +92,9 @@ PAUSES: dict[str, str] = {
     "\u06da": "waqfJim",
     "\u06db": "waqfMuanaqa",
 }
+#: Pause signs printed with their dots apart, as two blobs: the dot in ج's bowl, the
+#: ق's dots inside قلى — every one of the 21 on the first mushaf's pages 15-17.
+DOTTED_PAUSES = frozenset({"waqfJim", "waqfQili"})
 #: Annotation signs a reader needs and this list has no kind for: the imala, ishmam and
 #: tas-hil marks of a handful of words. Expected, never required.
 _LOW_OTHERS = frozenset("\u06ea")
@@ -160,8 +169,8 @@ def text_marks(word: str, *, pause: str = "", ijam: bool = True) -> list[TextMar
         # the tatweel, and anything else in MARKS, draws nothing of its own
     last = max(letter, 0)
     if letter >= 0 and _final_kaf(word):
-        # The Madinah hand writes a small mark inside a final kaf; others do not.
-        found.append(TextMark("hamza", "above", last, optional=True))
+        # The Madinah hand writes a small curl inside a final kaf; others do not.
+        found.append(TextMark("kafCurl", "above", last, optional=True))
     for ch in pause:
         if ch in PAUSES:
             found.append(_pause(ch, last))
@@ -170,7 +179,8 @@ def text_marks(word: str, *, pause: str = "", ijam: bool = True) -> list[TextMar
 
 def _pause(ch: str, letter: int) -> TextMark:
     kind = PAUSES[ch]
-    return TextMark(kind, "above", letter, optional=True, pieces=3 if kind == "waqfMuanaqa" else 1)
+    pieces = 3 if kind == "waqfMuanaqa" else 2 if kind in DOTTED_PAUSES else 1
+    return TextMark(kind, "above", letter, optional=True, pieces=pieces)
 
 
 def _final_kaf(word: str) -> bool:

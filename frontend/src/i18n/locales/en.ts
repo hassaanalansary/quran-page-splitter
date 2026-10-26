@@ -868,10 +868,13 @@ export const en = {
       keyAddPart: "add a second type — two marks printed as one",
       fromText: "Its word's text names it here.",
       fromImage: "Three loose dots in a triangle: the embraced pause sign.",
+      fromSign: "Part of a pause sign — the dot in its bowl, or the sign around one.",
       fromExamples: "From the confirmed examples.",
       textConflict:
         "The examples say this, but its word's text names {{type}} here — worth a look.",
       doubtText: "Typed {{typed}}, but its word's text names {{type}} here — worth a second look.",
+      doubtSign:
+        "Typed {{typed}}, but it is part of a {{type}} pause sign — the dot and the sign are one sign, so one of the two is a slip.",
       addPart: "+ Pair…",
       addPartHelp:
         "Add a second type to the mark: two marks printed as one blob, as a hamza and its kasra under an alef. Shift and a digit do the same.",
@@ -956,9 +959,13 @@ export const en = {
       madda: "Madda",
       daggerAlif: "Dagger alif",
       wasla: "Wasla (hamzat al-wasl)",
-      smallLetter: "Small letter",
+      smallWaw: "Small waw ۥ",
+      smallYa: "Small ya ۦ",
+      smallMeem: "Small meem ۢ (iqlab)",
+      smallLetter: "Small noon or seen",
       ijamDot: "I'jam dot",
       hamza: "Hamza",
+      kafCurl: "Kaf's curl (inside a final ك)",
       waqfSili: "Pause sign ۖ (ṣalā)",
       waqfQili: "Pause sign ۗ (qalā)",
       waqfJim: "Pause sign ۚ (jīm)",

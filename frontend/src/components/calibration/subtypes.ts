@@ -4,6 +4,10 @@ import { subtypeParts } from "@/lib/calibration/model";
  * the stored value is the key, so a new one is one entry here and one in each
  * catalog under `calibration.subtype`.
  *
+ * The small letters are named by their letter, and the curl inside a final ك is its own
+ * `kafCurl` (2026-10-26); `smallLetter` stays for the rare small noon and seen, and for
+ * marks typed before the split until `retype_from_text` renames them.
+ *
  * Marks printed touching as one blob — a hamza and its kasra under an alef — are
  * typed as a *pair*: their keys joined by "+" in `COMPOUND_ORDER` ("hamza+kasra"), the
  * way the server's `mark_check.compound` writes them. */
@@ -18,9 +22,13 @@ export const SUBTYPES = [
   "tanween",
   "madda",
   "daggerAlif",
+  "smallWaw",
+  "smallYa",
+  "smallMeem",
   "smallLetter",
   "ijamDot",
   "hamza",
+  "kafCurl",
   "wasla",
   "waqfSili",
   "waqfQili",
@@ -68,9 +76,13 @@ export const SUBTYPE_MARKS: Record<Subtype, string> = {
   tanween: "ـً",
   madda: "ـٓ",
   daggerAlif: "ـٰ",
-  smallLetter: "ۥ",
+  smallWaw: "ۥ",
+  smallYa: "ۦ",
+  smallMeem: "ۢ",
+  smallLetter: "ۨ",
   ijamDot: "•",
   hamza: "ء",
+  kafCurl: "ك",
   wasla: "ٱ",
   waqfSili: "ۖ",
   waqfQili: "ۗ",
@@ -92,9 +104,13 @@ export const SUBTYPE_GLYPHS: Record<Subtype, string> = {
   tanween: "◌ً ◌ٌ ◌ٍ",
   madda: "◌ٓ",
   daggerAlif: "◌ٰ",
-  smallLetter: "ۥ ۦ",
+  smallWaw: "ۥ",
+  smallYa: "ۦ ۧ",
+  smallMeem: "◌ۢ ◌ۭ",
+  smallLetter: "◌ۨ ◌ۜ",
   ijamDot: "ب ت ث",
   hamza: "ء",
+  kafCurl: "ك",
   wasla: "ٱ",
   waqfSili: "ۖ",
   waqfQili: "ۗ",

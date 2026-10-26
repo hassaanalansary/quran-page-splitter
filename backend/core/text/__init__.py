@@ -21,7 +21,7 @@ same numbers from the same rules, and two implementations would drift.
 """
 
 from core.text.arabic import IJAM, MARKS, NON_JOINERS, ijam_groups, letters_of, paw_count, paws
-from core.text.marks import PAUSES, TextMark, line_marks, text_marks
+from core.text.marks import PAUSES, SMALL_LETTERS, TextMark, line_marks, text_marks
 from core.text.suras import SURAS, Sura, get_aya_count, get_sura, get_sura_name, get_total_ayas
 from core.text.tanzil import BASMALA_LETTERS, Aya, drop_leading_basmala, load_ayat, load_pauses, span
 
@@ -31,6 +31,7 @@ __all__ = [
     "MARKS",
     "NON_JOINERS",
     "PAUSES",
+    "SMALL_LETTERS",
     "SURAS",
     "Aya",
     "Sura",

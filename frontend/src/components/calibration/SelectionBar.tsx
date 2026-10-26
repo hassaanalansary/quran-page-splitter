@@ -304,7 +304,9 @@ export function SelectionBar({
                   ? "calibration.bar.fromText"
                   : guess.source === "image"
                     ? "calibration.bar.fromImage"
-                    : "calibration.bar.fromExamples",
+                    : guess.source === "sign"
+                      ? "calibration.bar.fromSign"
+                      : "calibration.bar.fromExamples",
               )}
             </span>
           )}
@@ -320,9 +322,11 @@ export function SelectionBar({
               {t(
                 doubt.source === "text"
                   ? "calibration.bar.doubtText"
-                  : doubt.sure
-                    ? "calibration.bar.doubtSure"
-                    : "calibration.bar.doubt",
+                  : doubt.source === "sign"
+                    ? "calibration.bar.doubtSign"
+                    : doubt.sure
+                      ? "calibration.bar.doubtSure"
+                      : "calibration.bar.doubt",
                 {
                   typed: typeName(doubt.typed),
                   type: `${glyph(doubt.subtype)} ${typeName(doubt.subtype)}`,

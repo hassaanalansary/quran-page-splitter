@@ -192,8 +192,9 @@ export type TypeSuggestion = {
   sure: boolean;
   /** Where it comes from: the type the word's text names for the mark ("text"), the
    * typed marks of the confirmed pages and of this one ("examples"), or the ink's
-   * arrangement — three loose dots in a triangle, the embraced pause sign ("image"). */
-  source?: "text" | "examples" | "image";
+   * arrangement — three loose dots in a triangle, the embraced pause sign ("image"); a
+   * dot inside a pause sign, or the sign around one, the sign's ("sign"). */
+  source?: "text" | "examples" | "image" | "sign";
   /** The type the text names, when the examples are sure of another: worth a look. */
   text?: string;
 };
@@ -208,8 +209,9 @@ export type TypeDoubt = {
   /** What the other pages' examples say it is — or the word's text. */
   subtype: string;
   sure: boolean;
-  /** Who doubts it: the word's text, or the other pages' examples. */
-  source?: "text" | "examples";
+  /** Who doubts it: the word's text, the other pages' examples, or the pause sign it
+   * is part of, typed otherwise. */
+  source?: "text" | "examples" | "sign";
 };
 
 /** One word's marks against the marks its text names. */

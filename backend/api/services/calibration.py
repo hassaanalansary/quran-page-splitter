@@ -1301,7 +1301,7 @@ def _erase(blob: Doc) -> None:
         exception="",
         attention=[],
     )
-    for key in ("subtype_source", "text_role", "text_word"):
+    for key in ("subtype_source", "text_role", "text_word", "text_type"):
         blob.pop(key, None)
 
 
@@ -1761,17 +1761,17 @@ def _place_text_locks(document: Doc) -> set[str]:
             continue
         wanted = _small_letters(row, references)
         for blob in row["blobs"]:
-            word_id = wanted.get(blob["id"])
+            word_id, kind = wanted.get(blob["id"], (None, ""))
             before = blob.get("text_word")
             if word_id is None:
                 if before is not None:
-                    blob.pop("text_role", None)
-                    blob.pop("text_word", None)
+                    for key in ("text_role", "text_word", "text_type"):
+                        blob.pop(key, None)
                     moved |= _owner_ayas(blob, references)
                     if before in references:
                         moved.add(references[before]["aya"])
                 continue
-            blob.update(text_role="mark", text_word=word_id)
+            blob.update(text_role="mark", text_word=word_id, text_type=kind)
             if blob["role"] == "mark" and [a["word_id"] for a in blob["allocations"]] in ([word_id], []):
                 _finish_text_lock(blob, word_id)
             else:
@@ -1779,7 +1779,7 @@ def _place_text_locks(document: Doc) -> set[str]:
     return moved
 
 
-def _small_letters(row: Doc, references: dict[int, Doc]) -> dict[int, int]:
+def _small_letters(row: Doc, references: dict[int, Doc]) -> dict[int, tuple[int, str]]:
     """Which blob of a read row each small waw or ya of its words is printed as.
 
     It sits on the line just after its letter: the first ink to the left of that
@@ -1794,7 +1794,7 @@ def _small_letters(row: Doc, references: dict[int, Doc]) -> dict[int, int]:
     word's last body is itself small and on the line, nothing small lies beyond it, and
     the body just to its right is another word's: that body is the small letter.
 
-    Returns blob id → the word it belongs to.
+    Returns blob id → the word it belongs to, and which small letter it is.
     """
     texts = [blob for blob in row["blobs"] if blob["role"] in TEXT_ROLES and not blob.get("erased")]
     areas = [blob["area"] for blob in texts if blob["role"] == "body"]
@@ -1808,7 +1808,7 @@ def _small_letters(row: Doc, references: dict[int, Doc]) -> dict[int, int]:
         if blob["role"] == "body":
             for allocation in blob["allocations"]:
                 bodies.setdefault(allocation["word_id"], []).append(blob)
-    found: dict[int, int] = {}
+    found: dict[int, tuple[int, str]] = {}
     for word in row["words"]:
         ident = word["word_id"]
         if ident is None or ident not in references:
@@ -1844,7 +1844,7 @@ def _small_letters(row: Doc, references: dict[int, Doc]) -> dict[int, int]:
             owners = [allocation["word_id"] for allocation in candidate["allocations"]]
             if candidate.get("ownership_explicit") and owners not in ([ident], []):
                 continue  # a person gave it to another word
-            found[candidate["id"]] = ident
+            found[candidate["id"]] = (ident, mark.kind)
     return found
 
 
@@ -1881,8 +1881,8 @@ def _piece_of(pieces: list[str], letter: int) -> int:
 def _finish_text_lock(blob: Doc, word_id: int | None) -> None:
     """A blob the text locked, as the reading kept it: the text's mark, of its word.
 
-    Its type is the text's too — a small letter — unless a person typed it; and the
-    engine's doubts about its role are answered. ``word_id`` is None when the reading
+    Its type is the text's too — the small waw or ya it is — unless a person typed it;
+    and the engine's doubts about its role are answered. ``word_id`` is None when the reading
     placed the word on another line: then the ink keeps the owner the reading gave it.
     """
     if blob["role"] != "mark":
@@ -1893,7 +1893,7 @@ def _finish_text_lock(blob: Doc, word_id: int | None) -> None:
     if word_id is not None and not blob.get("ownership_explicit"):
         blob["allocations"] = [{"word_id": word_id, "paws": 0}]
     if not blob.get("subtype_explicit"):
-        blob.update(subtype="smallLetter", subtype_source="text")
+        blob.update(subtype=blob.get("text_type") or "smallLetter", subtype_source="text")
 
 
 def _in_reading_order(labelled: list[Doc], unlabelled: list[Doc]) -> list[Doc]:
@@ -2339,6 +2339,11 @@ def type_suggestions(mushaf: Mushaf, page: int, data: Doc) -> Doc:
     draft, so typing a few teaches the rest at once. A hint is never a label: it
     teaches nothing until it is accepted, which makes it a typed mark like any other.
 
+    The ink's own arrangements speak before the examples: three loose dots in a triangle
+    are the embraced pause sign (``calibration_marks.embraced``), and a dot inside a pause
+    sign is that sign's (``calibration_marks.sign_parts``) — sure, and a mark typed
+    otherwise there is doubted.
+
     A **doubt** asks the other pages alone about a mark typed here, and is raised when
     they name another type: most often a slip of the hand, and a slip on a confirmed
     page teaches every page after it. Only for a type the other pages have examples
@@ -2367,16 +2372,32 @@ def type_suggestions(mushaf: Mushaf, page: int, data: Doc) -> Doc:
         for check in per_word.values()
         for ident in check.types
     }
-    arranged = {(row["snapshot_id"], ident) for row in rows for ident in text_marks.embraced(row)}
     untyped = [mark for mark in marks if not _typed(mark[1])]
     typed = [mark for mark in marks if text_marks.human_typed(mark[1])]
     guesses = index.predict_types([features for _, _, features in untyped])
+    # What each mark is typed or taken for, line by line — what the ink's arrangements
+    # are read with.
+    guessed: dict[str, dict[int, Doc]] = defaultdict(dict)
+    for (row, blob, _), found in zip(untyped, guesses, strict=True):
+        guessed[row["snapshot_id"]][blob["id"]] = found
+    kinds = {row["snapshot_id"]: text_marks.known_kinds(row, guessed[row["snapshot_id"]]) for row in rows}
+    arranged = {
+        (row["snapshot_id"], ident) for row in rows for ident in text_marks.embraced(row, kinds[row["snapshot_id"]])
+    }
+    signs = {
+        (row["snapshot_id"], ident): kind
+        for row in rows
+        for ident, kind in text_marks.sign_parts(row, kinds[row["snapshot_id"]]).items()
+    }
     suggestions = []
     for (row, blob, _), found in zip(untyped, guesses, strict=True):
         key = (row["snapshot_id"], blob["id"])
         kind, sure = named.get(key, ("", False))
         said: Doc = {}
-        if sure:
+        if key in signs:
+            # A dot inside a pause sign, or the sign around one: the sign's, whatever it looks like.
+            suggestion, source = {"subtype": signs[key], "confidence": 1.0, "sure": True}, "sign"
+        elif sure:
             # The word fits its text, and the examples do not say otherwise.
             suggestion, source = {"subtype": kind, "confidence": 1.0, "sure": True}, "text"
         elif key in arranged:
@@ -2407,7 +2428,13 @@ def type_suggestions(mushaf: Mushaf, page: int, data: Doc) -> Doc:
     doubts = []
     for (row, blob, _), found in zip(typed, answers, strict=True):
         key = (row["snapshot_id"], blob["id"])
-        if key in disagreed:
+        if key in signs and signs[key] != blob["subtype"]:
+            # Typed otherwise than the pause sign it is part of: one of the two is a slip.
+            doubts.append(
+                {"snapshot_id": key[0], "blob_id": key[1], "typed": blob["subtype"], "subtype": signs[key]}
+                | {"sure": True, "source": "sign"}
+            )
+        elif key in disagreed:
             # The text names the mark otherwise: the stronger evidence of the two.
             doubts.append(
                 {"snapshot_id": key[0], "blob_id": key[1], "typed": blob["subtype"], "subtype": disagreed[key]}

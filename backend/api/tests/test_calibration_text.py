@@ -81,7 +81,7 @@ class TextMarkTests(SimpleTestCase):
     def test_a_tanween_before_a_small_meem_is_one_vowel_and_the_meem(self):
         # Tanween, shadda, then the meem: the meem still turns it into one damma.
         kinds = [mark.kind for mark in text_marks("صُمٌّۢ")]
-        self.assertEqual(kinds, ["damma", "damma", "shadda", "smallLetter"])
+        self.assertEqual(kinds, ["damma", "damma", "shadda", "smallMeem"])
 
     def test_a_carried_hamza_may_be_inside_its_letter(self):
         (hamza, *_) = text_marks("أَمْ")
@@ -91,17 +91,17 @@ class TextMarkTests(SimpleTestCase):
         self.assertEqual(text_marks("كَفَرُوا۟")[-1].kind, "roundZero")
 
     def test_the_small_waw_and_ya_sit_on_the_line(self):
-        self.assertEqual([(m.kind, m.letter) for m in line_marks("بِهِۦ")], [("smallLetter", 1)])
-        self.assertEqual([(m.kind, m.letter) for m in line_marks("دَاوُۥدَ")], [("smallLetter", 2)])
+        self.assertEqual([(m.kind, m.letter) for m in line_marks("بِهِۦ")], [("smallYa", 1)])
+        self.assertEqual([(m.kind, m.letter) for m in line_marks("دَاوُۥدَ")], [("smallWaw", 2)])
         self.assertEqual(line_marks("قَالَ"), [])
 
     def test_a_pause_sign_after_the_word_is_optional(self):
         last = text_marks("رَيْبَ", pause="ۛ")[-1]
         self.assertEqual((last.kind, last.optional, last.pieces), ("waqfMuanaqa", True, 3))
 
-    def test_a_final_kaf_may_carry_its_mark(self):
+    def test_a_final_kaf_may_carry_its_curl(self):
         last = text_marks("ذَٰلِكَ")[-1]
-        self.assertEqual((last.kind, last.optional), ("hamza", True))
+        self.assertEqual((last.kind, last.optional), ("kafCurl", True))
 
 
 def _blob(ident: int, x: int, w: int, *, role: str = "body", area: int = 720, owner: int | None = None, **extra):
@@ -138,7 +138,7 @@ class SmallLetterTests(SimpleTestCase):
             "words": [{"word_id": ident} for ident in (4, 5, 6)],
         }
 
-    def found(self, *blobs: dict) -> dict[int, int]:
+    def found(self, *blobs: dict) -> dict[int, tuple[int, str]]:
         return calibration_service._small_letters(self.row(*blobs), self.references)
 
     def test_the_small_ink_just_after_the_word_is_its_small_letter(self):
@@ -149,7 +149,7 @@ class SmallLetterTests(SimpleTestCase):
             _blob(3, 590, 6, area=100, owner=6),
             _blob(4, 500, 30, owner=6),
         )
-        self.assertEqual(found, {3: 5})
+        self.assertEqual(found, {3: (5, "smallYa")})
 
     def test_a_letter_there_is_not_taken_for_one(self):
         found = self.found(_blob(1, 700, 30, owner=4), _blob(2, 600, 30, owner=5), _blob(4, 560, 30, owner=6))
@@ -172,7 +172,7 @@ class SmallLetterTests(SimpleTestCase):
             _blob(3, 590, 6, area=100, owner=5),
             _blob(4, 500, 30, owner=6),
         )
-        self.assertEqual(found, {3: 5})
+        self.assertEqual(found, {3: (5, "smallYa")})
 
     def test_a_type_the_text_set_teaches(self):
         mark = {"role": "mark", "subtype": "smallLetter", "subtype_explicit": False, "subtype_source": "text"}
@@ -197,7 +197,7 @@ class SmallLetterLockTests(CalibrationApiTestCase):
         small = self.small(self.doc["lines"][0])
         self.assertEqual(
             (small["role"], small["decision_source"], small["subtype"], small.get("subtype_source")),
-            ("mark", "text", "smallLetter", "text"),
+            ("mark", "text", "smallYa", "text"),
         )
         self.assertEqual(small["allocations"], [{"word_id": 1, "paws": 0}])
         self.assertEqual(small["attention"], [])
@@ -247,6 +247,42 @@ class EmbracedTests(SimpleTestCase):
     def test_dots_on_the_line_are_not(self):
         row = self.row(_dot(1, 500, 104), _dot(2, 512, 104), _dot(3, 506, 94))
         self.assertEqual(calibration_marks.embraced(row), set())
+
+    def test_a_sukun_beside_two_dots_is_no_dot(self):
+        # Pages 15-17 offered five such triples: roundish, filled, and a little bigger.
+        dots = [_dot(4, 400, 80), _dot(5, 300, 80), _dot(6, 200, 80)]
+        row = self.row(_dot(1, 500, 78, size=13), _dot(2, 514, 80), _dot(3, 507, 69), *dots)
+        self.assertEqual(calibration_marks.embraced(row), set())
+
+    def test_a_mark_taken_for_anything_but_a_dot_is_no_dot(self):
+        row = self.row(_dot(1, 500, 80), _dot(2, 512, 80), _dot(3, 506, 69))
+        self.assertEqual(calibration_marks.embraced(row, {1: "sukun", 2: "ijamDot"}), set())
+        self.assertEqual(calibration_marks.embraced(row, {1: "waqfMuanaqa", 2: "ijamDot"}), {1, 2, 3})
+
+
+class SignPartTests(SimpleTestCase):
+    """A pause sign ج printed with its dot apart, in its bowl."""
+
+    sign: ClassVar[dict] = {"id": 1, "x": 500, "y": 60, "w": 24, "h": 26, "area": 250, "role": "mark"}
+    dot: ClassVar[dict] = {"id": 2, "x": 509, "y": 70, "w": 6, "h": 5, "area": 25, "role": "mark"}
+
+    def parts(self, kinds: dict[int, str], *others: dict) -> dict[int, str]:
+        return calibration_marks.sign_parts({"blobs": [self.sign, self.dot, *others]}, kinds)
+
+    def test_the_dot_in_a_signs_bowl_is_the_signs(self):
+        self.assertEqual(self.parts({1: "waqfJim", 2: "ijamDot"}), {1: "waqfJim", 2: "waqfJim"})
+
+    def test_the_sign_around_a_typed_dot_is_the_dots(self):
+        self.assertEqual(self.parts({2: "waqfQili"}), {1: "waqfQili", 2: "waqfQili"})
+
+    def test_a_mark_outside_the_box_or_inside_no_sign_is_left_alone(self):
+        fatha = {"id": 3, "x": 540, "y": 70, "w": 20, "h": 8, "area": 90, "role": "mark"}
+        self.assertEqual(self.parts({1: "waqfJim", 3: "fatha"}, fatha), {1: "waqfJim", 2: "waqfJim"})
+        self.assertEqual(self.parts({1: "madda", 2: "ijamDot"}), {})
+
+    def test_the_text_takes_a_signs_dot_for_a_piece_of_it(self):
+        expected = text_marks("قَالَ", pause="\u06da")
+        self.assertEqual((expected[-1].kind, expected[-1].pieces), ("waqfJim", 2))
 
 
 class ApplyTextTypeTests(SimpleTestCase):

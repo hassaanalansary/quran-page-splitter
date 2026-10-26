@@ -39,6 +39,7 @@ from api.models import (
     ProcessJobStateChoices,
 )
 from api.services import calibration
+from core.text import SMALL_LETTERS
 
 Doc = dict[str, Any]
 
@@ -150,7 +151,7 @@ def _page(page: int, processed: CalibrationRevision, confirmed: CalibrationRevis
             blob = final.get((row["snapshot_id"], int(ident)))
             if blob is None or blob.get("erased"):
                 continue
-            small = blob["role"] == "mark" and blob.get("subtype") == "smallLetter"
+            small = blob["role"] == "mark" and blob.get("subtype") in SMALL_LETTERS
             counts["looks"] += first["look"]
             counts["roles"] += first["role"] != blob["role"]
             if first["by_text"]:
