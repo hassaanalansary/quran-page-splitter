@@ -7,6 +7,7 @@ import {
   Eye,
   EyeOff,
   Minus,
+  Play,
   Plus,
   Redo2,
   Undo2,
@@ -117,7 +118,7 @@ import { ConfirmPageDialog } from "./ConfirmPageDialog";
 import { EvaluationPanel } from "./EvaluationPanel";
 import { LearningSettings } from "./LearningSettings";
 import { MarkGallery } from "./MarkGallery";
-import { WordPlayback } from "./WordPlayback";
+import { WordPlayer } from "./WordPlayback";
 import { exceptionKey, problemKey, useTypeName } from "./labels";
 import { SelectionBar, type EvidenceTab } from "./SelectionBar";
 import { HOTKEY_TYPES, subtypeGlyph } from "./subtypes";
@@ -235,10 +236,13 @@ export function CalibrationEditor({
   const [zoom, setZoom] = useState(FIT_ZOOM);
   const [box, setBox] = useState(0);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  /** The page the words are being played on: playback ends with the page. */
+  const [playback, setPlayback] = useState<number | null>(null);
   const [requests] = useState(requestIds);
 
   const signature = useMemo(() => editSignature(lines), [lines]);
   const dirty = builtPage === page && signature !== base;
+  const playing = playback === page && builtPage === page;
 
   // Latest values for handlers that outlive the render they were made in: mutations
   // whose answer lands renders later.
@@ -812,7 +816,8 @@ export function CalibrationEditor({
           target.tagName === "TEXTAREA" ||
           target.tagName === "SELECT" ||
           target.isContentEditable);
-      if (typing || confirmOpen) return;
+      // The player has keys of its own.
+      if (typing || confirmOpen || playing) return;
       const key = event.key.toLowerCase();
       if (event.ctrlKey || event.metaKey) {
         if (key === "s") {
@@ -1223,7 +1228,28 @@ export function CalibrationEditor({
 
   return (
     <StepBody>
-      <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-well">
+      {/* Playing the words puts the editing away — hidden, not unmounted, so the
+          canvas comes back as it was left — and takes the whole width. */}
+      {playing && (
+        <WordPlayer
+          page={page}
+          lines={shownLines}
+          expectations={expectations}
+          checks={checks}
+          preview={!!preview}
+          onExit={() => setPlayback(null)}
+          onInspect={(next) => {
+            setPlayback(null);
+            setMode("blobs");
+            selectWord(next);
+          }}
+        />
+      )}
+      <div
+        className={`relative min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-well ${
+          playing ? "hidden" : "flex"
+        }`}
+      >
         {/* Toolbar: the mode switch on deep, the filter, the things to look at,
             history, then playback and zoom on the far side. */}
         <div className="flex flex-shrink-0 flex-wrap items-center gap-2 border-b border-rule bg-sheet px-3.5 py-2.5">
@@ -1334,20 +1360,17 @@ export function CalibrationEditor({
           </span>
 
           <div className="ms-auto flex flex-none flex-wrap items-center gap-1.5">
-            <WordPlayback
-              mushafId={mushafId}
-              page={page}
-              lines={shownLines}
-              expectations={expectations}
-              checks={checks}
-              preview={!!preview}
-              disabled={builtPage !== page || !!busy}
-              onInspect={(next) => {
-                setMode("blobs");
-                select(next);
-                showLine(next.snapshot);
-              }}
-            />
+            <button
+              type="button"
+              className="inline-flex h-[30px] flex-none cursor-pointer items-center gap-1.5 rounded-control bg-gold px-2.5 text-[12.5px] font-semibold text-on-gold transition-[filter] hover:brightness-105 disabled:cursor-default disabled:opacity-50"
+              disabled={
+                builtPage !== page || !!busy || !shownLines.some((line) => line.words.length)
+              }
+              onClick={() => setPlayback(page)}
+            >
+              <Play size={13} aria-hidden="true" />
+              {t("wordPlayback.open")}
+            </button>
             {mode !== "gallery" && (
               <span className="inline-flex items-center gap-0.5">
                 <IconButton
@@ -1589,278 +1612,283 @@ export function CalibrationEditor({
         />
       </div>
 
-      <Aside intro={pageLine} status={status} footer={footer}>
-        {contextStale && (
-          <Hint tone="warning">
-            <div className="flex flex-col items-stretch gap-2">
-              {t("calibration.contextStaleHint")}
-              {processButton()}
-            </div>
-          </Hint>
-        )}
-        {held && (
-          <Hint tone="warning">
-            <div className="flex flex-col items-start gap-2">
-              {t("calibration.heldHint")}
-              <button type="button" className={`${OUTLINE} h-8 px-3`} onClick={reload}>
-                {t("calibration.reload")}
-              </button>
-            </div>
-          </Hint>
-        )}
+      <div className={playing ? "hidden" : "contents"}>
+        <Aside intro={pageLine} status={status} footer={footer}>
+          {contextStale && (
+            <Hint tone="warning">
+              <div className="flex flex-col items-stretch gap-2">
+                {t("calibration.contextStaleHint")}
+                {processButton()}
+              </div>
+            </Hint>
+          )}
+          {held && (
+            <Hint tone="warning">
+              <div className="flex flex-col items-start gap-2">
+                {t("calibration.heldHint")}
+                <button type="button" className={`${OUTLINE} h-8 px-3`} onClick={reload}>
+                  {t("calibration.reload")}
+                </button>
+              </div>
+            </Hint>
+          )}
 
-        {needsLook && (
-          <section className="flex flex-col gap-2.5 rounded-card border border-rule bg-card p-3.5">
-            <h2 className="m-0 text-[12px] font-semibold uppercase tracking-[0.08em] text-ink-3">
-              {t("calibration.needsLook")}
-            </h2>
-            {found.length > 0 && (
-              <LookGroup title={t("calibration.look.acknowledge")} count={found.length}>
-                {found.slice(0, LISTED).map((item, index) => (
-                  <LookRow
-                    key={`${item.kind}-${item.line_number}-${index}`}
-                    tag={t("calibration.lineKey", { n: item.line_number })}
-                    title={t("calibration.exceptionsNote")}
-                    onClick={() => {
-                      const target = lines.find((line) => line.line_number === item.line_number);
-                      if (target) showLine(target.snapshot_id);
-                    }}
-                  >
-                    {problem(item.kind)}
-                    {item.detail &&
-                      ` · ${item.kind === "flagged" ? exception(item.detail) : item.detail}`}
-                  </LookRow>
-                ))}
-                {found.length > LISTED && (
-                  <span className="text-[12px] text-ink-3">
-                    {t("calibration.moreExceptions", { count: found.length - LISTED })}
-                  </span>
-                )}
-              </LookGroup>
-            )}
-            {shortages.length > 0 && (
-              <LookGroup title={t("calibration.look.shortages")} count={shortages.length}>
-                {shortages.map((item) => {
-                  const short = item.words
-                    .map((id) => wordOn.get(id))
-                    .filter((word) => word !== undefined);
-                  return (
+          {needsLook && (
+            <section className="flex flex-col gap-2.5 rounded-card border border-rule bg-card p-3.5">
+              <h2 className="m-0 text-[12px] font-semibold uppercase tracking-[0.08em] text-ink-3">
+                {t("calibration.needsLook")}
+              </h2>
+              {found.length > 0 && (
+                <LookGroup title={t("calibration.look.acknowledge")} count={found.length}>
+                  {found.slice(0, LISTED).map((item, index) => (
                     <LookRow
-                      key={item.aya}
-                      tag={t("calibration.ayaKey", { aya: item.aya })}
-                      title={t("calibration.shortagesNote")}
-                      word={item.certain ? short[0]?.text : undefined}
-                      disabled={!short.length}
-                      onClick={() => short[0] && showLine(short[0].snapshot)}
+                      key={`${item.kind}-${item.line_number}-${index}`}
+                      tag={t("calibration.lineKey", { n: item.line_number })}
+                      title={t("calibration.exceptionsNote")}
+                      onClick={() => {
+                        const target = lines.find((line) => line.line_number === item.line_number);
+                        if (target) showLine(target.snapshot_id);
+                      }}
                     >
-                      {t("calibration.shortCount", { count: item.short })}
-                      {" · "}
-                      {item.certain && short.length
-                        ? t("calibration.shortageLikely", {
-                            words: short.map((word) => word.text).join("، "),
-                          })
-                        : t("calibration.shortageUncertain")}
+                      {problem(item.kind)}
+                      {item.detail &&
+                        ` · ${item.kind === "flagged" ? exception(item.detail) : item.detail}`}
                     </LookRow>
-                  );
-                })}
-              </LookGroup>
-            )}
-            {suspects.length > 0 && (
-              <LookGroup title={t("calibration.look.noise")} count={suspects.length}>
-                {suspects.map(({ line, blob, found: item }) => (
-                  <LookRow
-                    key={`${line.snapshot_id}:${blob.id}`}
-                    tag={t("calibration.lineKey", { n: line.line_number })}
-                    title={t("calibration.noise.note")}
-                    onClick={() => {
-                      setMode("blobs");
-                      selectAndReveal({ snapshot: line.snapshot_id, ids: [blob.id] });
-                    }}
-                  >
-                    {t(`calibration.noise.${item.kind}`)} ·{" "}
-                    {t("calibration.noise.detail", { w: blob.w, h: blob.h, area: blob.area })}
-                    {item.edge ? ` · ${t("calibration.noise.edge")}` : ""}
-                  </LookRow>
-                ))}
-              </LookGroup>
-            )}
-            {suspects.length > 0 && (
-              <button
-                type="button"
-                className={`${OUTLINE} h-[34px] text-[12.5px]`}
-                disabled={!editable}
-                onClick={() =>
-                  commit(
-                    suspects.reduce(
-                      (current, { line, blob }) =>
-                        setErased(current, { snapshot: line.snapshot_id, ids: [blob.id] }, true),
-                      lines,
-                    ),
-                  )
-                }
-                title={t("calibration.noise.eraseAllHelp")}
-              >
-                {t("calibration.noise.eraseAll", { count: suspects.length })}
-              </button>
-            )}
-            {(doc?.issues.length ?? 0) > 0 && (
-              <div className="flex flex-col gap-1.5">
-                <span className="text-[13px] font-semibold">{t("calibration.issuesTitle")}</span>
-                <div className="flex flex-wrap gap-1">
-                  {doc?.issues.map((issue) => (
-                    <span
-                      key={issue}
-                      className="rounded bg-sheet px-1.5 py-0.5 font-mono text-[11.5px] text-ink-2"
+                  ))}
+                  {found.length > LISTED && (
+                    <span className="text-[12px] text-ink-3">
+                      {t("calibration.moreExceptions", { count: found.length - LISTED })}
+                    </span>
+                  )}
+                </LookGroup>
+              )}
+              {shortages.length > 0 && (
+                <LookGroup title={t("calibration.look.shortages")} count={shortages.length}>
+                  {shortages.map((item) => {
+                    const short = item.words
+                      .map((id) => wordOn.get(id))
+                      .filter((word) => word !== undefined);
+                    return (
+                      <LookRow
+                        key={item.aya}
+                        tag={t("calibration.ayaKey", { aya: item.aya })}
+                        title={t("calibration.shortagesNote")}
+                        word={item.certain ? short[0]?.text : undefined}
+                        disabled={!short.length}
+                        onClick={() => short[0] && showLine(short[0].snapshot)}
+                      >
+                        {t("calibration.shortCount", { count: item.short })}
+                        {" · "}
+                        {item.certain && short.length
+                          ? t("calibration.shortageLikely", {
+                              words: short.map((word) => word.text).join("، "),
+                            })
+                          : t("calibration.shortageUncertain")}
+                      </LookRow>
+                    );
+                  })}
+                </LookGroup>
+              )}
+              {suspects.length > 0 && (
+                <LookGroup title={t("calibration.look.noise")} count={suspects.length}>
+                  {suspects.map(({ line, blob, found: item }) => (
+                    <LookRow
+                      key={`${line.snapshot_id}:${blob.id}`}
+                      tag={t("calibration.lineKey", { n: line.line_number })}
+                      title={t("calibration.noise.note")}
+                      onClick={() => {
+                        setMode("blobs");
+                        selectAndReveal({ snapshot: line.snapshot_id, ids: [blob.id] });
+                      }}
                     >
-                      {issue}
+                      {t(`calibration.noise.${item.kind}`)} ·{" "}
+                      {t("calibration.noise.detail", { w: blob.w, h: blob.h, area: blob.area })}
+                      {item.edge ? ` · ${t("calibration.noise.edge")}` : ""}
+                    </LookRow>
+                  ))}
+                </LookGroup>
+              )}
+              {suspects.length > 0 && (
+                <button
+                  type="button"
+                  className={`${OUTLINE} h-[34px] text-[12.5px]`}
+                  disabled={!editable}
+                  onClick={() =>
+                    commit(
+                      suspects.reduce(
+                        (current, { line, blob }) =>
+                          setErased(current, { snapshot: line.snapshot_id, ids: [blob.id] }, true),
+                        lines,
+                      ),
+                    )
+                  }
+                  title={t("calibration.noise.eraseAllHelp")}
+                >
+                  {t("calibration.noise.eraseAll", { count: suspects.length })}
+                </button>
+              )}
+              {(doc?.issues.length ?? 0) > 0 && (
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-[13px] font-semibold">{t("calibration.issuesTitle")}</span>
+                  <div className="flex flex-wrap gap-1">
+                    {doc?.issues.map((issue) => (
+                      <span
+                        key={issue}
+                        className="rounded bg-sheet px-1.5 py-0.5 font-mono text-[11.5px] text-ink-2"
+                      >
+                        {issue}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </section>
+          )}
+
+          {focusLine && (
+            <WordList
+              line={focusLine}
+              current={
+                selection.snapshot === focusLine.snapshot_id ? wordAt(shownLines, selection) : null
+              }
+              onSelect={(ids) => selectWord({ snapshot: focusLine.snapshot_id, ids })}
+              onStep={(delta) => {
+                const next = stepWord(shownLines, selection, delta);
+                if (next) selectWord(next);
+              }}
+              checks={checks}
+            />
+          )}
+
+          {processed && types.marks > 0 && (
+            <section className="flex flex-col gap-2.5 rounded-card border border-rule bg-card p-3.5">
+              <div className="flex items-baseline justify-between gap-2">
+                <h2 className="m-0 text-[12px] font-semibold uppercase tracking-[0.08em] text-ink-3">
+                  {t("calibration.types.title")}
+                </h2>
+                <span className="font-mono text-[12px] text-ink-3">
+                  {t("calibration.types.typedOf", { typed: types.typed, marks: types.marks })}
+                </span>
+              </div>
+              {filterTypes.length > 0 && (
+                <div className="flex flex-wrap gap-[5px]">
+                  {filterTypes.map(({ subtype, typed, expected }) => (
+                    <span
+                      key={subtype}
+                      title={typeName(subtype)}
+                      className="inline-flex items-center gap-[5px] rounded-pill border border-rule bg-sheet py-[3px] pe-2 ps-1.5"
+                    >
+                      <span
+                        dir="rtl"
+                        className="font-quran text-[15px] leading-none text-mark-text"
+                      >
+                        {subtypeGlyph(subtype)}
+                      </span>
+                      <span className="font-mono text-[11.5px] text-ink-3">{typed + expected}</span>
                     </span>
                   ))}
                 </div>
-              </div>
-            )}
-          </section>
-        )}
-
-        {focusLine && (
-          <WordList
-            line={focusLine}
-            current={
-              selection.snapshot === focusLine.snapshot_id ? wordAt(shownLines, selection) : null
-            }
-            onSelect={(ids) => selectWord({ snapshot: focusLine.snapshot_id, ids })}
-            onStep={(delta) => {
-              const next = stepWord(shownLines, selection, delta);
-              if (next) selectWord(next);
-            }}
-            checks={checks}
-          />
-        )}
-
-        {processed && types.marks > 0 && (
-          <section className="flex flex-col gap-2.5 rounded-card border border-rule bg-card p-3.5">
-            <div className="flex items-baseline justify-between gap-2">
-              <h2 className="m-0 text-[12px] font-semibold uppercase tracking-[0.08em] text-ink-3">
-                {t("calibration.types.title")}
-              </h2>
-              <span className="font-mono text-[12px] text-ink-3">
-                {t("calibration.types.typedOf", { typed: types.typed, marks: types.marks })}
-              </span>
-            </div>
-            {filterTypes.length > 0 && (
-              <div className="flex flex-wrap gap-[5px]">
-                {filterTypes.map(({ subtype, typed, expected }) => (
-                  <span
-                    key={subtype}
-                    title={typeName(subtype)}
-                    className="inline-flex items-center gap-[5px] rounded-pill border border-rule bg-sheet py-[3px] pe-2 ps-1.5"
+              )}
+              <p className="m-0 text-[12.5px] leading-normal text-ink-3">
+                {t("calibration.types.summary", {
+                  typed: types.typed,
+                  marks: types.marks,
+                  expected: types.expected,
+                  sure: types.sure,
+                })}
+                {" · "}
+                {learnedFrom.examples + learnedFrom.here
+                  ? t("calibration.types.learnedFrom", {
+                      examples: learnedFrom.examples,
+                      here: learnedFrom.here,
+                    })
+                  : t("calibration.types.nothingYet")}
+              </p>
+              <button
+                type="button"
+                className="inline-flex h-9 cursor-pointer items-center justify-center rounded-control border border-lapis bg-lapis-wash text-[13px] font-semibold text-lapis-text transition-colors hover:bg-lapis hover:text-on-lapis disabled:cursor-default disabled:opacity-50 disabled:hover:bg-lapis-wash disabled:hover:text-lapis-text"
+                disabled={!editable || !types.sure}
+                onClick={() => commit(acceptExpected(lines, expectations, "sure"))}
+                title={t("calibration.types.acceptSureHelp")}
+              >
+                {t("calibration.types.acceptSure", { count: types.sure })}
+              </button>
+              {tally.doubtful > 0 && (
+                <span className="flex items-center justify-between gap-2.5 rounded-control bg-warn-wash px-2.5 py-2 text-[12.5px] leading-snug text-warn-text">
+                  <span>{t("calibration.types.doubtful", { count: tally.doubtful })}</span>
+                  <button
+                    type="button"
+                    className="flex-none cursor-pointer font-semibold hover:underline"
+                    onClick={() => {
+                      setMode("blobs");
+                      setSelectionFilter("doubtful");
+                      setSelection(NO_SELECTION);
+                    }}
                   >
-                    <span dir="rtl" className="font-quran text-[15px] leading-none text-mark-text">
-                      {subtypeGlyph(subtype)}
+                    {t("calibration.types.showDoubtful")}
+                  </button>
+                </span>
+              )}
+              <label className="flex cursor-pointer items-center gap-2 text-[12.5px] text-ink-2">
+                <input
+                  type="checkbox"
+                  checked={showTypes}
+                  onChange={(event) => setShowTypes(event.target.checked)}
+                  className="h-4 w-4 accent-lapis"
+                />
+                {t("calibration.types.show")}
+              </label>
+            </section>
+          )}
+
+          <BulkPanel
+            mushafId={mushafId}
+            page={page}
+            pageCount={pageCount}
+            job={job ?? null}
+            onStarted={(started) => {
+              watchedRef.current = started.id;
+              queryClient.setQueryData(calibrationKeys.job(mushafId), started);
+            }}
+            onStop={() => cancelMutation.mutate()}
+            stopping={cancelMutation.isPending}
+          />
+
+          <div className="flex flex-col overflow-hidden rounded-card border border-rule bg-card">
+            {doc?.settings && (
+              <Fold
+                title={t("calibration.pageSection", { page })}
+                badge={
+                  doc.settings.experimental ? (
+                    <span className="rounded bg-gold-wash px-1.5 py-px text-[11px] font-semibold text-gold-text">
+                      {t("calibration.experimentalBadge")}
                     </span>
-                    <span className="font-mono text-[11.5px] text-ink-3">{typed + expected}</span>
-                  </span>
-                ))}
-              </div>
-            )}
-            <p className="m-0 text-[12.5px] leading-normal text-ink-3">
-              {t("calibration.types.summary", {
-                typed: types.typed,
-                marks: types.marks,
-                expected: types.expected,
-                sure: types.sure,
-              })}
-              {" · "}
-              {learnedFrom.examples + learnedFrom.here
-                ? t("calibration.types.learnedFrom", {
-                    examples: learnedFrom.examples,
-                    here: learnedFrom.here,
-                  })
-                : t("calibration.types.nothingYet")}
-            </p>
-            <button
-              type="button"
-              className="inline-flex h-9 cursor-pointer items-center justify-center rounded-control border border-lapis bg-lapis-wash text-[13px] font-semibold text-lapis-text transition-colors hover:bg-lapis hover:text-on-lapis disabled:cursor-default disabled:opacity-50 disabled:hover:bg-lapis-wash disabled:hover:text-lapis-text"
-              disabled={!editable || !types.sure}
-              onClick={() => commit(acceptExpected(lines, expectations, "sure"))}
-              title={t("calibration.types.acceptSureHelp")}
-            >
-              {t("calibration.types.acceptSure", { count: types.sure })}
-            </button>
-            {tally.doubtful > 0 && (
-              <span className="flex items-center justify-between gap-2.5 rounded-control bg-warn-wash px-2.5 py-2 text-[12.5px] leading-snug text-warn-text">
-                <span>{t("calibration.types.doubtful", { count: tally.doubtful })}</span>
-                <button
-                  type="button"
-                  className="flex-none cursor-pointer font-semibold hover:underline"
-                  onClick={() => {
-                    setMode("blobs");
-                    setSelectionFilter("doubtful");
-                    setSelection(NO_SELECTION);
-                  }}
-                >
-                  {t("calibration.types.showDoubtful")}
-                </button>
-              </span>
-            )}
-            <label className="flex cursor-pointer items-center gap-2 text-[12.5px] text-ink-2">
-              <input
-                type="checkbox"
-                checked={showTypes}
-                onChange={(event) => setShowTypes(event.target.checked)}
-                className="h-4 w-4 accent-lapis"
-              />
-              {t("calibration.types.show")}
-            </label>
-          </section>
-        )}
-
-        <BulkPanel
-          mushafId={mushafId}
-          page={page}
-          pageCount={pageCount}
-          job={job ?? null}
-          onStarted={(started) => {
-            watchedRef.current = started.id;
-            queryClient.setQueryData(calibrationKeys.job(mushafId), started);
-          }}
-          onStop={() => cancelMutation.mutate()}
-          stopping={cancelMutation.isPending}
-        />
-
-        <div className="flex flex-col overflow-hidden rounded-card border border-rule bg-card">
-          {doc?.settings && (
-            <Fold
-              title={t("calibration.pageSection", { page })}
-              badge={
-                doc.settings.experimental ? (
-                  <span className="rounded bg-gold-wash px-1.5 py-px text-[11px] font-semibold text-gold-text">
-                    {t("calibration.experimentalBadge")}
-                  </span>
-                ) : undefined
-              }
-            >
-              <LearningSettings
-                mushafId={mushafId}
-                page={page}
-                settings={doc.settings}
-                disabled={busy || running || !!preview || held}
-              />
-              {processed && (
-                <PageCard
+                  ) : undefined
+                }
+              >
+                <LearningSettings
                   mushafId={mushafId}
                   page={page}
-                  revision={doc.revision}
-                  confirmedRevision={doc.confirmed_revision}
-                  profile={doc.profile}
+                  settings={doc.settings}
+                  disabled={busy || running || !!preview || held}
                 />
-              )}
+                {processed && (
+                  <PageCard
+                    mushafId={mushafId}
+                    page={page}
+                    revision={doc.revision}
+                    confirmedRevision={doc.confirmed_revision}
+                    profile={doc.profile}
+                  />
+                )}
+              </Fold>
+            )}
+            <Fold title={t("calibration.evaluationTitle")}>
+              <EvaluationPanel mushafId={mushafId} />
             </Fold>
-          )}
-          <Fold title={t("calibration.evaluationTitle")}>
-            <EvaluationPanel mushafId={mushafId} />
-          </Fold>
-        </div>
-      </Aside>
+          </div>
+        </Aside>
+      </div>
 
       <ConfirmPageDialog
         open={confirmOpen}

@@ -1,9 +1,22 @@
-import { ChevronLeft, ChevronRight, Pause, Pencil, Play, Repeat, RotateCcw } from "lucide-react";
+import {
+  ArrowLeftRight,
+  ArrowUpDown,
+  ChevronLeft,
+  ChevronRight,
+  Maximize,
+  Minimize,
+  Pause,
+  Pencil,
+  Play,
+  Repeat,
+  X,
+} from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { mediaUrl, pageImageUrl } from "@/lib/api";
+import { BusyLabel } from "@/components/app/SatrLoader";
+import { useCtrlWheelZoom } from "@/hooks/use-ctrl-wheel-zoom";
+import { mediaUrl } from "@/lib/api";
 import {
   decodeLabels,
   expectedType,
@@ -15,869 +28,650 @@ import {
   type MarkChecks,
 } from "@/lib/calibration/model";
 import {
-  BODY_INK,
   MARK_INK,
   TYPE_INK,
-  containedPoint,
+  belongsAt,
   inkColor,
-  paintPlaybackInk,
   playbackWords,
-  wordAtPixel,
   wordBlobs,
   wordCrop,
-  type PlaybackWord,
 } from "@/lib/calibration/playback";
-import type { CalibrationBlob, CalibrationLine } from "@/lib/calibration/types";
+import type { CalibrationLine } from "@/lib/calibration/types";
+import { revealInScroller } from "@/lib/reveal";
 
-import { attentionKey, exceptionKey, useTypeName } from "./labels";
-import { SUBTYPE_GLYPHS, subtypeGlyph, type Subtype } from "./subtypes";
+import { useTypeName } from "./labels";
+import { subtypeGlyph } from "./subtypes";
 
 const SPEEDS = { slow: 2400, normal: 1300, fast: 650 } as const;
-type Raster = { source: ImageBitmap; ids: Uint32Array; width: number; height: number };
-type Assets = {
-  page: ImageBitmap | null;
-  lines: Map<string, Raster>;
-  settled: boolean;
-  failed: boolean;
-};
+type Speed = keyof typeof SPEEDS;
 
-/** Read-only playback is intentionally separate from the editor's alignment preview. */
-export function WordPlayback({
-  mushafId,
+/** Screen px between the well's edge and the sheet, and of white around the ink. */
+const PAD = 20;
+const SHEET = 28;
+/** The other words' ink: near-black, so the current word's black body still reads
+ * as the one being played. */
+const INK: readonly [number, number, number] = [52, 52, 52];
+/** The fade slider: 0 shows the other words, 50 dims them to this, 100 hides them. */
+const DIMMED = 0.2;
+const MIN_ZOOM = 0.25;
+const MAX_ZOOM = 6;
+
+type Raster = { ids: Uint32Array; width: number; height: number };
+type Rasters = { lines: Map<string, Raster>; failed: Set<string>; settled: boolean };
+
+/** How visible the other words are, from the fade slider's position. */
+function othersOpacity(fade: number) {
+  return fade <= 50 ? 1 - (fade / 50) * (1 - DIMMED) : DIMMED * (1 - (fade - 50) / 50);
+}
+
+/**
+ * The page played word by word, in place of the editor's canvas: every guide the
+ * editing needs is put away, and the page is drawn as it is printed — its lines at
+ * their own places on one white sheet. Two layers:
+ *
+ *     the other words  ── one ink colour, faded by the slider: shown → dimmed → hidden
+ *     the current word ── its body black, each mark in its type's colour, on a gold wash
+ *
+ * The view follows the current word. Fit width or fit height; Ctrl + wheel zooms.
+ * Read-only: "Edit this word" goes back to the editor with its ink selected.
+ */
+export function WordPlayer({
   page,
   lines,
   expectations,
   checks,
   preview,
-  disabled,
+  onExit,
   onInspect,
 }: {
-  mushafId: string;
   page: number;
   lines: CalibrationLine[];
   expectations: Expectations;
   /** Every word's marks against its text's: a word they do not fit is worth a look. */
   checks?: MarkChecks;
+  /** The lines are a preview's re-reading, not the draft. */
   preview: boolean;
-  disabled: boolean;
-  onInspect: (selection: BlobSelection) => void;
-}) {
-  const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
-  return (
-    <>
-      <button
-        type="button"
-        className="inline-flex h-[30px] flex-none cursor-pointer items-center gap-1.5 rounded-control border border-rule-2 bg-card px-2.5 text-[12.5px] font-semibold text-ink transition-colors hover:bg-sheet disabled:cursor-default disabled:opacity-50"
-        disabled={disabled || !lines.some((line) => line.words.length)}
-        onClick={() => setOpen(true)}
-      >
-        <Play size={13} aria-hidden="true" />
-        {t("wordPlayback.open")}
-      </button>
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent
-          className="flex h-[92dvh] w-[96vw] max-w-6xl flex-col gap-3 overflow-hidden p-3 sm:p-4"
-          aria-describedby={undefined}
-          onKeyDown={(event) => event.stopPropagation()}
-        >
-          <DialogHeader className="flex-none pe-8">
-            <DialogTitle className="text-base tracking-normal">
-              {t("wordPlayback.title", { page })}
-            </DialogTitle>
-          </DialogHeader>
-          {open && (
-            <Player
-              key={page}
-              mushafId={mushafId}
-              page={page}
-              lines={lines}
-              expectations={expectations}
-              preview={preview}
-              onInspect={(selection) => {
-                setOpen(false);
-                onInspect(selection);
-              }}
-            />
-          )}
-        </DialogContent>
-      </Dialog>
-    </>
-  );
-}
-
-function useAssets(
-  mushafId: string,
-  page: number,
-  lines: CalibrationLine[],
-  attempt: number,
-): Assets {
-  const [assets, setAssets] = useState<Assets>({
-    page: null,
-    lines: new Map(),
-    settled: false,
-    failed: false,
-  });
-  useEffect(() => {
-    const abort = new AbortController();
-    const images: ImageBitmap[] = [];
-    const result: Assets = { page: null, lines: new Map(), settled: false, failed: false };
-    setAssets(result);
-    const bitmap = async (url: string) => {
-      const response = await fetch(url, { credentials: "include", signal: abort.signal });
-      if (!response.ok) throw new Error(String(response.status));
-      const image = await createImageBitmap(await response.blob(), {
-        colorSpaceConversion: "none",
-        premultiplyAlpha: "none",
-      });
-      if (abort.signal.aborted) {
-        image.close();
-        throw new Error("aborted");
-      }
-      images.push(image);
-      return image;
-    };
-    void (async () => {
-      try {
-        result.page = await bitmap(pageImageUrl(mushafId, page));
-      } catch {
-        result.failed = true;
-      }
-      // Bound concurrent decodes: a page can contain thousands of components.
-      let next = 0;
-      await Promise.all(
-        Array.from({ length: Math.min(4, lines.length) }, async () => {
-          while (next < lines.length && !abort.signal.aborted) {
-            const line = lines[next++];
-            try {
-              if (!line.image_url || !line.labels_url) throw new Error("missing snapshot");
-              const source = await bitmap(mediaUrl(line.image_url));
-              const labels = await bitmap(mediaUrl(line.labels_url));
-              if (
-                source.width !== labels.width ||
-                source.height !== labels.height ||
-                source.width !== line.bbox.w ||
-                source.height !== line.bbox.h
-              )
-                throw new Error("raster geometry mismatch");
-              const canvas = document.createElement("canvas");
-              canvas.width = labels.width;
-              canvas.height = labels.height;
-              const context = canvas.getContext("2d", { willReadFrequently: true });
-              if (!context) throw new Error("no canvas");
-              context.drawImage(labels, 0, 0);
-              result.lines.set(line.snapshot_id, {
-                source,
-                width: labels.width,
-                height: labels.height,
-                ids: decodeLabels(context.getImageData(0, 0, labels.width, labels.height).data),
-              });
-            } catch {
-              result.failed = true;
-            }
-          }
-        }),
-      );
-      if (!abort.signal.aborted) setAssets({ ...result, settled: true });
-    })();
-    return () => {
-      abort.abort();
-      images.forEach((image) => image.close());
-    };
-  }, [mushafId, page, lines, attempt]);
-  return assets;
-}
-
-function Player({
-  mushafId,
-  page,
-  lines,
-  expectations,
-  checks,
-  preview,
-  onInspect,
-}: {
-  mushafId: string;
-  page: number;
-  lines: CalibrationLine[];
-  expectations: Expectations;
-  checks?: MarkChecks;
-  preview: boolean;
+  onExit: () => void;
+  /** Back to editing, with this ink selected. */
   onInspect: (selection: BlobSelection) => void;
 }) {
   const { t } = useTranslation();
   const typeName = useTypeName();
-  /** Words with something worth a look (see `wordRisks`) played first, the rest after. */
-  const [riskyFirst, setRiskyFirst] = useState(false);
-  const all = useMemo(() => playbackWords(lines), [lines]);
+
+  const own = useMemo(() => lines.filter((line) => !line.readonly), [lines]);
+  const all = useMemo(() => playbackWords(own), [own]);
   const risky = useMemo(
     () => all.filter((entry) => wordRisks(entry.line, entry.word, checks).length > 0),
     [all, checks],
   );
+  const [riskyFirst, setRiskyFirst] = useState(false);
   const entries = useMemo(
     () => (riskyFirst ? [...risky, ...all.filter((entry) => !risky.includes(entry))] : all),
     [all, risky, riskyFirst],
   );
+
   const [index, setIndex] = useState(0);
   const [playing, setPlaying] = useState(
     () => !window.matchMedia("(prefers-reduced-motion: reduce)").matches,
   );
-  const [speed, setSpeed] = useState<keyof typeof SPEEDS>("normal");
+  const [speed, setSpeed] = useState<Speed>("normal");
   const [repeat, setRepeat] = useState(false);
-  const [types, setTypes] = useState(true);
-  const [dim, setDim] = useState(true);
-  const [boundaries, setBoundaries] = useState(true);
-  const [selected, setSelected] = useState<number | null>(null);
+  const [byType, setByType] = useState(true);
+  const [fade, setFade] = useState(50);
+  const [fit, setFit] = useState<"width" | "height">("width");
+  const [zoom, setZoom] = useState(1);
   const [attempt, setAttempt] = useState(0);
-  const assets = useAssets(mushafId, page, lines, attempt);
+  const [full, setFull] = useState(false);
+  const [room, setRoom] = useState({ w: 0, h: 0 });
+
+  const root = useRef<HTMLDivElement>(null);
+  const scroller = useRef<HTMLDivElement>(null);
+  const base = useRef<HTMLCanvasElement>(null);
+  const top = useRef<HTMLCanvasElement>(null);
+  const wash = useRef<HTMLDivElement>(null);
+
+  const rasters = useRasters(own, attempt);
   const safeIndex = Math.min(index, Math.max(0, entries.length - 1));
   const current = entries[safeIndex];
-  const blobs = useMemo(() => (current ? wordBlobs(current) : []), [current]);
-  const selectedBlob = blobs.find((blob) => blob.id === selected);
-  const typeOf = (blob: CalibrationBlob) =>
-    isTyped(blob)
-      ? blob.subtype
-      : (expectedType(blob, current.line.snapshot_id, expectations)?.subtype ?? "");
-  const typeMap = useMemo(
-    () =>
-      new Map(
-        blobs.map((blob) => [
-          blob.id,
-          isTyped(blob)
-            ? blob.subtype
-            : (expectedType(blob, current.line.snapshot_id, expectations)?.subtype ?? ""),
-        ]),
-      ),
-    [blobs, current, expectations],
-  );
-  const jump = (next: number) => {
-    setPlaying(false);
-    setSelected(null);
-    setIndex(Math.max(0, Math.min(entries.length - 1, next)));
-  };
+
+  // The printed block the lines fill: what the sheet holds, in page px.
+  const block = useMemo(() => {
+    const drawn = own.filter((line) => line.bbox.w > 0 && line.bbox.h > 0);
+    if (!drawn.length) return null;
+    const x = Math.min(...drawn.map((line) => line.bbox.x));
+    const y = Math.min(...drawn.map((line) => line.bbox.y));
+    const right = Math.max(...drawn.map((line) => line.bbox.x + line.bbox.w));
+    const bottom = Math.max(...drawn.map((line) => line.bbox.y + line.bbox.h));
+    return { x, y, w: right - x, h: bottom - y };
+  }, [own]);
 
   useEffect(() => {
-    if (!playing || !assets.settled || assets.failed || !entries.length) return;
+    const element = scroller.current;
+    if (!element) return;
+    const measure = () => setRoom({ w: element.clientWidth, h: element.clientHeight });
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  useCtrlWheelZoom({ ref: scroller, zoom, onZoomChange: setZoom, min: MIN_ZOOM, max: MAX_ZOOM });
+
+  const fitWidth = block && room.w ? (room.w - 2 * PAD - 2 * SHEET) / block.w : 1;
+  const fitHeight = block && room.h ? (room.h - 2 * PAD - 2 * SHEET) / block.h : 1;
+  const scale = Math.max(0.02, (fit === "width" ? fitWidth : fitHeight) * zoom);
+
+  // The current word's marks, typed or expected: what colours them.
+  const types = useMemo(() => {
+    const found = new Map<number, string>();
+    if (!current) return found;
+    for (const blob of wordBlobs(current)) {
+      if (blob.role !== "mark") continue;
+      found.set(
+        blob.id,
+        isTyped(blob)
+          ? blob.subtype
+          : (expectedType(blob, current.line.snapshot_id, expectations)?.subtype ?? ""),
+      );
+    }
+    return found;
+  }, [current, expectations]);
+
+  // The other words: every line's ink in one colour, painted once.
+  useEffect(() => {
+    const context = base.current?.getContext("2d");
+    if (!context || !block) return;
+    context.clearRect(0, 0, block.w, block.h);
+    for (const line of own) {
+      const raster = rasters.lines.get(line.snapshot_id);
+      if (!raster) continue;
+      const blobs = new Map(line.blobs.map((blob) => [blob.id, blob]));
+      paint(context, raster, line.bbox.x - block.x, line.bbox.y - block.y, (id) => {
+        const blob = blobs.get(id);
+        return blob && !blob.erased ? INK : null;
+      });
+    }
+  }, [own, rasters, block]);
+
+  // The current word, in its own colours, over them.
+  useEffect(() => {
+    const context = top.current?.getContext("2d");
+    if (!context || !block) return;
+    context.clearRect(0, 0, block.w, block.h);
+    if (!current) return;
+    const { line, word } = current;
+    const raster = rasters.lines.get(line.snapshot_id);
+    if (!raster) return;
+    const blobs = new Map(line.blobs.map((blob) => [blob.id, blob]));
+    paint(context, raster, line.bbox.x - block.x, line.bbox.y - block.y, (id, x) => {
+      const blob = blobs.get(id);
+      if (!blob || blob.erased || !belongsAt(blob, word, line.bbox.x + x)) return null;
+      return inkColor(blob, types.get(blob.id) ?? "", byType);
+    });
+  }, [current, rasters, block, types, byType]);
+
+  // Follow the current word.
+  useEffect(() => {
+    const frame = requestAnimationFrame(() =>
+      revealInScroller(scroller.current, wash.current, { margin: 64 }),
+    );
+    return () => cancelAnimationFrame(frame);
+  }, [safeIndex, scale, entries]);
+
+  useEffect(() => {
+    if (!playing || !rasters.settled || !entries.length) return;
     const timer = window.setTimeout(() => {
-      setSelected(null);
       if (safeIndex < entries.length - 1) setIndex(safeIndex + 1);
       else if (repeat) setIndex(0);
       else setPlaying(false);
     }, SPEEDS[speed]);
     return () => window.clearTimeout(timer);
-  }, [playing, assets.settled, assets.failed, safeIndex, entries.length, repeat, speed]);
+  }, [playing, rasters.settled, safeIndex, entries.length, repeat, speed]);
 
   useEffect(() => {
     const hidden = () => {
       if (document.hidden) setPlaying(false);
     };
+    const screen = () => setFull(document.fullscreenElement === root.current);
     document.addEventListener("visibilitychange", hidden);
-    return () => document.removeEventListener("visibilitychange", hidden);
+    document.addEventListener("fullscreenchange", screen);
+    return () => {
+      document.removeEventListener("visibilitychange", hidden);
+      document.removeEventListener("fullscreenchange", screen);
+    };
   }, []);
 
-  const typeLabel = (type: string) => (type ? typeName(type) : t("wordPlayback.unknown"));
-  if (!current) return <p>{t("wordPlayback.empty")}</p>;
-  const count = wordCount(current.line, current.word);
+  const jump = (next: number) => {
+    setPlaying(false);
+    setIndex(Math.max(0, Math.min(entries.length - 1, next)));
+  };
   const togglePlay = () => {
     if (!playing && safeIndex === entries.length - 1) setIndex(0);
     setPlaying(!playing);
-    setSelected(null);
+  };
+  const toggleFull = () => {
+    if (document.fullscreenElement) void document.exitFullscreen();
+    else void root.current?.requestFullscreen?.();
+  };
+  const inspect = () => {
+    if (!current) return;
+    if (document.fullscreenElement) void document.exitFullscreen();
+    onInspect({ snapshot: current.line.snapshot_id, ids: wordBlobs(current).map((b) => b.id) });
   };
 
+  // Keys: ← onward and → back (the page reads right to left), Space plays, Esc
+  // goes back to editing. The editor's own keys stand aside while this is up.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const tag = (event.target as HTMLElement | null)?.tagName ?? "";
+      if (/^(INPUT|SELECT|TEXTAREA|BUTTON)$/.test(tag) || event.ctrlKey || event.metaKey) return;
+      if (event.key === "ArrowLeft") jump(safeIndex + 1);
+      else if (event.key === "ArrowRight") jump(safeIndex - 1);
+      else if (event.code === "Space") togglePlay();
+      else if (event.key === "Escape" && !document.fullscreenElement) onExit();
+      else return;
+      event.preventDefault();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+
+  const failed = own.filter((line) => rasters.failed.has(line.snapshot_id));
+  const crop = current ? wordCrop(current) : null;
+  const count = current ? wordCount(current.line, current.word) : null;
+  const marks = current ? [...new Set([...types.values()])].sort((a, b) => a.localeCompare(b)) : [];
+  const risks = current ? wordRisks(current.line, current.word, checks) : [];
+  const opacity = othersOpacity(fade);
+
   return (
-    <div
-      className="flex min-h-0 flex-1 flex-col gap-3"
-      onKeyDown={(event) => {
-        if (/^(INPUT|SELECT|TEXTAREA|BUTTON)$/.test((event.target as HTMLElement).tagName)) return;
-        if (event.key === "ArrowLeft") jump(safeIndex + 1);
-        else if (event.key === "ArrowRight") jump(safeIndex - 1);
-        else if (event.code === "Space") togglePlay();
-        else return;
-        event.preventDefault();
-        event.stopPropagation();
-      }}
-    >
-      <div className="flex flex-none flex-wrap items-center gap-x-4 gap-y-2 border-b border-rule pb-2 text-[12px]">
-        <span className="text-ink-3">
-          {t(preview ? "wordPlayback.preview" : "wordPlayback.live")}
-        </span>
-        <Toggle label={t("wordPlayback.types")} checked={types} set={setTypes} />
-        <Toggle label={t("wordPlayback.dim")} checked={dim} set={setDim} />
-        <Toggle label={t("wordPlayback.boundaries")} checked={boundaries} set={setBoundaries} />
-        <Toggle
-          label={t("wordPlayback.riskyFirst", { count: risky.length })}
-          checked={riskyFirst}
-          set={(value) => {
-            setRiskyFirst(value);
-            setIndex(0);
-            setSelected(null);
-          }}
-        />
-        <span className="flex items-center gap-1">
-          <Swatch color={BODY_INK} />
-          {t("wordPlayback.body")}
-        </span>
-        <span className="flex items-center gap-1">
-          <Swatch color={MARK_INK} dashed />
-          {t("wordPlayback.mark")}
-        </span>
+    <div ref={root} className="flex min-h-0 min-w-0 flex-1 flex-col bg-well">
+      <div ref={scroller} className="relative min-h-0 flex-1 overflow-auto">
+        {block ? (
+          // dir=ltr: a picture of a page measured in pixels.
+          <div dir="ltr" className="flex min-h-full w-max min-w-full" style={{ padding: PAD }}>
+            <div
+              className="relative m-auto flex-none rounded-[10px] bg-white shadow-[0_8px_24px_rgba(0,0,0,0.14)]"
+              style={{ width: block.w * scale + 2 * SHEET, height: block.h * scale + 2 * SHEET }}
+              role="img"
+              aria-label={t("wordPlayback.fullPage", { page, index: safeIndex + 1 })}
+            >
+              <div className="absolute" style={{ left: SHEET, top: SHEET }}>
+                {current && crop && (
+                  <div
+                    ref={wash}
+                    className="absolute rounded-[4px]"
+                    style={{
+                      left: (current.line.bbox.x + crop.x - block.x) * scale,
+                      top: (current.line.bbox.y + crop.y - block.y) * scale,
+                      width: crop.w * scale,
+                      height: crop.h * scale,
+                      background: "var(--ov-aya-lit)",
+                      boxShadow: "0 0 0 1.5px var(--ov-aya-lit-ring)",
+                    }}
+                  />
+                )}
+                {[base, top].map((layer, i) => (
+                  <canvas
+                    key={i}
+                    ref={layer}
+                    width={block.w}
+                    height={block.h}
+                    className="absolute left-0 top-0 block"
+                    style={{
+                      width: block.w * scale,
+                      height: block.h * scale,
+                      opacity: i === 0 ? opacity : 1,
+                      imageRendering: scale > 1.6 ? "pixelated" : undefined,
+                    }}
+                  />
+                ))}
+              </div>
+              {!rasters.settled && (
+                <div className="absolute inset-0 flex items-center justify-center bg-white/70 text-[13px] text-[color:var(--ov-text)]">
+                  <BusyLabel>{t("wordPlayback.loading")}</BusyLabel>
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
+          <p className="p-8 text-center text-[13px] text-ink-3">{t("wordPlayback.empty")}</p>
+        )}
       </div>
-      {!assets.settled && (
-        <div role="status" className="text-[12px]">
-          {t("wordPlayback.loading")}
-        </div>
-      )}
-      {assets.failed && assets.settled && (
-        <div role="alert" className="flex items-center gap-2 text-[12px] text-stop-text">
-          {t("wordPlayback.error")}
-          <Control label={t("wordPlayback.retry")} onClick={() => setAttempt((n) => n + 1)}>
-            <RotateCcw size={16} />
-          </Control>
-        </div>
-      )}
-      <div className="grid min-h-0 flex-1 grid-rows-[minmax(140px,1fr)_minmax(170px,1fr)] gap-3 md:grid-cols-[minmax(0,1fr)_330px] md:grid-rows-1">
-        <PageInk
-          page={page}
-          entries={entries}
-          index={safeIndex}
-          assets={assets}
-          types={typeMap}
-          distinguishTypes={types}
-          dim={dim}
-          boundaries={boundaries}
-          selected={selectedBlob?.id ?? null}
-          onJump={jump}
-        />
-        <section className="flex min-h-0 min-w-0 flex-col gap-2 overflow-y-auto border-t border-rule pt-2 md:border-s md:border-t-0 md:ps-3 md:pt-0">
-          <div className="flex items-baseline justify-between gap-2">
-            <strong dir="rtl" className="min-w-0 break-words text-xl leading-relaxed">
-              {current.word.text || t("wordPlayback.unlabelled")}
-            </strong>
-            <span className="flex-none text-[11px] text-ink-3">
-              {t("wordPlayback.aya", { aya: current.word.aya })}
-            </span>
+
+      {/* The control bar: the word and how to move through the page, then how it is
+          shown. On deep lapis, apart from the page. */}
+      <div className="flex flex-none flex-col gap-2.5 bg-deep px-4 py-3 text-on-deep">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <div className="flex flex-none items-center gap-1.5" dir="ltr">
+            <BarButton label={`${t("wordPlayback.next")} (←)`} onClick={() => jump(safeIndex + 1)}>
+              <ChevronLeft size={18} />
+            </BarButton>
+            <button
+              type="button"
+              title={`${t(playing ? "wordPlayback.pause" : "wordPlayback.play")} (Space)`}
+              aria-label={t(playing ? "wordPlayback.pause" : "wordPlayback.play")}
+              onClick={togglePlay}
+              disabled={!entries.length}
+              className="flex h-11 w-11 cursor-pointer items-center justify-center rounded-full bg-gold text-on-gold transition-[filter] hover:brightness-105 disabled:cursor-default disabled:opacity-50"
+            >
+              {playing ? <Pause size={18} /> : <Play size={18} />}
+            </button>
+            <BarButton
+              label={`${t("wordPlayback.previous")} (→)`}
+              onClick={() => jump(safeIndex - 1)}
+            >
+              <ChevronRight size={18} />
+            </BarButton>
+            <BarButton
+              label={t("wordPlayback.repeat")}
+              active={repeat}
+              onClick={() => setRepeat(!repeat)}
+            >
+              <Repeat size={16} />
+            </BarButton>
           </div>
-          <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-ink-2">
-            <span>{t("wordPlayback.line", { line: current.line.line_number })}</span>
-            <span>
-              {t("wordPlayback.bodies", { count: blobs.filter((b) => b.role === "body").length })}
-            </span>
-            <span>
-              {t("wordPlayback.marks", { count: blobs.filter((b) => b.role === "mark").length })}
-            </span>
-            <span className={count.ok ? "" : "font-semibold text-stop-text"}>
-              {t("wordPlayback.paws", count)}
-            </span>
-          </div>
-          {wordRisks(current.line, current.word, checks).length > 0 && (
-            <div className="flex flex-wrap gap-1">
-              {wordRisks(current.line, current.word, checks).map((risk) => (
+
+          {current && count && (
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3.5 gap-y-1">
+              <span lang="ar" dir="rtl" className="font-quran text-[26px] leading-tight">
+                {current.word.text || t("wordPlayback.unlabelled")}
+              </span>
+              <span className="font-mono text-[12px] text-on-deep-2">
+                {[
+                  t("wordPlayback.aya", { aya: current.word.aya }),
+                  t("wordPlayback.line", { line: current.line.line_number }),
+                ].join(" · ")}
+              </span>
+              <span
+                className={`rounded px-1.5 py-0.5 font-mono text-[12px] font-semibold ${
+                  count.ok ? "text-on-deep-2" : "bg-warn text-on-warn"
+                }`}
+              >
+                {t("wordPlayback.paws", count)}
+              </span>
+              {marks.map((type) => (
+                <span
+                  key={type || "untyped"}
+                  className="inline-flex items-center gap-1 text-[12px]"
+                >
+                  <span
+                    className="h-2.5 w-2.5 rounded-full"
+                    style={{
+                      background: `rgb(${(byType ? (TYPE_INK[type] ?? MARK_INK) : MARK_INK).join(",")})`,
+                    }}
+                  />
+                  {type && (
+                    <span dir="rtl" className="font-quran text-[15px] leading-none">
+                      {subtypeGlyph(type)}
+                    </span>
+                  )}
+                  {type ? typeName(type) : t("wordPlayback.unknown")}
+                </span>
+              ))}
+              {risks.map((risk) => (
                 <span
                   key={risk}
-                  className="rounded-sm bg-warn-wash px-1.5 py-0.5 text-[10.5px] text-warn-text"
+                  className="rounded-sm bg-warn-wash px-1.5 py-0.5 text-[11px] font-semibold text-warn-text"
                 >
                   {t(`wordPlayback.risk.${risk}`)}
                 </span>
               ))}
-            </div>
-          )}
-          <WordInk
-            entry={current}
-            raster={assets.lines.get(current.line.snapshot_id)}
-            types={typeMap}
-            distinguishTypes={types}
-            dim={dim}
-            selected={selectedBlob}
-            onSelect={(id) => {
-              setPlaying(false);
-              setSelected(id);
-            }}
-          />
-          {!blobs.length && <p className="text-[12px] text-warn-text">{t("wordPlayback.noInk")}</p>}
-          <div className="flex flex-wrap gap-2 text-[11px]">
-            {[...new Set(blobs.filter((b) => b.role === "mark").map(typeOf))].map((type) => (
-              <span key={type} className="flex items-center gap-1">
-                <Swatch color={types ? (TYPE_INK[type] ?? MARK_INK) : MARK_INK} dashed />
-                <span dir="rtl">{SUBTYPE_GLYPHS[type as Subtype] ?? subtypeGlyph(type)}</span>
-                {typeLabel(type)}
-              </span>
-            ))}
-          </div>
-          <table className="w-full table-fixed text-start text-[11px]">
-            <caption className="py-1 text-start font-semibold">
-              {t("wordPlayback.components")}
-            </caption>
-            <thead>
-              <tr className="border-b border-rule text-ink-3">
-                <th className="w-12 py-1 text-start">{t("wordPlayback.id")}</th>
-                <th className="text-start">{t("wordPlayback.role")}</th>
-                <th className="w-10 text-end">{t("wordPlayback.contribution")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {blobs.map((blob) => (
-                <tr
-                  key={blob.id}
-                  className={`border-b border-rule ${selected === blob.id ? "bg-lapis-wash" : ""}`}
-                >
-                  <td className="py-1 align-top">
-                    <button
-                      type="button"
-                      className="min-h-8 cursor-pointer underline underline-offset-2"
-                      aria-label={t("wordPlayback.selectBlob", { id: blob.id })}
-                      aria-pressed={selected === blob.id}
-                      onClick={() => {
-                        setPlaying(false);
-                        setSelected(selected === blob.id ? null : blob.id);
-                      }}
-                    >
-                      #{blob.id}
-                    </button>
-                  </td>
-                  <td className="py-1">
-                    <span className="flex items-center gap-1.5">
-                      <Swatch
-                        color={inkColor(blob, typeOf(blob), types)}
-                        dashed={blob.role === "mark"}
-                      />
-                      {blob.role === "body" ? t("wordPlayback.body") : typeLabel(typeOf(blob))}
-                    </span>
-                    {blob.role === "mark" && (
-                      <span className="text-[10px] text-ink-3">
-                        {t(
-                          isTyped(blob)
-                            ? "wordPlayback.confirmed"
-                            : typeOf(blob)
-                              ? "wordPlayback.suggested"
-                              : "wordPlayback.missingType",
-                        )}
-                      </span>
-                    )}
-                    {blob.allocations.length > 1 && (
-                      <span className="block text-[10px] text-ink-3">
-                        {t("wordPlayback.shared")}
-                      </span>
-                    )}
-                  </td>
-                  <td className="text-end tabular-nums">
-                    {blob.role === "body"
-                      ? (blob.allocations.find((a) => a.word_id === current.word.word_id)?.paws ??
-                        0)
-                      : 0}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {selectedBlob && (
-            <div className="flex flex-col gap-1 border-b border-rule pb-2 text-[11px]">
-              <span>
-                {t("wordPlayback.source")}:{" "}
-                {t(`calibration.source.${selectedBlob.decision_source}`)}
-              </span>
-              <span>
-                {t("wordPlayback.score")}: {selectedBlob.body_score}/14 · {selectedBlob.w} ×{" "}
-                {selectedBlob.h}
-              </span>
-              {selectedBlob.exception && (
-                <span>
-                  {t("wordPlayback.exception")}:{" "}
-                  {exceptionKey(selectedBlob.exception)
-                    ? t(exceptionKey(selectedBlob.exception)!)
-                    : selectedBlob.exception}
-                </span>
+              {!wordBlobs(current).length && (
+                <span className="text-[12px] text-on-deep-2">{t("wordPlayback.noInk")}</span>
               )}
-              {selectedBlob.attention.map((flag) => (
-                <span key={flag}>
-                  {t("wordPlayback.attention")}:{" "}
-                  {attentionKey(flag) ? t(attentionKey(flag)!) : flag}
-                </span>
-              ))}
-              <button
-                type="button"
-                className="inline-flex cursor-pointer items-center justify-center rounded-control border border-rule-2 bg-card font-semibold text-ink transition-colors hover:bg-sheet disabled:cursor-default disabled:opacity-50 mt-1 h-8 gap-2 px-3 text-[12.5px]"
-                onClick={() =>
-                  onInspect({ snapshot: current.line.snapshot_id, ids: [selectedBlob.id] })
-                }
-              >
-                <Pencil size={13} />
-                {t("wordPlayback.inspect")}
-              </button>
             </div>
           )}
-          <p className="text-[11px] text-ink-3">
-            {t("wordPlayback.detached", {
-              count: current.line.blobs.filter(
-                (b) => (b.role === "body" || b.role === "mark") && !b.allocations.length,
-              ).length,
-            })}
-          </p>
-        </section>
-      </div>
-      <div className="flex flex-none flex-col gap-2 border-t border-rule pt-2">
-        <input
-          type="range"
-          min={0}
-          max={Math.max(0, entries.length - 1)}
-          value={safeIndex}
-          onChange={(e) => jump(Number(e.target.value))}
-          aria-label={t("wordPlayback.jump")}
-          className="w-full accent-lapis"
-          dir="rtl"
-        />
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <select
-            aria-label={t("wordPlayback.jump")}
-            value={safeIndex}
-            onChange={(e) => jump(Number(e.target.value))}
-            className="h-9 min-w-0 max-w-full flex-1 rounded-sm border border-rule-2 bg-card px-2 text-[12px] md:max-w-72"
-          >
-            {entries.map((entry, i) => (
-              <option key={`${entry.line.snapshot_id}:${entry.wordIndex}`} value={i}>
-                {i + 1}. {entry.word.text || t("wordPlayback.unlabelled")} · {entry.word.aya}
-              </option>
-            ))}
-          </select>
-          <span className="w-20 text-center text-[12px] tabular-nums" dir="ltr">
-            {t("wordPlayback.position", { index: safeIndex + 1, total: entries.length })}
+
+          <span className="ms-auto flex flex-none items-center gap-2">
+            {preview && (
+              <span className="rounded bg-white/10 px-2 py-0.5 text-[11.5px] font-semibold">
+                {t("wordPlayback.preview")}
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={inspect}
+              disabled={!current || !wordBlobs(current).length}
+              className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-control bg-white/10 px-3 text-[13px] font-semibold transition-colors hover:bg-white/20 disabled:cursor-default disabled:opacity-50"
+            >
+              <Pencil size={14} aria-hidden="true" />
+              {t("wordPlayback.editWord")}
+            </button>
+            <BarButton label={`${t("wordPlayback.back")} (Esc)`} onClick={onExit}>
+              <X size={18} />
+            </BarButton>
           </span>
-          <div className="flex items-center gap-1" dir="ltr">
-            <Control
-              label={t("wordPlayback.previous")}
-              onClick={() => jump(safeIndex - 1)}
-              disabled={!safeIndex}
-            >
-              <ChevronRight size={17} />
-            </Control>
-            <Control
-              label={t(playing ? "wordPlayback.pause" : "wordPlayback.play")}
-              onClick={togglePlay}
-              disabled={!assets.settled || assets.failed}
-              active={playing}
-            >
-              {playing ? <Pause size={17} /> : <Play size={17} />}
-            </Control>
-            <Control
-              label={t("wordPlayback.next")}
-              onClick={() => jump(safeIndex + 1)}
-              disabled={safeIndex === entries.length - 1}
-            >
-              <ChevronLeft size={17} />
-            </Control>
-            <Control
-              label={t("wordPlayback.repeat")}
-              onClick={() => setRepeat(!repeat)}
-              active={repeat}
-            >
-              <Repeat size={16} />
-            </Control>
-          </div>
-          <select
-            aria-label={t("wordPlayback.speed")}
-            value={speed}
-            onChange={(e) => setSpeed(e.target.value as keyof typeof SPEEDS)}
-            className="h-9 rounded-sm border border-rule-2 bg-card px-2 text-[12px]"
-          >
-            {Object.keys(SPEEDS).map((value) => (
-              <option key={value} value={value}>
-                {t(`wordPlayback.${value as keyof typeof SPEEDS}`)}
-              </option>
-            ))}
-          </select>
         </div>
+
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2.5 text-[12.5px]">
+          <label className="flex min-w-[200px] flex-1 items-center gap-2.5">
+            <span className="sr-only">{t("wordPlayback.jump")}</span>
+            <input
+              type="range"
+              min={0}
+              max={Math.max(0, entries.length - 1)}
+              value={safeIndex}
+              onChange={(event) => jump(Number(event.target.value))}
+              className="min-w-0 flex-1 accent-gold"
+              dir="rtl"
+            />
+            <span className="w-16 flex-none text-end font-mono tabular-nums" dir="ltr">
+              {t("wordPlayback.position", { index: safeIndex + 1, total: entries.length })}
+            </span>
+          </label>
+
+          {/* How much of the rest of the page shows: shown → dimmed → hidden. */}
+          <span className="flex flex-none items-center gap-2.5">
+            <span className="font-semibold">{t("wordPlayback.others")}</span>
+            <span className="flex w-44 flex-col">
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={fade}
+                onChange={(event) => setFade(Number(event.target.value))}
+                aria-label={t("wordPlayback.others")}
+                aria-valuetext={
+                  fade < 25
+                    ? t("wordPlayback.othersShown")
+                    : fade < 75
+                      ? t("wordPlayback.othersDimmed")
+                      : t("wordPlayback.othersHidden")
+                }
+                className="w-full accent-gold"
+              />
+              <span className="flex justify-between text-[10.5px] text-on-deep-2">
+                <span>{t("wordPlayback.othersShown")}</span>
+                <span>{t("wordPlayback.othersDimmed")}</span>
+                <span>{t("wordPlayback.othersHidden")}</span>
+              </span>
+            </span>
+          </span>
+
+          <span className="flex flex-none items-center gap-3">
+            <Check label={t("wordPlayback.types")} checked={byType} set={setByType} />
+            <Check
+              label={t("wordPlayback.riskyFirst", { count: risky.length })}
+              checked={riskyFirst}
+              set={(value) => {
+                setRiskyFirst(value);
+                setIndex(0);
+              }}
+            />
+          </span>
+
+          <span
+            role="group"
+            aria-label={t("wordPlayback.speed")}
+            className="inline-flex flex-none rounded-lg bg-white/10 p-[3px]"
+          >
+            {(Object.keys(SPEEDS) as Speed[]).map((value) => (
+              <button
+                key={value}
+                type="button"
+                aria-pressed={speed === value}
+                onClick={() => setSpeed(value)}
+                className={`h-7 cursor-pointer rounded-[6px] px-2.5 text-[12.5px] transition-colors ${
+                  speed === value ? "bg-on-deep font-bold text-deep" : "hover:bg-white/10"
+                }`}
+              >
+                {t(`wordPlayback.${value}`)}
+              </button>
+            ))}
+          </span>
+
+          <span className="flex flex-none items-center gap-1.5">
+            <Pill
+              active={fit === "width" && zoom === 1}
+              onClick={() => {
+                setFit("width");
+                setZoom(1);
+              }}
+            >
+              <ArrowLeftRight size={14} aria-hidden="true" />
+              {t("wordPlayback.fitWidth")}
+            </Pill>
+            <Pill
+              active={fit === "height" && zoom === 1}
+              onClick={() => {
+                setFit("height");
+                setZoom(1);
+              }}
+            >
+              <ArrowUpDown size={14} aria-hidden="true" />
+              {t("wordPlayback.fitHeight")}
+            </Pill>
+            <BarButton
+              label={full ? t("wordPlayback.exitFullscreen") : t("wordPlayback.fullscreen")}
+              onClick={toggleFull}
+            >
+              {full ? <Minimize size={16} /> : <Maximize size={16} />}
+            </BarButton>
+          </span>
+        </div>
+
+        {failed.length > 0 && rasters.settled && (
+          <div role="alert" className="flex items-center gap-2 text-[12px] text-on-deep-2">
+            {t("wordPlayback.lineFailed", {
+              lines: failed.map((line) => line.line_number).join("، "),
+            })}
+            <button
+              type="button"
+              onClick={() => setAttempt((n) => n + 1)}
+              className="cursor-pointer font-semibold text-on-deep underline-offset-2 hover:underline"
+            >
+              {t("wordPlayback.retry")}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-function overlay(
+/** Paint a line's ink into a layer at (dx, dy): each pixel's blob, by `colour`, which
+ * says nothing for ink that is not drawn. Through a scratch canvas, so the line's
+ * empty pixels leave its neighbours' ink alone where the boxes overlap. */
+function paint(
+  context: CanvasRenderingContext2D,
   raster: Raster,
-  entry: PlaybackWord,
-  types: ReadonlyMap<number, string>,
-  distinguishTypes: boolean,
-  dim: boolean,
-  hideOthers = false,
+  dx: number,
+  dy: number,
+  colour: (id: number, x: number) => readonly [number, number, number] | null,
 ) {
-  const canvas = document.createElement("canvas");
-  canvas.width = raster.width;
-  canvas.height = raster.height;
-  const context = canvas.getContext("2d")!;
-  const pixels = context.createImageData(raster.width, raster.height);
-  pixels.data.set(
-    paintPlaybackInk(
-      raster.ids,
-      raster.width,
-      entry.line,
-      entry.word,
-      types,
-      distinguishTypes,
-      dim,
-      hideOthers,
-    ),
-  );
-  context.putImageData(pixels, 0, 0);
-  return canvas;
+  if (!raster.width || !raster.height) return;
+  const image = new ImageData(raster.width, raster.height);
+  const data = image.data;
+  for (let i = 0; i < raster.ids.length; i++) {
+    const id = raster.ids[i];
+    if (!id) continue;
+    const rgb = colour(id, i % raster.width);
+    if (!rgb) continue;
+    const p = i * 4;
+    data[p] = rgb[0];
+    data[p + 1] = rgb[1];
+    data[p + 2] = rgb[2];
+    data[p + 3] = 255;
+  }
+  const scratch = document.createElement("canvas");
+  scratch.width = raster.width;
+  scratch.height = raster.height;
+  scratch.getContext("2d")?.putImageData(image, 0, 0);
+  context.drawImage(scratch, dx, dy);
 }
 
-function PageInk({
-  page,
-  entries,
-  index,
-  assets,
-  types,
-  distinguishTypes,
-  dim,
-  boundaries,
-  selected,
-  onJump,
-}: {
-  page: number;
-  entries: PlaybackWord[];
-  index: number;
-  assets: Assets;
-  types: ReadonlyMap<number, string>;
-  distinguishTypes: boolean;
-  dim: boolean;
-  boundaries: boolean;
-  selected: number | null;
-  onJump: (index: number) => void;
-}) {
-  const { t } = useTranslation();
-  const canvas = useRef<HTMLCanvasElement>(null);
-  const current = entries[index];
-  const natural = {
-    w: assets.page?.width ?? Math.max(1, ...entries.map((e) => e.line.bbox.x + e.line.bbox.w)),
-    h: assets.page?.height ?? Math.max(1, ...entries.map((e) => e.line.bbox.y + e.line.bbox.h)),
-  };
-  const k = Math.min(1, 1400 / natural.w);
+/** Every line's label raster — which blob each pixel is. A line that fails is said and
+ * skipped; the rest play. */
+function useRasters(lines: CalibrationLine[], attempt: number): Rasters {
+  const [state, setState] = useState<Rasters>({
+    lines: new Map(),
+    failed: new Set(),
+    settled: false,
+  });
   useEffect(() => {
-    const ctx = canvas.current?.getContext("2d");
-    if (!ctx || !current) return;
-    ctx.setTransform(k, 0, 0, k, 0, 0);
-    ctx.fillStyle = "white";
-    ctx.fillRect(0, 0, natural.w, natural.h);
-    ctx.globalAlpha = dim ? 0.28 : 1;
-    if (assets.page) ctx.drawImage(assets.page, 0, 0);
-    for (const [snapshot, raster] of assets.lines) {
-      const line = entries.find((e) => e.line.snapshot_id === snapshot)?.line;
-      if (line) ctx.drawImage(raster.source, line.bbox.x, line.bbox.y);
-    }
-    ctx.globalAlpha = 1;
-    const raster = assets.lines.get(current.line.snapshot_id);
-    if (raster)
-      ctx.drawImage(
-        overlay(raster, current, types, distinguishTypes, dim),
-        current.line.bbox.x,
-        current.line.bbox.y,
+    const abort = new AbortController();
+    const found = new Map<string, Raster>();
+    const failed = new Set<string>();
+    setState({ lines: found, failed, settled: false });
+    let next = 0;
+    const load = async (line: CalibrationLine) => {
+      if (!line.labels_url) throw new Error("missing labels");
+      const response = await fetch(mediaUrl(line.labels_url), {
+        credentials: "include",
+        signal: abort.signal,
+      });
+      if (!response.ok) throw new Error(String(response.status));
+      // No colour management: the labels are ids, and a converted pixel is another blob.
+      const labels = await createImageBitmap(await response.blob(), {
+        colorSpaceConversion: "none",
+        premultiplyAlpha: "none",
+      });
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = labels.width;
+        canvas.height = labels.height;
+        const context = canvas.getContext("2d", { willReadFrequently: true });
+        if (!context) throw new Error("no canvas");
+        context.drawImage(labels, 0, 0);
+        return {
+          ids: decodeLabels(context.getImageData(0, 0, labels.width, labels.height).data),
+          width: labels.width,
+          height: labels.height,
+        };
+      } finally {
+        labels.close();
+      }
+    };
+    void (async () => {
+      // A few at a time: a page is fifteen lines or so, each a decode.
+      await Promise.all(
+        Array.from({ length: Math.min(4, lines.length) }, async () => {
+          while (next < lines.length && !abort.signal.aborted) {
+            const line = lines[next++];
+            try {
+              found.set(line.snapshot_id, await load(line));
+            } catch {
+              if (!abort.signal.aborted) failed.add(line.snapshot_id);
+            }
+          }
+        }),
       );
-    if (boundaries) {
-      ctx.strokeStyle = "#004ca0";
-      ctx.lineWidth = 2 / k;
-      ctx.strokeRect(
-        current.word.end_x,
-        current.line.bbox.y,
-        Math.max(1, current.word.start_x - current.word.end_x),
-        current.line.bbox.h,
-      );
-    }
-    const blob = current.line.blobs.find((b) => b.id === selected);
-    if (blob) {
-      ctx.strokeStyle = "#111111";
-      ctx.lineWidth = 2 / k;
-      ctx.setLineDash(blob.role === "mark" ? [4 / k, 3 / k] : []);
-      ctx.strokeRect(blob.x - 2, blob.y - 2, blob.w + 4, blob.h + 4);
-      ctx.setLineDash([]);
-    }
-  }, [
-    assets,
-    entries,
-    current,
-    types,
-    distinguishTypes,
-    dim,
-    boundaries,
-    selected,
-    k,
-    natural.w,
-    natural.h,
-  ]);
-  return (
-    <div
-      className="flex min-h-0 min-w-0 items-center justify-center overflow-hidden bg-sheet"
-      tabIndex={0}
-      aria-label={t("wordPlayback.fullPage", { page, index: index + 1 })}
-    >
-      <canvas
-        ref={canvas}
-        width={Math.round(natural.w * k)}
-        height={Math.round(natural.h * k)}
-        role="img"
-        aria-label={t("wordPlayback.fullPage", { page, index: index + 1 })}
-        data-word-playback="page"
-        className="block max-h-full max-w-full cursor-pointer object-contain"
-        style={{ aspectRatio: `${natural.w}/${natural.h}` }}
-        onClick={(event) => {
-          const rect = event.currentTarget.getBoundingClientRect();
-          const point = containedPoint(
-            event.clientX - rect.left,
-            event.clientY - rect.top,
-            rect.width,
-            rect.height,
-            natural.w,
-            natural.h,
-          );
-          if (!point) return;
-          const { x, y } = point;
-          const line = entries.find(
-            (e) =>
-              y >= e.line.bbox.y &&
-              y < e.line.bbox.y + e.line.bbox.h &&
-              x >= e.line.bbox.x &&
-              x < e.line.bbox.x + e.line.bbox.w,
-          )?.line;
-          if (!line) return;
-          const raster = assets.lines.get(line.snapshot_id);
-          if (!raster) return;
-          const id =
-            raster.ids[Math.floor(y - line.bbox.y) * raster.width + Math.floor(x - line.bbox.x)] ??
-            0;
-          const next = wordAtPixel(entries, line, id, x);
-          if (next >= 0) onJump(next);
-        }}
-      />
-    </div>
-  );
+      if (!abort.signal.aborted)
+        setState({ lines: new Map(found), failed: new Set(failed), settled: true });
+    })();
+    return () => abort.abort();
+  }, [lines, attempt]);
+  return state;
 }
 
-function WordInk({
-  entry,
-  raster,
-  types,
-  distinguishTypes,
-  dim,
-  selected,
-  onSelect,
-}: {
-  entry: PlaybackWord;
-  raster?: Raster;
-  types: ReadonlyMap<number, string>;
-  distinguishTypes: boolean;
-  dim: boolean;
-  selected?: CalibrationBlob;
-  onSelect: (id: number | null) => void;
-}) {
-  const { t } = useTranslation();
-  const canvas = useRef<HTMLCanvasElement>(null);
-  const crop = wordCrop(entry);
-  useEffect(() => {
-    const ctx = canvas.current?.getContext("2d");
-    if (!ctx) return;
-    ctx.fillStyle = "white";
-    ctx.fillRect(0, 0, crop.w, crop.h);
-    if (!raster) return;
-    // No scan underneath: it would show the neighbouring words' ink.
-    ctx.drawImage(
-      overlay(raster, entry, types, distinguishTypes, dim, true),
-      crop.x,
-      crop.y,
-      crop.w,
-      crop.h,
-      0,
-      0,
-      crop.w,
-      crop.h,
-    );
-    if (selected) {
-      ctx.strokeStyle = "#111";
-      ctx.lineWidth = 1;
-      ctx.setLineDash(selected.role === "mark" ? [3, 2] : []);
-      ctx.strokeRect(
-        selected.x - entry.line.bbox.x - crop.x - 2,
-        selected.y - entry.line.bbox.y - crop.y - 2,
-        selected.w + 4,
-        selected.h + 4,
-      );
-      ctx.setLineDash([]);
-    }
-  }, [raster, entry, types, distinguishTypes, dim, selected, crop.x, crop.y, crop.w, crop.h]);
-  return (
-    <div className="flex h-32 flex-none items-center justify-center overflow-hidden border-y border-rule bg-white">
-      <canvas
-        ref={canvas}
-        width={Math.ceil(crop.w)}
-        height={Math.ceil(crop.h)}
-        className="max-h-full max-w-full cursor-pointer object-contain"
-        style={{ width: "100%", aspectRatio: `${crop.w}/${crop.h}` }}
-        role="img"
-        aria-label={t("wordPlayback.closeup")}
-        data-word-playback="word"
-        onClick={(event) => {
-          if (!raster) return;
-          const rect = event.currentTarget.getBoundingClientRect();
-          const point = containedPoint(
-            event.clientX - rect.left,
-            event.clientY - rect.top,
-            rect.width,
-            rect.height,
-            crop.w,
-            crop.h,
-          );
-          if (!point) return;
-          const x = Math.floor(crop.x + point.x),
-            y = Math.floor(crop.y + point.y);
-          const id = raster.ids[y * raster.width + x];
-          onSelect(wordBlobs(entry).some((blob) => blob.id === id) ? id : null);
-        }}
-      />
-    </div>
-  );
-}
-
-function Swatch({ color, dashed = false }: { color: readonly number[]; dashed?: boolean }) {
-  return (
-    <span
-      aria-hidden="true"
-      className="h-3 w-3 flex-none border-2"
-      style={{
-        borderColor: `rgb(${color.join(",")})`,
-        background: dashed ? "var(--card)" : `rgb(${color.join(",")})`,
-        borderStyle: dashed ? "dashed" : "solid",
-      }}
-    />
-  );
-}
-function Toggle({
+function BarButton({
   label,
-  checked,
-  set,
-}: {
-  label: string;
-  checked: boolean;
-  set: (value: boolean) => void;
-}) {
-  return (
-    <label className="flex cursor-pointer items-center gap-1.5">
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={(e) => set(e.target.checked)}
-        className="accent-lapis"
-      />
-      {label}
-    </label>
-  );
-}
-function Control({
-  label,
-  onClick,
-  disabled,
   active,
+  onClick,
   children,
 }: {
   label: string;
-  onClick: () => void;
-  disabled?: boolean;
   active?: boolean;
+  onClick: () => void;
   children: ReactNode;
 }) {
   return (
@@ -887,10 +681,56 @@ function Control({
       aria-label={label}
       aria-pressed={active}
       onClick={onClick}
-      disabled={disabled}
-      className={`flex h-9 w-9 flex-none cursor-pointer items-center justify-center rounded-sm border border-rule-2 disabled:cursor-default disabled:opacity-40 ${active ? "bg-lapis text-on-lapis" : "bg-card text-ink hover:bg-sheet"}`}
+      className={`flex h-9 w-9 flex-none cursor-pointer items-center justify-center rounded-control transition-colors ${
+        active ? "bg-on-deep text-deep" : "bg-white/10 hover:bg-white/20"
+      }`}
     >
       {children}
     </button>
+  );
+}
+
+function Pill({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      onClick={onClick}
+      className={`inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-control px-2.5 text-[12.5px] font-semibold transition-colors ${
+        active ? "bg-on-deep text-deep" : "bg-white/10 hover:bg-white/20"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function Check({
+  label,
+  checked,
+  set,
+}: {
+  label: string;
+  checked: boolean;
+  set: (checked: boolean) => void;
+}) {
+  return (
+    <label className="flex cursor-pointer items-center gap-1.5">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(event) => set(event.target.checked)}
+        className="h-4 w-4 accent-gold"
+      />
+      {label}
+    </label>
   );
 }
