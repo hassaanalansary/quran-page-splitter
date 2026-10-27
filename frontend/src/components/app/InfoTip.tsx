@@ -12,7 +12,7 @@ export function InfoTip({ text }: { text: string }) {
             type="button"
             aria-label={text}
             onClick={(e) => e.preventDefault()}
-            className="inline-flex h-[18px] w-[18px] flex-none cursor-help items-center justify-center rounded-full border-[1.5px] border-lapis bg-lapis-wash font-sans text-[10.5px] font-bold leading-none text-lapis-text transition-colors hover:bg-lapis hover:text-on-lapis focus:outline-none focus-visible:ring-2 focus-visible:ring-lapis"
+            className="ms-auto inline-flex h-[18px] w-[18px] flex-none cursor-help items-center justify-center rounded-full border-[1.5px] border-lapis bg-lapis-wash font-sans text-[10.5px] font-bold leading-none text-lapis-text transition-colors hover:bg-lapis hover:text-on-lapis focus:outline-none focus-visible:ring-2 focus-visible:ring-lapis"
           >
             <span aria-hidden="true">i</span>
           </button>

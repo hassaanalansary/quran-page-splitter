@@ -108,8 +108,9 @@ import type {
   TypeEvidence,
 } from "@/lib/calibration/types";
 import { revealInScroller } from "@/lib/reveal";
+import { cn } from "@/lib/utils";
 
-import { BlobStrip } from "./BlobStrip";
+import { BlobStrip, STRIP_CHROME } from "./BlobStrip";
 import { BulkPanel } from "./BulkPanel";
 import { HIGHLIGHT_RGB, ROLE_RGB } from "./colors";
 import { ConfirmPageDialog } from "./ConfirmPageDialog";
@@ -368,7 +369,8 @@ export function CalibrationEditor({
     return () => observer.disconnect();
   }, []);
 
-  const fit = column && box ? Math.max(0.05, (box - 2 * PAD) / column.w) : 1;
+  // Fit is the whole strip in view: its text column, the box around it and its number.
+  const fit = column && box ? Math.max(0.05, (box - 2 * PAD - STRIP_CHROME) / column.w) : 1;
   const scale = fit * zoom;
   useCtrlWheelZoom({ ref: scrollRef, zoom, onZoomChange: setZoom, min: MIN_ZOOM, max: MAX_ZOOM });
   useZoomToPointer({ scrollRef, imgRef: stageRef, scale });
@@ -695,7 +697,10 @@ export function CalibrationEditor({
   // again when the typing it is judged against changes — the last answer for the
   // same mark stays up meanwhile, so typing it does not blank the bar.
   const explained =
-    evidenceTab === "type" && selectedBlobs.length === 1 && selectedBlobs[0].role === "mark"
+    canGuess &&
+    evidenceTab === "type" &&
+    selectedBlobs.length === 1 &&
+    selectedBlobs[0].role === "mark"
       ? selectedBlobs[0]
       : null;
   const explainedMark = explained ? `${selection.snapshot}:${explained.id}` : "";
@@ -952,10 +957,10 @@ export function CalibrationEditor({
       <StatusLine tone="success">{t("calibration.statusClean")}</StatusLine>
     );
 
-  const processButton = (
+  const processButton = (className?: string) => (
     <button
       type="button"
-      className={PRIMARY}
+      className={cn(PRIMARY, className)}
       onClick={() => processMutation.mutate()}
       disabled={
         !ready || running || processMutation.isPending || dirty || busy || !!preview || held
@@ -995,7 +1000,7 @@ export function CalibrationEditor({
       </button>
     </div>
   ) : !processed || stale ? (
-    processButton
+    processButton()
   ) : (
     <div className="flex flex-col gap-2.5">
       <div className="flex items-stretch gap-2">
@@ -1102,7 +1107,7 @@ export function CalibrationEditor({
       center(
         <>
           <p className="text-[13px] leading-relaxed text-ink-2">{t("calibration.processIntro")}</p>
-          {processButton}
+          {processButton()}
         </>,
       )
     ) : !column ? (
@@ -1336,7 +1341,7 @@ export function CalibrationEditor({
               expectations={expectations}
               checks={checks}
               preview={!!preview}
-              disabled={builtPage !== page || !!busy || stale}
+              disabled={builtPage !== page || !!busy}
               onInspect={(next) => {
                 setMode("blobs");
                 select(next);
@@ -1375,8 +1380,27 @@ export function CalibrationEditor({
           </div>
         </div>
 
+        {/* Stale: said on the canvas, where the editing stopped, with the way out. The
+            draft can still be looked through and played; only editing waits. */}
+        {processed && stale && (
+          <div
+            role="status"
+            className="mx-[18px] mt-2.5 flex flex-shrink-0 flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border-s-4 border-warn bg-warn-wash px-3.5 py-2.5"
+          >
+            <span className="flex min-w-[240px] flex-1 flex-col gap-0.5">
+              <strong className="text-[13px] font-semibold text-warn-text">
+                {t("calibration.statusStale")}
+              </strong>
+              <span className="text-[12.5px] leading-snug text-ink-2">
+                {t("calibration.staleHint")}
+              </span>
+            </span>
+            {processButton("h-9 flex-none px-3.5 text-[13px]")}
+          </div>
+        )}
+
         {/* Legend: the four ink roles, and how a word is drawn. */}
-        {processed && !stale && mode === "blobs" && (
+        {processed && mode === "blobs" && (
           <div className="flex flex-shrink-0 flex-wrap items-center gap-x-4 gap-y-2 px-[18px] pt-2.5 text-[12.5px] text-ink-2">
             {(["body", "mark", "ornament", "symbol"] as const).map((role) => (
               <span key={role} className="inline-flex items-center gap-1.5">
@@ -1499,7 +1523,7 @@ export function CalibrationEditor({
           {canvas}
         </div>
 
-        {processed && !stale && (
+        {processed && (
           <SelectionBar
             mushafId={mushafId}
             page={page}
@@ -1566,12 +1590,11 @@ export function CalibrationEditor({
       </div>
 
       <Aside intro={pageLine} status={status} footer={footer}>
-        {stale && <Hint tone="warning">{t("calibration.staleHint")}</Hint>}
         {contextStale && (
           <Hint tone="warning">
             <div className="flex flex-col items-stretch gap-2">
               {t("calibration.contextStaleHint")}
-              {processButton}
+              {processButton()}
             </div>
           </Hint>
         )}

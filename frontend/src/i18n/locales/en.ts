@@ -1170,7 +1170,7 @@ export const en = {
     heldHint:
       "This page changed elsewhere while you were editing it, so saving these edits would be refused. Reload to take the new version — your unsaved edits here are dropped.",
     staleHint:
-      "The page's lines changed after this draft was made — re-processed, re-reviewed or erased — so the draft is shown read-only. Process the page again: the decisions on its unchanged lines are kept.",
+      "Something the page is measured from changed after this draft was made: its lines were detected again, a segment moved in Review, an erase stroke was drawn, or the aya, sajda or rub-hizb template was captured again. You can still look through the draft and play its words, but not edit it. Process the page again to edit it: the decisions on its unchanged lines are kept.",
     contextStaleHint:
       "A neighbouring page's lines changed after this page was processed, so it cannot be previewed until it is processed again. Saving and confirming still work, and processing again keeps your decisions on this page's unchanged lines — save any unsaved edits first.",
 

@@ -50,6 +50,12 @@ const SLOT = 15;
 const ROW = 17;
 /** Screen px of page around the ink, inside the line's box. */
 const INSET = 12;
+/** Screen px of the line-number gutter beside the box, and of the gap before it. */
+const GUTTER = 34;
+const GUTTER_GAP = 10;
+/** Screen px a strip adds to the width of its text column: the box's inset on both
+ * sides and the number gutter. What Fit leaves room for. */
+export const STRIP_CHROME = INSET * 2 + GUTTER_GAP + GUTTER;
 
 type Raster = { source: ImageBitmap; ids: Uint32Array; width: number; height: number };
 type Point = { x: number; y: number };
@@ -348,7 +354,7 @@ export function BlobStrip({
   const boxWidth = Math.max(columnWidth ?? 0, marginLeft + width) + INSET * 2;
 
   return (
-    <div className="flex items-stretch gap-2.5" data-line={line.snapshot_id}>
+    <div className="flex items-stretch" style={{ gap: GUTTER_GAP }} data-line={line.snapshot_id}>
       <div
         className={`flex flex-col bg-white py-2 ${line.readonly ? "opacity-60" : ""}`}
         style={{
@@ -622,11 +628,12 @@ export function BlobStrip({
 
       {/* The line's number, in the gutter at the end. */}
       <div
-        className={`flex w-[34px] flex-none flex-col items-center justify-center gap-0.5 rounded border font-mono ${
+        className={`flex flex-none flex-col items-center justify-center gap-0.5 rounded border font-mono ${
           focused
             ? "border-lapis/40 bg-lapis-wash text-lapis-text"
             : "border-rule bg-card text-ink-3"
         }`}
+        style={{ width: GUTTER }}
         title={label}
       >
         {line.readonly && (

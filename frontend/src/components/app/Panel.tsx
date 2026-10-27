@@ -55,8 +55,10 @@ function InspectorTitle({
 /** The shell's inspector, on the end side of every step: the step's title, then
  * the context for what is selected, scrolling. `status` and `footer` are pinned
  * below the scroll area so the next action, a blocker or a warning, and the
- * step's buttons, are never scrolled out of view. 340 px; `wide` for the steps
- * whose boards draw it at 360. */
+ * step's buttons, are never scrolled out of view. 380 px, and 420 when `wide` — the
+ * steps that are mostly a form (Templates, Process); the rest need the canvas more.
+ * Both give way on a small laptop, never below the width their rows were laid out
+ * for. */
 export function Aside({
   children,
   status,
@@ -78,7 +80,7 @@ export function Aside({
     <aside
       className={cn(
         "flex flex-none flex-col overflow-hidden border-s border-rule bg-sheet max-lg:max-h-[45%] max-lg:w-full max-lg:border-s-0 max-lg:border-t",
-        wide ? "lg:w-[360px]" : "lg:w-[340px]",
+        wide ? "lg:w-[clamp(360px,30vw,420px)]" : "lg:w-[clamp(340px,28vw,380px)]",
       )}
     >
       <div className="flex min-h-0 flex-1 flex-col gap-[18px] overflow-y-auto p-5">

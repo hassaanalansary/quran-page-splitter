@@ -415,7 +415,7 @@ function IgnoreSection({
   }
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-rule-soft bg-sheet p-3">
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="flex items-center gap-1.5 text-[13px] font-semibold capitalize text-ink">
           {t("templates.ignoreLabel")}
           {ignoreRect && (
@@ -430,7 +430,7 @@ function IgnoreSection({
             <button
               type="button"
               onClick={onClear}
-              className="rounded-sm border border-rule-2 bg-card px-2 py-[3px] text-[11px] font-medium text-ink-2 hover:bg-sheet"
+              className="rounded-sm border border-rule-2 bg-card px-2 py-[3px] text-[11px] font-medium text-ink-2 hover:bg-sheet cursor-pointer"
             >
               {t("templates.clearIgnore")}
             </button>
@@ -439,7 +439,7 @@ function IgnoreSection({
             <button
               type="button"
               onClick={onDone}
-              className="rounded-sm bg-lapis px-2.5 py-[3px] text-[11px] font-semibold text-on-lapis hover:bg-lapis/90"
+              className="rounded-sm bg-lapis px-2.5 py-[3px] text-[11px] font-semibold text-on-lapis hover:bg-lapis/90 cursor-pointer"
             >
               {t("templates.ignoreDone")}
             </button>
@@ -447,7 +447,7 @@ function IgnoreSection({
             <button
               type="button"
               onClick={onEdit}
-              className="rounded-sm border border-rule-2 bg-card px-2 py-[3px] text-[11px] font-medium text-lapis-text hover:bg-lapis-wash"
+              className="rounded-sm border border-rule-2 bg-card px-2 py-[3px] text-[11px] font-medium text-lapis-text hover:bg-lapis-wash cursor-pointer"
             >
               {ignoreRect ? t("templates.editIgnoreRegion") : t("templates.addIgnoreRegion")}
             </button>
