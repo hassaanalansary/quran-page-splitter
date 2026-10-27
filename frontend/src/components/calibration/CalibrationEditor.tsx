@@ -18,7 +18,7 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
 import { CanvasHelp } from "@/components/app/CanvasHelp";
-import { Aside, Hint, PanelCard, Section, StatusLine } from "@/components/app/Panel";
+import { Aside, Hint, PanelCard, Section, StatusLine, StepBody } from "@/components/app/Panel";
 import { BusyLabel, LoadingState } from "@/components/app/SatrLoader";
 import { WordRunProgress } from "@/components/app/WordRunProgress";
 import { WordsGateNotice } from "@/components/app/WordsGateNotice";
@@ -1184,9 +1184,7 @@ export function CalibrationEditor({
   ];
 
   return (
-    <div
-      className={`flex min-h-0 flex-1 flex-col overflow-hidden [&>aside]:max-h-[45%] [&>aside]:w-full [&>aside]:border-t lg:[&>aside]:max-h-none lg:[&>aside]:w-[340px] lg:[&>aside]:border-t-0 ${isRTL ? "lg:flex-row-reverse" : "lg:flex-row"}`}
-    >
+    <StepBody>
       <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <div className="flex h-11 flex-shrink-0 items-center gap-2 overflow-x-auto border-b border-rule bg-card px-3">
           <WordPlayback
@@ -1763,7 +1761,7 @@ export function CalibrationEditor({
         pending={confirmMutation.isPending}
         onConfirm={(acknowledge) => confirmMutation.mutate(acknowledge)}
       />
-    </div>
+    </StepBody>
   );
 }
 

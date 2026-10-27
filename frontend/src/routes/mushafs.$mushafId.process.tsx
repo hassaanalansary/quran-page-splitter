@@ -7,7 +7,7 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
 import { TemplatePreview } from "@/components/canvas/TemplatePreview";
-import { Aside, Field, Hint, Section, StatusLine } from "@/components/app/Panel";
+import { Aside, Field, Hint, Section, StatusLine, StepBody } from "@/components/app/Panel";
 import { CanvasHelp } from "@/components/app/CanvasHelp";
 import { InfoTip } from "@/components/app/InfoTip";
 import { BusyLabel } from "@/components/app/SatrLoader";
@@ -457,9 +457,7 @@ function ProcessPage() {
   }
 
   return (
-    <div
-      className={`flex ${i18n.language === "ar" ? "flex-row-reverse" : "flex-row"} flex-1 overflow-hidden`}
-    >
+    <StepBody>
       <div data-tour="process-bounds" className="relative flex flex-1 overflow-hidden">
         <PageStage
           imageUrl={pageImageUrl(mushafId, preview, mushaf.updated_at)}
@@ -530,6 +528,7 @@ function ProcessPage() {
       )}
 
       <Aside
+        wide
         status={status}
         footer={
           <div data-tour="process-run" className="flex flex-col gap-2">
@@ -762,7 +761,7 @@ function ProcessPage() {
       )}
 
       <TourOverlay tour={tour} />
-    </div>
+    </StepBody>
   );
 }
 

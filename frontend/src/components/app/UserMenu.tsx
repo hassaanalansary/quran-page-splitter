@@ -23,8 +23,8 @@ function initialsOf(display: string, email: string): string {
   return letters.join("").toUpperCase();
 }
 
-/** Avatar + account dropdown. Rendered in both headers (the landing bar in
- * routes/index.tsx and the workspace bar in MushafHeader). */
+/** Avatar + account dropdown, in every top bar: the library and gallery's
+ * (TopBar), the steps' (shell/WorkspaceTopBar) and the hub's (MushafHeader). */
 export function UserMenu({ size = 28 }: { size?: number }) {
   const { t } = useTranslation();
   const navigate = useNavigate();

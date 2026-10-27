@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
-import { Aside, Field, Hint, PanelCard, StatusLine } from "@/components/app/Panel";
+import { Aside, Field, Hint, PanelCard, StatusLine, StepBody } from "@/components/app/Panel";
 import { CanvasHelp } from "@/components/app/CanvasHelp";
 import { InfoTip } from "@/components/app/InfoTip";
 import { BusyLabel } from "@/components/app/SatrLoader";
@@ -22,7 +22,7 @@ function clamp(n: number, lo: number, hi: number) {
 }
 
 function SetupPage() {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const { mushafId } = useParams({ from: "/mushafs/$mushafId/setup" });
   const { data: mushaf } = useMushaf(mushafId);
   const queryClient = useQueryClient();
@@ -128,9 +128,7 @@ function SetupPage() {
   }
 
   return (
-    <div
-      className={`flex ${i18n.language === "ar" ? "flex-row-reverse" : "flex-row"} flex-1 overflow-hidden`}
-    >
+    <StepBody>
       <div data-tour="setup-filmstrip" className="relative flex flex-1 overflow-hidden">
         <FilmstripViewer
           mushafId={mushafId}
@@ -252,7 +250,7 @@ function SetupPage() {
       </Aside>
 
       <TourOverlay tour={tour} />
-    </div>
+    </StepBody>
   );
 }
 

@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
-import { Aside, Field, Hint, StatusLine } from "@/components/app/Panel";
+import { Aside, Field, Hint, StatusLine, StepBody } from "@/components/app/Panel";
 import { AyaPreviewDialog } from "@/components/app/AyaPreviewDialog";
 import { CanvasHelp } from "@/components/app/CanvasHelp";
 import { LineNavigator } from "@/components/app/LineNavigator";
@@ -76,7 +76,7 @@ function ReviewPage() {
   const { page } = Route.useSearch();
   const navigate = useNavigate({ from: "/mushafs/$mushafId/review" });
   const queryClient = useQueryClient();
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
 
   const { data: mushaf } = useMushaf(mushafId);
   const { data: suras } = useSuras(mushaf?.qiraa);
@@ -567,9 +567,7 @@ function ReviewPage() {
   );
 
   return (
-    <div
-      className={`flex ${i18n.language === "ar" ? "flex-row-reverse" : "flex-row"} flex-1 overflow-hidden`}
-    >
+    <StepBody>
       <div data-tour="review-canvas" className="relative flex flex-1 overflow-hidden">
         <ReviewEditCanvas
           imageUrl={pageImageUrl(mushafId, page)}
@@ -717,7 +715,7 @@ function ReviewPage() {
       />
 
       <TourOverlay tour={tour} />
-    </div>
+    </StepBody>
   );
 }
 

@@ -1,28 +1,71 @@
 import { ChevronDown, TriangleAlert } from "lucide-react";
 import { useState, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
+
+import { useShellStep } from "@/components/app/shell/context";
+import { useOtherLanguage } from "@/hooks/use-other-language";
+import { cn } from "@/lib/utils";
 
 import { InfoTip } from "./InfoTip";
 import { t } from "i18next";
 
-/** Right-hand control column used by the setup / templates / process steps.
- * `status` is pinned above `footer` (outside the scroll area) so the current
- * next-action / blocker / warning is never scrolled out of view. */
+/** A step's row inside the shell: its canvas, then its {@link Aside}. Stacks on
+ * narrow screens, the inspector under the canvas. */
+export function StepBody({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden max-lg:flex-col">{children}</div>
+  );
+}
+
+/** The step's name, with its other-language twin in gold, atop the inspector. */
+function InspectorTitle() {
+  const { t } = useTranslation();
+  const other = useOtherLanguage();
+  const step = useShellStep();
+  if (!step) return null;
+  return (
+    <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
+      <h1 className="m-0 font-display text-[28px] font-semibold leading-tight">
+        {t(`header.steps.${step}`)}
+      </h1>
+      <span lang={other.lng} className="font-display text-[18px] text-gold-text">
+        {other.t(`header.steps.${step}`)}
+      </span>
+    </div>
+  );
+}
+
+/** The shell's inspector, on the end side of every step: the step's title, then
+ * the context for what is selected, scrolling. `status` and `footer` are pinned
+ * below the scroll area so the next action, a blocker or a warning, and the
+ * step's buttons, are never scrolled out of view. 340 px; `wide` for the steps
+ * whose boards draw it at 360. */
 export function Aside({
   children,
   status,
   footer,
+  wide = false,
 }: {
   children: ReactNode;
   status?: ReactNode;
   footer?: ReactNode;
+  wide?: boolean;
 }) {
   return (
-    <aside className="flex w-[340px] flex-shrink-0 flex-col overflow-hidden border-l border-rule bg-card">
-      <div className="flex flex-1 flex-col gap-4 overflow-y-auto p-4">{children}</div>
+    <aside
+      className={cn(
+        "flex flex-none flex-col overflow-hidden border-s border-rule bg-sheet max-lg:max-h-[45%] max-lg:w-full max-lg:border-s-0 max-lg:border-t",
+        wide ? "lg:w-[360px]" : "lg:w-[340px]",
+      )}
+    >
+      <div className="flex min-h-0 flex-1 flex-col gap-[18px] overflow-y-auto p-5">
+        <InspectorTitle />
+        {children}
+      </div>
       {(status || footer) && (
-        <div className="flex-shrink-0 border-t border-rule">
-          {status && <div className="px-4 pt-3">{status}</div>}
-          {footer && <div className="p-4">{footer}</div>}
+        <div className="flex flex-none flex-col gap-3 border-t border-rule px-5 pb-[18px] pt-3.5">
+          {status}
+          {footer}
         </div>
       )}
     </aside>
@@ -31,12 +74,12 @@ export function Aside({
 
 export function PanelCard({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div className="rounded-md border border-rule bg-card">
-      <div className="border-b border-rule px-3 py-2 text-[12px] font-semibold tracking-[0.02em] text-ink">
+    <section className="flex flex-col gap-3 rounded-card border border-rule bg-card p-4">
+      <h2 className="m-0 text-[12px] font-semibold uppercase tracking-[0.08em] text-ink-3">
         {title}
-      </div>
-      <div className="flex flex-col gap-3 p-3">{children}</div>
-    </div>
+      </h2>
+      {children}
+    </section>
   );
 }
 
@@ -54,21 +97,24 @@ export function Section({
 }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <div className="rounded-md border border-rule bg-card">
+    <section className="rounded-card border border-rule bg-card">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center gap-2 px-3 py-2 text-[12px] font-semibold tracking-[0.02em] text-ink transition-colors bg-sheet hover:bg-lapis-wash focus:outline-none focus-visible:ring-2 focus-visible:ring-lapis focus-visible:ring-offset-2"
+        aria-expanded={open}
+        className="flex w-full cursor-pointer items-center gap-2 rounded-card px-4 py-3 text-start transition-colors hover:bg-sheet focus:outline-none focus-visible:ring-2 focus-visible:ring-lapis"
       >
-        <ChevronDown
-          size={14}
-          className={`flex-shrink-0 text-ink-3 transition-transform ${open ? "" : "-rotate-90"}`}
-        />
-        <span className="flex-1 text-left text-lapis-text">{title}</span>
+        <span className="flex-1 text-[12px] font-semibold uppercase tracking-[0.08em] text-ink-3">
+          {title}
+        </span>
         {badge}
+        <ChevronDown
+          size={15}
+          className={`flex-shrink-0 text-ink-3 transition-transform ${open ? "" : "-rotate-90 rtl:rotate-90"}`}
+        />
       </button>
-      {open && <div className="flex flex-col gap-3 border-t border-rule p-3">{children}</div>}
-    </div>
+      {open && <div className="flex flex-col gap-3 px-4 pb-4">{children}</div>}
+    </section>
   );
 }
 
@@ -143,8 +189,8 @@ export function StatusLine({
             ? "text-lapis-text"
             : "text-gold-text";
   return (
-    <div className={`flex items-center gap-2 text-[11.5px] ${text}`}>
-      <span className={`h-1.5 w-1.5 flex-none rounded-full ${dot}`} aria-hidden />
+    <div className={`flex items-center gap-2 text-[13px] ${text}`}>
+      <span className={`h-[7px] w-[7px] flex-none rounded-full ${dot}`} aria-hidden />
       <span className="leading-snug">{children}</span>
     </div>
   );

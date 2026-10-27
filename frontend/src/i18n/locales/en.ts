@@ -33,6 +33,20 @@ export const en = {
     home: "SATR home",
     main: "Main",
   },
+  // The workspace shell around every step
+  shell: {
+    allMushafs: "SATR — all mushafs",
+    pipeline: "Pipeline",
+    overview: "Mushaf overview",
+    phase: {
+      prepare: "Prepare",
+      linesAyat: "Lines & ayat",
+      words: "Words",
+    },
+    progressProcessed: "{{done}} of {{total}} pages processed",
+    progressReviewed: "{{done}} of {{total}} reviewed",
+    progressExported: "{{done}} of {{total}} lines exported",
+  },
   theme: {
     label: "Theme",
     light: "Light",

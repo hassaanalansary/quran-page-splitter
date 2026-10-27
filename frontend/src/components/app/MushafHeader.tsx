@@ -18,8 +18,9 @@ import { pipelineSteps, STATUS_META, STEP_ROUTES, type StepSlug } from "./detail
 
 const STEP_SLUGS: StepSlug[] = ["setup", "templates", "process", "review", "finalize", "ink"];
 
-/** Unified top bar for every mushaf page (workspace steps + the details hub):
- * breadcrumb → hub, status pill, a status-aware 6-step nav, and quick actions. */
+/** The details hub's top bar: breadcrumb → hub, status pill, a status-aware 6-step
+ * nav, the Continue button and quick actions. The steps have the shell's own top bar
+ * and spine (components/app/shell); this stays with the hub until its redesign. */
 export function MushafHeader({
   mushaf,
   activeSlug,

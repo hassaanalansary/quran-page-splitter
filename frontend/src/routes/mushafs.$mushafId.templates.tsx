@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
-import { Aside, StatusLine } from "@/components/app/Panel";
+import { Aside, StatusLine, StepBody } from "@/components/app/Panel";
 import { CanvasHelp } from "@/components/app/CanvasHelp";
 import { BusyLabel } from "@/components/app/SatrLoader";
 import { TourOverlay } from "@/components/app/tour/TourOverlay";
@@ -59,7 +59,7 @@ function TemplatesPage() {
   const { data: mushaf } = useMushaf(mushafId);
   const { data: serverTemplates } = useTemplates(mushafId);
   const queryClient = useQueryClient();
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const label = (type: TemplateType) => t(`templates.label_${type}`);
 
   const draft0 = useMemo(() => getTemplateDraft(mushafId), [mushafId]);
@@ -222,9 +222,7 @@ function TemplatesPage() {
   const canSave = activeDirty && !saveMutation.isPending;
 
   return (
-    <div
-      className={`flex ${i18n.language === "ar" ? "flex-row-reverse" : "flex-row"} flex-1 overflow-hidden`}
-    >
+    <StepBody>
       {/* Left: crop the selected template on the page */}
       <div data-tour="tpl-canvas" className="relative flex flex-1 overflow-hidden">
         <PageStage
@@ -309,6 +307,7 @@ function TemplatesPage() {
 
       {/* Right: selection cards */}
       <Aside
+        wide
         status={status}
         footer={
           <Button asChild variant="outline">
@@ -377,7 +376,7 @@ function TemplatesPage() {
       </Aside>
 
       <TourOverlay tour={tour} />
-    </div>
+    </StepBody>
   );
 }
 

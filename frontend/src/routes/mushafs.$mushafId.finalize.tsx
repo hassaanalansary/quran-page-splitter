@@ -4,7 +4,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
-import { Aside, Field, Hint, PanelCard, Section, StatusLine } from "@/components/app/Panel";
+import {
+  Aside,
+  Field,
+  Hint,
+  PanelCard,
+  Section,
+  StatusLine,
+  StepBody,
+} from "@/components/app/Panel";
 import { CanvasHelp } from "@/components/app/CanvasHelp";
 import { ExportedLineDialog, type ExportedLine } from "@/components/app/ExportedLineDialog";
 import { LineNavigator } from "@/components/app/LineNavigator";
@@ -83,7 +91,7 @@ function FinalizePage() {
   const { page } = Route.useSearch();
   const navigate = useNavigate({ from: "/mushafs/$mushafId/finalize" });
   const queryClient = useQueryClient();
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
 
   const { data: mushaf } = useMushaf(mushafId);
   const { data: pages } = useProcessedPages(mushafId);
@@ -357,9 +365,7 @@ function FinalizePage() {
   }));
 
   return (
-    <div
-      className={`flex ${i18n.language === "ar" ? "flex-row-reverse" : "flex-row"} flex-1 overflow-hidden`}
-    >
+    <StepBody>
       <div data-tour="finalize-canvas" className="relative flex flex-1 overflow-hidden">
         <FinalizeCanvas
           imageUrl={pageImageUrl(mushafId, page, mushaf.updated_at)}
@@ -620,7 +626,7 @@ function FinalizePage() {
       <ExportedLineDialog lines={exportedLines} current={viewing} onCurrentChange={setViewing} />
 
       <TourOverlay tour={tour} />
-    </div>
+    </StepBody>
   );
 }
 

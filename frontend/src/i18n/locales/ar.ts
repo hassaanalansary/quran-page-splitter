@@ -33,6 +33,19 @@ export const ar: typeof en = {
     home: "الصفحة الرئيسية لسَطْر",
     main: "التنقل الرئيسي",
   },
+  shell: {
+    allMushafs: "سَطْر — كل المصاحف",
+    pipeline: "مراحل العمل",
+    overview: "نظرة عامة على المصحف",
+    phase: {
+      prepare: "التحضير",
+      linesAyat: "الأسطر والآيات",
+      words: "الكلمات",
+    },
+    progressProcessed: "{{done}} من {{total}} صفحة معالَجة",
+    progressReviewed: "{{done}} من {{total}} مراجَعة",
+    progressExported: "{{done}} من {{total}} سطراً مُصدَّراً",
+  },
   theme: {
     label: "المظهر",
     light: "فاتح",
