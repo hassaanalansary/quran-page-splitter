@@ -4,11 +4,11 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
+import { DeleteMushafDialog } from "@/components/app/DeleteMushafDialog";
 import { BusyLabel } from "@/components/app/SatrLoader";
 import { PublishPanel } from "@/components/app/details/PublishPanel";
 import {
   ApiError,
-  deleteMushaf,
   queryKeys,
   regenerateThumbnail,
   updateMushaf,
@@ -30,6 +30,7 @@ export function SettingsTab({ mushaf }: { mushaf: MushafDetail }) {
   const [first, setFirst] = useState(mushaf.first_quran_pdf_page);
   const [last, setLast] = useState(mushaf.last_quran_pdf_page);
   const [error, setError] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const locked = mushaf.processed_page_count > 0;
 
@@ -57,16 +58,6 @@ export function SettingsTab({ mushaf }: { mushaf: MushafDetail }) {
       toast.success(t("details.set_thumbRegenerated"));
     },
     onError: (e) => toast.error(e instanceof ApiError ? e.message : t("details.set_regenFailed")),
-  });
-
-  const remove = useMutation({
-    mutationFn: () => deleteMushaf(mushaf.id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.mushafs });
-      toast.success(t("details.set_deleted", { name: mushaf.name }));
-      navigate({ to: "/" });
-    },
-    onError: (e) => toast.error(e instanceof ApiError ? e.message : t("details.set_deleteFailed")),
   });
 
   function onSaveMushaf() {
@@ -262,15 +253,17 @@ export function SettingsTab({ mushaf }: { mushaf: MushafDetail }) {
           </div>
           <button
             type="button"
-            disabled={remove.isPending}
-            onClick={() => {
-              if (window.confirm(t("details.set_deleteConfirm", { name: mushaf.name })))
-                remove.mutate();
-            }}
+            onClick={() => setDeleting(true)}
             className="ms-auto h-[30px] flex-none cursor-pointer rounded-lg border border-stop/20 bg-stop-wash px-[13px] text-[11.5px] font-semibold text-stop-text transition-colors hover:brightness-95 disabled:opacity-50"
           >
-            {remove.isPending ? t("details.set_deleting") : t("details.set_deleteBtn")}
+            {t("details.set_deleteBtn")}
           </button>
+          <DeleteMushafDialog
+            mushaf={mushaf}
+            open={deleting}
+            onOpenChange={setDeleting}
+            onDeleted={() => void navigate({ to: "/" })}
+          />
         </div>
       </div>
     </div>
