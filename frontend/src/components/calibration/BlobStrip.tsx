@@ -19,6 +19,7 @@ import {
   isTyped,
   labelAt,
   labelsInRect,
+  markCheckOf,
   needsLook,
   noiseFor,
   passesFilter,
@@ -29,20 +30,23 @@ import {
   type BlobSelection,
   type Doubts,
   type Expectations,
+  type MarkChecks,
   type NoiseSuspects,
 } from "@/lib/calibration/model";
 import type { CalibrationLine } from "@/lib/calibration/types";
 
 import { HIGHLIGHT_RGB, ROLE_RGB } from "./colors";
-import { useTypeName } from "./labels";
+import { exceptionKey, useTypeName } from "./labels";
 import { TANWEEN_MARKS, subtypeGlyph } from "./subtypes";
 
 const SELECTED_RGB: [number, number, number] = [234, 88, 12];
 /** Erased ink is hatched in this, over white: still there to pick, plainly not text. */
 const ERASED_RGB: [number, number, number] = [201, 42, 42];
 /** Screen px the ring around a mark that may be noise is at the least — a speck is a
- * pixel or two. */
+ * pixel or two. A flagged blob's frame is at least as big, for the same reason. */
 const NOISE_RING = 14;
+/** The overlay language's warn, as a wash: a word whose PAWs do not close. */
+const WARN_WASH = "rgba(154, 91, 0, 0.12)";
 /** A pointer that moves further than this between down and up drew a rectangle. */
 const CLICK_SLOP = 4;
 /** Screen px each mark's slot in the type lane takes, and each lane row's height. */
@@ -58,6 +62,7 @@ const GUTTER_GAP = 10;
 export const STRIP_CHROME = INSET * 2 + GUTTER_GAP + GUTTER;
 
 type Raster = { source: ImageBitmap; ids: Uint32Array; width: number; height: number };
+type FlagKind = "mixed" | "broken" | "fused" | "uncertain";
 type Point = { x: number; y: number };
 
 /**
@@ -95,6 +100,7 @@ export function BlobStrip({
   doubts,
   tanween,
   noise,
+  checks,
   showTypes = false,
 }: {
   line: CalibrationLine;
@@ -124,6 +130,8 @@ export function BlobStrip({
   tanween?: Set<string>;
   /** Marks that may be noise: ringed, to be found and erased or not. */
   noise?: NoiseSuspects;
+  /** Every word's marks against its text's: a word they do not fit is outlined. */
+  checks?: MarkChecks;
   /** Let a click or a drag pick the faded ink too — to fix a mark the filter missed. */
   pickAll?: boolean;
   /** The words a preview's reading moved, by id: outlined so they are looked at. */
@@ -434,6 +442,15 @@ export function BlobStrip({
             {line.words.map((word, index) => {
               const moved = word.word_id !== null && !!movedWords?.has(word.word_id);
               const chosen = word.word_id !== null && selectedWords.has(word.word_id);
+              // What a confirmation asks about, seen from across the page: a word whose
+              // PAWs do not close is outlined solid in warn and washed; one whose marks
+              // do not fit its text, dashed.
+              const short = !line.readonly && word.word_id !== null && !wordCount(line, word).ok;
+              const check =
+                !line.readonly && word.word_id !== null && checks
+                  ? markCheckOf(line.snapshot_id, word.word_id, checks)
+                  : null;
+              const unfit = !!check && !check.ok;
               return (
                 <div
                   key={`${word.word_id ?? "u"}-${index}`}
@@ -445,10 +462,14 @@ export function BlobStrip({
                     height,
                     outline: moved
                       ? "2px solid var(--ov-line-selected)"
-                      : chosen
-                        ? "1.5px solid var(--ov-word)"
-                        : "1px dashed color-mix(in oklab, var(--ov-word) 70%, transparent)",
-                    background: moved ? "rgba(30, 78, 140, 0.12)" : undefined,
+                      : short
+                        ? "2px solid var(--ov-warn)"
+                        : chosen
+                          ? "1.5px solid var(--ov-word)"
+                          : unfit
+                            ? "1.5px dashed var(--ov-warn)"
+                            : "1px dashed color-mix(in oklab, var(--ov-word) 70%, transparent)",
+                    background: moved ? "rgba(30, 78, 140, 0.12)" : short ? WARN_WASH : undefined,
                     outlineOffset: -1,
                   }}
                 />
@@ -478,15 +499,46 @@ export function BlobStrip({
               line.blobs.filter(needsLook).map((blob) => (
                 <span
                   key={`look-${blob.id}`}
-                  className="pointer-events-none absolute h-1.5 w-1.5 -translate-x-1/2 rounded-full shadow-[0_0_0_1.5px_#ffffff]"
+                  className="pointer-events-none absolute h-[9px] w-[9px] -translate-x-1/2 rounded-full shadow-[0_0_0_2px_#ffffff]"
                   style={{
                     background: "var(--ov-line-selected)",
                     left: (blob.x - line.bbox.x + blob.w / 2) * scale,
-                    top: Math.max(0, (blob.y - line.bbox.y) * scale - 6),
+                    top: Math.max(0, (blob.y - line.bbox.y) * scale - 10),
                   }}
                   data-blob={`${line.snapshot_id}:${blob.id}`}
                 />
               ))}
+
+            {/* Ink you flagged as out of the ordinary: framed solid in warn, with its
+                flag on the frame — at least a ring's size, so a speck still shows. */}
+            {!line.readonly &&
+              line.blobs
+                .filter((blob) => blob.exception && !blob.erased)
+                .map((blob) => {
+                  const width = Math.max(NOISE_RING, blob.w * scale + 8);
+                  const height = Math.max(NOISE_RING, blob.h * scale + 8);
+                  const key = exceptionKey(blob.exception);
+                  return (
+                    <span
+                      key={`flag-${blob.id}`}
+                      className="pointer-events-none absolute rounded-[3px] border-2 shadow-[0_0_0_1px_#ffffff]"
+                      style={{
+                        borderColor: "var(--ov-warn)",
+                        left: (blob.x - line.bbox.x + blob.w / 2) * scale - width / 2,
+                        top: (blob.y - line.bbox.y + blob.h / 2) * scale - height / 2,
+                        width,
+                        height,
+                      }}
+                    >
+                      <span
+                        className="absolute -top-[9px] start-[-2px] whitespace-nowrap rounded-[3px] px-1 text-[9.5px] font-bold leading-[13px] text-white"
+                        style={{ background: "var(--ov-warn)" }}
+                      >
+                        ⚑ {key ? t(`calibration.flagShort.${blob.exception as FlagKind}`) : ""}
+                      </span>
+                    </span>
+                  );
+                })}
 
             {!line.readonly &&
               noise &&

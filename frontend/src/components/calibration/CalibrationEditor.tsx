@@ -1282,6 +1282,7 @@ export function CalibrationEditor({
               doubts={doubts}
               tanween={tanween}
               noise={noise}
+              checks={checks}
               showTypes={showTypes && mode === "blobs" && !line.readonly}
               dim={dim}
               selectable={!line.readonly}
@@ -1561,6 +1562,33 @@ export function CalibrationEditor({
               <span className="font-mono text-[11px] font-semibold text-ink-3">2/2</span>
               {t("calibration.countHelp")}
             </span>
+            <span className="h-4 w-px bg-rule-2" aria-hidden="true" />
+            <span className="inline-flex items-center gap-1.5">
+              <span
+                className="h-3 w-[18px] rounded-[2px] border-2"
+                style={{ borderColor: "var(--ov-warn)", background: "rgba(154, 91, 0, 0.12)" }}
+                aria-hidden="true"
+              />
+              {t("calibration.legendShort")}
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span
+                className="h-3 w-[18px] rounded-[2px] border-[1.5px] border-dashed"
+                style={{ borderColor: "var(--ov-warn)" }}
+                aria-hidden="true"
+              />
+              {t("calibration.legendUnfit")}
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span
+                className="rounded-[3px] px-1 text-[9.5px] font-bold leading-[13px] text-white"
+                style={{ background: "var(--ov-warn)" }}
+                aria-hidden="true"
+              >
+                ⚑
+              </span>
+              {t("calibration.legendFlagged")}
+            </span>
           </div>
         )}
 
@@ -1748,8 +1776,24 @@ export function CalibrationEditor({
                       tag={t("calibration.lineKey", { n: item.line_number })}
                       title={t("calibration.exceptionsNote")}
                       onClick={() => {
-                        const target = lines.find((line) => line.line_number === item.line_number);
-                        if (target) showLine(target.snapshot_id);
+                        // The blob or the word itself, selected and shown; else its line.
+                        const target = lines.find((line) => line.snapshot_id === item.snapshot);
+                        if (target && item.blob_id !== undefined) {
+                          setMode("blobs");
+                          selectAndReveal({ snapshot: target.snapshot_id, ids: [item.blob_id] });
+                        } else if (target && item.word_id !== undefined) {
+                          const ink = target.blobs
+                            .filter((blob) =>
+                              blob.allocations.some((a) => a.word_id === item.word_id),
+                            )
+                            .map((blob) => blob.id);
+                          setMode("blobs");
+                          if (ink.length) selectWord({ snapshot: target.snapshot_id, ids: ink });
+                          else showLine(target.snapshot_id);
+                        } else {
+                          const line = lines.find((row) => row.line_number === item.line_number);
+                          if (line) showLine(line.snapshot_id);
+                        }
                       }}
                     >
                       {problem(item.kind)}

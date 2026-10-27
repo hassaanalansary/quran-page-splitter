@@ -83,7 +83,9 @@ export function Aside({
         wide ? "lg:w-[clamp(360px,30vw,420px)]" : "lg:w-[clamp(340px,28vw,380px)]",
       )}
     >
-      <div className="flex min-h-0 flex-1 flex-col gap-[18px] overflow-y-auto p-5">
+      {/* Its sections keep their height and the panel scrolls: a section that clips
+          (a card with rounded corners) would otherwise shrink, and hide what it opens. */}
+      <div className="flex min-h-0 flex-1 flex-col gap-[18px] overflow-y-auto p-5 [&>*]:flex-none">
         <InspectorTitle intro={intro} title={title} meta={meta} />
         {children}
       </div>

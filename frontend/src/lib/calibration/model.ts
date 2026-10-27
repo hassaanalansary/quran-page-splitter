@@ -201,6 +201,11 @@ export type PageException = {
   kind: "flagged" | "paw-count" | "unresolved";
   line_number: number;
   detail: string;
+  /** Where it is, so the list can select it: the line, and the flagged blob or the
+   * word that does not close. */
+  snapshot?: string;
+  blob_id?: number;
+  word_id?: number;
 };
 
 export function pageExceptions(lines: CalibrationLine[]): PageException[] {
@@ -209,7 +214,13 @@ export function pageExceptions(lines: CalibrationLine[]): PageException[] {
     if (line.readonly) continue;
     for (const blob of line.blobs) {
       if (blob.exception && !blob.erased)
-        found.push({ kind: "flagged", line_number: line.line_number, detail: blob.exception });
+        found.push({
+          kind: "flagged",
+          line_number: line.line_number,
+          detail: blob.exception,
+          snapshot: line.snapshot_id,
+          blob_id: blob.id,
+        });
     }
     for (const word of line.words) {
       const count = wordCount(line, word);
@@ -218,6 +229,8 @@ export function pageExceptions(lines: CalibrationLine[]): PageException[] {
           kind: "paw-count",
           line_number: line.line_number,
           detail: `${word.text}: ${count.got}/${count.want}`,
+          snapshot: line.snapshot_id,
+          word_id: word.word_id ?? undefined,
         });
       }
     }
