@@ -1,55 +1,37 @@
-import { ChevronDown, ChevronUp, Plus } from "lucide-react";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { ReactNode } from "react";
 
 import type { LineType } from "@/lib/api";
 
-/** Per-type accent, matching the line-box colours on the canvas so the panel
- * reads as the same object (lapis = text, gold = sura header, green = besmella). */
-const LINE_TYPE_COLOR: Record<LineType, string> = {
-  text: "var(--lapis)",
-  sura_header: "var(--gold)",
-  besmella: "var(--done)",
-};
-
-/** The text on a LINE_TYPE_COLOR chip. */
-const LINE_TYPE_ON: Record<LineType, string> = {
-  text: "var(--on-lapis)",
-  sura_header: "var(--on-gold)",
-  besmella: "var(--on-done)",
-};
-
 /** One line as the navigator shows it. `key` is whatever the page uses for
- * identity — a uid in Review, the line number in Finalize. */
+ * identity — a uid in Review, the line number in Lines. */
 export type NavigatorLine = {
   key: string;
   line_number: number;
   type: LineType;
-  /** Short summary under the position (ayat covered, strokes, …). */
+  /** Short summary under the position (ayat covered, height and strokes, …). */
   summary?: ReactNode;
-  /** Extra chips beside the type chip (edited / png …). */
+  /** Extra chips beside the position (edited / png …). */
   badges?: ReactNode;
 };
 
-/** Compact line stepper: prev/next through the page's lines with the current
- * one summarised. Replaces a scrolling list — on a page of 15 near-identical
- * lines, stepping is how you actually move; the canvas is the real index. */
+/** Compact line stepper: ↑ ↓ through the page's lines with the current one
+ * summarised, and the step's line actions at the end. Replaces a scrolling list —
+ * on a page of 15 near-identical lines, stepping is how you actually move; the
+ * canvas is the real index. */
 export function LineNavigator({
-  title,
   lines,
   selectedKey,
   onSelect,
-  onAdd,
-  addLabel,
+  actions,
   emptyText,
 }: {
-  title: string;
   lines: NavigatorLine[];
   selectedKey: string | null;
   onSelect: (key: string) => void;
-  /** Omit to hide the add button (Finalize can't add lines). */
-  onAdd?: () => void;
-  addLabel?: string;
+  /** Buttons at the end of the card (Review's add and delete). */
+  actions?: ReactNode;
   emptyText: string;
 }) {
   const { t } = useTranslation();
@@ -58,65 +40,43 @@ export function LineNavigator({
   // Before the auto-select effect runs, fall back to the first line for display.
   const safeIdx = idx >= 0 ? idx : 0;
   const current: NavigatorLine | undefined = lines[safeIdx];
-  const color = current ? LINE_TYPE_COLOR[current.type] : "var(--lapis)";
 
   return (
-    <div className="rounded-md border border-rule bg-card">
-      <div className="flex items-center justify-between border-b border-rule bg-lapis-wash px-3 py-2">
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-lapis-text">
-          {title}
-        </span>
-        {onAdd && (
-          <button
-            type="button"
-            onClick={onAdd}
-            className="flex cursor-pointer items-center gap-1 rounded-sm border-[1.5px] border-lapis bg-card px-2 py-[3px] text-[11px] font-semibold text-lapis-text hover:bg-lapis hover:text-on-lapis"
-          >
-            <Plus size={12} /> {addLabel}
-          </button>
-        )}
+    <div className="flex items-center gap-2.5 rounded-card border border-rule bg-card p-2.5">
+      <div className="flex flex-none flex-col gap-0.5">
+        <NavArrow
+          dir="up"
+          title={t("review.prevLine")}
+          disabled={!current || safeIdx <= 0}
+          onClick={() => onSelect(lines[safeIdx - 1].key)}
+        />
+        <NavArrow
+          dir="down"
+          title={t("review.nextLine")}
+          disabled={!current || safeIdx >= total - 1}
+          onClick={() => onSelect(lines[safeIdx + 1].key)}
+        />
       </div>
 
       {total === 0 || !current ? (
-        <p className="px-3 py-3 text-[12px] text-ink-3">{emptyText}</p>
+        <p className="m-0 min-w-0 flex-1 text-[12.5px] leading-snug text-ink-3">{emptyText}</p>
       ) : (
-        <div className="flex items-stretch">
-          <NavArrow
-            dir="up"
-            title={t("review.prevLine")}
-            disabled={safeIdx <= 0}
-            onClick={() => onSelect(lines[safeIdx - 1].key)}
-          />
-          <button
-            type="button"
-            onClick={() => onSelect(current.key)}
-            className="flex flex-1 cursor-pointer flex-col gap-1 border-x border-rule px-3 py-2 text-start transition-colors"
-            onMouseEnter={(e) =>
-              (e.currentTarget.style.background = `color-mix(in oklab, ${color} 8%, transparent)`)
-            }
-            onMouseLeave={(e) => (e.currentTarget.style.background = "")}
-          >
-            <span className="flex w-full items-center justify-between gap-2">
-              <span className="font-mono text-[12px] font-semibold" style={{ color }}>
-                {t("review.linePosition", { n: current.line_number, total })}
-              </span>
-              <span className="flex items-center gap-1">
-                {current.badges}
-                <TypeChip type={current.type} />
-              </span>
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <span className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+            <span className="text-[15px] font-semibold">
+              {t("review.lineN", { n: current.line_number })}{" "}
+              <span className="font-normal text-ink-3">/ {total}</span>
             </span>
-            {current.summary && (
-              <span className="truncate text-[11.5px] text-ink-2">{current.summary}</span>
-            )}
-          </button>
-          <NavArrow
-            dir="down"
-            title={t("review.nextLine")}
-            disabled={safeIdx >= total - 1}
-            onClick={() => onSelect(lines[safeIdx + 1].key)}
-          />
+            {current.type !== "text" && <TypeChip type={current.type} />}
+            {current.badges}
+          </span>
+          {current.summary && (
+            <span className="truncate text-[12.5px] text-ink-2">{current.summary}</span>
+          )}
         </div>
       )}
+
+      {actions && <div className="flex flex-none items-center gap-1.5">{actions}</div>}
     </div>
   );
 }
@@ -139,19 +99,31 @@ function NavArrow({
       aria-label={title}
       disabled={disabled}
       onClick={onClick}
-      className="flex w-10 flex-none cursor-pointer items-center justify-center transition-colors bg-sheet text-lapis-text hover:bg-transparent disabled:cursor-not-allowed disabled:text-ink-3 disabled:opacity-40 disabled:hover:bg-transparent"
+      className="flex h-[22px] w-[30px] cursor-pointer items-center justify-center rounded-[5px] border border-rule bg-sheet text-ink transition-colors hover:bg-sunk disabled:cursor-default disabled:opacity-40 disabled:hover:bg-sheet"
     >
-      {dir === "up" ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+      {dir === "up" ? (
+        <ChevronUp size={14} aria-hidden="true" />
+      ) : (
+        <ChevronDown size={14} aria-hidden="true" />
+      )}
     </button>
   );
 }
 
+/** A line that isn't text, named in its canvas tag's colour: a sura header is an
+ * ornament. */
 export function TypeChip({ type }: { type: LineType }) {
   const { t } = useTranslation();
+  const background =
+    type === "sura_header"
+      ? "var(--ov-ornament)"
+      : type === "besmella"
+        ? "var(--ov-besmella)"
+        : "var(--ov-line-selected)";
   return (
     <span
-      className="rounded-pill px-[6px] py-[1px] text-[9.5px] font-semibold uppercase tracking-wider"
-      style={{ background: LINE_TYPE_COLOR[type], color: LINE_TYPE_ON[type] }}
+      className="rounded-[3px] px-[5px] py-px text-[10.5px] font-semibold text-white"
+      style={{ background }}
     >
       {t(`review.chip_${type}`)}
     </span>

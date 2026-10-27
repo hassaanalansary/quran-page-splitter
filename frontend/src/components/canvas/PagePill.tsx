@@ -1,4 +1,5 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { PageJump } from "@/components/canvas/PageJump";
@@ -6,19 +7,22 @@ import { PageJump } from "@/components/canvas/PageJump";
 /**
  * The page control in a canvas toolbar: next, the page (click it to type one), and
  * previous. Mushaf order in every language: the left arrow turns to the next page,
- * as in an Arabic book, and the right one goes back.
+ * as in an Arabic book, and the right one goes back. `extra` sits at the end of
+ * the pill after a rule (Review's warning jump).
  */
 export function PagePill({
   page,
   pageCount,
   onPageChange,
   label,
+  extra,
 }: {
   page: number;
   pageCount: number;
   onPageChange: (n: number) => void;
   /** Secondary label, e.g. the physical PDF page. */
   label?: string;
+  extra?: ReactNode;
 }) {
   const { t, i18n } = useTranslation();
   const arrow =
@@ -52,6 +56,14 @@ export function PagePill({
       >
         <ChevronRight size={16} aria-hidden="true" />
       </button>
+      {extra && (
+        <>
+          <span className="h-[18px] w-px bg-rule" aria-hidden="true" />
+          <span dir={i18n.dir()} className="flex items-center">
+            {extra}
+          </span>
+        </>
+      )}
     </div>
   );
 }

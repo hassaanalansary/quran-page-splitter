@@ -56,9 +56,7 @@ export function ToolButton({
       className={[
         "flex h-[30px] w-[34px] cursor-pointer items-center justify-center rounded-[6px] transition-colors",
         "disabled:cursor-not-allowed disabled:opacity-30",
-        active
-          ? "bg-lapis text-on-lapis"
-          : "bg-transparent text-ink-2 hover:bg-sunk hover:text-ink",
+        active ? "bg-ink text-paper" : "bg-transparent text-ink-2 hover:bg-sunk hover:text-ink",
       ].join(" ")}
     >
       {children}

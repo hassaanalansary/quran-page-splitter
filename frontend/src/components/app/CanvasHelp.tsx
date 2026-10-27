@@ -33,7 +33,7 @@ export function CanvasHelp({
   onReplayTour?: () => void;
 }) {
   return (
-    <div className="absolute top-10 start-3 z-20 flex items-center gap-1.5">
+    <div className="absolute start-4 top-[68px] z-20 flex items-center gap-1.5">
       <GuideDialog items={guideItems} onReplayTour={onReplayTour} />
       <Coach text={coachText} />
     </div>

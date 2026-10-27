@@ -4,23 +4,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
-import {
-  Aside,
-  Field,
-  Hint,
-  PanelCard,
-  Section,
-  StatusLine,
-  StepBody,
-} from "@/components/app/Panel";
+import { Aside, Hint, StatusLine, StepBody } from "@/components/app/Panel";
 import { CanvasHelp } from "@/components/app/CanvasHelp";
+import { InfoTip } from "@/components/app/InfoTip";
 import { ExportedLineDialog, type ExportedLine } from "@/components/app/ExportedLineDialog";
 import { LineNavigator } from "@/components/app/LineNavigator";
 import { BusyLabel } from "@/components/app/SatrLoader";
 import { TourOverlay } from "@/components/app/tour/TourOverlay";
 import { useStepTour, type TourStep } from "@/components/app/tour/useStepTour";
 import { FinalizeCanvas, type CanvasLine } from "@/components/canvas/FinalizeCanvas";
-import { Button } from "@/components/ui/button";
 import {
   API_BASE,
   ApiError,
@@ -379,7 +371,7 @@ function FinalizePage() {
           }
           processed={pages?.processed}
           reviewed={pages?.reviewed}
-          label={t("finalize.pdfPage", { pdf: mushaf.first_quran_pdf_page + page - 1 })}
+          label={t("canvas.pdfShort", { page: mushaf.first_quran_pdf_page + page - 1 })}
           onSelectLine={setSelected}
           onResizeLine={liveLine}
           onResizeCommit={(n, box) => commitLine(n, (l) => ({ ...l, bbox: { ...l.bbox, ...box } }))}
@@ -400,42 +392,50 @@ function FinalizePage() {
       </div>
 
       <Aside
+        meta={t("finalize.meta", { page, count: model.length })}
         status={status}
         footer={
-          <div data-tour="finalize-export" className="flex flex-col gap-2">
+          <div data-tour="finalize-export" className="flex flex-col gap-2.5">
             <div className="flex gap-2">
-              <Button
-                variant="outline"
-                className="flex-1"
+              <button
+                type="button"
                 onClick={() => saveMutation.mutate()}
                 disabled={!dirty || busy}
+                className="inline-flex h-11 flex-1 cursor-pointer items-center justify-center rounded-control border border-ink bg-transparent text-[14px] font-semibold text-ink transition-colors hover:bg-sunk disabled:cursor-default disabled:opacity-50"
               >
                 {saveMutation.isPending ? (
                   <BusyLabel>{t("common.saving")}</BusyLabel>
                 ) : (
                   t("finalize.saveCuts")
                 )}
-              </Button>
-              <Button
-                className="flex-1"
+              </button>
+              <button
+                type="button"
                 onClick={() => exportMutation.mutate()}
                 disabled={!hasLines || busy}
+                className="inline-flex h-11 flex-[1.6] cursor-pointer items-center justify-center rounded-control bg-lapis text-[14px] font-semibold text-on-lapis transition-colors hover:bg-lapis/90 disabled:cursor-default disabled:opacity-50"
               >
-                {exportMutation.isPending ? t("finalize.exporting") : t("finalize.exportPage")}
-              </Button>
+                {exportMutation.isPending ? (
+                  <BusyLabel>{t("finalize.exporting")}</BusyLabel>
+                ) : (
+                  t("finalize.exportPage")
+                )}
+              </button>
             </div>
             {/* The PNGs live under media/ until they're pulled out — this is how
                 they leave the tool, saved wherever the browser asks. */}
             {exported.size > 0 ? (
-              <Button asChild variant="outline" className="w-full">
-                <a href={linesZipUrl(mushafId, page)} download>
-                  {t("finalize.downloadZip", { count: exported.size })}
-                </a>
-              </Button>
+              <a
+                href={linesZipUrl(mushafId, page)}
+                download
+                className="text-center text-[13px] font-semibold text-lapis-text no-underline hover:underline"
+              >
+                {t("finalize.downloadZip", { count: exported.size })}
+              </a>
             ) : (
-              <Button variant="outline" className="w-full" disabled title={t("finalize.zipHint")}>
+              <span className="text-center text-[13px] text-ink-3" title={t("finalize.zipHint")}>
                 {t("finalize.downloadZipEmpty")}
-              </Button>
+              </span>
             )}
           </div>
         }
@@ -445,7 +445,6 @@ function FinalizePage() {
         ) : (
           <>
             <LineNavigator
-              title={t("finalize.linesTitle", { count: model.length })}
               lines={canvasLines.map((l) => ({
                 key: String(l.line_number),
                 line_number: l.line_number,
@@ -457,12 +456,12 @@ function FinalizePage() {
                 badges: (
                   <>
                     {l.edited && (
-                      <span className="rounded-pill bg-gold px-1.5 text-[9px] font-bold text-on-gold">
+                      <span className="rounded-pill bg-gold px-1.5 text-[10.5px] font-semibold text-on-gold">
                         {t("finalize.edited")}
                       </span>
                     )}
                     {exported.has(l.line_number) && (
-                      <span className="rounded-pill bg-lapis px-1.5 text-[9px] font-bold text-on-lapis">
+                      <span className="rounded-pill bg-lapis-wash px-1.5 text-[10.5px] font-semibold text-lapis-text">
                         {t("finalize.png")}
                       </span>
                     )}
@@ -474,57 +473,73 @@ function FinalizePage() {
               emptyText={t("finalize.noLines", { page })}
             />
 
-            <div data-tour="finalize-tools" className="flex flex-col gap-4">
-              <Section title={t("finalize.paddingTitle")}>
-                <Field label={t("finalize.paddingLabel")} info={t("tips.linePadding")}>
-                  <div className="flex items-center justify-center gap-2 mt-2">
-                    <PadStep
-                      label="−"
-                      title={t("finalize.paddingLess")}
-                      disabled={pad <= PAD_MIN}
-                      onClick={() => stepPadding(Math.max(PAD_MIN, pad - PAD_STEP))}
-                    />
-                    <input
-                      type="number"
-                      min={PAD_MIN}
-                      max={PAD_MAX}
-                      value={pad}
-                      onChange={(e) =>
-                        livePadding(
-                          Math.max(
-                            PAD_MIN,
-                            Math.min(PAD_MAX, Math.round(Number(e.target.value) || 0)),
-                          ),
-                        )
-                      }
-                      onBlur={() => commit(model)}
-                      className="h-8 w-32 rounded border-[1.5px] border-rule-2 px-2 text-center text-[12px] tabular-nums outline-none [appearance:textfield] focus:border-lapis [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                    />
-                    <PadStep
-                      label="+"
-                      title={t("finalize.paddingMore")}
-                      disabled={pad >= PAD_MAX}
-                      onClick={() => stepPadding(Math.min(PAD_MAX, pad + PAD_STEP))}
-                    />
-                  </div>
-                </Field>
-              </Section>
-
-              <Section title={t("finalize.eraser")}>
-                <Field label={t("finalize.brushSize", { size: brushSize })} info={t("tips.brush")}>
-                  <input
-                    type="range"
-                    min={2}
-                    max={120}
-                    value={brushSize}
-                    onChange={(e) => setBrushSize(Number(e.target.value))}
-                    className="w-full"
+            <div data-tour="finalize-tools" className="flex flex-col gap-3.5">
+              <Card title={t("finalize.paddingTitle")}>
+                <div className="flex flex-wrap items-center gap-2">
+                  <PadStep
+                    label="−"
+                    title={t("finalize.paddingLess")}
+                    disabled={pad <= PAD_MIN}
+                    onClick={() => stepPadding(Math.max(PAD_MIN, pad - PAD_STEP))}
                   />
-                </Field>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    className="h-8 flex-1 text-[11px]"
+                  <input
+                    type="number"
+                    min={PAD_MIN}
+                    max={PAD_MAX}
+                    value={pad}
+                    aria-label={t("finalize.paddingLabel")}
+                    onChange={(e) =>
+                      livePadding(
+                        Math.max(
+                          PAD_MIN,
+                          Math.min(PAD_MAX, Math.round(Number(e.target.value) || 0)),
+                        ),
+                      )
+                    }
+                    onBlur={() => commit(model)}
+                    className="h-9 w-16 rounded-control border border-rule-2 bg-card text-center font-mono text-[14px] font-medium text-ink outline-none [appearance:textfield] focus:border-lapis focus:shadow-[inset_0_0_0_1px_var(--lapis)] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                  />
+                  <PadStep
+                    label="+"
+                    title={t("finalize.paddingMore")}
+                    disabled={pad >= PAD_MAX}
+                    onClick={() => stepPadding(Math.min(PAD_MAX, pad + PAD_STEP))}
+                  />
+                  <span className="flex items-center gap-1 text-[12.5px] text-ink-3">
+                    {t("finalize.paddingNote")}
+                    <InfoTip text={t("tips.linePadding")} />
+                  </span>
+                </div>
+              </Card>
+
+              <Card
+                title={t("finalize.eraser")}
+                end={
+                  <span className="flex items-center gap-1">
+                    <span className="font-mono text-[12.5px]">
+                      {t("finalize.brushPx", { size: brushSize })}
+                    </span>
+                    <InfoTip text={t("tips.brush")} />
+                  </span>
+                }
+              >
+                <input
+                  type="range"
+                  min={2}
+                  max={120}
+                  value={brushSize}
+                  aria-label={t("finalize.brushSize", { size: brushSize })}
+                  onChange={(e) => setBrushSize(Number(e.target.value))}
+                  className="w-full cursor-pointer accent-stop"
+                />
+                <span className="text-[12.5px] leading-normal text-ink-2">
+                  {sel
+                    ? t("finalize.strokeInfo", { line: sel.line_number, count: sel.strokes.length })
+                    : t("finalize.selectLineShort")}
+                </span>
+                <div className="flex gap-1.5">
+                  <button
+                    type="button"
                     disabled={!sel || sel.strokes.length === 0}
                     onClick={() =>
                       sel &&
@@ -533,31 +548,27 @@ function FinalizePage() {
                         strokes: l.strokes.slice(0, -1),
                       }))
                     }
+                    className={`${SMALL} text-ink`}
                   >
                     {t("finalize.undoStroke")}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="h-8 flex-1 text-[11px]"
+                  </button>
+                  <button
+                    type="button"
                     disabled={!sel || sel.strokes.length === 0}
                     onClick={() =>
                       sel && commitLine(sel.line_number, (l) => ({ ...l, strokes: [] }))
                     }
+                    className={`${SMALL} text-stop-text`}
                   >
                     {t("finalize.clearLine")}
-                  </Button>
+                  </button>
                 </div>
-                <p className="text-[10.5px] leading-snug text-ink-3">
-                  {sel
-                    ? t("finalize.strokeInfo", { line: sel.line_number, count: sel.strokes.length })
-                    : t("finalize.selectLineShort")}
-                </p>
-              </Section>
+              </Card>
 
-              <Section title={t("finalize.lineBox")}>
+              <Card title={t("finalize.lineBox")}>
                 {sel ? (
                   <>
-                    <div className="grid grid-cols-2 gap-2">
+                    <div dir="ltr" className="grid grid-cols-2 gap-2">
                       <EditNum
                         label="Y"
                         value={sel.bbox.y}
@@ -575,49 +586,50 @@ function FinalizePage() {
                         onCommit={() => commit(model)}
                       />
                     </div>
-                    <Button
-                      variant="outline"
-                      className="h-8 w-full text-[11px]"
+                    <span className="text-[12px] leading-[1.45] text-ink-3">
+                      {t("finalize.lockNote")}
+                    </span>
+                    <button
+                      type="button"
                       onClick={() => revertLine(sel.line_number)}
+                      className={`${SMALL} text-ink`}
                     >
                       {t("finalize.revertLine")}
-                    </Button>
-                    <p className="text-[10.5px] leading-snug text-ink-3">
-                      {t("finalize.lockNote")}
-                    </p>
+                    </button>
                   </>
                 ) : (
-                  <p className="text-[12px] text-ink-3">{t("finalize.selectLineBox")}</p>
+                  <p className="m-0 text-[12.5px] text-ink-3">{t("finalize.selectLineBox")}</p>
                 )}
-              </Section>
+              </Card>
             </div>
 
             {exportedLines.length > 0 && (
-              <PanelCard title={t("finalize.exportedTitle", { count: exportedLines.length })}>
-                <p className="-mt-1 text-[10.5px] leading-snug text-ink-3">
-                  {t("finalize.exportedNote")}
-                </p>
-                <div className="flex flex-col gap-2">
+              <section className="flex flex-col gap-2">
+                <div className="flex items-baseline justify-between gap-2">
+                  <h2 className="m-0 text-[12px] font-semibold uppercase tracking-[0.08em] text-ink-3">
+                    {t("finalize.exportedTitle", { count: exportedLines.length })}
+                  </h2>
+                  <span className="text-[12px] text-ink-3">{t("finalize.exportedNote")}</span>
+                </div>
+                <div dir="ltr" className="grid grid-cols-7 gap-[5px]">
                   {exportedLines.map((l) => (
                     <button
                       key={l.line_number}
                       type="button"
                       onClick={() => setViewing(l.line_number)}
                       title={t("finalize.viewerOpen", { n: l.line_number })}
-                      className="flex cursor-pointer items-center gap-2 rounded border border-rule p-1.5 transition-colors hover:border-lapis hover:bg-lapis-wash"
+                      aria-label={t("finalize.viewerOpen", { n: l.line_number })}
+                      className="flex h-[22px] cursor-pointer items-center overflow-hidden rounded border border-rule bg-page px-[3px] transition-colors hover:border-lapis"
                     >
-                      <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded bg-sunk text-[10px] font-semibold text-ink-2">
-                        {l.line_number}
-                      </span>
                       <img
                         src={l.src}
-                        alt={t("finalize.lineAlt", { n: l.line_number })}
-                        className="max-h-8 min-w-0 flex-1 bg-[repeating-conic-gradient(#eee_0_25%,transparent_0_50%)] bg-[length:10px_10px] object-contain"
+                        alt=""
+                        className="max-h-full min-w-0 flex-1 object-contain"
                       />
                     </button>
                   ))}
                 </div>
-              </PanelCard>
+              </section>
             )}
           </>
         )}
@@ -627,6 +639,34 @@ function FinalizePage() {
 
       <TourOverlay tour={tour} />
     </StepBody>
+  );
+}
+
+/** A small outlined button in an inspector card. */
+const SMALL =
+  "inline-flex h-[34px] flex-1 cursor-pointer items-center justify-center rounded-control border border-rule-2 bg-card text-[12.5px] font-semibold transition-colors hover:bg-sheet disabled:cursor-default disabled:opacity-50";
+
+/** A card of the inspector: the small uppercase title (with anything at its end),
+ * then the controls. */
+function Card({
+  title,
+  end,
+  children,
+}: {
+  title: string;
+  end?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="flex flex-col gap-2.5 rounded-card border border-rule bg-card p-3.5">
+      <div className="flex items-baseline justify-between gap-2">
+        <h2 className="m-0 text-[12px] font-semibold uppercase tracking-[0.08em] text-ink-3">
+          {title}
+        </h2>
+        {end}
+      </div>
+      {children}
+    </section>
   );
 }
 
@@ -648,7 +688,7 @@ function PadStep({
       aria-label={title}
       disabled={disabled}
       onClick={onClick}
-      className="h-8 w-8 flex-none cursor-pointer rounded border-[1.5px] border-rule-2 bg-card text-[14px] font-semibold text-ink-2 transition-colors hover:bg-sheet disabled:cursor-not-allowed disabled:opacity-40"
+      className="h-9 w-9 flex-none cursor-pointer rounded-control border border-rule-2 bg-card font-mono text-[18px] font-semibold text-ink transition-colors hover:bg-sheet disabled:cursor-not-allowed disabled:opacity-40"
     >
       {label}
     </button>
@@ -667,14 +707,14 @@ function EditNum({
   onCommit: () => void;
 }) {
   return (
-    <label className="flex items-center gap-1.5">
-      <span className="w-3 text-[11px] font-semibold text-ink-3">{label}</span>
+    <label className="flex min-w-0 flex-col gap-1">
+      <span className="text-[12px] text-ink-3">{label}</span>
       <input
         type="number"
         value={Math.round(value)}
         onChange={(e) => onChange(Math.round(Number(e.target.value) || 0))}
         onBlur={onCommit}
-        className="h-8 w-full rounded border-[1.5px] border-rule-2 px-2 text-right text-[12px] tabular-nums outline-none [appearance:textfield] focus:border-lapis [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+        className="h-[34px] w-full min-w-0 rounded-control border border-rule-2 bg-card px-2.5 font-mono text-[13.5px] font-medium text-ink outline-none [appearance:textfield] focus:border-lapis focus:shadow-[inset_0_0_0_1px_var(--lapis)] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
       />
     </label>
   );

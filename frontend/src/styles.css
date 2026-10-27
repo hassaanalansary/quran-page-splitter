@@ -79,6 +79,18 @@
   --color-ov-mark: var(--ov-mark);
   --color-ov-ornament: var(--ov-ornament);
   --color-ov-symbol: var(--ov-symbol);
+  --color-ov-line-selected: var(--ov-line-selected);
+  --color-ov-remove: var(--ov-remove);
+
+  /* the detection log */
+  --color-term: var(--term);
+  --color-on-term: var(--on-term);
+  --color-term-rule: var(--term-rule);
+  --color-term-edge: var(--term-edge);
+  --color-term-dim: var(--term-dim);
+  --color-term-live: var(--term-live);
+  --color-term-live-text: var(--term-live-text);
+  --color-term-live-wash: var(--term-live-wash);
 
   /* shadcn's names, for the vendored components in components/ui only */
   --color-background: var(--paper);
@@ -196,6 +208,23 @@
   --ov-mark: #28b4c8; /* the engine's ROLE_RGB.mark */
   --ov-ornament: #8e4c99;
   --ov-symbol: #b87a14;
+  --ov-line-selected: #1e4e8c; /* the selected line's box */
+  --ov-selected-wash: rgba(201, 150, 46, 0.16); /* …filled and ringed in gold */
+  --ov-selected-ring: rgba(201, 150, 46, 0.18);
+  --ov-besmella: #5e5648; /* the besmella tag (a sura header's is --ov-ornament) */
+  --ov-remove: #a8321f; /* the remove button on a selected cut */
+  --ov-aya-lit: rgba(201, 150, 46, 0.38); /* the preview's lit aya */
+  --ov-aya-lit-ring: rgba(201, 150, 46, 0.9);
+
+  /* the detection log: a terminal, the same in both themes */
+  --term: #15120e;
+  --on-term: #e9e2d3;
+  --term-rule: #2e281f;
+  --term-edge: #3a3328;
+  --term-dim: #a89f8e;
+  --term-live: #6fb38a;
+  --term-live-text: #8fcba5;
+  --term-live-wash: #1e3a2a;
 
   /* the SATR mark (design/brand/satr/brand.css) */
   --satr-tile: #173e70;

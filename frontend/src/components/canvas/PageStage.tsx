@@ -28,13 +28,15 @@ type Props = {
     mirrored?: boolean;
     /** Freeze the rect — visible, but not draggable or resizable. */
     locked?: boolean;
-    /** When given, the rect's badge carries a lock toggle. */
-    onLockToggle?: () => void;
+    /** Draw it as the text-area bounds (see PageCanvas). */
+    tone?: "bounds";
   };
   /** Reports the page image's natural size once loaded. */
   onNatural?: (n: { w: number; h: number }) => void;
-  /** Extra toolbar controls (e.g. Capture / Clear). */
+  /** Extra toolbar controls, after the tools (Process's bounds lock). */
   toolbarExtras?: ReactNode;
+  /** Laid over the bottom of the canvas (Process's live log). */
+  overlay?: ReactNode;
   /** Page-rail indicators (processed / reviewed logical pages). */
   processed?: Set<number>;
   reviewed?: Set<number>;
@@ -55,6 +57,7 @@ export function PageStage({
   crop,
   onNatural,
   toolbarExtras,
+  overlay,
   processed,
   reviewed,
 }: Props) {
@@ -123,8 +126,9 @@ export function PageStage({
           tool={tool}
           mirrored={cropping ? !!crop.mirrored : false}
           locked={cropping ? !!crop.locked : false}
-          onToggleLock={cropping ? crop.onLockToggle : undefined}
+          tone={crop?.tone}
         />
+        {overlay}
       </div>
 
       {/* Status bar: live cursor + crop dimensions */}

@@ -15,7 +15,7 @@ type Props = {
 export function RectInputs({ rect, onChange, max, disabled }: Props) {
   const { t } = useTranslation();
   if (!rect) {
-    return <p className="text-[11px] text-ink-3">{t("canvas.rectHint")}</p>;
+    return <p className="m-0 text-[12.5px] text-ink-3">{t("canvas.rectHint")}</p>;
   }
 
   const apply = (patch: Partial<Rect>) => {
@@ -33,7 +33,7 @@ export function RectInputs({ rect, onChange, max, disabled }: Props) {
   };
 
   return (
-    <div className="grid grid-cols-2 gap-2">
+    <div dir="ltr" className="grid grid-cols-4 gap-2">
       <Num label="X" value={rect.x} onChange={(v) => apply({ x: v })} disabled={disabled} />
       <Num label="Y" value={rect.y} onChange={(v) => apply({ y: v })} disabled={disabled} />
       <Num label="W" value={rect.w} onChange={(v) => apply({ w: v })} disabled={disabled} />
@@ -54,14 +54,14 @@ function Num({
   disabled?: boolean;
 }) {
   return (
-    <label className="flex items-center gap-1.5">
-      <span className="w-3 text-[11px] font-semibold text-ink-3">{label}</span>
+    <label className="flex min-w-0 flex-col gap-1">
+      <span className="text-[12px] text-ink-3">{label}</span>
       <input
         type="number"
         value={Math.round(value)}
         disabled={disabled}
         onChange={(e) => onChange(Math.round(Number(e.target.value) || 0))}
-        className="h-8 w-full rounded border-[1.5px] border-rule-2 px-2 text-right text-[12px] tabular-nums outline-none focus:border-lapis disabled:cursor-not-allowed disabled:bg-sheet disabled:text-ink-3"
+        className="h-[34px] w-full min-w-0 rounded-control border border-rule-2 bg-card px-2 font-mono text-[13.5px] font-medium text-ink outline-none focus:border-lapis focus:shadow-[inset_0_0_0_1px_var(--lapis)] disabled:cursor-not-allowed disabled:bg-sheet disabled:text-ink-3"
       />
     </label>
   );

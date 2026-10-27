@@ -6,7 +6,6 @@ import { CropPreview } from "@/components/canvas/CropPreview";
 import type { Rect } from "@/lib/api/types";
 
 type Props =
-  | { mode: "bounds"; pageUrl: string; working: Rect | null; mirrored?: boolean }
   | { mode: "template"; pageUrl: string; working: Rect | null }
   | {
       mode: "ignore";
@@ -32,21 +31,6 @@ export function TemplatePreview(props: Props) {
       <div className="flex flex-1 flex-col gap-2 overflow-auto">
         <Header title={t("canvas.tpl_cropPreview")} />
         <CropPreview imageUrl={props.pageUrl} rect={props.working} height={340} />
-      </div>
-    );
-  }
-
-  if (props.mode === "bounds") {
-    return (
-      <div className="flex flex-1 flex-col gap-2 overflow-auto">
-        <Header title={t("canvas.tpl_boundsPreview")} />
-        <CropPreview
-          imageUrl={props.pageUrl}
-          rect={props.working}
-          height={340}
-          mirrored={props.mirrored}
-          caption={props.mirrored ? t("canvas.tpl_mirroredCaption") : undefined}
-        />
       </div>
     );
   }

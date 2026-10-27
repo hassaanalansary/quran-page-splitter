@@ -148,6 +148,7 @@ function RunCard({
           onOpenChange={setLogOpen}
           mushafId={mushafId}
           runId={run.id}
+          runNumber={run.run_number}
           live={false}
         />
       )}

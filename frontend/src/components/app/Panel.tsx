@@ -18,21 +18,34 @@ export function StepBody({ children }: { children: ReactNode }) {
 }
 
 /** The step's name, with its other-language twin in gold, atop the inspector;
- * `intro` is the line under it saying what the step is for. */
-function InspectorTitle({ intro }: { intro?: string }) {
+ * `intro` is the line under it saying what the step is for. `title` replaces the
+ * step's name (Review heads it with the page), and `meta` sits at the end of the
+ * row. */
+function InspectorTitle({
+  intro,
+  title,
+  meta,
+}: {
+  intro?: ReactNode;
+  title?: string;
+  meta?: ReactNode;
+}) {
   const { t } = useTranslation();
   const other = useOtherLanguage();
   const step = useShellStep();
   if (!step) return null;
   return (
     <div className="flex flex-col gap-1.5">
-      <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
-        <h1 className="m-0 font-display text-[28px] font-semibold leading-tight">
-          {t(`header.steps.${step}`)}
-        </h1>
-        <span lang={other.lng} className="font-display text-[18px] text-gold-text">
-          {other.t(`header.steps.${step}`)}
+      <div className="flex flex-wrap items-baseline justify-between gap-x-2.5 gap-y-1">
+        <span className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
+          <h1 className="m-0 font-display text-[28px] font-semibold leading-tight">
+            {title ?? t(`header.steps.${step}`)}
+          </h1>
+          <span lang={other.lng} className="font-display text-[18px] text-gold-text">
+            {other.t(`header.steps.${step}`)}
+          </span>
         </span>
+        {meta && <span className="text-[12.5px] text-ink-3">{meta}</span>}
       </div>
       {intro && <p className="m-0 text-[13.5px] leading-normal text-ink-2">{intro}</p>}
     </div>
@@ -49,12 +62,16 @@ export function Aside({
   status,
   footer,
   intro,
+  title,
+  meta,
   wide = false,
 }: {
   children: ReactNode;
   status?: ReactNode;
   footer?: ReactNode;
-  intro?: string;
+  intro?: ReactNode;
+  title?: string;
+  meta?: ReactNode;
   wide?: boolean;
 }) {
   return (
@@ -65,7 +82,7 @@ export function Aside({
       )}
     >
       <div className="flex min-h-0 flex-1 flex-col gap-[18px] overflow-y-auto p-5">
-        <InspectorTitle intro={intro} />
+        <InspectorTitle intro={intro} title={title} meta={meta} />
         {children}
       </div>
       {(status || footer) && (
@@ -137,12 +154,12 @@ export function Field({
 }) {
   return (
     <label className="flex flex-col gap-1">
-      <span className="flex items-center gap-1 text-[11.5px] font-semibold tracking-[0.03em] text-ink-2">
+      <span className="flex items-center gap-1 text-[12.5px] font-semibold text-ink-2">
         {label}
         {info && <InfoTip text={info} />}
       </span>
       {children}
-      {hint && <span className="text-[10.5px] text-ink-3">{hint}</span>}
+      {hint && <span className="text-[11.5px] text-ink-4">{hint}</span>}
     </label>
   );
 }

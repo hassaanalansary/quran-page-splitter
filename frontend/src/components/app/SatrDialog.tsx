@@ -14,15 +14,21 @@ export const DIALOG_PRIMARY =
 export const DIALOG_DESTRUCTIVE =
   "inline-flex h-11 cursor-pointer items-center justify-center rounded-control bg-stop px-5 text-[14px] font-semibold text-on-stop transition-colors hover:bg-stop/90 disabled:cursor-default disabled:opacity-60";
 
-function Frame({
+/** The bare dialog: scrim, a card of radius 14 at most `width` wide, and whatever
+ * the dialog lays out inside. The dialogs with their own anatomy (the run's log,
+ * a stopped run, the cut preview) are built on it; title them with
+ * `DialogPrimitive.Title`. */
+export function SatrDialogFrame({
   open,
   onOpenChange,
   width,
+  onCloseAutoFocus,
   children,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   width: number;
+  onCloseAutoFocus?: (e: Event) => void;
   children: ReactNode;
 }) {
   return (
@@ -30,6 +36,7 @@ function Frame({
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-scrim data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0" />
         <DialogPrimitive.Content
+          onCloseAutoFocus={onCloseAutoFocus}
           style={{ maxWidth: width }}
           className="fixed left-1/2 top-1/2 z-50 flex max-h-[calc(100vh-32px)] w-[calc(100%-32px)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-[14px] bg-card text-ink shadow-[var(--shadow-modal)] duration-200 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95"
         >
@@ -37,6 +44,22 @@ function Frame({
         </DialogPrimitive.Content>
       </DialogPrimitive.Portal>
     </DialogPrimitive.Root>
+  );
+}
+
+/** The dialog's close button: an X, 36 px. `className` recolours it (on deep lapis). */
+export function SatrDialogClose({ className }: { className?: string }) {
+  const { t } = useTranslation();
+  return (
+    <DialogPrimitive.Close
+      aria-label={t("common.close")}
+      className={cn(
+        "flex h-9 w-9 flex-none cursor-pointer items-center justify-center rounded-control text-ink-3 transition-colors hover:bg-sheet hover:text-ink",
+        className,
+      )}
+    >
+      <X className="h-[18px] w-[18px]" aria-hidden="true" />
+    </DialogPrimitive.Close>
   );
 }
 
@@ -62,10 +85,8 @@ export function SatrDialog({
   footer?: ReactNode;
   children: ReactNode;
 }) {
-  const { t } = useTranslation();
-
   return (
-    <Frame open={open} onOpenChange={onOpenChange} width={width}>
+    <SatrDialogFrame open={open} onOpenChange={onOpenChange} width={width}>
       <OrnamentStrip height={8} className="bg-deep" />
       <div className="flex items-start gap-4 px-7 pb-1.5 pt-6">
         <div className="flex flex-1 flex-col gap-1.5">
@@ -80,12 +101,7 @@ export function SatrDialog({
             <DialogPrimitive.Description className="sr-only">{title}</DialogPrimitive.Description>
           )}
         </div>
-        <DialogPrimitive.Close
-          aria-label={t("common.close")}
-          className="flex h-9 w-9 flex-none cursor-pointer items-center justify-center rounded-control text-ink-3 transition-colors hover:bg-sheet hover:text-ink"
-        >
-          <X className="h-[18px] w-[18px]" aria-hidden="true" />
-        </DialogPrimitive.Close>
+        <SatrDialogClose />
       </div>
       <div className="flex min-h-0 flex-1 flex-col gap-[18px] overflow-y-auto px-7 pb-2 pt-[18px]">
         {children}
@@ -95,7 +111,7 @@ export function SatrDialog({
           {footer}
         </div>
       )}
-    </Frame>
+    </SatrDialogFrame>
   );
 }
 
@@ -121,7 +137,7 @@ export function SatrConfirmDialog({
   children?: ReactNode;
 }) {
   return (
-    <Frame open={open} onOpenChange={onOpenChange} width={460}>
+    <SatrDialogFrame open={open} onOpenChange={onOpenChange} width={460}>
       <div className="h-[5px] flex-none bg-stop" />
       <div className="flex gap-3.5 px-[22px] py-[18px]">
         <span className="flex h-10 w-10 flex-none items-center justify-center rounded-full bg-stop-wash text-stop-text">
@@ -140,7 +156,7 @@ export function SatrConfirmDialog({
       <div className={cn("flex flex-wrap justify-end gap-2 bg-sheet px-[22px] py-3")}>
         {actions}
       </div>
-    </Frame>
+    </SatrDialogFrame>
   );
 }
 
