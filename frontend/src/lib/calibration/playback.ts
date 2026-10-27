@@ -3,22 +3,6 @@ import type { CalibrationBlob, CalibrationLine, CalibrationWord } from "./types.
 export type PlaybackWord = { line: CalibrationLine; word: CalibrationWord; wordIndex: number };
 export type RGB = readonly [number, number, number];
 
-/** Canvas object-fit can letterbox the image; clicks must exclude that padding. */
-export function containedPoint(
-  x: number,
-  y: number,
-  boxW: number,
-  boxH: number,
-  imageW: number,
-  imageH: number,
-) {
-  const scale = Math.min(boxW / imageW, boxH / imageH);
-  if (!(scale > 0)) return null;
-  const px = (x - (boxW - imageW * scale) / 2) / scale;
-  const py = (y - (boxH - imageH * scale) / 2) / scale;
-  return px >= 0 && py >= 0 && px < imageW && py < imageH ? { x: px, y: py } : null;
-}
-
 export const BODY_INK: RGB = [0, 0, 0];
 // Mark inks sit mid-tone (relative luminance ~0.14–0.25): about 3.4–5:1
 // against both the black body ink and the white background.
@@ -83,34 +67,6 @@ export function belongsAt(blob: CalibrationBlob, word: CalibrationWord, pageX: n
   return blob.allocations.length <= 1 || (pageX >= word.end_x && pageX < word.start_x);
 }
 
-export function paintPlaybackInk(
-  ids: Uint32Array,
-  width: number,
-  line: CalibrationLine,
-  word: CalibrationWord | null,
-  types: ReadonlyMap<number, string>,
-  distinguishTypes: boolean,
-  dimOthers: boolean,
-  hideOthers = false,
-): Uint8ClampedArray {
-  const pixels = new Uint8ClampedArray(ids.length * 4);
-  const blobs = new Map(line.blobs.map((blob) => [blob.id, blob]));
-  for (let i = 0; i < ids.length; i++) {
-    const blob = blobs.get(ids[i]);
-    if (!blob) continue;
-    const active = word && belongsAt(blob, word, line.bbox.x + (i % width));
-    if (!active && hideOthers) continue;
-    const color = active
-      ? inkColor(blob, types.get(blob.id) ?? "", distinguishTypes)
-      : [110, 110, 110];
-    pixels[i * 4] = color[0];
-    pixels[i * 4 + 1] = color[1];
-    pixels[i * 4 + 2] = color[2];
-    pixels[i * 4 + 3] = active ? 255 : dimOthers ? 0 : 230;
-  }
-  return pixels;
-}
-
 /** Crop includes owned marks and fragments even where the box stops short of them —
  * at the middle of a body two words share. */
 export function wordCrop(entry: PlaybackWord) {
@@ -130,22 +86,4 @@ export function wordCrop(entry: PlaybackWord) {
     w: Math.max(1, Math.min(line.bbox.w, right - line.bbox.x + 12) - x),
     h: Math.max(1, Math.min(line.bbox.h, bottom - line.bbox.y + 12) - y),
   };
-}
-
-/** Pixel-based navigation when boxes overlap. Fall back to the saved word box
- * only on background; an unassigned blob must not pretend to belong to a word. */
-export function wordAtPixel(
-  entries: PlaybackWord[],
-  line: CalibrationLine,
-  blobId: number,
-  pageX: number,
-): number {
-  const blob = line.blobs.find((candidate) => candidate.id === blobId);
-  return entries.findIndex(
-    (entry) =>
-      entry.line.snapshot_id === line.snapshot_id &&
-      (blob
-        ? belongsAt(blob, entry.word, pageX)
-        : pageX >= entry.word.end_x && pageX < entry.word.start_x),
-  );
 }
