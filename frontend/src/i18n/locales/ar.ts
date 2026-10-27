@@ -869,6 +869,7 @@ export const ar: typeof en = {
       doubtTitle: "{{type}} — محدَّدة، لكن الصفحات الأخرى تقول {{other}}",
       doubtful: "{{count}} علامة محدَّدة النوع تشبه نوعًا آخر في الصفحات الأخرى.",
       showDoubtful: "أظهرها",
+      typedOf: "{{typed}} / {{marks}} محدَّدة النوع",
     },
     // الشريط تحت الأسطر: ما هو محدَّد، والقرارات الشائعة
     marksCheck: {
@@ -943,8 +944,6 @@ export const ar: typeof en = {
       doubt: "حُدِّدت {{typed}}، لكن أمثلة الصفحات الأخرى تقول {{type}} — تستحق نظرة ثانية.",
       doubtSure:
         "حُدِّدت {{typed}}، لكن أمثلة الصفحات الأخرى تقول بوضوح {{type}} — سهو؟ النوع الخاطئ في صفحة معتمدة يتعلّم منه كل ما بعدها.",
-      typeKey: "{{type}} — اضغط {{key}}",
-      moreTypes: "المزيد…",
       acceptOne: "اقبل {{type}}",
       acceptMany: "اقبل المتوقَّع ({{count}})",
       loadingEvidence: "جارٍ البحث عن أقرب الأمثلة…",
@@ -952,6 +951,17 @@ export const ar: typeof en = {
       distanceHelp: "متوسط بُعد أقرب أمثلة هذا النوع — الأصغر أقرب",
       exampleTitle:
         "الصفحة {{page}}، السطر {{line}} · البعد {{distance}} · ×{{copies}} — يفتح تلك الصفحة",
+      label: "التحديد",
+      whatItIs: "ما هي",
+      roleGroup: "الدور",
+      anotherType: "نوع آخر… (1–9، 0)",
+      keySave: "احفظ المسودّة",
+      hintBlob: "بقعة",
+      hintLine: "سطر",
+      hintWord: "كلمة",
+      hintType: "النوع",
+      ownershipNote:
+        "مربّع الكلمة هو الحبر المُعطى لها. فإن كان المربّع في غير موضعه فالحبر أُعطي لغير كلمته: أصلحه هنا.",
     },
     // المرشِّح: ما يُلتقط، وأيّ العلامات تُبرَز
     filter: {
@@ -1050,13 +1060,11 @@ export const ar: typeof en = {
       insufficientRatio: "أقرب مثال من الدور الآخر ليس أبعد منها بضعفين",
     },
 
-    // كلمات السطر
-    wordsTitle: "كلمات السطر {{line}} · {{count}}",
     wordNav: {
       previous: "الكلمة السابقة — Ctrl+→",
       next: "الكلمة التالية — Ctrl+←",
-      position: "الكلمة {{index}} من {{count}}",
       keys: "Ctrl+← → للتنقّل في الصفحة كلمةً كلمة",
+      of: "{{index}} من {{count}}",
     },
     noWords: "لم توضع كلمات على هذا السطر.",
     unlabelledWord: "(كلمة ليست في النص)",
@@ -1065,19 +1073,15 @@ export const ar: typeof en = {
     countHelp: "الأجزاء التي يعطيها إيّاها حبرها، مقابل ما يتطلّبه رسمها",
 
     // ما يُقرّ به عند الاعتماد
-    exceptionsTitle: "للإقرار · {{count}}",
     exceptionsNote: "مسموح بها — لكن اعتماد الصفحة يطلب منك الإقرار بكل واحدة.",
     problem: { flagged: "معلَّمة", pawCount: "عدد الأجزاء", unresolved: "غير محسوم" },
     moreExceptions: "…و{{count}} غيرها",
     issuesTitle: "ما أبلغت عنه آخر قراءة",
-    shortagesTitle: "آيات ينقصها أجزاء · {{count}}",
     shortagesNote:
       "أبقت القراءة كل تصنيف متعلَّم للأجسام والعلامات، فبقيت هذه الآيات بأجزاء أقل مما تتهجّاه كلماتها — غالبًا جزءان متلاصقان في الطباعة. أعطِ الكتلة المتلاصقة أجزاءها.",
-    shortageAya: "الآية {{aya}} · ينقصها {{count}} جزء",
     shortageLikely: "على الأرجح في: {{words}}",
     shortageUncertain: "الموضع غير مؤكد — قراءات متساوية تضعه في مكان آخر أيضًا",
     noise: {
-      title: "شوائب محتملة · {{count}}",
       note: "حبر قد لا يكون من النص — ذرّة صغيرة، أو علامة لا تشبه شيئًا معتمدًا ويستغني عنها نصّ كلمتها. امحُها أو اتركها: لا يُمحى شيء من تلقاء نفسه.",
       speck: "ذرّة",
       stranger: "زائدة",
@@ -1170,11 +1174,9 @@ export const ar: typeof en = {
 
     // نافذة الاعتماد
     confirmTitle: "اعتماد الصفحة {{page}}",
-    confirmIntro: "الاعتماد إقرارٌ بالصفحة كلها — لا بالمعلَّم منها فقط:",
-    confirmWords: "تصير كلماتها كلماتِ الصفحة، وكلّ مربّع بامتداد حبره؛",
-    confirmTeaches:
-      "وتصير بقعها أمثلةً للصفحات التي بعدها: {{bodies}} جسمًا و{{marks}} علامة لتمييز الجسم من العلامة، و{{typed}} علامة محدَّدة النوع لأنواعها. والحبر المعلَّم بأنه غير مألوف لا يُعلِّم شيئًا.",
-    confirmExceptions: "ما زال {{count}} أمرًا يخالف النص:",
+    confirmIntro: "الاعتماد إقرارٌ بالصفحة كلها — لا بالمعلَّم منها فقط.",
+    confirmWords: "تصير كلماتها كلماتِ الصفحة، وكلّ مربّع بامتداد حبره.",
+    confirmExceptions: "ما زال {{count}} أمرًا يخالف النص",
     confirmAcknowledge: "نظرتُ في هذه، وأعتمد الصفحة كما هي",
     confirmClean: "لا شيء يخالف النص.",
     confirmButton: "اعتمد الصفحة",
@@ -1224,7 +1226,6 @@ export const ar: typeof en = {
         close: "اقتربتَ",
         ready: "جاهز لمعالجة بقية الصفحات بالجملة",
       },
-      pagesShort: "{{count}} من {{target}} صفحات",
       open: "معالجة صفحات بالجملة…",
       title: "معالجة صفحات بالجملة",
       intro:
@@ -1335,6 +1336,31 @@ export const ar: typeof en = {
       stoppedToast: "توقّفت الدفعة: عولجت {{processed}} صفحة، وبقي الباقي على حاله.",
       status: "دفعة: الصفحة {{page}} · عولجت {{done}} من {{total}}",
       here: "تعالج الدفعة هذه الصفحة الآن، وتُفتح هنا حين تنتهي.",
+      estimateNote: "تقدير، لا وعد",
+      range: "النطاق",
+    },
+    gutterPage: "ص ‏{{page}}",
+    legendWord: "الكلمة: امتداد الحبر المُعطى لها",
+    railConfirmed: "معتمدة",
+    railDraft: "مقروءة، مسودّة",
+    needsLook: "ما يحتاج نظرة",
+    lineKey: "س{{n}}",
+    ayaKey: "الآية {{aya}}",
+    shortCount: "ينقصها {{count}} جزء",
+    wordsOnLine: "كلمات السطر {{line}}",
+    pageNotConfirmed: "لم تُعتمد",
+    pageConfirmedAt: "معتمدة عند النسخة {{revision}}",
+    pageEditedSince: "معتمدة عند النسخة {{revision}}، وعُدّلت بعدها",
+    confirmKeepEditing: "واصل التحرير",
+    confirmTeachesLead: "وتصير بقعها أمثلةً للصفحات التي تُعالَج بعدها:",
+    confirmTeachBodies: "جسمًا",
+    confirmTeachMarks: "علامة",
+    confirmTeachTyped: "علامة محدَّدة النوع",
+    confirmTeachesNote: "والحبر المعلَّم بأنه غير مألوف لا يُعلِّم شيئًا.",
+    look: {
+      acknowledge: "للإقرار",
+      shortages: "آيات ينقصها أجزاء",
+      noise: "شوائب محتملة",
     },
   },
   details: {

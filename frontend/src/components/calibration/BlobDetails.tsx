@@ -2,7 +2,6 @@ import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { Button } from "@/components/ui/button";
 import { mediaUrl, useCalibrationExamples } from "@/lib/api";
 import type {
   Allocation,
@@ -16,7 +15,13 @@ import { reasonKey, useTypeName } from "./labels";
 const EXCEPTIONS: BlobException[] = ["", "mixed", "broken", "fused", "uncertain"];
 
 const selectClass =
-  "h-7 min-w-0 flex-1 cursor-pointer rounded-sm border border-rule-2 bg-card px-1.5 text-[11.5px] text-ink outline-none focus:border-lapis disabled:cursor-default disabled:opacity-50";
+  "h-[34px] min-w-0 flex-1 cursor-pointer rounded-control border border-rule-2 bg-card px-2 text-[13px] text-ink outline-none focus:border-lapis disabled:cursor-default disabled:opacity-50";
+/** A small outlined button beside a select. */
+const ACTION =
+  "h-[34px] flex-none cursor-pointer rounded-control border border-rule-2 bg-card px-3 text-[12.5px] font-semibold text-ink transition-colors hover:bg-sheet disabled:cursor-default disabled:text-ink-4";
+/** A PAW count's input. */
+const PAWS_INPUT =
+  "h-[34px] w-14 flex-none rounded-control border border-rule-2 bg-card px-2 font-mono text-[13px] text-ink outline-none focus:border-lapis";
 
 /** One blob's own pixels, cut from its line's image at a readable size. */
 export function BlobCrop({
@@ -106,8 +111,8 @@ export function OwnershipControls({
         );
 
   return (
-    <div className="flex flex-col gap-1.5 text-[11px] text-ink-2">
-      <div className="flex items-center gap-1">
+    <div className="flex flex-col gap-2 text-[12.5px] text-ink-2">
+      <div className="flex items-center gap-2">
         <select
           className={selectClass}
           value={target}
@@ -130,24 +135,23 @@ export function OwnershipControls({
             value={paws}
             disabled={disabled}
             onChange={(event) => setPaws(Math.max(0, Math.min(8, Number(event.target.value) || 0)))}
-            className="h-7 w-12 flex-none rounded-sm border border-rule-2 px-1.5 text-[11.5px] tabular-nums outline-none focus:border-lapis"
+            className={PAWS_INPUT}
             title={t("calibration.pawsHelp")}
             aria-label={t("calibration.paws")}
           />
         )}
-        <Button
+        <button
           type="button"
-          variant="outline"
-          className="h-7 flex-none px-2 text-[11.5px]"
+          className={ACTION}
           disabled={disabled || target === ""}
           onClick={() => target !== "" && onAssign(target, bodies ? paws : 0)}
         >
           {t("calibration.assign")}
-        </Button>
+        </button>
       </div>
 
       {single && single.role === "body" && single.allocations.length === 1 && (
-        <div className="flex items-center gap-1" title={t("calibration.shareHelp")}>
+        <div className="flex items-center gap-2" title={t("calibration.shareHelp")}>
           <select
             className={selectClass}
             value={partner}
@@ -162,10 +166,9 @@ export function OwnershipControls({
               </option>
             ))}
           </select>
-          <Button
+          <button
             type="button"
-            variant="outline"
-            className="h-7 flex-none px-2 text-[11.5px]"
+            className={ACTION}
             disabled={disabled || partner === ""}
             onClick={() =>
               partner !== "" &&
@@ -173,7 +176,7 @@ export function OwnershipControls({
             }
           >
             {t("calibration.share")}
-          </Button>
+          </button>
         </div>
       )}
 
@@ -181,7 +184,7 @@ export function OwnershipControls({
         <div className="flex flex-col gap-1">
           {single.allocations.map((share) => (
             <label key={share.word_id} className="flex items-center justify-between gap-2">
-              <span dir="rtl" className="min-w-0 truncate text-[13px] text-ink">
+              <span dir="rtl" className="min-w-0 truncate font-quran text-[17px] text-ink">
                 {wordText(share.word_id)}
               </span>
               <input
@@ -192,7 +195,7 @@ export function OwnershipControls({
                 value={share.paws}
                 disabled={disabled}
                 aria-label={`${wordText(share.word_id)}: ${t("calibration.paws")}`}
-                className="h-7 w-12 flex-none rounded-sm border border-rule-2 px-1.5 text-[11.5px] tabular-nums"
+                className={PAWS_INPUT}
                 onChange={(event) =>
                   onShare(
                     single.allocations.map((allocation) =>
@@ -214,7 +217,7 @@ export function OwnershipControls({
         </div>
       )}
 
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-2">
         <select
           className={selectClass}
           value={exception}
@@ -230,28 +233,21 @@ export function OwnershipControls({
           ))}
         </select>
         {marks.length > 0 && (
-          <Button
-            type="button"
-            variant="outline"
-            className="h-7 flex-none px-2 text-[11.5px]"
-            disabled={disabled}
-            onClick={onUnassign}
-          >
+          <button type="button" className={ACTION} disabled={disabled} onClick={onUnassign}>
             {t("calibration.unassignMarks", { count: marks.length })}
-          </Button>
+          </button>
         )}
       </div>
 
       {decided && (
-        <Button
+        <button
           type="button"
-          variant="ghost"
-          className="h-6 self-start px-1.5 text-[11px] text-ink-2"
+          className="cursor-pointer self-start text-[12.5px] font-semibold text-lapis-text hover:underline disabled:cursor-default disabled:text-ink-4"
           disabled={disabled}
           onClick={onRelease}
         >
           {t("calibration.release")}
-        </Button>
+        </button>
       )}
     </div>
   );
@@ -284,7 +280,7 @@ export function RoleExamples({
   if (!text) return null;
   return (
     <div className="flex flex-col gap-1">
-      <p className="text-[10.5px] leading-snug text-ink-3">
+      <p className="m-0 text-[12px] leading-snug text-ink-3">
         {t("calibration.bar.engineRead", {
           role: t(`calibration.role.${blob.initial_role}`),
           score: blob.body_score,
@@ -304,15 +300,15 @@ export function RoleExamples({
             })}
       </p>
       {isLoading && (
-        <span className="text-[10.5px] text-ink-3">{t("calibration.loadingExamples")}</span>
+        <span className="text-[12px] text-ink-3">{t("calibration.loadingExamples")}</span>
       )}
       {data && !data.neighbors.length && (
-        <span className="text-[10.5px] text-ink-3">{t("calibration.noExamples")}</span>
+        <span className="text-[12px] text-ink-3">{t("calibration.noExamples")}</span>
       )}
       {data?.neighbors.map((example) => (
         <div
           key={`${example.snapshot_id}:${example.blob_id}`}
-          className="flex items-center gap-2 text-[10.5px] text-ink-2"
+          className="flex items-center gap-2 text-[12px] text-ink-2"
         >
           {example.image_url && example.crop && (
             <BlobCrop url={example.image_url} {...example.crop} box={30} />
@@ -333,7 +329,7 @@ export function RoleExamples({
             </Link>
             {example.copies > 1 ? ` · ×${example.copies}` : ""}
           </span>
-          <span className="flex-none tabular-nums text-ink-3">{example.distance.toFixed(3)}</span>
+          <span className="flex-none font-mono text-ink-3">{example.distance.toFixed(3)}</span>
         </div>
       ))}
     </div>

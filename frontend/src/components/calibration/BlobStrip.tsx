@@ -47,7 +47,9 @@ const NOISE_RING = 14;
 const CLICK_SLOP = 4;
 /** Screen px each mark's slot in the type lane takes, and each lane row's height. */
 const SLOT = 15;
-const ROW = 16;
+const ROW = 17;
+/** Screen px of page around the ink, inside the line's box. */
+const INSET = 12;
 
 type Raster = { source: ImageBitmap; ids: Uint32Array; width: number; height: number };
 type Point = { x: number; y: number };
@@ -63,11 +65,16 @@ type Point = { x: number; y: number };
  *
  * Page pixels throughout: the raster is the line's own crop of the page at native
  * size, and `scale` is the only conversion.
+ *
+ * The line sits in a white box as wide as the page's text column, its number in a
+ * gutter at the end, so every line's box and number line up. The colours inside
+ * are the overlay language's and fixed: a page stays light in dark mode.
  */
 export function BlobStrip({
   line,
   scale,
   marginLeft,
+  columnWidth,
   label,
   focused = false,
   selection,
@@ -87,6 +94,8 @@ export function BlobStrip({
   line: CalibrationLine;
   scale: number;
   marginLeft: number;
+  /** Screen px of the page's text column: the box's width, whatever the line's. */
+  columnWidth?: number;
   label: string;
   /** The line the panel is showing. */
   focused?: boolean;
@@ -224,6 +233,16 @@ export function BlobStrip({
     context.putImageData(pixels, 0, 0);
   }, [raster, line.blobs, line.snapshot_id, selection, dim, shown]);
 
+  const selectedWords = useMemo(() => {
+    if (selection.snapshot !== line.snapshot_id) return new Set<number>();
+    const chosen = new Set(selection.ids);
+    return new Set(
+      line.blobs
+        .filter((blob) => chosen.has(blob.id))
+        .flatMap((blob) => blob.allocations.map((allocation) => allocation.word_id)),
+    );
+  }, [selection, line.snapshot_id, line.blobs]);
+
   const width = (raster?.width ?? line.bbox.w) * scale;
   const height = (raster?.height ?? line.bbox.h) * scale;
 
@@ -326,248 +345,297 @@ export function BlobStrip({
     }
   };
 
+  const boxWidth = Math.max(columnWidth ?? 0, marginLeft + width) + INSET * 2;
+
   return (
-    <div className="flex flex-col" style={{ marginLeft }} data-line={line.snapshot_id}>
-      <div className="flex items-center gap-2 text-[10.5px] text-ink-3">
-        <span className={`font-semibold tabular-nums ${focused ? "text-lapis-text" : ""}`}>
-          {label}
-        </span>
-        {line.readonly && (
-          <span className="rounded-sm bg-sheet px-1.5 py-px">
-            {line.approved ? t("calibration.contextConfirmed") : t("calibration.context")}
-          </span>
-        )}
-        {line.status && line.status !== "exact" && !line.readonly && (
-          <span className="text-warn-text" title={line.reason ?? undefined}>
-            {t(`words.status_${line.status}`)}
-          </span>
-        )}
-      </div>
-
-      {/* One count per word — the PAWs its ink gives it against what its spelling
-          needs — over the word's right edge, where it starts. A lane of its own,
-          so a count never covers ink or the line's label. */}
-      <div className="relative h-4 flex-none" style={{ width }}>
-        {line.words.map((word, index) => {
-          const count = wordCount(line, word);
-          return (
-            <span
-              key={`${word.word_id ?? "u"}-${index}`}
-              className={`absolute bottom-0.5 -translate-x-full select-none whitespace-nowrap rounded-sm px-[3px] text-[9px] font-semibold leading-[11px] tabular-nums ${
-                count.ok ? "text-lapis-text" : "bg-warn text-on-warn"
-              }`}
-              style={{ left: (word.start_x - line.bbox.x) * scale }}
-              title={word.text}
-            >
-              {word.word_id === null ? "∅" : `${count.got}/${count.want}`}
-            </span>
-          );
-        })}
-      </div>
-
+    <div className="flex items-stretch gap-2.5" data-line={line.snapshot_id}>
       <div
-        data-strip
-        className={`relative bg-white shadow-[0_0_0_1px_var(--rule)] ${line.readonly ? "opacity-60" : ""}`}
-        style={{ width, height }}
+        className={`flex flex-col bg-white py-2 ${line.readonly ? "opacity-60" : ""}`}
+        style={{
+          width: boxWidth,
+          paddingInline: INSET,
+          boxShadow: focused ? "0 0 0 2px var(--lapis)" : "0 0 0 1px var(--rule)",
+        }}
       >
-        <canvas
-          ref={canvas}
-          width={raster?.width ?? 1}
-          height={raster?.height ?? 1}
-          aria-label={label}
-          className={`block ${canSelect ? "cursor-crosshair" : ""}`}
-          style={{
-            width,
-            height,
-            touchAction: "none",
-            visibility: raster ? "visible" : "hidden",
-            imageRendering: scale > 1.6 ? "pixelated" : undefined,
-          }}
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={onPointerUp}
-          onPointerCancel={() => {
-            drag.current = null;
-            setRectangle(null);
-          }}
-        />
+        <div className="flex flex-col" style={{ marginLeft }}>
+          {(line.readonly || (line.status && line.status !== "exact")) && (
+            <div className="flex items-center gap-2 pb-1 text-[10.5px]">
+              {line.readonly && (
+                <span
+                  className="rounded-sm px-1.5 py-px"
+                  style={{ background: "#efe8dc", color: "var(--ov-text-quiet)" }}
+                >
+                  {line.approved ? t("calibration.contextConfirmed") : t("calibration.context")}
+                </span>
+              )}
+              {line.status && line.status !== "exact" && !line.readonly && (
+                <span style={{ color: "var(--ov-warn)" }} title={line.reason ?? undefined}>
+                  {t(`words.status_${line.status}`)}
+                </span>
+              )}
+            </div>
+          )}
 
-        {/* Words: a thin dashed outline from where each starts to where it ends —
-            the extent of its ink — out of the pointer's way. */}
-        {line.words.map((word, index) => (
-          <div
-            key={`${word.word_id ?? "u"}-${index}`}
-            data-word={`${line.snapshot_id}:${index}`}
-            className="pointer-events-none absolute top-0"
-            style={{
-              left: (word.end_x - line.bbox.x) * scale,
-              width: Math.max(1, (word.start_x - word.end_x) * scale),
-              height,
-              outline:
-                word.word_id !== null && movedWords?.has(word.word_id)
-                  ? "2px solid var(--lapis)"
-                  : "1px dashed color-mix(in oklab, var(--lapis) 70%, transparent)",
-              background:
-                word.word_id !== null && movedWords?.has(word.word_id)
-                  ? "color-mix(in oklab, var(--lapis) 12%, transparent)"
-                  : undefined,
-              outlineOffset: -1,
-            }}
-          />
-        ))}
-
-        {/* A dot over every blob asking for a look — findable at any zoom. */}
-        {line.blobs
-          .filter((blob) => isSelected(selection, line.snapshot_id, blob.id))
-          .map((blob) => (
-            <span
-              key={`selected-${blob.id}`}
-              data-blob-outline={`${line.snapshot_id}:${blob.id}`}
-              className="pointer-events-none absolute border-2 border-black"
-              style={{
-                left: (blob.x - line.bbox.x) * scale - 2,
-                top: (blob.y - line.bbox.y) * scale - 2,
-                width: blob.w * scale + 4,
-                height: blob.h * scale + 4,
-                borderStyle: blob.role === "mark" ? "dashed" : "solid",
-              }}
-            />
-          ))}
-        {!line.readonly &&
-          line.blobs.filter(needsLook).map((blob) => (
-            <span
-              key={`look-${blob.id}`}
-              className="pointer-events-none absolute h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-lapis shadow-[0_0_0_1.5px_var(--card)]"
-              style={{
-                left: (blob.x - line.bbox.x + blob.w / 2) * scale,
-                top: Math.max(0, (blob.y - line.bbox.y) * scale - 6),
-              }}
-              data-blob={`${line.snapshot_id}:${blob.id}`}
-            />
-          ))}
-
-        {!line.readonly &&
-          noise &&
-          line.blobs
-            .filter((blob) => noiseFor(blob, line.snapshot_id, noise))
-            .map((blob) => {
-              const width = Math.max(NOISE_RING, blob.w * scale + 8);
-              const height = Math.max(NOISE_RING, blob.h * scale + 8);
+          {/* One count per word — the PAWs its ink gives it against what its spelling
+              needs — over the word's right edge, where it starts. A lane of its own,
+              so a count never covers ink. */}
+          <div className="relative h-[18px] flex-none" style={{ width }}>
+            {line.words.map((word, index) => {
+              const count = wordCount(line, word);
               return (
                 <span
-                  key={`noise-${blob.id}`}
-                  className="pointer-events-none absolute rounded-full border-2 border-dashed"
+                  key={`${word.word_id ?? "u"}-${index}`}
+                  className="absolute bottom-[3px] -translate-x-full select-none whitespace-nowrap rounded-[3px] px-1 font-mono text-[10px] font-semibold leading-[13px]"
                   style={{
-                    borderColor: `rgb(${ERASED_RGB.join(",")})`,
-                    left: (blob.x - line.bbox.x + blob.w / 2) * scale - width / 2,
-                    top: (blob.y - line.bbox.y + blob.h / 2) * scale - height / 2,
-                    width,
+                    left: (word.start_x - line.bbox.x) * scale,
+                    background: count.ok ? undefined : "var(--ov-warn)",
+                    color: count.ok ? "var(--ov-text-quiet)" : "#ffffff",
+                  }}
+                  title={word.text}
+                >
+                  {word.word_id === null ? "∅" : `${count.got}/${count.want}`}
+                </span>
+              );
+            })}
+          </div>
+
+          <div data-strip className="relative bg-white" style={{ width, height }}>
+            <canvas
+              ref={canvas}
+              width={raster?.width ?? 1}
+              height={raster?.height ?? 1}
+              aria-label={label}
+              className={`block ${canSelect ? "cursor-crosshair" : ""}`}
+              style={{
+                width,
+                height,
+                touchAction: "none",
+                visibility: raster ? "visible" : "hidden",
+                imageRendering: scale > 1.6 ? "pixelated" : undefined,
+              }}
+              onPointerDown={onPointerDown}
+              onPointerMove={onPointerMove}
+              onPointerUp={onPointerUp}
+              onPointerCancel={() => {
+                drag.current = null;
+                setRectangle(null);
+              }}
+            />
+
+            {/* Words: a thin dashed outline from where each starts to where it ends —
+            the extent of its ink — out of the pointer's way. The word the selection
+            is in is solid; a word a preview moved is lapis. */}
+            {line.words.map((word, index) => {
+              const moved = word.word_id !== null && !!movedWords?.has(word.word_id);
+              const chosen = word.word_id !== null && selectedWords.has(word.word_id);
+              return (
+                <div
+                  key={`${word.word_id ?? "u"}-${index}`}
+                  data-word={`${line.snapshot_id}:${index}`}
+                  className="pointer-events-none absolute top-0 rounded-[2px]"
+                  style={{
+                    left: (word.end_x - line.bbox.x) * scale,
+                    width: Math.max(1, (word.start_x - word.end_x) * scale),
                     height,
+                    outline: moved
+                      ? "2px solid var(--ov-line-selected)"
+                      : chosen
+                        ? "1.5px solid var(--ov-word)"
+                        : "1px dashed color-mix(in oklab, var(--ov-word) 70%, transparent)",
+                    background: moved ? "rgba(30, 78, 140, 0.12)" : undefined,
+                    outlineOffset: -1,
                   }}
                 />
               );
             })}
 
-        {rectangle && (
-          <div
-            className="pointer-events-none absolute bg-[color:color-mix(in_oklab,var(--lapis)_14%,transparent)] outline outline-1 outline-[color:var(--lapis)]"
-            style={{
-              left: Math.min(rectangle.from.x, rectangle.to.x) * scale,
-              top: Math.min(rectangle.from.y, rectangle.to.y) * scale,
-              width: Math.abs(rectangle.from.x - rectangle.to.x) * scale,
-              height: Math.abs(rectangle.from.y - rectangle.to.y) * scale,
-            }}
-          />
-        )}
+            {/* A dot over every blob asking for a look — findable at any zoom. */}
+            {line.blobs
+              .filter((blob) => isSelected(selection, line.snapshot_id, blob.id))
+              .map((blob) => (
+                <span
+                  key={`selected-${blob.id}`}
+                  data-blob-outline={`${line.snapshot_id}:${blob.id}`}
+                  className={`pointer-events-none absolute border-2 ${
+                    blob.role === "mark" ? "rounded-full border-dashed" : "rounded-[3px]"
+                  }`}
+                  style={{
+                    left: (blob.x - line.bbox.x) * scale - 3,
+                    top: (blob.y - line.bbox.y) * scale - 3,
+                    width: blob.w * scale + 6,
+                    height: blob.h * scale + 6,
+                    borderColor: "var(--ov-selected)",
+                  }}
+                />
+              ))}
+            {!line.readonly &&
+              line.blobs.filter(needsLook).map((blob) => (
+                <span
+                  key={`look-${blob.id}`}
+                  className="pointer-events-none absolute h-1.5 w-1.5 -translate-x-1/2 rounded-full shadow-[0_0_0_1.5px_#ffffff]"
+                  style={{
+                    background: "var(--ov-line-selected)",
+                    left: (blob.x - line.bbox.x + blob.w / 2) * scale,
+                    top: Math.max(0, (blob.y - line.bbox.y) * scale - 6),
+                  }}
+                  data-blob={`${line.snapshot_id}:${blob.id}`}
+                />
+              ))}
 
-        {!raster && (
-          <div
-            className="absolute inset-0 flex items-center justify-center gap-2 text-[11px] text-ink-3"
-            role={error ? "alert" : "status"}
-          >
-            {error ? (
-              <>
-                <span>{t("calibration.maskError", { error })}</span>
-                <button
-                  type="button"
-                  className="cursor-pointer underline"
-                  onClick={() => setAttempt((n) => n + 1)}
-                >
-                  {t("calibration.retry")}
-                </button>
-              </>
-            ) : (
-              <BusyLabel>{t("calibration.loadingLine")}</BusyLabel>
+            {!line.readonly &&
+              noise &&
+              line.blobs
+                .filter((blob) => noiseFor(blob, line.snapshot_id, noise))
+                .map((blob) => {
+                  const width = Math.max(NOISE_RING, blob.w * scale + 8);
+                  const height = Math.max(NOISE_RING, blob.h * scale + 8);
+                  return (
+                    <span
+                      key={`noise-${blob.id}`}
+                      className="pointer-events-none absolute rounded-full border-[1.5px] border-dashed"
+                      style={{
+                        borderColor: "var(--ov-warn)",
+                        left: (blob.x - line.bbox.x + blob.w / 2) * scale - width / 2,
+                        top: (blob.y - line.bbox.y + blob.h / 2) * scale - height / 2,
+                        width,
+                        height,
+                      }}
+                    />
+                  );
+                })}
+
+            {rectangle && (
+              <div
+                className="pointer-events-none absolute bg-[rgba(30,78,140,0.14)] outline outline-1 outline-[color:var(--ov-line-selected)]"
+                style={{
+                  left: Math.min(rectangle.from.x, rectangle.to.x) * scale,
+                  top: Math.min(rectangle.from.y, rectangle.to.y) * scale,
+                  width: Math.abs(rectangle.from.x - rectangle.to.x) * scale,
+                  height: Math.abs(rectangle.from.y - rectangle.to.y) * scale,
+                }}
+              />
+            )}
+
+            {!raster && (
+              <div
+                className="absolute inset-0 flex items-center justify-center gap-2 text-[11px]"
+                style={{ color: "var(--ov-text-quiet)" }}
+                role={error ? "alert" : "status"}
+              >
+                {error ? (
+                  <>
+                    <span>{t("calibration.maskError", { error })}</span>
+                    <button
+                      type="button"
+                      className="cursor-pointer underline"
+                      onClick={() => setAttempt((n) => n + 1)}
+                    >
+                      {t("calibration.retry")}
+                    </button>
+                  </>
+                ) : (
+                  <BusyLabel>{t("calibration.loadingLine")}</BusyLabel>
+                )}
+              </div>
             )}
           </div>
-        )}
+
+          {lane.rows > 0 && (
+            <div className="relative mt-1 flex-none" style={{ width, height: lane.rows * ROW + 2 }}>
+              {lane.slots.map(({ blob, typed, byText, stroke, subtype, sure, doubt, x, row }) => {
+                const chosen = isSelected(selection, line.snapshot_id, blob.id);
+                const outside = shown !== null && !shown.has(blob.id);
+                const named = doubt
+                  ? t("calibration.types.doubtTitle", {
+                      type: typeName(subtype),
+                      other: typeName(doubt.subtype),
+                    })
+                  : !subtype
+                    ? t("calibration.types.untyped")
+                    : typed
+                      ? t(byText ? "calibration.types.textTitle" : "calibration.types.typedTitle", {
+                          type: typeName(subtype),
+                        })
+                      : t(sure ? "calibration.types.sureTitle" : "calibration.types.likelyTitle", {
+                          type: typeName(subtype),
+                        });
+                const title = stroke ? `${named} · ${t("calibration.types.tanweenStroke")}` : named;
+                return (
+                  <button
+                    key={blob.id}
+                    type="button"
+                    dir="rtl"
+                    title={title}
+                    aria-label={title}
+                    disabled={!canSelect}
+                    onClick={(event) => {
+                      const additive = event.shiftKey || event.ctrlKey || event.metaKey;
+                      const current = selection.snapshot === line.snapshot_id ? selection.ids : [];
+                      onSelect({
+                        snapshot: line.snapshot_id,
+                        ids: selectIds(current, [blob.id], additive, additive),
+                      });
+                    }}
+                    className={`absolute flex -translate-x-1/2 items-center justify-center rounded-[4px] text-[13px] leading-none disabled:cursor-default ${
+                      typed ? "font-semibold" : ""
+                    } ${canSelect ? "cursor-pointer" : ""}`}
+                    style={{
+                      left: x,
+                      top: row * ROW + 1,
+                      width: SLOT - 1,
+                      height: ROW - 2,
+                      opacity: outside ? 0.2 : !subtype ? 0.45 : typed || sure || chosen ? 1 : 0.6,
+                      // Typed: solid, in the colour marks are painted in. Expected: dashed.
+                      // The selection is gold; a doubted type is ringed in warn.
+                      border: chosen
+                        ? "1px solid var(--ov-selected)"
+                        : typed
+                          ? "1px solid rgba(40, 180, 200, 0.6)"
+                          : subtype
+                            ? "1px dashed var(--ov-mark)"
+                            : undefined,
+                      background: chosen
+                        ? "rgba(201, 150, 46, 0.25)"
+                        : typed
+                          ? "rgba(40, 180, 200, 0.12)"
+                          : undefined,
+                      color: typed
+                        ? "var(--satr-mark)"
+                        : subtype
+                          ? "var(--ov-text)"
+                          : "var(--ov-text-quiet)",
+                      outline: doubt && !chosen ? "2px solid var(--ov-warn)" : undefined,
+                    }}
+                  >
+                    {subtype
+                      ? stroke
+                        ? (TANWEEN_MARKS[subtype] ?? subtypeGlyph(subtype))
+                        : subtypeGlyph(subtype)
+                      : "·"}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
 
-      {lane.rows > 0 && (
-        <div className="relative flex-none" style={{ width, height: lane.rows * ROW + 2 }}>
-          {lane.slots.map(({ blob, typed, byText, stroke, subtype, sure, doubt, x, row }) => {
-            const chosen = isSelected(selection, line.snapshot_id, blob.id);
-            const outside = shown !== null && !shown.has(blob.id);
-            const named = doubt
-              ? t("calibration.types.doubtTitle", {
-                  type: typeName(subtype),
-                  other: typeName(doubt.subtype),
-                })
-              : !subtype
-                ? t("calibration.types.untyped")
-                : typed
-                  ? t(byText ? "calibration.types.textTitle" : "calibration.types.typedTitle", {
-                      type: typeName(subtype),
-                    })
-                  : t(sure ? "calibration.types.sureTitle" : "calibration.types.likelyTitle", {
-                      type: typeName(subtype),
-                    });
-            const title = stroke ? `${named} · ${t("calibration.types.tanweenStroke")}` : named;
-            return (
-              <button
-                key={blob.id}
-                type="button"
-                dir="rtl"
-                title={title}
-                aria-label={title}
-                disabled={!canSelect}
-                onClick={(event) => {
-                  const additive = event.shiftKey || event.ctrlKey || event.metaKey;
-                  const current = selection.snapshot === line.snapshot_id ? selection.ids : [];
-                  onSelect({
-                    snapshot: line.snapshot_id,
-                    ids: selectIds(current, [blob.id], additive, additive),
-                  });
-                }}
-                className={`absolute flex -translate-x-1/2 items-center justify-center rounded-sm text-[13px] leading-none disabled:cursor-default ${
-                  chosen
-                    ? "bg-lapis text-on-lapis"
-                    : typed
-                      ? "font-semibold"
-                      : subtype
-                        ? "border border-dashed border-rule-2 bg-card text-ink-2"
-                        : "text-ink-3"
-                } ${doubt && !chosen ? "outline outline-2 outline-warn" : ""} ${canSelect ? "cursor-pointer" : ""}`}
-                style={{
-                  left: x,
-                  top: row * ROW + 1,
-                  width: SLOT - 1,
-                  height: ROW - 2,
-                  opacity: outside ? 0.2 : !subtype ? 0.45 : typed || sure || chosen ? 1 : 0.6,
-                  // A typed mark reads in the colour marks are painted in.
-                  color: typed && !chosen ? `rgb(${ROLE_RGB.mark.join(",")})` : undefined,
-                }}
-              >
-                {subtype
-                  ? stroke
-                    ? (TANWEEN_MARKS[subtype] ?? subtypeGlyph(subtype))
-                    : subtypeGlyph(subtype)
-                  : "·"}
-              </button>
-            );
-          })}
-        </div>
-      )}
+      {/* The line's number, in the gutter at the end. */}
+      <div
+        className={`flex w-[34px] flex-none flex-col items-center justify-center gap-0.5 rounded border font-mono ${
+          focused
+            ? "border-lapis/40 bg-lapis-wash text-lapis-text"
+            : "border-rule bg-card text-ink-3"
+        }`}
+        title={label}
+      >
+        {line.readonly && (
+          <span className="text-[9.5px] leading-none">
+            {t("calibration.gutterPage", { page: line.page_number })}
+          </span>
+        )}
+        <span className="text-[11.5px] font-semibold">{line.line_number}</span>
+      </div>
     </div>
   );
 }

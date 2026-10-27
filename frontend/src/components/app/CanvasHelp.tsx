@@ -11,6 +11,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 
 const ICON_BTN =
   "flex h-8 w-8 items-center justify-center rounded-full cursor-pointer border border-rule-2 bg-card/95 text-lapis-text shadow-md backdrop-blur-sm transition-colors hover:bg-sheet focus:outline-none focus-visible:ring-2 focus-visible:ring-lapis";
@@ -25,15 +26,18 @@ export function CanvasHelp({
   guideItems,
   coachText,
   onReplayTour,
+  className,
 }: {
   /** What this step asks of you, in order — plain instructions, never ticked
    * off: every step here is something you keep coming back to. */
   guideItems: string[];
   coachText: string;
   onReplayTour?: () => void;
+  /** Moves the cluster, for a canvas whose toolbar is taller (Ink). */
+  className?: string;
 }) {
   return (
-    <div className="absolute start-4 top-[68px] z-20 flex items-center gap-1.5">
+    <div className={cn("absolute start-4 top-[68px] z-20 flex items-center gap-1.5", className)}>
       <GuideDialog items={guideItems} onReplayTour={onReplayTour} />
       <Coach text={coachText} />
     </div>

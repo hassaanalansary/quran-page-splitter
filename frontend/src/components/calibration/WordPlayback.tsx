@@ -67,15 +67,15 @@ export function WordPlayback({
   const [open, setOpen] = useState(false);
   return (
     <>
-      <Button
-        variant="outline"
-        className="h-8 flex-none gap-1.5 px-2 text-[12px]"
+      <button
+        type="button"
+        className="inline-flex h-[30px] flex-none cursor-pointer items-center gap-1.5 rounded-control border border-rule-2 bg-card px-2.5 text-[12.5px] font-semibold text-ink transition-colors hover:bg-sheet disabled:cursor-default disabled:opacity-50"
         disabled={disabled || !lines.some((line) => line.words.length)}
         onClick={() => setOpen(true)}
       >
-        <Play size={14} />
+        <Play size={13} aria-hidden="true" />
         {t("wordPlayback.open")}
-      </Button>
+      </button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent
           className="flex h-[92dvh] w-[96vw] max-w-6xl flex-col gap-3 overflow-hidden p-3 sm:p-4"

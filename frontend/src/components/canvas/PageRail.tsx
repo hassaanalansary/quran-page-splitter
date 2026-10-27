@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 type Props = {
   page: number;
   pageCount: number;
@@ -8,6 +10,8 @@ type Props = {
   reviewed?: Set<number>;
   /** Whether the page numbers should be shown in right-to-left order. */
   isRTL?: boolean;
+  /** At the end of the rail (Ink's legend and page jump). */
+  end?: ReactNode;
 };
 
 /** Page numbers to show: first, …, current±3, …, last. */
@@ -28,10 +32,18 @@ function pagerItems(current: number, total: number): (number | "gap")[] {
  * When `processed`/`reviewed` sets are given, each page number carries a small
  * indicator bar (navy = processed, green = reviewed).
  */
-export function PageRail({ page, pageCount, onPageChange, processed, reviewed, isRTL }: Props) {
-  return (
+export function PageRail({
+  page,
+  pageCount,
+  onPageChange,
+  processed,
+  reviewed,
+  isRTL,
+  end,
+}: Props) {
+  const chips = (
     <div
-      className={`flex h-11 flex-shrink-0 items-center justify-center gap-1 overflow-x-auto border-t border-rule bg-card px-3 ${!isRTL ? "flex-row-reverse" : "flex-row"}`}
+      className={`flex min-w-0 flex-1 items-center justify-center gap-1 overflow-x-auto ${!isRTL ? "flex-row-reverse" : "flex-row"}`}
     >
       {pagerItems(page, pageCount).map((item, i) =>
         item === "gap" ? (
@@ -48,6 +60,12 @@ export function PageRail({ page, pageCount, onPageChange, processed, reviewed, i
           />
         ),
       )}
+    </div>
+  );
+  return (
+    <div className="flex h-11 flex-shrink-0 items-center gap-3 border-t border-rule bg-card px-3">
+      {chips}
+      {end && <div className="flex flex-none items-center gap-3">{end}</div>}
     </div>
   );
 }

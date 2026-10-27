@@ -52,6 +52,7 @@
   --color-gold-text: var(--gold-text);
   --color-gold-wash: var(--gold-wash);
   --color-gold-on-deep: var(--gold-on-deep);
+  --color-mark-text: var(--mark-text);
 
   /* states */
   --color-done: var(--done);
@@ -199,6 +200,9 @@
   --shadow-lift: 0 12px 28px rgba(31, 27, 22, 0.16); /* a hovered card */
   --shadow-modal: 0 30px 80px rgba(31, 27, 22, 0.3);
 
+  /* a mark's glyph in the interface (the overlay's --ov-mark is for scans) */
+  --mark-text: #136e7c;
+
   /* the overlay language: the same in both themes, drawn over page scans */
   --ov-bounds: #b07d1e; /* text-area bounds, dashed */
   --ov-line: rgba(30, 78, 140, 0.3); /* a line's box */
@@ -212,6 +216,10 @@
   --ov-selected-wash: rgba(201, 150, 46, 0.16); /* …filled and ringed in gold */
   --ov-selected-ring: rgba(201, 150, 46, 0.18);
   --ov-besmella: #5e5648; /* the besmella tag (a sura header's is --ov-ornament) */
+  --ov-selected: #c9962e; /* the ring round the selected ink (Ink) */
+  --ov-warn: #9a5b00; /* a PAW count that doesn't fit, a speck that may be noise */
+  --ov-text: #4a4338; /* text on a line strip, light in both themes */
+  --ov-text-quiet: #5e5648;
   --ov-remove: #a8321f; /* the remove button on a selected cut */
   --ov-aya-lit: rgba(201, 150, 46, 0.38); /* the preview's lit aya */
   --ov-aya-lit-ring: rgba(201, 150, 46, 0.9);
@@ -238,6 +246,8 @@
 
 :root[data-theme="dark"] {
   color-scheme: dark;
+
+  --mark-text: #6fcfdc;
 
   --paper: #17140f;
   --sheet: #1e1a14;

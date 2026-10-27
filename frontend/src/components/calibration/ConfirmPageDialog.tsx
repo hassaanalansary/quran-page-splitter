@@ -1,17 +1,7 @@
-import { TriangleAlert } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { DIALOG_PRIMARY, DIALOG_SECONDARY, SatrDialog } from "@/components/app/SatrDialog";
 import type { PageException } from "@/lib/calibration/model";
 
 import { exceptionKey, problemKey } from "./labels";
@@ -46,42 +36,14 @@ export function ConfirmPageDialog({
   pending: boolean;
   onConfirm: (acknowledge: boolean) => void;
 }) {
-  return (
-    <Dialog open={open} onOpenChange={(next) => !pending && onOpenChange(next)}>
-      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
-        {/* Inside the content, so it unmounts on close and every opening starts
-            with nothing acknowledged. */}
-        <ConfirmBody
-          page={page}
-          exceptions={exceptions}
-          teaches={teaches}
-          pending={pending}
-          onCancel={() => onOpenChange(false)}
-          onConfirm={onConfirm}
-        />
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function ConfirmBody({
-  page,
-  exceptions,
-  teaches,
-  pending,
-  onCancel,
-  onConfirm,
-}: {
-  page: number;
-  exceptions: PageException[];
-  teaches: { bodies: number; marks: number; typed: number };
-  pending: boolean;
-  onCancel: () => void;
-  onConfirm: (acknowledge: boolean) => void;
-}) {
   const { t } = useTranslation();
   const [acknowledged, setAcknowledged] = useState(false);
   const needed = exceptions.length > 0;
+  // Every opening starts with nothing acknowledged.
+  useEffect(() => {
+    if (open) setAcknowledged(false);
+  }, [open]);
+
   const problem = (kind: string) => {
     const key = problemKey(kind);
     return key ? t(key) : kind;
@@ -92,60 +54,121 @@ function ConfirmBody({
   };
 
   return (
-    <>
-      <DialogHeader>
-        <DialogTitle>{t("calibration.confirmTitle", { page })}</DialogTitle>
-        <DialogDescription>{t("calibration.confirmIntro")}</DialogDescription>
-      </DialogHeader>
-
-      <ul className="flex list-disc flex-col gap-1 ps-5 text-[12.5px] leading-relaxed text-ink-2">
-        <li>{t("calibration.confirmWords")}</li>
-        <li>{t("calibration.confirmTeaches", teaches)}</li>
-      </ul>
+    <SatrDialog
+      open={open}
+      onOpenChange={(next) => !pending && onOpenChange(next)}
+      title={t("calibration.confirmTitle", { page })}
+      description={t("calibration.confirmIntro")}
+      width={640}
+      footer={
+        <>
+          <button
+            type="button"
+            onClick={() => onOpenChange(false)}
+            disabled={pending}
+            className={DIALOG_SECONDARY}
+          >
+            {t("calibration.confirmKeepEditing")}
+          </button>
+          <button
+            type="button"
+            onClick={() => onConfirm(needed)}
+            disabled={pending || (needed && !acknowledged)}
+            className={DIALOG_PRIMARY}
+          >
+            {pending ? t("calibration.confirming") : t("calibration.confirmButton")}
+          </button>
+        </>
+      }
+    >
+      <Point n={1}>
+        <span className="text-[14px] leading-normal">{t("calibration.confirmWords")}</span>
+      </Point>
+      <Point n={2}>
+        <span className="flex flex-col gap-2">
+          <span className="text-[14px] leading-normal">{t("calibration.confirmTeachesLead")}</span>
+          <span className="flex flex-wrap gap-2">
+            <Tile value={teaches.bodies} label={t("calibration.confirmTeachBodies")} />
+            <Tile value={teaches.marks} label={t("calibration.confirmTeachMarks")} mark />
+            <Tile value={teaches.typed} label={t("calibration.confirmTeachTyped")} />
+          </span>
+          <span className="text-[12.5px] text-ink-3">{t("calibration.confirmTeachesNote")}</span>
+        </span>
+      </Point>
 
       {needed ? (
-        <div className="flex flex-col gap-2 rounded-md border border-warn/25 bg-warn-wash p-3">
-          <div className="flex items-center gap-2 text-[12px] font-semibold text-warn-text">
-            <TriangleAlert size={14} className="flex-none" />
-            {t("calibration.confirmExceptions", { count: exceptions.length })}
+        <>
+          <div className="flex flex-col overflow-hidden rounded-card border border-warn">
+            <div className="bg-warn-wash px-3.5 py-2.5 text-[13.5px] font-semibold text-warn-text">
+              {t("calibration.confirmExceptions", { count: exceptions.length })}
+            </div>
+            <ul className="m-0 flex max-h-56 list-none flex-col overflow-y-auto p-0">
+              {exceptions.slice(0, LISTED).map((item, index) => (
+                <li
+                  key={`${item.kind}-${item.line_number}-${index}`}
+                  className="flex items-center gap-3 border-b border-rule-soft px-3.5 py-2.5 last:border-b-0"
+                >
+                  <span className="flex-none rounded bg-sunk px-2 py-px text-[12px] font-semibold">
+                    {problem(item.kind)}
+                  </span>
+                  <span dir="auto" className="min-w-0 text-[13px] text-ink-2">
+                    {t("words.onLine", { n: item.line_number })}
+                    {item.detail &&
+                      ` · ${item.kind === "flagged" ? exception(item.detail) : item.detail}`}
+                  </span>
+                </li>
+              ))}
+              {exceptions.length > LISTED && (
+                <li className="px-3.5 py-2.5 text-[12.5px] text-ink-3">
+                  {t("calibration.moreExceptions", { count: exceptions.length - LISTED })}
+                </li>
+              )}
+            </ul>
           </div>
-          <ul className="flex max-h-48 flex-col gap-1 overflow-y-auto text-[11.5px] text-ink-2">
-            {exceptions.slice(0, LISTED).map((item, index) => (
-              <li key={`${item.kind}-${item.line_number}-${index}`}>
-                <span className="font-semibold">{problem(item.kind)}</span>
-                {` · ${t("words.onLine", { n: item.line_number })}`}
-                {item.detail &&
-                  ` — ${item.kind === "flagged" ? exception(item.detail) : item.detail}`}
-              </li>
-            ))}
-            {exceptions.length > LISTED && (
-              <li className="text-ink-3">
-                {t("calibration.moreExceptions", { count: exceptions.length - LISTED })}
-              </li>
-            )}
-          </ul>
-          <label className="flex cursor-pointer items-start gap-2 text-[12px] text-ink">
-            <Checkbox
-              className="mt-0.5"
+          <label className="flex cursor-pointer items-center gap-2.5 rounded-card bg-sheet px-3.5 py-3 text-[14px] font-semibold">
+            <input
+              type="checkbox"
               checked={acknowledged}
               disabled={pending}
-              onCheckedChange={(value) => setAcknowledged(value === true)}
+              onChange={(event) => setAcknowledged(event.target.checked)}
+              className="h-[18px] w-[18px] flex-none cursor-pointer accent-lapis"
             />
             {t("calibration.confirmAcknowledge")}
           </label>
-        </div>
+        </>
       ) : (
-        <p className="text-[12px] text-done-text">{t("calibration.confirmClean")}</p>
+        <p className="m-0 text-[13.5px] font-semibold text-done-text">
+          {t("calibration.confirmClean")}
+        </p>
       )}
+    </SatrDialog>
+  );
+}
 
-      <DialogFooter>
-        <Button variant="outline" onClick={onCancel} disabled={pending}>
-          {t("common.cancel")}
-        </Button>
-        <Button onClick={() => onConfirm(needed)} disabled={pending || (needed && !acknowledged)}>
-          {pending ? t("calibration.confirming") : t("calibration.confirmButton")}
-        </Button>
-      </DialogFooter>
-    </>
+/** One of the two things confirming does, numbered in a lapis square. */
+function Point({ n, children }: { n: number; children: ReactNode }) {
+  return (
+    <div className="flex items-start gap-3">
+      <span className="flex h-7 w-7 flex-none items-center justify-center rounded-lg bg-lapis-wash text-[13px] font-bold text-lapis-text">
+        {n}
+      </span>
+      {children}
+    </div>
+  );
+}
+
+/** What the page teaches: a count in Reem Kufi; the marks' in their colour. */
+function Tile({ value, label, mark }: { value: number; label: string; mark?: boolean }) {
+  const { i18n } = useTranslation();
+  return (
+    <span
+      className={`inline-flex items-baseline gap-1.5 rounded-lg px-2.5 py-1.5 ${mark ? "" : "bg-sheet"}`}
+      style={mark ? { background: "rgba(40, 180, 200, 0.14)" } : undefined}
+    >
+      <strong className={`font-display text-[18px] ${mark ? "text-mark-text" : ""}`}>
+        {value.toLocaleString(i18n.language)}
+      </strong>
+      <span className="text-[12.5px] text-ink-2">{label}</span>
+    </span>
   );
 }

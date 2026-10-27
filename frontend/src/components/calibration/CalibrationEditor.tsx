@@ -7,7 +7,6 @@ import {
   ChevronUp,
   Eye,
   EyeOff,
-  Maximize2,
   Minus,
   Plus,
   Redo2,
@@ -18,13 +17,12 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
 import { CanvasHelp } from "@/components/app/CanvasHelp";
-import { Aside, Hint, PanelCard, Section, StatusLine, StepBody } from "@/components/app/Panel";
+import { Aside, Hint, PanelCard, StatusLine, StepBody } from "@/components/app/Panel";
 import { BusyLabel, LoadingState } from "@/components/app/SatrLoader";
 import { WordRunProgress } from "@/components/app/WordRunProgress";
 import { WordsGateNotice } from "@/components/app/WordsGateNotice";
 import { PageJump } from "@/components/canvas/PageJump";
 import { PageRail } from "@/components/canvas/PageRail";
-import { Button } from "@/components/ui/button";
 import { useCtrlWheelZoom } from "@/hooks/use-ctrl-wheel-zoom";
 import { useZoomToPointer } from "@/hooks/use-zoom-to-pointer";
 import {
@@ -957,7 +955,9 @@ export function CalibrationEditor({
     );
 
   const processButton = (
-    <Button
+    <button
+      type="button"
+      className={PRIMARY}
       onClick={() => processMutation.mutate()}
       disabled={
         !ready || running || processMutation.isPending || dirty || busy || !!preview || held
@@ -970,34 +970,40 @@ export function CalibrationEditor({
       ) : (
         t("calibration.process", { page })
       )}
-    </Button>
+    </button>
   );
 
   const footer = preview ? (
-    <div className="flex flex-col gap-2">
-      <Button onClick={() => acceptMutation.mutate()} disabled={acceptMutation.isPending}>
+    <div className="flex flex-col gap-2.5">
+      <button
+        type="button"
+        className={PRIMARY}
+        onClick={() => acceptMutation.mutate()}
+        disabled={acceptMutation.isPending}
+      >
         {acceptMutation.isPending ? (
           <BusyLabel>{t("common.saving")}</BusyLabel>
         ) : (
           t("calibration.acceptPreview")
         )}
-      </Button>
-      <Button
-        variant="outline"
+      </button>
+      <button
+        type="button"
+        className={OUTLINE}
         onClick={() => setPreview(null)}
         disabled={acceptMutation.isPending}
       >
         {t("calibration.discardPreview")}
-      </Button>
+      </button>
     </div>
   ) : !processed || stale ? (
     processButton
   ) : (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-2.5">
       <div className="flex items-stretch gap-2">
-        <Button
-          variant="outline"
-          className="flex-1"
+        <button
+          type="button"
+          className={`${OUTLINE} flex-1`}
           title={contextStale ? t("calibration.statusContextStale") : t("calibration.previewHelp")}
           onClick={() => previewMutation.mutate()}
           disabled={!editable || contextStale}
@@ -1007,10 +1013,10 @@ export function CalibrationEditor({
           ) : (
             t("calibration.preview")
           )}
-        </Button>
-        <Button
-          variant="outline"
-          className="flex-1"
+        </button>
+        <button
+          type="button"
+          className={`${OUTLINE_INK} flex-1`}
           onClick={() => saveMutation.mutate()}
           disabled={!editable || !dirty}
         >
@@ -1019,11 +1025,16 @@ export function CalibrationEditor({
           ) : (
             t("calibration.saveDraft")
           )}
-        </Button>
+        </button>
       </div>
-      <Button onClick={() => setConfirmOpen(true)} disabled={!editable}>
+      <button
+        type="button"
+        className={PRIMARY}
+        onClick={() => setConfirmOpen(true)}
+        disabled={!editable}
+      >
         {t("calibration.confirm")}
-      </Button>
+      </button>
     </div>
   );
 
@@ -1071,14 +1082,14 @@ export function CalibrationEditor({
           <div className="w-64">
             <WordRunProgress job={job} />
           </div>
-          <Button
-            variant="outline"
-            size="sm"
+          <button
+            type="button"
+            className={`${OUTLINE} h-8 px-3`}
             onClick={() => cancelMutation.mutate()}
             disabled={job.cancel_requested || cancelMutation.isPending}
           >
             {t("calibration.stop")}
-          </Button>
+          </button>
         </>,
       )
     ) : !doc || builtPage !== page ? (
@@ -1142,6 +1153,7 @@ export function CalibrationEditor({
               line={line}
               scale={scale}
               marginLeft={(line.bbox.x - column.x) * scale}
+              columnWidth={column.w * scale}
               label={
                 line.readonly
                   ? t("calibration.contextLabel", {
@@ -1183,28 +1195,39 @@ export function CalibrationEditor({
     t("guide.calibration.s7"),
   ];
 
+  const pageLine =
+    processed && doc ? (
+      <span className="flex flex-wrap items-center gap-2">
+        {t("calibration.pageTitle", { page })}
+        <span className="rounded bg-sunk px-2 py-0.5 text-[12px] font-semibold text-ink-2">
+          {t("calibration.draft")} · {t("calibration.revision", { revision: doc.revision })}
+        </span>
+        {doc.confirmed_revision === null
+          ? t("calibration.pageNotConfirmed")
+          : doc.confirmed_revision === doc.revision
+            ? t("calibration.pageConfirmedAt", { revision: doc.confirmed_revision })
+            : t("calibration.pageEditedSince", { revision: doc.confirmed_revision })}
+      </span>
+    ) : (
+      t("calibration.pageTitle", { page })
+    );
+  const needsLook =
+    processed &&
+    (found.length > 0 ||
+      shortages.length > 0 ||
+      suspects.length > 0 ||
+      (doc?.issues.length ?? 0) > 0);
+
   return (
     <StepBody>
-      <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        <div className="flex h-11 flex-shrink-0 items-center gap-2 overflow-x-auto border-b border-rule bg-card px-3">
-          <WordPlayback
-            mushafId={mushafId}
-            page={page}
-            lines={shownLines}
-            expectations={expectations}
-            checks={checks}
-            preview={!!preview}
-            disabled={builtPage !== page || !!busy || stale}
-            onInspect={(next) => {
-              setMode("blobs");
-              select(next);
-              showLine(next.snapshot);
-            }}
-          />
+      <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-well">
+        {/* Toolbar: the mode switch on deep, the filter, the things to look at,
+            history, then playback and zoom on the far side. */}
+        <div className="flex flex-shrink-0 flex-wrap items-center gap-2 border-b border-rule bg-sheet px-3.5 py-2.5">
           <div
             role="group"
             aria-label={t("calibration.modeLabel")}
-            className="flex h-[26px] flex-none overflow-hidden rounded-sm border border-rule-2"
+            className="inline-flex flex-none rounded-lg bg-deep p-[3px]"
           >
             {(["blobs", "gallery"] as const).map((value) => (
               <button
@@ -1215,140 +1238,180 @@ export function CalibrationEditor({
                   value === "blobs" ? "calibration.modeBlobsHelp" : "calibration.modeGalleryHelp",
                 )}
                 onClick={() => setMode(value)}
-                className={`cursor-pointer px-2.5 text-[11.5px] font-medium transition-colors ${
-                  mode === value ? "bg-lapis text-on-lapis" : "bg-card text-ink-2 hover:bg-sheet"
+                className={`h-[30px] cursor-pointer rounded-[6px] px-[13px] text-[13px] transition-colors ${
+                  mode === value
+                    ? "bg-on-deep font-bold text-deep"
+                    : "font-medium text-on-deep hover:bg-white/10"
                 }`}
               >
                 {t(value === "blobs" ? "calibration.modeBlobs" : "calibration.modeGallery")}
               </button>
             ))}
           </div>
-
-          <span className="mx-1 h-5 w-px flex-none bg-rule" />
-          <span className="flex flex-none items-center gap-1.5">
-            <select
-              aria-label={t("calibration.selectionFilter")}
-              title={t("calibration.filter.help")}
-              className="h-8 max-w-[220px] flex-none rounded-sm border border-rule-2 bg-card px-2 text-[12px]"
-              value={selectionFilter}
-              onChange={(event) => {
-                setSelectionFilter(event.target.value as BlobFilter);
-                setSelection(NO_SELECTION);
-              }}
-            >
-              <option value="all">{t("calibration.selectAllBlobs")}</option>
-              <option value="mark">{t("calibration.selectMarks")}</option>
-              <option value="body">{t("calibration.selectBodies")}</option>
-              <optgroup label={t("calibration.filter.types")}>
-                {filterTypes.map(({ subtype, typed, expected }) => (
-                  <option key={subtype} value={typeFilter(subtype)}>
-                    {`${subtypeGlyph(subtype)}  ${typeName(subtype)} · ${
-                      expected
-                        ? t("calibration.filter.count", { count: typed + expected, expected })
-                        : typed + expected
-                    }`}
-                  </option>
-                ))}
-                <option value="untyped">
-                  {t("calibration.filter.untyped", { count: tally.untyped })}
+          <select
+            aria-label={t("calibration.selectionFilter")}
+            title={t("calibration.filter.help")}
+            className="h-[34px] max-w-[220px] flex-none cursor-pointer rounded-control border border-rule-2 bg-card px-2 text-[13px] text-ink outline-none focus:border-lapis"
+            value={selectionFilter}
+            onChange={(event) => {
+              setSelectionFilter(event.target.value as BlobFilter);
+              setSelection(NO_SELECTION);
+            }}
+          >
+            <option value="all">{t("calibration.selectAllBlobs")}</option>
+            <option value="mark">{t("calibration.selectMarks")}</option>
+            <option value="body">{t("calibration.selectBodies")}</option>
+            <optgroup label={t("calibration.filter.types")}>
+              {filterTypes.map(({ subtype, typed, expected }) => (
+                <option key={subtype} value={typeFilter(subtype)}>
+                  {`${subtypeGlyph(subtype)}  ${typeName(subtype)} · ${
+                    expected
+                      ? t("calibration.filter.count", { count: typed + expected, expected })
+                      : typed + expected
+                  }`}
                 </option>
-                <option value="doubtful">
-                  {t("calibration.filter.doubtful", { count: tally.doubtful })}
-                </option>
-              </optgroup>
-            </select>
-          </span>
-          {mode !== "gallery" && (
-            <>
-              <IconButton
-                label={t("canvas.zoomOut")}
-                disabled={zoom <= MIN_ZOOM}
-                onClick={() => step(1 / STEP)}
-              >
-                <Minus size={13} />
-              </IconButton>
-              <span className="w-11 flex-none text-center text-[11px] font-medium tabular-nums text-ink-2">
-                {Math.round(zoom * 100)}%
-              </span>
-              <IconButton
-                label={t("canvas.zoomIn")}
-                disabled={zoom >= MAX_ZOOM}
-                onClick={() => step(STEP)}
-              >
-                <Plus size={13} />
-              </IconButton>
-              <IconButton
-                label={t("canvas.fit")}
-                disabled={zoom === FIT_ZOOM}
-                onClick={() => setZoom(FIT_ZOOM)}
-              >
-                <Maximize2 size={12} />
-              </IconButton>
-            </>
-          )}
-
-          <span className="mx-1 h-5 w-px flex-none bg-rule" />
-          <IconButton
-            label={t("words.undo")}
-            disabled={!editable || history.index <= 0}
-            onClick={undo}
-          >
-            <Undo2 size={13} />
-          </IconButton>
-          <IconButton
-            label={t("words.redo")}
-            disabled={!editable || history.index >= history.stack.length - 1}
-            onClick={redo}
-          >
-            <Redo2 size={13} />
-          </IconButton>
-
-          <span className="mx-1 h-5 w-px flex-none bg-rule" />
-          <IconButton
-            label={t("calibration.prevLook")}
-            disabled={!looks}
-            onClick={() => stepLook(-1)}
-          >
-            <ChevronLeft size={13} />
-          </IconButton>
-          <span className="flex-none whitespace-nowrap text-center text-[11px] tabular-nums text-ink-2">
-            {t("calibration.lookCount", { count: looks })}
-          </span>
-          <IconButton
-            label={t("calibration.nextLook")}
-            disabled={!looks}
-            onClick={() => stepLook(1)}
-          >
-            <ChevronRight size={13} />
-          </IconButton>
-          <IconButton
-            label={dim ? t("calibration.dimOff") : t("calibration.dimOn")}
-            active={dim}
-            onClick={() => setDim((value) => !value)}
-          >
-            {dim ? <EyeOff size={13} /> : <Eye size={13} />}
-          </IconButton>
-
-          <div className="ms-auto flex flex-none items-center gap-3">
-            <div className="hidden items-center gap-2 xl:flex">
-              {(["body", "mark", "ornament", "symbol"] as const).map((role) => (
-                <span key={role} className="flex items-center gap-1 text-[10.5px] text-ink-2">
-                  <span
-                    className="h-2.5 w-2.5 rounded-sm"
-                    style={{ background: `rgb(${ROLE_RGB[role].join(",")})` }}
-                  />
-                  {t(`calibration.role.${role}`)}
-                </span>
               ))}
-            </div>
-            <PageJump page={page} pageCount={pageCount} onPageChange={onPageChange} />
+              <option value="untyped">
+                {t("calibration.filter.untyped", { count: tally.untyped })}
+              </option>
+              <option value="doubtful">
+                {t("calibration.filter.doubtful", { count: tally.doubtful })}
+              </option>
+            </optgroup>
+          </select>
+
+          <Divider />
+          <span className="inline-flex flex-none items-center gap-0.5">
+            <IconButton
+              label={t("calibration.prevLook")}
+              disabled={!looks}
+              onClick={() => stepLook(-1)}
+            >
+              <ChevronLeft size={16} />
+            </IconButton>
+            <span
+              className={`whitespace-nowrap rounded-pill px-[9px] py-[3px] text-[12.5px] font-semibold ${
+                looks ? "bg-gold-wash text-gold-text" : "bg-sunk text-ink-3"
+              }`}
+            >
+              {t("calibration.lookCount", { count: looks })}
+            </span>
+            <IconButton
+              label={t("calibration.nextLook")}
+              disabled={!looks}
+              onClick={() => stepLook(1)}
+            >
+              <ChevronRight size={16} />
+            </IconButton>
+          </span>
+
+          <Divider />
+          <span className="inline-flex flex-none items-center gap-0.5">
+            <IconButton
+              label={t("words.undo")}
+              disabled={!editable || history.index <= 0}
+              onClick={undo}
+            >
+              <Undo2 size={16} />
+            </IconButton>
+            <IconButton
+              label={t("words.redo")}
+              disabled={!editable || history.index >= history.stack.length - 1}
+              onClick={redo}
+            >
+              <Redo2 size={16} />
+            </IconButton>
+            <IconButton
+              label={dim ? t("calibration.dimOff") : t("calibration.dimOn")}
+              active={dim}
+              onClick={() => setDim((value) => !value)}
+            >
+              {dim ? <EyeOff size={16} /> : <Eye size={16} />}
+            </IconButton>
+          </span>
+
+          <div className="ms-auto flex flex-none flex-wrap items-center gap-1.5">
+            <WordPlayback
+              mushafId={mushafId}
+              page={page}
+              lines={shownLines}
+              expectations={expectations}
+              checks={checks}
+              preview={!!preview}
+              disabled={builtPage !== page || !!busy || stale}
+              onInspect={(next) => {
+                setMode("blobs");
+                select(next);
+                showLine(next.snapshot);
+              }}
+            />
+            {mode !== "gallery" && (
+              <span className="inline-flex items-center gap-0.5">
+                <IconButton
+                  label={t("canvas.zoomOut")}
+                  disabled={zoom <= MIN_ZOOM}
+                  onClick={() => step(1 / STEP)}
+                >
+                  <Minus size={15} />
+                </IconButton>
+                <span className="w-11 text-center font-mono text-[12px] text-ink-3">
+                  {Math.round(zoom * 100)}%
+                </span>
+                <IconButton
+                  label={t("canvas.zoomIn")}
+                  disabled={zoom >= MAX_ZOOM}
+                  onClick={() => step(STEP)}
+                >
+                  <Plus size={15} />
+                </IconButton>
+                <button
+                  type="button"
+                  disabled={zoom === FIT_ZOOM}
+                  onClick={() => setZoom(FIT_ZOOM)}
+                  className="h-[30px] cursor-pointer rounded-[6px] px-2 text-[13px] font-semibold text-ink transition-colors hover:bg-sunk disabled:cursor-default disabled:text-ink-4 disabled:hover:bg-transparent"
+                >
+                  {t("canvas.fit")}
+                </button>
+              </span>
+            )}
           </div>
         </div>
 
+        {/* Legend: the four ink roles, and how a word is drawn. */}
+        {processed && !stale && mode === "blobs" && (
+          <div className="flex flex-shrink-0 flex-wrap items-center gap-x-4 gap-y-2 px-[18px] pt-2.5 text-[12.5px] text-ink-2">
+            {(["body", "mark", "ornament", "symbol"] as const).map((role) => (
+              <span key={role} className="inline-flex items-center gap-1.5">
+                <span
+                  className="h-2.5 w-2.5 rounded-full"
+                  style={{
+                    background: `rgb(${ROLE_RGB[role].join(",")})`,
+                    boxShadow: role === "body" ? "0 0 0 1px var(--rule-2)" : undefined,
+                  }}
+                />
+                {t(`calibration.role.${role}`)}
+              </span>
+            ))}
+            <span className="h-4 w-px bg-rule-2" aria-hidden="true" />
+            <span className="inline-flex items-center gap-1.5">
+              <span
+                className="h-3 w-[18px] rounded-[2px] border border-dashed"
+                style={{ borderColor: "var(--ov-word)" }}
+                aria-hidden="true"
+              />
+              {t("calibration.legendWord")}
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="font-mono text-[11px] font-semibold text-ink-3">2/2</span>
+              {t("calibration.countHelp")}
+            </span>
+          </div>
+        )}
+
         {processed && highlights(selectionFilter) && (
           <div
-            className="flex flex-shrink-0 flex-wrap items-center gap-x-4 gap-y-1 border-b border-rule px-3 py-1.5 text-[11.5px] text-ink-2"
-            style={{ background: `rgb(${HIGHLIGHT_RGB.join(",")} / 0.07)` }}
+            className="mx-[18px] mt-2.5 flex flex-shrink-0 flex-wrap items-center gap-x-4 gap-y-1 rounded-lg px-3 py-1.5 text-[12px] text-ink-2"
+            style={{ background: `rgb(${HIGHLIGHT_RGB.join(",")} / 0.08)` }}
           >
             <span className="flex items-center gap-1.5">
               <span
@@ -1370,31 +1433,32 @@ export function CalibrationEditor({
                   type="checkbox"
                   checked={pickAll}
                   onChange={(event) => setPickAll(event.target.checked)}
+                  className="accent-lapis"
                 />
                 {t("calibration.filter.pickAll")}
               </label>
             )}
             {shownByFilter.expected > 0 && (
-              <Button
-                variant="outline"
-                className="h-7 px-2 text-[11.5px]"
+              <button
+                type="button"
+                className={`${OUTLINE} h-7 px-2.5 text-[12px]`}
                 disabled={!editable}
                 onClick={() => commit(acceptExpected(lines, expectations, passes))}
                 title={t("calibration.filter.acceptShownHelp")}
               >
                 {t("calibration.filter.acceptShown", { count: shownByFilter.expected })}
-              </Button>
+              </button>
             )}
           </div>
         )}
 
         {preview && (
-          <div className="flex flex-shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-rule bg-lapis-wash px-3 py-1.5 text-[11.5px] leading-snug text-ink-2">
+          <div className="mx-[18px] mt-2.5 flex flex-shrink-0 flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-lapis-wash px-3 py-1.5 text-[12px] leading-snug text-ink-2">
             <span>{t("calibration.previewBanner")}</span>
             <span className="flex items-center gap-1.5 font-medium text-ink">
               <span
                 className="h-2.5 w-2.5 flex-none rounded-sm border-2"
-                style={{ borderColor: "var(--lapis)" }}
+                style={{ borderColor: "var(--ov-line-selected)" }}
               />
               {t("calibration.previewMoved", { count: moved?.size ?? 0 })}
             </span>
@@ -1412,7 +1476,7 @@ export function CalibrationEditor({
                     if (next) selectWord(next);
                   }}
                 >
-                  <ChevronRight size={13} />
+                  <ChevronRight size={15} />
                 </IconButton>
                 <IconButton
                   label={t("calibration.previewMovedNext")}
@@ -1426,14 +1490,14 @@ export function CalibrationEditor({
                     if (next) selectWord(next);
                   }}
                 >
-                  <ChevronLeft size={13} />
+                  <ChevronLeft size={15} />
                 </IconButton>
               </span>
             )}
           </div>
         )}
 
-        <div ref={scrollRef} className="canvas-well flex-1 overflow-auto">
+        <div ref={scrollRef} className="flex-1 overflow-auto">
           {canvas}
         </div>
 
@@ -1477,83 +1541,37 @@ export function CalibrationEditor({
           processed={processedPages}
           reviewed={confirmedPages}
           isRTL={isRTL}
+          end={
+            <>
+              <span className="hidden items-center gap-3 text-[12px] text-ink-3 md:inline-flex">
+                <span className="inline-flex items-center gap-[5px]">
+                  <span className="h-[9px] w-[9px] rounded-[2px] bg-done" aria-hidden="true" />
+                  {t("calibration.railConfirmed")}
+                </span>
+                <span className="inline-flex items-center gap-[5px]">
+                  <span className="h-[9px] w-[9px] rounded-[2px] bg-lapis" aria-hidden="true" />
+                  {t("calibration.railDraft")}
+                </span>
+              </span>
+              <span className="rounded-control border border-rule-2 bg-card px-2.5 py-1">
+                <PageJump page={page} pageCount={pageCount} onPageChange={onPageChange} />
+              </span>
+            </>
+          }
         />
 
-        <CanvasHelp guideItems={guideItems} coachText={t("coach.calibration")} />
+        <CanvasHelp
+          guideItems={guideItems}
+          coachText={t("coach.calibration")}
+          className="top-[112px]"
+        />
       </div>
 
-      <Aside status={status} footer={footer}>
-        <BulkPanel
-          mushafId={mushafId}
-          page={page}
-          pageCount={pageCount}
-          job={job ?? null}
-          onStarted={(started) => {
-            watchedRef.current = started.id;
-            queryClient.setQueryData(calibrationKeys.job(mushafId), started);
-          }}
-          onStop={() => cancelMutation.mutate()}
-          stopping={cancelMutation.isPending}
-        />
-
-        {processed && types.marks > 0 && (
-          <PanelCard title={t("calibration.types.title")}>
-            <p className="text-[11.5px] text-ink-2">
-              {t("calibration.types.summary", {
-                typed: types.typed,
-                marks: types.marks,
-                expected: types.expected,
-                sure: types.sure,
-              })}
-            </p>
-            <p className="-mt-1 text-[10.5px] leading-snug text-ink-3">
-              {learnedFrom.examples + learnedFrom.here
-                ? t("calibration.types.learnedFrom", {
-                    examples: learnedFrom.examples,
-                    here: learnedFrom.here,
-                  })
-                : t("calibration.types.nothingYet")}
-            </p>
-            {tally.doubtful > 0 && (
-              <div className="flex items-center justify-between gap-2 rounded-sm bg-warn-wash px-2 py-1.5 text-[11.5px] leading-snug text-warn-text">
-                <span>{t("calibration.types.doubtful", { count: tally.doubtful })}</span>
-                <Button
-                  variant="outline"
-                  className="h-7 flex-none px-2 text-[11.5px]"
-                  onClick={() => {
-                    setMode("blobs");
-                    setSelectionFilter("doubtful");
-                    setSelection(NO_SELECTION);
-                  }}
-                >
-                  {t("calibration.types.showDoubtful")}
-                </Button>
-              </div>
-            )}
-            <Button
-              variant="outline"
-              className="h-8 text-[12px]"
-              disabled={!editable || !types.sure}
-              onClick={() => commit(acceptExpected(lines, expectations, "sure"))}
-              title={t("calibration.types.acceptSureHelp")}
-            >
-              {t("calibration.types.acceptSure", { count: types.sure })}
-            </Button>
-            <label className="flex cursor-pointer items-center gap-2 text-[11.5px] text-ink-2">
-              <input
-                type="checkbox"
-                checked={showTypes}
-                onChange={(event) => setShowTypes(event.target.checked)}
-              />
-              {t("calibration.types.show")}
-            </label>
-          </PanelCard>
-        )}
-
+      <Aside intro={pageLine} status={status} footer={footer}>
         {stale && <Hint tone="warning">{t("calibration.staleHint")}</Hint>}
         {contextStale && (
           <Hint tone="warning">
-            <div className="flex flex-col items-start gap-2">
+            <div className="flex flex-col items-stretch gap-2">
               {t("calibration.contextStaleHint")}
               {processButton}
             </div>
@@ -1563,11 +1581,123 @@ export function CalibrationEditor({
           <Hint tone="warning">
             <div className="flex flex-col items-start gap-2">
               {t("calibration.heldHint")}
-              <Button variant="outline" size="sm" onClick={reload}>
+              <button type="button" className={`${OUTLINE} h-8 px-3`} onClick={reload}>
                 {t("calibration.reload")}
-              </Button>
+              </button>
             </div>
           </Hint>
+        )}
+
+        {needsLook && (
+          <section className="flex flex-col gap-2.5 rounded-card border border-rule bg-card p-3.5">
+            <h2 className="m-0 text-[12px] font-semibold uppercase tracking-[0.08em] text-ink-3">
+              {t("calibration.needsLook")}
+            </h2>
+            {found.length > 0 && (
+              <LookGroup title={t("calibration.look.acknowledge")} count={found.length}>
+                {found.slice(0, LISTED).map((item, index) => (
+                  <LookRow
+                    key={`${item.kind}-${item.line_number}-${index}`}
+                    tag={t("calibration.lineKey", { n: item.line_number })}
+                    title={t("calibration.exceptionsNote")}
+                    onClick={() => {
+                      const target = lines.find((line) => line.line_number === item.line_number);
+                      if (target) showLine(target.snapshot_id);
+                    }}
+                  >
+                    {problem(item.kind)}
+                    {item.detail &&
+                      ` · ${item.kind === "flagged" ? exception(item.detail) : item.detail}`}
+                  </LookRow>
+                ))}
+                {found.length > LISTED && (
+                  <span className="text-[12px] text-ink-3">
+                    {t("calibration.moreExceptions", { count: found.length - LISTED })}
+                  </span>
+                )}
+              </LookGroup>
+            )}
+            {shortages.length > 0 && (
+              <LookGroup title={t("calibration.look.shortages")} count={shortages.length}>
+                {shortages.map((item) => {
+                  const short = item.words
+                    .map((id) => wordOn.get(id))
+                    .filter((word) => word !== undefined);
+                  return (
+                    <LookRow
+                      key={item.aya}
+                      tag={t("calibration.ayaKey", { aya: item.aya })}
+                      title={t("calibration.shortagesNote")}
+                      word={item.certain ? short[0]?.text : undefined}
+                      disabled={!short.length}
+                      onClick={() => short[0] && showLine(short[0].snapshot)}
+                    >
+                      {t("calibration.shortCount", { count: item.short })}
+                      {" · "}
+                      {item.certain && short.length
+                        ? t("calibration.shortageLikely", {
+                            words: short.map((word) => word.text).join("، "),
+                          })
+                        : t("calibration.shortageUncertain")}
+                    </LookRow>
+                  );
+                })}
+              </LookGroup>
+            )}
+            {suspects.length > 0 && (
+              <LookGroup title={t("calibration.look.noise")} count={suspects.length}>
+                {suspects.map(({ line, blob, found: item }) => (
+                  <LookRow
+                    key={`${line.snapshot_id}:${blob.id}`}
+                    tag={t("calibration.lineKey", { n: line.line_number })}
+                    title={t("calibration.noise.note")}
+                    onClick={() => {
+                      setMode("blobs");
+                      selectAndReveal({ snapshot: line.snapshot_id, ids: [blob.id] });
+                    }}
+                  >
+                    {t(`calibration.noise.${item.kind}`)} ·{" "}
+                    {t("calibration.noise.detail", { w: blob.w, h: blob.h, area: blob.area })}
+                    {item.edge ? ` · ${t("calibration.noise.edge")}` : ""}
+                  </LookRow>
+                ))}
+              </LookGroup>
+            )}
+            {suspects.length > 0 && (
+              <button
+                type="button"
+                className={`${OUTLINE} h-[34px] text-[12.5px]`}
+                disabled={!editable}
+                onClick={() =>
+                  commit(
+                    suspects.reduce(
+                      (current, { line, blob }) =>
+                        setErased(current, { snapshot: line.snapshot_id, ids: [blob.id] }, true),
+                      lines,
+                    ),
+                  )
+                }
+                title={t("calibration.noise.eraseAllHelp")}
+              >
+                {t("calibration.noise.eraseAll", { count: suspects.length })}
+              </button>
+            )}
+            {(doc?.issues.length ?? 0) > 0 && (
+              <div className="flex flex-col gap-1.5">
+                <span className="text-[13px] font-semibold">{t("calibration.issuesTitle")}</span>
+                <div className="flex flex-wrap gap-1">
+                  {doc?.issues.map((issue) => (
+                    <span
+                      key={issue}
+                      className="rounded bg-sheet px-1.5 py-0.5 font-mono text-[11.5px] text-ink-2"
+                    >
+                      {issue}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </section>
         )}
 
         {focusLine && (
@@ -1585,171 +1715,130 @@ export function CalibrationEditor({
           />
         )}
 
-        {processed && found.length > 0 && (
-          <PanelCard title={t("calibration.exceptionsTitle", { count: found.length })}>
-            <p className="-mt-1 text-[10.5px] leading-snug text-ink-3">
-              {t("calibration.exceptionsNote")}
-            </p>
-            <div className="flex flex-col gap-1">
-              {found.slice(0, LISTED).map((item, index) => (
-                <button
-                  key={`${item.kind}-${item.line_number}-${index}`}
-                  type="button"
-                  onClick={() => {
-                    const target = lines.find((line) => line.line_number === item.line_number);
-                    if (target) showLine(target.snapshot_id);
-                  }}
-                  className="flex cursor-pointer flex-col gap-0.5 rounded border border-rule p-1.5 text-start transition-colors hover:border-lapis hover:bg-lapis-wash"
-                >
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-warn-text">
-                    {problem(item.kind)} · {t("words.onLine", { n: item.line_number })}
-                  </span>
-                  {item.detail && (
-                    <span dir="auto" className="text-[11px] leading-snug text-ink-2">
-                      {item.kind === "flagged" ? exception(item.detail) : item.detail}
-                    </span>
-                  )}
-                </button>
-              ))}
-              {found.length > LISTED && (
-                <span className="text-[10.5px] text-ink-3">
-                  {t("calibration.moreExceptions", { count: found.length - LISTED })}
-                </span>
-              )}
+        {processed && types.marks > 0 && (
+          <section className="flex flex-col gap-2.5 rounded-card border border-rule bg-card p-3.5">
+            <div className="flex items-baseline justify-between gap-2">
+              <h2 className="m-0 text-[12px] font-semibold uppercase tracking-[0.08em] text-ink-3">
+                {t("calibration.types.title")}
+              </h2>
+              <span className="font-mono text-[12px] text-ink-3">
+                {t("calibration.types.typedOf", { typed: types.typed, marks: types.marks })}
+              </span>
             </div>
-          </PanelCard>
-        )}
-
-        {processed && shortages.length > 0 && (
-          <PanelCard title={t("calibration.shortagesTitle", { count: shortages.length })}>
-            <p className="-mt-1 text-[10.5px] leading-snug text-ink-3">
-              {t("calibration.shortagesNote")}
-            </p>
-            <div className="flex flex-col gap-1">
-              {shortages.map((item) => {
-                const short = item.words
-                  .map((id) => wordOn.get(id))
-                  .filter((word) => word !== undefined);
-                return (
-                  <button
-                    key={item.aya}
-                    type="button"
-                    disabled={!short.length}
-                    onClick={() => short[0] && showLine(short[0].snapshot)}
-                    className="flex cursor-pointer flex-col gap-0.5 rounded border border-rule p-1.5 text-start transition-colors hover:border-lapis hover:bg-lapis-wash disabled:cursor-default"
+            {filterTypes.length > 0 && (
+              <div className="flex flex-wrap gap-[5px]">
+                {filterTypes.map(({ subtype, typed, expected }) => (
+                  <span
+                    key={subtype}
+                    title={typeName(subtype)}
+                    className="inline-flex items-center gap-[5px] rounded-pill border border-rule bg-sheet py-[3px] pe-2 ps-1.5"
                   >
-                    <span className="text-[10px] font-semibold uppercase tracking-wider text-warn-text">
-                      {t("calibration.shortageAya", { aya: item.aya, count: item.short })}
+                    <span dir="rtl" className="font-quran text-[15px] leading-none text-mark-text">
+                      {subtypeGlyph(subtype)}
                     </span>
-                    <span dir="auto" className="text-[11px] leading-snug text-ink-2">
-                      {item.certain && short.length
-                        ? t("calibration.shortageLikely", {
-                            words: short.map((word) => word.text).join("، "),
-                          })
-                        : t("calibration.shortageUncertain")}
-                    </span>
-                  </button>
-                );
+                    <span className="font-mono text-[11.5px] text-ink-3">{typed + expected}</span>
+                  </span>
+                ))}
+              </div>
+            )}
+            <p className="m-0 text-[12.5px] leading-normal text-ink-3">
+              {t("calibration.types.summary", {
+                typed: types.typed,
+                marks: types.marks,
+                expected: types.expected,
+                sure: types.sure,
               })}
-            </div>
-          </PanelCard>
-        )}
-
-        {processed && suspects.length > 0 && (
-          <PanelCard title={t("calibration.noise.title", { count: suspects.length })}>
-            <p className="-mt-1 text-[10.5px] leading-snug text-ink-3">
-              {t("calibration.noise.note")}
+              {" · "}
+              {learnedFrom.examples + learnedFrom.here
+                ? t("calibration.types.learnedFrom", {
+                    examples: learnedFrom.examples,
+                    here: learnedFrom.here,
+                  })
+                : t("calibration.types.nothingYet")}
             </p>
-            <div className="flex flex-col gap-1">
-              {suspects.map(({ line, blob, found: item }) => (
+            <button
+              type="button"
+              className="inline-flex h-9 cursor-pointer items-center justify-center rounded-control border border-lapis bg-lapis-wash text-[13px] font-semibold text-lapis-text transition-colors hover:bg-lapis hover:text-on-lapis disabled:cursor-default disabled:opacity-50 disabled:hover:bg-lapis-wash disabled:hover:text-lapis-text"
+              disabled={!editable || !types.sure}
+              onClick={() => commit(acceptExpected(lines, expectations, "sure"))}
+              title={t("calibration.types.acceptSureHelp")}
+            >
+              {t("calibration.types.acceptSure", { count: types.sure })}
+            </button>
+            {tally.doubtful > 0 && (
+              <span className="flex items-center justify-between gap-2.5 rounded-control bg-warn-wash px-2.5 py-2 text-[12.5px] leading-snug text-warn-text">
+                <span>{t("calibration.types.doubtful", { count: tally.doubtful })}</span>
                 <button
-                  key={`${line.snapshot_id}:${blob.id}`}
                   type="button"
+                  className="flex-none cursor-pointer font-semibold hover:underline"
                   onClick={() => {
                     setMode("blobs");
-                    selectAndReveal({ snapshot: line.snapshot_id, ids: [blob.id] });
+                    setSelectionFilter("doubtful");
+                    setSelection(NO_SELECTION);
                   }}
-                  className="flex cursor-pointer flex-col gap-0.5 rounded border border-rule p-1.5 text-start transition-colors hover:border-lapis hover:bg-lapis-wash"
                 >
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-warn-text">
-                    {t(`calibration.noise.${item.kind}`)} ·{" "}
-                    {t("words.onLine", { n: line.line_number })}
-                  </span>
-                  <span className="text-[11px] leading-snug text-ink-2">
-                    {t("calibration.noise.detail", { w: blob.w, h: blob.h, area: blob.area })}
-                    {item.edge ? ` · ${t("calibration.noise.edge")}` : ""}
-                  </span>
+                  {t("calibration.types.showDoubtful")}
                 </button>
-              ))}
-            </div>
-            <Button
-              variant="outline"
-              className="h-8 text-[12px]"
-              disabled={!editable}
-              onClick={() =>
-                commit(
-                  suspects.reduce(
-                    (current, { line, blob }) =>
-                      setErased(current, { snapshot: line.snapshot_id, ids: [blob.id] }, true),
-                    lines,
-                  ),
-                )
+              </span>
+            )}
+            <label className="flex cursor-pointer items-center gap-2 text-[12.5px] text-ink-2">
+              <input
+                type="checkbox"
+                checked={showTypes}
+                onChange={(event) => setShowTypes(event.target.checked)}
+                className="h-4 w-4 accent-lapis"
+              />
+              {t("calibration.types.show")}
+            </label>
+          </section>
+        )}
+
+        <BulkPanel
+          mushafId={mushafId}
+          page={page}
+          pageCount={pageCount}
+          job={job ?? null}
+          onStarted={(started) => {
+            watchedRef.current = started.id;
+            queryClient.setQueryData(calibrationKeys.job(mushafId), started);
+          }}
+          onStop={() => cancelMutation.mutate()}
+          stopping={cancelMutation.isPending}
+        />
+
+        <div className="flex flex-col overflow-hidden rounded-card border border-rule bg-card">
+          {doc?.settings && (
+            <Fold
+              title={t("calibration.pageSection", { page })}
+              badge={
+                doc.settings.experimental ? (
+                  <span className="rounded bg-gold-wash px-1.5 py-px text-[11px] font-semibold text-gold-text">
+                    {t("calibration.experimentalBadge")}
+                  </span>
+                ) : undefined
               }
-              title={t("calibration.noise.eraseAllHelp")}
             >
-              {t("calibration.noise.eraseAll", { count: suspects.length })}
-            </Button>
-          </PanelCard>
-        )}
-
-        {processed && (doc?.issues.length ?? 0) > 0 && (
-          <PanelCard title={t("calibration.issuesTitle")}>
-            <div className="flex flex-wrap gap-1">
-              {doc?.issues.map((issue) => (
-                <span
-                  key={issue}
-                  className="rounded-sm bg-sheet px-1.5 py-0.5 font-mono text-[10.5px] text-ink-2"
-                >
-                  {issue}
-                </span>
-              ))}
-            </div>
-          </PanelCard>
-        )}
-
-        {doc?.settings && (
-          <Section
-            title={t("calibration.pageSection", { page })}
-            defaultOpen={false}
-            badge={
-              doc.settings.experimental ? (
-                <span className="rounded-sm bg-warn-wash px-1.5 py-px text-[10px] text-warn-text">
-                  {t("calibration.experimentalBadge")}
-                </span>
-              ) : undefined
-            }
-          >
-            <LearningSettings
-              mushafId={mushafId}
-              page={page}
-              settings={doc.settings}
-              disabled={busy || running || !!preview || held}
-            />
-            {processed && (
-              <PageCard
+              <LearningSettings
                 mushafId={mushafId}
                 page={page}
-                revision={doc.revision}
-                confirmedRevision={doc.confirmed_revision}
-                profile={doc.profile}
+                settings={doc.settings}
+                disabled={busy || running || !!preview || held}
               />
-            )}
-          </Section>
-        )}
-
-        <Section title={t("calibration.evaluationTitle")} defaultOpen={false}>
-          <EvaluationPanel mushafId={mushafId} />
-        </Section>
+              {processed && (
+                <PageCard
+                  mushafId={mushafId}
+                  page={page}
+                  revision={doc.revision}
+                  confirmedRevision={doc.confirmed_revision}
+                  profile={doc.profile}
+                />
+              )}
+            </Fold>
+          )}
+          <Fold title={t("calibration.evaluationTitle")}>
+            <EvaluationPanel mushafId={mushafId} />
+          </Fold>
+        </div>
       </Aside>
 
       <ConfirmPageDialog
@@ -1764,6 +1853,14 @@ export function CalibrationEditor({
     </StepBody>
   );
 }
+
+/** The step's buttons: primary lapis, outlined, outlined in ink. */
+const PRIMARY =
+  "inline-flex h-11 cursor-pointer items-center justify-center rounded-control bg-lapis px-4 text-[14px] font-semibold text-on-lapis transition-colors hover:bg-lapis/90 disabled:cursor-default disabled:opacity-50";
+const OUTLINE =
+  "inline-flex h-10 cursor-pointer items-center justify-center rounded-control border border-rule-2 bg-card text-[13px] font-semibold text-ink transition-colors hover:bg-sheet disabled:cursor-default disabled:opacity-50";
+const OUTLINE_INK =
+  "inline-flex h-10 cursor-pointer items-center justify-center rounded-control border border-ink bg-transparent text-[13px] font-semibold text-ink transition-colors hover:bg-sunk disabled:cursor-default disabled:opacity-50";
 
 // ── pieces ───────────────────────────────────────────────────────────────────
 
@@ -1826,7 +1923,7 @@ function PageCard({
 }
 
 /** The focused line's words, each with its count. A row selects that word's ink and
- * shows it; the arrows above step word by word across the page, as Ctrl+← → do. */
+ * shows it; the arrows step word by word across the page, as Ctrl+← → do. */
 function WordList({
   line,
   current,
@@ -1852,92 +1949,196 @@ function WordList({
       ?.scrollIntoView({ block: "nearest" });
   }, [current, line.snapshot_id]);
   return (
-    <PanelCard
-      title={t("calibration.wordsTitle", { line: line.line_number, count: line.words.length })}
-    >
-      <div className="-mt-1 flex items-center gap-1.5">
-        <IconButton label={t("calibration.wordNav.previous")} onClick={() => onStep(-1)}>
-          <ChevronUp size={13} />
-        </IconButton>
-        <IconButton label={t("calibration.wordNav.next")} onClick={() => onStep(1)}>
-          <ChevronDown size={13} />
-        </IconButton>
-        <span className="text-[11px] text-ink-3">
-          {current !== null
-            ? t("calibration.wordNav.position", { index: current + 1, count: line.words.length })
-            : t("calibration.wordNav.keys")}
+    <section className="flex flex-col gap-2 rounded-card border border-rule bg-card p-3.5">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="m-0 text-[12px] font-semibold uppercase tracking-[0.08em] text-ink-3">
+          {t("calibration.wordsOnLine", { line: line.line_number })}
+        </h2>
+        <span className="flex items-center gap-0.5">
+          <span className="me-1 font-mono text-[12px] text-ink-3">
+            {current !== null
+              ? t("calibration.wordNav.of", { index: current + 1, count: line.words.length })
+              : line.words.length}
+          </span>
+          <IconButton label={t("calibration.wordNav.previous")} onClick={() => onStep(-1)}>
+            <ChevronUp size={15} />
+          </IconButton>
+          <IconButton label={t("calibration.wordNav.next")} onClick={() => onStep(1)}>
+            <ChevronDown size={15} />
+          </IconButton>
         </span>
       </div>
+      {current === null && line.words.length > 0 && (
+        <span className="text-[12px] text-ink-3">{t("calibration.wordNav.keys")}</span>
+      )}
       {line.words.length === 0 ? (
-        <p className="text-[12px] text-ink-3">{t("calibration.noWords")}</p>
+        <p className="m-0 text-[12.5px] text-ink-3">{t("calibration.noWords")}</p>
       ) : (
-        <div ref={list} className="flex max-h-[min(45vh,28rem)] flex-col gap-1 overflow-y-auto">
+        <div ref={list} className="flex max-h-[min(45vh,28rem)] flex-col gap-[3px] overflow-y-auto">
           {line.words.map((word, index) => {
             const count = wordCount(line, word);
             const ink = inkOf(line, word.word_id);
             const active = index === current;
             const check = markCheckOf(line.snapshot_id, word.word_id, checks);
             return (
-              <div
+              <button
                 key={`${word.word_id ?? "u"}-${index}`}
+                type="button"
                 data-word-row={index}
-                className={`flex flex-none items-center gap-2 rounded border p-1.5 transition-colors ${
-                  active ? "border-lapis bg-lapis-wash" : "border-rule"
+                disabled={!ink.length}
+                title={t("calibration.selectWordInk")}
+                onClick={() => onSelect(ink)}
+                className={`flex flex-none cursor-pointer items-center gap-2.5 rounded-control px-2 py-[3px] text-start transition-colors disabled:cursor-default ${
+                  active
+                    ? "bg-lapis-wash shadow-[inset_0_0_0_1.5px_var(--lapis)]"
+                    : "hover:bg-sheet"
                 }`}
               >
-                <button
-                  type="button"
-                  disabled={!ink.length}
-                  title={t("calibration.selectWordInk")}
-                  onClick={() => onSelect(ink)}
-                  className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-start disabled:cursor-default"
+                <span className="w-4 flex-none font-mono text-[11px] text-ink-4">{index + 1}</span>
+                <span
+                  lang="ar"
+                  dir="rtl"
+                  className="min-w-0 flex-1 truncate font-quran text-[18px] leading-relaxed text-ink"
                 >
-                  <span className="w-4 flex-none text-[10px] tabular-nums text-ink-3">
-                    {index + 1}
+                  {word.text || t("calibration.unlabelledWord")}
+                </span>
+                {word.shared && (
+                  <span className="flex-none text-[11px] text-ink-3">
+                    {t("calibration.shared")}
                   </span>
-                  <span className="min-w-0 flex-1 truncate text-[13px] text-ink" dir="rtl">
-                    {word.text || t("calibration.unlabelledWord")}
-                  </span>
-                  <span className="flex-none text-[10px] tabular-nums text-ink-3">{word.aya}</span>
-                  {word.shared && (
-                    <span className="flex-none text-[10px] text-ink-3">
-                      {t("calibration.shared")}
-                    </span>
-                  )}
-                  <span
-                    className={`flex-none rounded-sm px-1 text-[10px] font-semibold tabular-nums ${
-                      count.ok ? "text-lapis-text" : "bg-warn text-on-warn"
-                    }`}
-                    title={t("calibration.countHelp")}
-                  >
-                    {word.word_id === null ? "∅" : `${count.got}/${count.want}`}
-                  </span>
-                  {check && (
-                    <span
-                      className={`flex-none rounded-sm px-1 text-[10px] font-semibold ${
-                        check.ok ? "text-ink-3" : "bg-warn-wash text-warn-text"
-                      }`}
-                      title={t(
-                        check.ok
-                          ? "calibration.marksCheck.okHelp"
-                          : "calibration.marksCheck.offHelp",
-                        {
-                          missing: check.missing.length,
-                          extra: check.extra.length + check.disagree.length,
-                        },
-                      )}
-                    >
-                      {check.ok ? "✓" : "≠"}
-                    </span>
-                  )}
-                </button>
-              </div>
+                )}
+                <span dir="ltr" className="flex-none font-mono text-[11px] text-ink-4">
+                  {word.aya}
+                </span>
+                <span
+                  className={`min-w-[30px] flex-none rounded px-1 text-center font-mono text-[11px] font-semibold ${
+                    count.ok ? "text-ink-3" : "bg-warn text-on-warn"
+                  }`}
+                  title={t("calibration.countHelp")}
+                >
+                  {word.word_id === null ? "∅" : `${count.got}/${count.want}`}
+                </span>
+                <span
+                  className={`w-3.5 flex-none text-[12px] font-bold ${
+                    check?.ok ? "text-done-text" : "text-warn-text"
+                  }`}
+                  title={
+                    check
+                      ? t(
+                          check.ok
+                            ? "calibration.marksCheck.okHelp"
+                            : "calibration.marksCheck.offHelp",
+                          {
+                            missing: check.missing.length,
+                            extra: check.extra.length + check.disagree.length,
+                          },
+                        )
+                      : undefined
+                  }
+                >
+                  {check ? (check.ok ? "✓" : "≠") : ""}
+                </span>
+              </button>
             );
           })}
         </div>
       )}
-    </PanelCard>
+    </section>
   );
+}
+
+/** One of the things that ask for a look: its name and how many, then its rows. */
+function LookGroup({
+  title,
+  count,
+  children,
+}: {
+  title: string;
+  count: number;
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="flex items-baseline justify-between gap-2">
+        <span className="text-[13px] font-semibold">{title}</span>
+        <span className="font-mono text-[12px] text-warn-text">{count}</span>
+      </span>
+      {children}
+    </div>
+  );
+}
+
+/** A row that opens its line: where it is, what it is, and the word when known. */
+function LookRow({
+  tag,
+  title,
+  word,
+  disabled,
+  onClick,
+  children,
+}: {
+  tag: string;
+  title: string;
+  word?: string;
+  disabled?: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      title={title}
+      disabled={disabled}
+      onClick={onClick}
+      className="flex min-h-[34px] cursor-pointer items-center gap-2.5 rounded-control bg-warn-wash px-2.5 py-1 text-start transition-[filter] hover:brightness-[0.97] disabled:cursor-default"
+    >
+      <span className="flex-none font-mono text-[11.5px] font-semibold text-warn-text">{tag}</span>
+      <span dir="auto" className="min-w-0 flex-1 text-[12.5px] leading-snug text-ink-2">
+        {children}
+      </span>
+      {word && (
+        <span lang="ar" dir="rtl" className="flex-none font-quran text-[17px] leading-normal">
+          {word}
+        </span>
+      )}
+    </button>
+  );
+}
+
+/** A folded section of the inspector's last card: a row to open it, then what it holds. */
+function Fold({
+  title,
+  badge,
+  children,
+}: {
+  title: string;
+  badge?: ReactNode;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="border-t border-rule-soft first:border-t-0">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+        className="flex h-[42px] w-full cursor-pointer items-center gap-2 px-3.5 text-start text-[13px] font-semibold text-ink transition-colors hover:bg-sheet"
+      >
+        <ChevronRight
+          size={14}
+          aria-hidden="true"
+          className={`flex-none text-ink-4 transition-transform ${open ? "rotate-90" : "rtl:rotate-180"}`}
+        />
+        <span className="min-w-0 flex-1">{title}</span>
+        {badge}
+      </button>
+      {open && <div className="flex flex-col gap-3 px-3.5 pb-3.5">{children}</div>}
+    </div>
+  );
+}
+
+function Divider() {
+  return <span className="h-[22px] w-px flex-none bg-rule" aria-hidden="true" />;
 }
 
 function IconButton({
@@ -1961,8 +2162,8 @@ function IconButton({
       aria-pressed={active}
       disabled={disabled}
       onClick={onClick}
-      className={`flex h-[26px] w-[26px] flex-none cursor-pointer items-center justify-center rounded-sm border border-rule-2 transition-colors disabled:cursor-default disabled:opacity-40 ${
-        active ? "border-lapis bg-lapis text-on-lapis" : "bg-card text-ink-2 hover:bg-sheet"
+      className={`flex h-[30px] w-[30px] flex-none cursor-pointer items-center justify-center rounded-[6px] transition-colors disabled:cursor-default disabled:opacity-30 ${
+        active ? "bg-ink text-paper" : "text-ink hover:bg-sunk"
       }`}
     >
       {children}

@@ -895,6 +895,7 @@ export const en = {
       doubtTitle: "{{type}} — typed, but the other pages say {{other}}",
       doubtful: "{{count}} typed marks look like another type on the other pages.",
       showDoubtful: "Show them",
+      typedOf: "{{typed}} / {{marks}} typed",
     },
     // The bar under the lines: what is selected, and the common decisions
     marksCheck: {
@@ -973,8 +974,6 @@ export const en = {
       doubt: "Typed {{typed}}, but the other pages' examples say {{type}} — worth a second look.",
       doubtSure:
         "Typed {{typed}}, but the other pages' examples clearly say {{type}} — a slip of the hand? A wrong type on a confirmed page teaches every page after it.",
-      typeKey: "{{type}} — press {{key}}",
-      moreTypes: "More…",
       acceptOne: "Accept {{type}}",
       acceptMany: "Accept expected ({{count}})",
       loadingEvidence: "Finding its nearest typed examples…",
@@ -982,6 +981,17 @@ export const en = {
       distanceHelp: "How far this type's nearest examples are, on average — smaller is closer",
       exampleTitle:
         "Page {{page}}, line {{line}} · distance {{distance}} · ×{{copies}} — opens that page",
+      label: "Selection",
+      whatItIs: "What it is",
+      roleGroup: "Role",
+      anotherType: "Another type… (1–9, 0)",
+      keySave: "save the draft",
+      hintBlob: "blob",
+      hintLine: "line",
+      hintWord: "word",
+      hintType: "type",
+      ownershipNote:
+        "A word's box is the ink given to it. A box in the wrong place means ink given to the wrong word: fix it here.",
     },
     // The filter: what may be picked, and which marks are shown
     filter: {
@@ -1084,13 +1094,11 @@ export const en = {
       insufficientRatio: "the other role's nearest example is not twice as far away",
     },
 
-    // The words of a line
-    wordsTitle: "Words on line {{line}} · {{count}}",
     wordNav: {
       previous: "Previous word — Ctrl+→",
       next: "Next word — Ctrl+←",
-      position: "Word {{index}} of {{count}}",
       keys: "Ctrl+← → walk the page word by word",
+      of: "{{index}} of {{count}}",
     },
     noWords: "No words were placed on this line.",
     unlabelledWord: "(a word the text does not have)",
@@ -1099,19 +1107,15 @@ export const en = {
     countHelp: "The PAWs its ink gives it, against what its spelling needs",
 
     // What a confirmation acknowledges
-    exceptionsTitle: "To acknowledge · {{count}}",
     exceptionsNote: "Allowed — but confirming the page asks you to acknowledge each one.",
     problem: { flagged: "Flagged", pawCount: "PAW count", unresolved: "Not settled" },
     moreExceptions: "…and {{count}} more",
     issuesTitle: "What the last reading reported",
-    shortagesTitle: "Ayat short of PAWs · {{count}}",
     shortagesNote:
       "The reading kept every learned body/mark answer and left these ayat with fewer PAWs than their words spell — most often two PAWs printed touching. Give the touching blob its PAWs.",
-    shortageAya: "Aya {{aya}} · {{count}} PAW(s) short",
     shortageLikely: "likely in: {{words}}",
     shortageUncertain: "place uncertain — equal readings put it elsewhere too",
     noise: {
-      title: "Possible noise · {{count}}",
       note: "Ink that may be no part of the text — a speck, or a mark like nothing confirmed that its word's text has left over. Erase it or leave it: nothing is erased for you.",
       speck: "Speck",
       stranger: "Left over",
@@ -1206,11 +1210,9 @@ export const en = {
 
     // The confirm dialog
     confirmTitle: "Confirm page {{page}}",
-    confirmIntro: "Confirming approves the whole page — not only what was flagged:",
-    confirmWords: "its words become the page's words, each box the extent of its ink;",
-    confirmTeaches:
-      "its blobs become examples for the pages after it: {{bodies}} bodies and {{marks}} marks for body-or-mark, and {{typed}} typed marks for their types. Ink flagged out of the ordinary teaches nothing.",
-    confirmExceptions: "{{count}} thing(s) still disagree with the text:",
+    confirmIntro: "Confirming approves the whole page — not only what was flagged.",
+    confirmWords: "Its words become the page's words, each box the extent of its ink.",
+    confirmExceptions: "{{count}} thing(s) still disagree with the text",
     confirmAcknowledge: "I have looked at these, and confirm the page as it is",
     confirmClean: "Nothing disagrees with the text.",
     confirmButton: "Confirm page",
@@ -1260,7 +1262,6 @@ export const en = {
         close: "Getting there",
         ready: "Ready to process the rest in bulk",
       },
-      pagesShort: "{{count}} of {{target}} pages",
       open: "Process pages in bulk…",
       title: "Process pages in bulk",
       intro:
@@ -1374,6 +1375,31 @@ export const en = {
       stoppedToast: "Batch stopped: {{processed}} page(s) processed; the rest are as they were.",
       status: "Batch: page {{page}} · {{done}} of {{total}} processed",
       here: "The batch is processing this page now. It opens here when it is done.",
+      estimateNote: "an estimate, not a promise",
+      range: "Range",
+    },
+    gutterPage: "p. {{page}}",
+    legendWord: "A word: the extent of the ink given to it",
+    railConfirmed: "Confirmed",
+    railDraft: "Read, a draft",
+    needsLook: "Needs a look",
+    lineKey: "L{{n}}",
+    ayaKey: "Aya {{aya}}",
+    shortCount: "{{count}} PAW(s) short",
+    wordsOnLine: "Words on line {{line}}",
+    pageNotConfirmed: "not confirmed",
+    pageConfirmedAt: "confirmed at revision {{revision}}",
+    pageEditedSince: "confirmed at revision {{revision}}, edited since",
+    confirmKeepEditing: "Keep editing",
+    confirmTeachesLead: "Its blobs teach the pages processed after it:",
+    confirmTeachBodies: "bodies",
+    confirmTeachMarks: "marks",
+    confirmTeachTyped: "typed marks",
+    confirmTeachesNote: "Ink flagged as out of the ordinary teaches nothing.",
+    look: {
+      acknowledge: "To acknowledge",
+      shortages: "Ayat short of PAWs",
+      noise: "Possible noise",
     },
   },
   details: {
