@@ -55,7 +55,14 @@ export function EvaluationComparison({
                 <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 2xl:grid-cols-4">
                   {READINGS.map((engine) => (
                     <div key={engine} className="min-w-0">
-                      <h4 className="mb-1 text-xs font-semibold" style={{ color: COLORS[engine] }}>
+                      {/* The series colour marks the reading; the name stays in ink so
+                          it reads in both themes. */}
+                      <h4 className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-ink">
+                        <span
+                          aria-hidden="true"
+                          className="h-2 w-2 flex-none rounded-full"
+                          style={{ background: COLORS[engine] }}
+                        />
                         {t(`calibration.engine.${engine}`)}
                       </h4>
                       {line.readings[engine].unavailable || !line.image_url ? (

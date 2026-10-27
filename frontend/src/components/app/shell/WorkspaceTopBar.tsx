@@ -33,6 +33,7 @@ export function WorkspaceTopBar({ mushaf }: { mushaf: MushafDetail | null }) {
             to="/mushafs/$mushafId"
             params={{ mushafId: mushaf.id }}
             title={t("header.overview")}
+            dir="auto"
             className="max-w-[260px] truncate text-[14px] font-semibold text-ink no-underline hover:text-lapis-text"
           >
             {mushaf.name}

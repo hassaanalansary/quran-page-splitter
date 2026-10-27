@@ -193,8 +193,8 @@ export function CroppableImage({
           elem={elem}
           fit={fit}
           label={label}
-          color={tone === "red" ? "var(--stop)" : "var(--lapis)"}
-          onColor={tone === "red" ? "var(--on-stop)" : "var(--on-lapis)"}
+          color={tone === "red" ? "var(--ov-remove)" : "var(--lapis)"}
+          onColor={tone === "red" ? "#ffffff" : "var(--on-lapis)"}
           onBodyPointerDown={startBody}
           onHandlePointerDown={startHandle}
         />

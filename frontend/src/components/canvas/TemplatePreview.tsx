@@ -133,8 +133,9 @@ export function ImageWithRedBox({
     ctx.imageSmoothingQuality = "high";
     ctx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight, dx, dy, dw, dh);
     if (red) {
-      ctx.fillStyle = "rgba(226,75,74,0.20)";
-      ctx.strokeStyle = "#E24B4A";
+      // The overlay language's remove colour: the variable area is cut out.
+      ctx.fillStyle = "rgba(168,50,31,0.18)";
+      ctx.strokeStyle = "#a8321f";
       ctx.lineWidth = 2;
       const rx = dx + red.x * scale;
       const ry = dy + red.y * scale;

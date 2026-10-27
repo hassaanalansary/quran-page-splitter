@@ -173,7 +173,7 @@ function DetailBody({ item }: { item: GalleryDetail }) {
                 <span className={`h-[7px] w-[7px] rounded-full ${STATUS_CHIP[status].dot}`} />
                 {t(`status.${status}`)} · {t(`gallery.detail.visibility.${item.visibility}`)}
               </span>
-              <h1 className="m-0 font-display text-[42px] font-semibold leading-[1.05]">
+              <h1 dir="auto" className="m-0 font-display text-[42px] font-semibold leading-[1.05]">
                 {item.name}
               </h1>
               <div className="text-[14px] text-on-deep-2">{byline.join(" · ")}</div>

@@ -46,7 +46,9 @@ export function AbortDiagnostics({ info, logUrl }: { info: AbortInfo; logUrl?: s
                     />
                   </a>
                 ) : (
-                  <span className="text-[10.5px] text-ink-4">{t("canvas.diag_noImage")}</span>
+                  <span className="text-[10.5px] text-[color:var(--ov-text-quiet)]">
+                    {t("canvas.diag_noImage")}
+                  </span>
                 )}
               </span>
               <span

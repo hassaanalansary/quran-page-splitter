@@ -201,6 +201,7 @@ function MushafCard({ mushaf }: { mushaf: Mushaf }) {
           <Link
             to="/mushafs/$mushafId"
             params={{ mushafId: mushaf.id }}
+            dir="auto"
             className="min-w-0 truncate text-[15px] font-semibold text-ink no-underline hover:text-lapis-text"
           >
             {mushaf.name}

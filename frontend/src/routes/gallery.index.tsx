@@ -381,6 +381,7 @@ function GalleryCard({ item }: { item: GalleryItem }) {
         <Link
           to="/gallery/$mushafId"
           params={{ mushafId: item.id }}
+          dir="auto"
           className="text-[15.5px] font-semibold text-ink no-underline hover:text-lapis-text"
         >
           {item.name}

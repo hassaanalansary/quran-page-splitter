@@ -43,7 +43,7 @@ export function HubTopBar({ mushaf }: { mushaf: MushafDetail | null }) {
             <span className="text-faint" aria-hidden="true">
               /
             </span>
-            <span aria-current="page" className="truncate font-semibold">
+            <span aria-current="page" dir="auto" className="truncate font-semibold">
               {mushaf.name}
             </span>
           </>
@@ -155,7 +155,7 @@ export function HubBand({
             </span>
             <div className="flex min-w-0 flex-col gap-[7px]">
               <div className="flex flex-wrap items-center gap-3">
-                <h1 className="m-0 font-display text-[36px] font-semibold leading-none">
+                <h1 dir="auto" className="m-0 font-display text-[36px] font-semibold leading-none">
                   {mushaf.name}
                 </h1>
                 <span className="inline-flex items-center gap-1.5 rounded-pill bg-on-deep/[0.12] px-2.5 py-[3px] text-[12.5px] font-semibold text-on-deep">

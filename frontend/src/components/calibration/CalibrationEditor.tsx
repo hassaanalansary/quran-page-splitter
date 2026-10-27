@@ -1285,7 +1285,7 @@ export function CalibrationEditor({
               disabled={!looks}
               onClick={() => stepLook(-1)}
             >
-              <ChevronLeft size={16} />
+              <ChevronLeft size={16} className="rtl:rotate-180" />
             </IconButton>
             <span
               className={`whitespace-nowrap rounded-pill px-[9px] py-[3px] text-[12.5px] font-semibold ${
@@ -1299,7 +1299,7 @@ export function CalibrationEditor({
               disabled={!looks}
               onClick={() => stepLook(1)}
             >
-              <ChevronRight size={16} />
+              <ChevronRight size={16} className="rtl:rotate-180" />
             </IconButton>
           </span>
 
