@@ -187,17 +187,23 @@ def group(method: Comparison, reps: list[np.ndarray], limit: float) -> list[dict
     return groups
 
 
+def spread(item: dict) -> list[int]:
+    """Which of a group's members are kept beside its fingerprint, by their place in
+    ``members``: up to ``KEEP - 1``, spread from the nearest to the farthest, so they
+    cover the group's whole reach. A member printed pixel for pixel like its
+    fingerprint shows nothing new: skipped."""
+    members, distance = item["members"], item["distance"]
+    picks = sorted(set(np.linspace(0, len(members) - 1, min(KEEP, len(members))).round().astype(int).tolist()))
+    return [i for i in picks if members[i] != item["centre"] and distance[i] > _EXACT]
+
+
 def kept(groups: list[dict]) -> list[tuple[int, bool, int]]:
     """(example, is the fingerprint, examples its group stands for) for every shape a
-    library keeps: each fingerprint, and up to ``KEEP - 1`` members spread from the
-    nearest to the farthest — so the kept shapes cover the group's whole reach. A
-    member printed pixel for pixel like its fingerprint shows nothing new: skipped."""
+    library keeps: each fingerprint, and the members :func:`spread` keeps."""
     found = []
     for item in groups:
-        members, distance = item["members"], item["distance"]
-        found.append((item["centre"], True, len(members)))
-        picks = sorted(set(np.linspace(0, len(members) - 1, min(KEEP, len(members))).round().astype(int).tolist()))
-        found += [(members[i], False, 1) for i in picks if members[i] != item["centre"] and distance[i] > _EXACT]
+        found.append((item["centre"], True, len(item["members"])))
+        found += [(item["members"][i], False, 1) for i in spread(item)]
     return found
 
 
@@ -227,6 +233,11 @@ class Library:
     examples: int = 0
     typed_examples: int = 0
     fingerprints: int = 0
+    #: Every group, kind by kind, as people look at it: ``role``, ``subtype``, its
+    #: fingerprint's ``centre`` ref, every member's ref (the fingerprint among them,
+    #: nearest first) and ``distance`` to the fingerprint, and the ``kept`` members'
+    #: places among them. Refs only — no descriptors.
+    groups: list[dict] = field(default_factory=list, repr=False)
     #: Each typed kind's kept shapes, by position.
     _by_type: dict[str, np.ndarray] = field(default_factory=dict, init=False, repr=False)
 
@@ -431,6 +442,7 @@ def build_library(samples: list[dict], *, method: Comparison | None = None, limi
         kind = (sample.get("subtype") or "") if role == "mark" else ""
         kinds.setdefault((role, kind), []).append(sample)
     roles, names, refs, copies, reps, prints = [], [], [], [], [], 0
+    shown: list[dict] = []
     for (role, kind), own in kinds.items():
         described = [method.describe(sample["features"]) for sample in own]
         groups = group(method, described, limit)
@@ -441,6 +453,17 @@ def build_library(samples: list[dict], *, method: Comparison | None = None, limi
             refs.append(_ref_of(own[index], fingerprint=fingerprint))
             copies.append(count)
             reps.append(described[index])
+        shown += [
+            {
+                "role": role,
+                "subtype": kind,
+                "centre": _ref_of(own[item["centre"]], fingerprint=True),
+                "members": [_ref_of(own[index], fingerprint=index == item["centre"]) for index in item["members"]],
+                "distance": item["distance"],
+                "kept": spread(item),
+            }
+            for item in groups
+        ]
     return Library(
         method=method,
         limit=limit,
@@ -453,4 +476,5 @@ def build_library(samples: list[dict], *, method: Comparison | None = None, limi
         examples=len(samples),
         typed_examples=sum(1 for sample in samples if sample["role"] == "mark" and sample.get("subtype")),
         fingerprints=prints,
+        groups=shown,
     )

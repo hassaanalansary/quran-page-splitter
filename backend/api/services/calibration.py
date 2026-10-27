@@ -25,8 +25,9 @@ and changes with every save. Only three moments are written as immutable
 ``CalibrationRevision`` rows: what the engine proposed when the page was processed
 (the prediction record the evaluation compares against) and each confirmation (the
 only source of examples); a third kind, ``legacy``, archived hand-corrected boundaries
-when those still existed. Nearest examples are not stored at all — the inspector asks
-for one blob's when it is selected. Confirming a page also writes its words
+when those still existed. Nearest examples are not stored at all — Ink asks the
+library about one blob when it is selected (:mod:`api.services.calibration_library`).
+Confirming a page also writes its words
 (``LineWord``), which is the only way words are written.
 
 **The document.** One JSON shape travels between here and the editor::
@@ -2334,70 +2335,6 @@ def _apply_text_types(mushaf: Mushaf, document: Doc) -> None:
     text_marks.apply_text_types(rows, checks)
 
 
-def type_evidence(mushaf: Mushaf, page: int, data: Doc) -> Doc:
-    """Why one mark is expected to be what it is: the types nearest it, each with its
-    own nearest typed examples -- pictures a person can judge. Stores nothing.
-
-    Asked of what :func:`type_suggestions` asks: for an untyped mark, every confirmed
-    page and the marks typed here; for a typed one, the other pages only -- the
-    question its doubt asks.
-    """
-    review = _review(mushaf, page)
-    if review is None or not review.payload.get("lines"):
-        _refuse("not_processed", 422, page=page)
-    rows = _apply_edits(mushaf, review, data)["lines"]
-    stored, marks = _page_marks(mushaf, rows)
-    found = next(
-        (
-            (blob, features)
-            for row, blob, features in marks
-            if row["snapshot_id"] == data["snapshot_id"] and blob["id"] == data["blob_id"]
-        ),
-        None,
-    )
-    if found is None:
-        _refuse("not_found", 404, page=page)
-    blob, features = found
-    library = _library(mushaf, page)
-    index = library if _typed(blob) else library.with_typed(_typed_samples(stored, rows))
-    candidates = index.nearest_by_type(features)
-    sources = {
-        str(s.pk): s
-        for s in CalibrationSnapshot.objects.filter(
-            mushaf=mushaf, pk__in={example["snapshot_id"] for entry in candidates for example in entry["examples"]}
-        )
-    }
-    for entry in candidates:
-        shown = []
-        for example in entry["examples"]:
-            source = sources.get(example["snapshot_id"])
-            blobs = source.metadata["blobs"] if source is not None else []
-            raw = next((b for b in blobs if b["label"] == example["blob_id"]), None)
-            if source is None or raw is None:
-                continue
-            shown.append(
-                {
-                    **example,
-                    "page_number": source.page_number,
-                    "line_number": source.line_number,
-                    "image_url": source.image.url,
-                    "crop": {
-                        "x": raw["x"] + source.metadata["offset_x"],
-                        "y": raw["y"] + source.metadata["offset_y"],
-                        "w": raw["w"],
-                        "h": raw["h"],
-                    },
-                }
-            )
-        entry["examples"] = shown
-    return {
-        "snapshot_id": data["snapshot_id"],
-        "blob_id": data["blob_id"],
-        "typed": _typed(blob),
-        "candidates": candidates,
-    }
-
-
 # ---------------------------------------------------------------------------
 # Erased ink, for the export
 # ---------------------------------------------------------------------------
@@ -2449,78 +2386,6 @@ def erased_mask(raster: np.ndarray, erased: set[int]) -> np.ndarray:
         for dx in range(2 * ERASE_FRINGE + 1):
             grown |= padded[dy : dy + height, dx : dx + width]
     return grown & ((raster == 0) | own)
-
-
-# ---------------------------------------------------------------------------
-# The inspector
-# ---------------------------------------------------------------------------
-def examples(mushaf: Mushaf, page: int, snapshot_id: str, blob_id: int) -> Doc:
-    """The kept shapes nearest one blob, and what the library proposes from them.
-
-    Asked on demand rather than stored with the page: five neighbours for each of a
-    thousand blobs is most of a page's weight, and a reviewer looks at a few.
-
-    From the profile the page was *processed* with — the one that made the proposal
-    being explained — not from today's approvals, which may have changed since.
-    """
-    snapshot = CalibrationSnapshot.objects.filter(mushaf=mushaf, pk=snapshot_id).first()
-    if snapshot is None:
-        _refuse("not_found", 404, page=page)
-    features = snapshots.blob_features(snapshot).get(blob_id)
-    review = _review(mushaf, page)
-    recorded = (review.payload.get("profile") or {}).get("signature") if review else None
-    profile = CalibrationProfile.objects.filter(mushaf=mushaf, signature=recorded).first() if recorded else None
-    library = _library_of(mushaf, profile) if profile is not None else _library(mushaf, page)
-    if features is None or not library.can_propose:
-        return {"proposed_role": None, "confidence": 0.0, "reasons": ["no_examples"], "neighbors": [], "mode": "shadow"}
-    found = library.role_of(features)
-    nearest = library.nearest(features)
-    agreeing = [neighbor for neighbor in nearest if neighbor["role"] == found["role"]]
-    stored = {
-        str(s.pk): s
-        for s in CalibrationSnapshot.objects.filter(
-            mushaf=mushaf, pk__in=[neighbor["snapshot_id"] for neighbor in nearest]
-        )
-    }
-    neighbors = []
-    for neighbor in nearest:
-        source = stored.get(neighbor["snapshot_id"])
-        raw = next((b for b in (source.metadata["blobs"] if source else []) if b["label"] == neighbor["blob_id"]), None)
-        neighbors.append(
-            {
-                "snapshot_id": neighbor["snapshot_id"],
-                "blob_id": neighbor["blob_id"],
-                "page_number": neighbor["page_number"],
-                "line_number": neighbor["line_number"],
-                "role": neighbor["role"],
-                "subtype": neighbor.get("subtype", ""),
-                "distance": neighbor["distance"],
-                "copies": neighbor["copies"],
-                "fingerprint": neighbor["fingerprint"],
-                "image_url": source.image.url if source else None,
-                "crop": (
-                    {
-                        "x": raw["x"] + source.metadata["offset_x"],
-                        "y": raw["y"] + source.metadata["offset_y"],
-                        "w": raw["w"],
-                        "h": raw["h"],
-                    }
-                    if raw and source
-                    else None
-                ),
-            }
-        )
-    return {
-        "proposed_role": found["role"],
-        "confidence": found["confidence"],
-        "reasons": found["reasons"],
-        "nearest_letter": found["nearest_letter"],
-        "nearest_mark": found["nearest_mark"],
-        "support_count": len(agreeing),
-        "distinct_pages": len({neighbor["page_number"] for neighbor in agreeing}),
-        "neighbors": neighbors,
-        "mode": "shadow",
-    }
 
 
 # ---------------------------------------------------------------------------

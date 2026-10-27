@@ -601,16 +601,6 @@ class LearningTests(CalibrationApiTestCase):
         self.assertEqual(blob["proposal"]["reasons"], [])
         self.assertGreater(blob["proposal"]["confidence"], 0.5)
 
-    def test_the_inspector_shows_where_the_nearest_examples_came_from(self):
-        line = self.document(2)["lines"][0]
-        blob = self.blob_at(line, BODIES[0][0])
-        response = self.client.get(self.url(2, "/examples"), {"snapshot": line["snapshot_id"], "blob": blob["id"]})
-        self.assertEqual(response.status_code, 200, response.content)
-        nearest = response.json()["neighbors"][0]
-        self.assertEqual((nearest["role"], nearest["page_number"], nearest["copies"]), ("body", 1, 6))
-        self.assertEqual(nearest["distance"], 0.0)
-        self.assertIsNotNone(nearest["crop"])
-
     def test_the_evaluation_lays_three_results_against_the_confirmation(self):
         response = self.client.get(f"/api/mushafs/{self.mushaf.id}/calibration/evaluation")
         self.assertEqual(response.status_code, 200, response.content)
@@ -642,22 +632,6 @@ class LearningTests(CalibrationApiTestCase):
 
     def test_visual_comparison_requires_confirmation(self):
         self.assertEqual(self.client.get(self.url(2, "/evaluation")).status_code, 404)
-
-    def test_examples_come_from_the_profile_the_page_was_read_with(self):
-        line = self.document(2)["lines"][0]
-        blob = self.blob_at(line, BODIES[0][0])
-        query = {"snapshot": line["snapshot_id"], "blob": blob["id"]}
-        before = self.client.get(self.url(2, "/examples"), query).json()
-        # Page 1 is confirmed again with every blob flagged, so today it teaches
-        # nothing — but page 2's proposals were made from the first confirmation.
-        body = self.draft(self.document(1))
-        for row in body["lines"]:
-            for edit in row["blobs"]:
-                edit["exception"] = "uncertain"
-        self.assertEqual(self.confirm(1, {**body, "acknowledge_exceptions": True}).status_code, 200)
-        after = self.client.get(self.url(2, "/examples"), query).json()
-        self.assertTrue(before["neighbors"])
-        self.assertEqual(after["neighbors"], before["neighbors"])
 
     def test_page_states_list_both_pages(self):
         response = self.client.get(f"/api/mushafs/{self.mushaf.id}/calibration/pages")
@@ -1110,22 +1084,6 @@ class TypeDoubtTests(CalibrationApiTestCase):
         self.assertEqual(response.status_code, 200, response.content)
         doubts = [(d["blob_id"], d["typed"], d["subtype"], d["sure"]) for d in response.json()["doubts"]]
         self.assertEqual(doubts, [(slip["id"], "ijamDot", "fatha", True)])
-
-    def test_the_evidence_is_the_nearest_examples_of_each_near_type(self):
-        line = self.doc["lines"][0]
-        bar = self.blob_at(line, BAR[0])
-        body = {**self.draft(self.doc), "snapshot_id": line["snapshot_id"], "blob_id": bar["id"]}
-        response = self.client.post(self.url(2, "/types/evidence"), body, content_type="application/json")
-        self.assertEqual(response.status_code, 200, response.content)
-        answer = response.json()
-        self.assertFalse(answer["typed"])
-        self.assertEqual([entry["subtype"] for entry in answer["candidates"]], ["fatha", "ijamDot"])
-        best = answer["candidates"][0]
-        self.assertEqual(best["distance"], 0.0)
-        # Both of page 1's bars are one bitmap: one example, typed twice.
-        (example,) = best["examples"]
-        self.assertEqual((example["page_number"], example["copies"]), (1, 2))
-        self.assertEqual((example["crop"]["w"], bool(example["image_url"])), (BAR[1] - BAR[0], True))
 
 
 class EraseTests(CalibrationApiTestCase):

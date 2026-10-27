@@ -732,6 +732,36 @@ class CalibrationProfile(BaseModel):
         return f"{self.mode} profile {self.signature[:8]} of {self.mushaf_id}"
 
 
+class LibraryCheck(BaseModel):
+    """A person looked at one example of the fingerprint library and found it right.
+
+    Kept on the *example blob* — a confirmed page's snapshot and blob id — with the
+    role and type it was confirmed as when it was looked at, never on a fingerprint:
+    the library is regrouped from the confirmed pages whenever they change, and only
+    the blob stays put. It counts while that blob is still confirmed as that role and
+    type; once its label changes it is ignored, not deleted.
+    """
+
+    mushaf = models.ForeignKey(Mushaf, on_delete=models.CASCADE, related_name="library_checks")
+    snapshot = models.ForeignKey(CalibrationSnapshot, on_delete=models.CASCADE, related_name="library_checks")
+    blob_id = models.PositiveIntegerField()
+    #: body | mark.
+    role = models.CharField(max_length=8)
+    #: A mark's type; "" for a body and an untyped mark.
+    subtype = models.CharField(max_length=32, blank=True, default="")
+
+    class Meta:
+        db_table = "library_check"
+        verbose_name = "Library Check"
+        verbose_name_plural = "Library Checks"
+        constraints = (
+            models.UniqueConstraint(fields=["mushaf", "snapshot", "blob_id"], name="unique_library_check"),
+        )
+
+    def __str__(self) -> str:
+        return f"looks right: {self.role} {self.subtype} blob {self.blob_id} of {self.snapshot_id}"
+
+
 class ActivityEvent(BaseModel):
     """A table for Activity Events (the per-mushaf audit feed)"""
 

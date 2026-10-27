@@ -20,6 +20,7 @@ from api.auth import current_user
 from api.models import ProcessJobKindChoices
 from api.services import calibration as calibration_service
 from api.services import calibration_batch as batch_service
+from api.services import calibration_library as library_service
 from api.services import calibration_progress as progress_service
 from api.services import jobs as jobs_service
 from api.services import mushaf as mushaf_service
@@ -237,27 +238,71 @@ def calibration_types(request: HttpRequest, mushaf_id: uuid.UUID, page_number: i
     return _json(calibration_service.type_suggestions(mushaf, page_number, data.model_dump(mode="json")))
 
 
-class TypeEvidenceIn(DraftIn):
-    """The draft as the editor holds it, and the one mark to explain."""
+# ---------------------------------------------------------------------------
+# The library, as Ink's Library mode shows it
+# ---------------------------------------------------------------------------
+@router.get("/{mushaf_id}/pages/{page_number}/calibration/library")
+def calibration_library(
+    request: HttpRequest, mushaf_id: uuid.UUID, page_number: int, limit: float | None = None
+) -> JsonResponse:
+    """The fingerprint library that answers for the page, kind by kind — or, with
+    ``limit``, the one it would be at that LIMIT. Stores nothing."""
+    mushaf = mushaf_service.get_mushaf(mushaf_id, user=current_user(request), write=False)
+    return _json(library_service.library_document(mushaf, page_number, limit=limit))
+
+
+@router.get("/{mushaf_id}/pages/{page_number}/calibration/library/members")
+def calibration_library_members(
+    request: HttpRequest,
+    mushaf_id: uuid.UUID,
+    page_number: int,
+    group: str,
+    offset: int = 0,
+    count: int = library_service.MEMBERS_PAGE,
+    limit: float | None = None,
+) -> JsonResponse:
+    """Every member of one fingerprint's group, the farthest first, a page at a time."""
+    mushaf = mushaf_service.get_mushaf(mushaf_id, user=current_user(request), write=False)
+    return _json(
+        library_service.library_members(mushaf, page_number, group, offset=offset, count=count, limit=limit)
+    )
+
+
+class CompareIn(DraftIn):
+    """The draft as the editor holds it, and the one blob to compare."""
 
     snapshot_id: str
     blob_id: int
+    #: Against the library previewed at this LIMIT; omitted, the one in force.
+    limit: float | None = None
 
 
-@router.post("/{mushaf_id}/pages/{page_number}/calibration/types/evidence")
-def calibration_type_evidence(
-    request: HttpRequest, mushaf_id: uuid.UUID, page_number: int, data: TypeEvidenceIn
+@router.post("/{mushaf_id}/pages/{page_number}/calibration/library/compare")
+def calibration_library_compare(
+    request: HttpRequest, mushaf_id: uuid.UUID, page_number: int, data: CompareIn
 ) -> JsonResponse:
-    """The typed examples nearest one mark, type by type — why it is expected to be
-    what it is. Stores nothing."""
+    """One blob against the library: what it answers, and how far the blob is from
+    every kept shape. Stores nothing."""
     mushaf = mushaf_service.get_mushaf(mushaf_id, user=current_user(request), write=False)
-    return _json(calibration_service.type_evidence(mushaf, page_number, data.model_dump(mode="json")))
+    return _json(library_service.compare(mushaf, page_number, data.model_dump(mode="json")))
 
 
-@router.get("/{mushaf_id}/pages/{page_number}/calibration/examples")
-def calibration_examples(
-    request: HttpRequest, mushaf_id: uuid.UUID, page_number: int, snapshot: uuid.UUID, blob: int
-) -> dict:
-    """The confirmed examples nearest one blob — what the inspector shows."""
-    mushaf = mushaf_service.get_mushaf(mushaf_id, user=current_user(request), write=False)
-    return calibration_service.examples(mushaf, page_number, str(snapshot), blob)
+class LibraryCheckIn(Schema):
+    """An example blob a person found right, as the label it is confirmed as now."""
+
+    snapshot_id: uuid.UUID
+    blob_id: int = Field(ge=0)
+    role: str
+    subtype: str = Field(default="", max_length=32)
+
+
+@router.put("/{mushaf_id}/calibration/library/checks")
+def put_library_check(request: HttpRequest, mushaf_id: uuid.UUID, data: LibraryCheckIn) -> JsonResponse:
+    mushaf = mushaf_service.get_mushaf(mushaf_id, user=current_user(request))
+    return _json(library_service.set_check(mushaf, data.model_dump(mode="json")))
+
+
+@router.delete("/{mushaf_id}/calibration/library/checks")
+def delete_library_check(request: HttpRequest, mushaf_id: uuid.UUID, snapshot: uuid.UUID, blob: int) -> JsonResponse:
+    mushaf = mushaf_service.get_mushaf(mushaf_id, user=current_user(request))
+    return _json(library_service.clear_check(mushaf, str(snapshot), blob))

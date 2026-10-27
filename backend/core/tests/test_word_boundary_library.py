@@ -59,6 +59,19 @@ class GroupingTests(unittest.TestCase):
         self.assertLess(wide.fingerprints, narrow.fingerprints)
         self.assertEqual((wide.examples, wide.typed_examples), (20, 20))
 
+    def test_the_library_keeps_every_group_for_people_to_look_through(self):
+        samples = [example(i, 0.05 * i, subtype="fatha") for i in range(10)] + [example(20, 9.0, subtype="kasra")]
+        library = build_library(samples, limit=0.27)
+        self.assertEqual(len(library.groups), library.fingerprints)
+        self.assertEqual(sum(len(item["members"]) for item in library.groups), 11)
+        for item in library.groups:
+            self.assertIn(item["centre"], item["members"])
+            self.assertNotIn("features", item["centre"])
+            self.assertEqual(item["distance"], sorted(item["distance"]))  # nearest first
+            self.assertTrue(all(0 <= index < len(item["members"]) for index in item["kept"]))
+        (kasra,) = [item for item in library.groups if item["subtype"] == "kasra"]
+        self.assertEqual((kasra["role"], len(kasra["members"]), kasra["kept"]), ("mark", 1, []))
+
     def test_the_limit_must_be_positive(self):
         with self.assertRaises(ValueError):
             build_library([example(0, 0.0)], limit=0)
