@@ -2,10 +2,9 @@ import { createFileRoute, Link, useParams } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { MushafHeader } from "@/components/app/MushafHeader";
 import { LoadingState } from "@/components/app/SatrLoader";
-import { DetailsRail } from "@/components/app/details/DetailsRail";
 import { ExportTab } from "@/components/app/details/ExportTab";
+import { HubBand, HubTopBar } from "@/components/app/details/HubHeader";
 import { continueTarget, pipelineSteps, runAbortPage } from "@/components/app/details/helpers";
 import { OverviewTab } from "@/components/app/details/OverviewTab";
 import { PagesTab } from "@/components/app/details/PagesTab";
@@ -77,23 +76,28 @@ function MushafDetailsPage() {
 
   return (
     <div className="flex h-screen w-full flex-col overflow-hidden bg-paper">
-      <MushafHeader mushaf={mushaf} activeSlug={null} cta={cta} />
+      <HubTopBar mushaf={mushaf} />
 
-      <div className="grid min-h-0 flex-1 grid-cols-[282px_1fr]">
-        <DetailsRail mushaf={mushaf} stats={stats} summaries={summaries} templates={templates} />
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <HubBand mushaf={mushaf} stats={stats} steps={steps} cta={cta} />
 
-        <div className="flex min-w-0 flex-col overflow-y-auto">
-          {/* tab bar */}
-          <div className="flex flex-shrink-0 items-center gap-6 border-b border-rule bg-card px-5">
+        <div className="border-b border-rule bg-sheet">
+          <div
+            role="tablist"
+            aria-label={t("hub.sections")}
+            className="mx-auto flex max-w-[1240px] gap-[26px] overflow-x-auto px-7"
+          >
             {TAB_IDS.map((id) => (
               <button
                 key={id}
                 type="button"
+                role="tab"
+                aria-selected={tab === id}
                 onClick={() => setTab(id)}
-                className={`flex h-[42px] cursor-pointer items-center gap-2 border-b-2 px-0.5 text-[12.5px] font-semibold tracking-[0.01em] transition-colors ${
+                className={`flex h-[50px] flex-none cursor-pointer items-center gap-2 border-b-2 text-[14.5px] transition-colors ${
                   tab === id
-                    ? "border-lapis text-lapis-text"
-                    : "border-transparent text-ink-3 hover:text-ink-2"
+                    ? "border-ink font-semibold text-ink"
+                    : "border-transparent font-medium text-ink-3 hover:text-ink-2"
                 }`}
               >
                 {t(`details.tab_${id}`)}
@@ -104,32 +108,36 @@ function MushafDetailsPage() {
               </button>
             ))}
           </div>
+        </div>
 
-          {/* tab body */}
-          <div className="min-h-0 flex-1 overflow-y-auto bg-paper px-5 pb-6 pt-[18px]">
-            {tab === "overview" && (
-              <OverviewTab
-                mushaf={mushaf}
-                steps={steps}
-                stats={stats}
-                activity={activity}
-                abortPage={abortPage}
-                onShowRuns={() => setTab("runs")}
-                onShowPages={() => setTab("pages")}
-              />
-            )}
-            {tab === "pages" && (
-              <PagesTab
-                mushafId={mushafId}
-                summaries={summaries}
-                remaining={mushaf.logical_page_count - mushaf.processed_page_count}
-                abortPage={abortPage}
-              />
-            )}
-            {tab === "runs" && <RunsTab mushafId={mushafId} runs={runs} />}
-            {tab === "export" && <ExportTab mushaf={mushaf} stats={stats} summaries={summaries} />}
-            {tab === "settings" && <SettingsTab key={mushaf.updated_at} mushaf={mushaf} />}
-          </div>
+        <div role="tabpanel" className="mx-auto w-full max-w-[1240px] px-7 pb-10 pt-[26px]">
+          {tab === "overview" && (
+            <OverviewTab
+              mushaf={mushaf}
+              steps={steps}
+              stats={stats}
+              activity={activity}
+              summaries={summaries}
+              templates={templates}
+              nextPage={cta.slug === "review" ? (cta.reviewPage ?? null) : null}
+              calibrationPages={calibrationPages}
+              abortPage={abortPage}
+              onShowRuns={() => setTab("runs")}
+              onShowPages={() => setTab("pages")}
+            />
+          )}
+          {tab === "pages" && (
+            <PagesTab
+              mushafId={mushafId}
+              summaries={summaries}
+              logical={mushaf.logical_page_count}
+              remaining={mushaf.logical_page_count - mushaf.processed_page_count}
+              abortPage={abortPage}
+            />
+          )}
+          {tab === "runs" && <RunsTab mushafId={mushafId} runs={runs} />}
+          {tab === "export" && <ExportTab mushaf={mushaf} stats={stats} summaries={summaries} />}
+          {tab === "settings" && <SettingsTab key={mushaf.updated_at} mushaf={mushaf} />}
         </div>
       </div>
     </div>
@@ -138,7 +146,7 @@ function MushafDetailsPage() {
 
 function CountChip({ n }: { n: number }) {
   return (
-    <span className="rounded-[10px] bg-sunk px-1.5 py-px font-mono text-[9.5px] font-bold text-ink-2">
+    <span className="rounded-pill bg-sunk px-[7px] py-px font-mono text-[11.5px] text-ink-2">
       {n}
     </span>
   );

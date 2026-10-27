@@ -1,11 +1,10 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Package, Upload } from "lucide-react";
+import { Upload } from "lucide-react";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
 import { BusyLabel } from "@/components/app/SatrLoader";
-import { Button } from "@/components/ui/button";
 import {
   ApiError,
   bundleUrl,
@@ -75,111 +74,89 @@ export function BundlePanel({
   }
 
   return (
-    <div className="mt-3.5 grid grid-cols-2 gap-3.5">
-      {/* Export */}
-      <div className="rounded-[11px] border border-rule bg-card p-4">
-        <div className="flex items-center gap-2">
-          <span className="flex h-[26px] w-[26px] items-center justify-center rounded-[7px] bg-lapis-wash text-lapis-text">
-            <Package className="h-3.5 w-3.5" />
+    <section className="flex flex-col gap-3 rounded-panel border border-rule bg-card p-[18px]">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="m-0 font-display text-[20px] font-semibold">{t("bundle.title")}</h2>
+        <span className="rounded-[4px] bg-sunk px-2 py-0.5 font-mono text-[12px] text-ink-2">
+          {t("bundle.schema")}
+        </span>
+      </div>
+      <p className="m-0 text-[13.5px] leading-normal text-ink-2">{t("bundle.body")}</p>
+      <a
+        href={hasWork ? bundleUrl(mushaf.id) : undefined}
+        download
+        aria-disabled={!hasWork}
+        className={`inline-flex h-10 items-center justify-center rounded-control border border-ink px-4 text-[13.5px] font-semibold no-underline transition-colors ${
+          hasWork ? "text-ink hover:bg-sunk" : "pointer-events-none text-ink-3 opacity-50"
+        }`}
+      >
+        {hasWork ? t("bundle.download") : t("bundle.noData")}
+      </a>
+
+      <div className="my-1 h-px bg-rule-soft" />
+
+      <span className="text-[14px] font-semibold">{t("bundle.importTitle")}</span>
+      <span className="text-[13px] leading-normal text-ink-3">{t("bundle.importBody")}</span>
+      <input
+        ref={fileInput}
+        type="file"
+        accept=".zip,application/zip"
+        onChange={(e) => {
+          setFile(e.target.files?.[0] ?? null);
+          setError(null);
+          setHint(null);
+        }}
+        className="sr-only"
+        tabIndex={-1}
+        aria-hidden="true"
+      />
+      <button
+        type="button"
+        onClick={() => fileInput.current?.click()}
+        className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-control border border-dashed border-rule-2 bg-sheet px-4 text-[13.5px] font-semibold text-ink-2 hover:border-lapis hover:text-lapis-text"
+      >
+        <Upload className="h-4 w-4" aria-hidden="true" />
+        {file
+          ? t("bundle.selected", { name: file.name, size: Math.round(file.size / 1024) })
+          : t("bundle.chooseFile")}
+      </button>
+
+      {hasWork && file && (
+        <label className="flex cursor-pointer items-start gap-2.5 rounded-lg bg-stop-wash px-3.5 py-3 text-stop-text">
+          <input
+            type="checkbox"
+            checked={replace}
+            onChange={(e) => setReplace(e.target.checked)}
+            className="mt-0.5 h-4 w-4 cursor-pointer accent-stop"
+          />
+          <span className="text-[13px] leading-normal">
+            <b className="block">{t("bundle.replaceLabel")}</b>
+            {t("bundle.replaceWarning", { count: processedCount })}
           </span>
-          <span className="text-[12.5px] font-bold text-ink">{t("bundle.title")}</span>
-          <span
-            className={`ms-auto rounded-pill px-2 py-0.5 text-[10px] font-semibold ${
-              hasWork ? "bg-done-wash text-done-text" : "bg-sunk text-ink-2"
-            }`}
-          >
-            {hasWork ? t("bundle.ready") : t("bundle.noData")}
-          </span>
+        </label>
+      )}
+
+      {error && (
+        <div className="rounded-lg border border-stop/20 bg-stop-wash px-3.5 py-2.5 text-[13px] leading-normal text-stop-text">
+          {error}
+          {hint && <span className="mt-1 block text-ink-2">{hint}</span>}
         </div>
+      )}
 
-        <p className="mt-3 text-[10.5px] leading-[1.55] text-ink-3">{t("bundle.body")}</p>
-
-        <div className="mt-3.5 flex flex-col gap-1.5">
-          <KvRow k={t("details.kv_schema")} v={t("bundle.schema")} />
-        </div>
-
-        <a
-          href={hasWork ? bundleUrl(mushaf.id) : undefined}
-          download
-          aria-disabled={!hasWork}
-          className={`mt-[15px] block h-[34px] rounded-lg border border-rule-2 text-center text-[12px] font-bold leading-[32px] transition-colors ${
+      {file && (
+        <button
+          type="button"
+          onClick={onImport}
+          disabled={run.isPending || (hasWork && !replace)}
+          className={`inline-flex h-10 cursor-pointer items-center justify-center rounded-control px-4 text-[13.5px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
             hasWork
-              ? "bg-card text-ink hover:bg-sheet"
-              : "pointer-events-none bg-sunk text-ink-3 opacity-60"
+              ? "bg-stop text-on-stop hover:bg-stop/90"
+              : "bg-lapis text-on-lapis hover:bg-lapis/90"
           }`}
         >
-          {t("bundle.download")}
-        </a>
-      </div>
-
-      {/* Import */}
-      <div className="rounded-[11px] border border-rule bg-card p-4">
-        <div className="flex items-center gap-2">
-          <span className="flex h-[26px] w-[26px] items-center justify-center rounded-[7px] bg-sunk text-ink-2">
-            <Upload className="h-3.5 w-3.5" />
-          </span>
-          <span className="text-[12.5px] font-bold text-ink">{t("bundle.importTitle")}</span>
-        </div>
-
-        <p className="mt-3 text-[10.5px] leading-[1.55] text-ink-3">{t("bundle.importBody")}</p>
-
-        <input
-          ref={fileInput}
-          type="file"
-          accept=".zip,application/zip"
-          onChange={(e) => {
-            setFile(e.target.files?.[0] ?? null);
-            setError(null);
-            setHint(null);
-          }}
-          className="mt-3 w-full cursor-pointer text-[11px] text-ink-2 file:me-3 file:cursor-pointer file:rounded file:border-0 file:bg-sunk file:px-2 file:py-1 file:text-[11px] file:font-medium"
-        />
-        {file && (
-          <div className="mt-1 text-[10.5px] text-ink-3">
-            {t("bundle.selected", { name: file.name, size: Math.round(file.size / 1024) })}
-          </div>
-        )}
-
-        {hasWork && (
-          <label className="mt-3 flex cursor-pointer items-start gap-2 rounded-lg border border-warn/25 bg-warn-wash px-2.5 py-2">
-            <input
-              type="checkbox"
-              checked={replace}
-              onChange={(e) => setReplace(e.target.checked)}
-              className="mt-0.5 cursor-pointer"
-            />
-            <span className="text-[10.5px] leading-[1.5] text-warn-text">
-              <b className="block">{t("bundle.replaceLabel")}</b>
-              {t("bundle.replaceWarning", { count: processedCount })}
-            </span>
-          </label>
-        )}
-
-        {error && (
-          <div className="mt-2.5 rounded-md border border-stop/20 bg-stop-wash px-3 py-2 text-[11.5px] leading-[1.5] text-stop-text">
-            {error}
-            {hint && <span className="mt-1 block text-ink-2">{hint}</span>}
-          </div>
-        )}
-
-        <Button
-          size="sm"
-          className="mt-[15px] w-full"
-          onClick={onImport}
-          disabled={run.isPending || !file || (hasWork && !replace)}
-        >
           {run.isPending ? <BusyLabel>{t("bundle.importing")}</BusyLabel> : t("bundle.import")}
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-function KvRow({ k, v }: { k: string; v: string }) {
-  return (
-    <div className="flex items-center justify-between gap-2 text-[11px]">
-      <span className="text-ink-3">{k}</span>
-      <span className="font-mono text-[10.5px] font-semibold text-ink">{v}</span>
-    </div>
+        </button>
+      )}
+    </section>
   );
 }

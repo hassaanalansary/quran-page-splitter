@@ -24,7 +24,7 @@ function initialsOf(display: string, email: string): string {
 }
 
 /** Avatar + account dropdown, in every top bar: the library and gallery's
- * (TopBar), the steps' (shell/WorkspaceTopBar) and the hub's (MushafHeader). */
+ * (TopBar), the steps' (shell/WorkspaceTopBar) and the hub's (details/HubHeader). */
 export function UserMenu({ size = 28 }: { size?: number }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
