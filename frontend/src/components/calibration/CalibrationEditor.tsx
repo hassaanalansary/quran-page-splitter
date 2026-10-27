@@ -113,7 +113,7 @@ import { cn } from "@/lib/utils";
 
 import { BlobStrip, STRIP_CHROME } from "./BlobStrip";
 import { BulkPanel } from "./BulkPanel";
-import { HIGHLIGHT_RGB, ROLE_RGB } from "./colors";
+import { HIGHLIGHT_RGB, ROLE_RGB, UNSETTLED_RGB } from "./colors";
 import { ConfirmPageDialog } from "./ConfirmPageDialog";
 import { EvaluationPanel } from "./EvaluationPanel";
 import { LearningSettings } from "./LearningSettings";
@@ -1589,6 +1589,19 @@ export function CalibrationEditor({
               </span>
               {t("calibration.legendFlagged")}
             </span>
+            {showTypes && (
+              <span className="inline-flex items-center gap-1.5">
+                <span
+                  className="h-3 w-3 rounded-full border-2"
+                  style={{
+                    borderColor: `rgb(${UNSETTLED_RGB.join(",")})`,
+                    background: `rgb(${UNSETTLED_RGB.join(",")} / 0.35)`,
+                  }}
+                  aria-hidden="true"
+                />
+                {t("calibration.legendUnsettled")}
+              </span>
+            )}
           </div>
         )}
 

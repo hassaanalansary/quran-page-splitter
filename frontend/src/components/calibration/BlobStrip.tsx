@@ -35,7 +35,7 @@ import {
 } from "@/lib/calibration/model";
 import type { CalibrationLine } from "@/lib/calibration/types";
 
-import { HIGHLIGHT_RGB, ROLE_RGB } from "./colors";
+import { HIGHLIGHT_RGB, ROLE_RGB, UNSETTLED_RGB } from "./colors";
 import { exceptionKey, useTypeName } from "./labels";
 import { TANWEEN_MARKS, subtypeGlyph } from "./subtypes";
 
@@ -45,6 +45,8 @@ const ERASED_RGB: [number, number, number] = [201, 42, 42];
 /** Screen px the ring around a mark that may be noise is at the least — a speck is a
  * pixel or two. A flagged blob's frame is at least as big, for the same reason. */
 const NOISE_RING = 14;
+/** Screen px the ring around a mark whose type is not settled is at the least. */
+const UNSETTLED_RING = 18;
 /** The overlay language's warn, as a wash: a word whose PAWs do not close. */
 const WARN_WASH = "rgba(154, 91, 0, 0.12)";
 /** A pointer that moves further than this between down and up drew a rectangle. */
@@ -204,6 +206,22 @@ export function BlobStrip({
         .map((blob) => blob.id),
     );
   }, [line.blobs, line.snapshot_id, selectionFilter, guesses, doubted]);
+  // Marks whose type is not settled: no type and no sure guess, or a type the other
+  // pages doubt. With the types shown, their ink is painted to stand out, and ringed.
+  const unsettled = useMemo(() => {
+    if (!showTypes || line.readonly) return new Set<number>();
+    return new Set(
+      line.blobs
+        .filter(
+          (blob) =>
+            blob.role === "mark" &&
+            !blob.erased &&
+            (!!doubtOf(blob, line.snapshot_id, doubted) ||
+              (!isTyped(blob) && !expectedType(blob, line.snapshot_id, guesses)?.sure)),
+        )
+        .map((blob) => blob.id),
+    );
+  }, [showTypes, line.readonly, line.blobs, line.snapshot_id, guesses, doubted]);
   useEffect(() => {
     const context = canvas.current?.getContext("2d");
     if (!context || !raster) return;
@@ -237,15 +255,17 @@ export function BlobStrip({
           ? ([255, 255, 255] as const)
           : picked
             ? HIGHLIGHT_RGB
-            : ROLE_RGB[blob.role];
-      const alpha = faded ? 0.8 : chosen || picked ? 0.92 : 0.7;
+            : unsettled.has(id)
+              ? UNSETTLED_RGB
+              : ROLE_RGB[blob.role];
+      const alpha = faded ? 0.8 : chosen || picked || unsettled.has(id) ? 0.92 : 0.7;
       data[p] = Math.round(data[p] * (1 - alpha) + colour[0] * alpha);
       data[p + 1] = Math.round(data[p + 1] * (1 - alpha) + colour[1] * alpha);
       data[p + 2] = Math.round(data[p + 2] * (1 - alpha) + colour[2] * alpha);
       data[p + 3] = 255;
     }
     context.putImageData(pixels, 0, 0);
-  }, [raster, line.blobs, line.snapshot_id, selection, dim, shown]);
+  }, [raster, line.blobs, line.snapshot_id, selection, dim, shown, unsettled]);
 
   const selectedWords = useMemo(() => {
     if (selection.snapshot !== line.snapshot_id) return new Set<number>();
@@ -508,6 +528,26 @@ export function BlobStrip({
                   data-blob={`${line.snapshot_id}:${blob.id}`}
                 />
               ))}
+
+            {/* Marks whose type is not settled, ringed in their own colour. */}
+            {line.blobs
+              .filter((blob) => unsettled.has(blob.id))
+              .map((blob) => {
+                const size = Math.max(UNSETTLED_RING, Math.max(blob.w, blob.h) * scale + 10);
+                return (
+                  <span
+                    key={`unsettled-${blob.id}`}
+                    className="pointer-events-none absolute rounded-full border-2"
+                    style={{
+                      borderColor: `rgb(${UNSETTLED_RGB.join(",")})`,
+                      left: (blob.x - line.bbox.x + blob.w / 2) * scale - size / 2,
+                      top: (blob.y - line.bbox.y + blob.h / 2) * scale - size / 2,
+                      width: size,
+                      height: size,
+                    }}
+                  />
+                );
+              })}
 
             {/* Ink you flagged as out of the ordinary: framed solid in warn, with its
                 flag on the frame — at least a ring's size, so a speck still shows. */}

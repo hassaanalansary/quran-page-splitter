@@ -1371,6 +1371,7 @@ export const ar: typeof en = {
     gutterPage: "ص ‏{{page}}",
     legendShort: "أجزاء لا تكتمل",
     legendUnfit: "علامات لا توافق نصّها",
+    legendUnsettled: "علامة لم يستقرّ نوعها",
     legendFlagged: "علّمتَه أنت",
     flagShort: {
       mixed: "مختلط",

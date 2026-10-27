@@ -190,6 +190,7 @@ export function MarkGallery({
                   key={`${line.snapshot_id}:${blob.id}`}
                   data={`${line.snapshot_id}:${blob.id}`}
                   imageUrl={line.image_url ?? null}
+                  imageSize={{ w: line.bbox.w, h: line.bbox.h }}
                   crop={{
                     x: blob.x - line.bbox.x,
                     y: blob.y - line.bbox.y,

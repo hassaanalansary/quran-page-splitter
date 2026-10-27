@@ -754,9 +754,7 @@ class LibraryCheck(BaseModel):
         db_table = "library_check"
         verbose_name = "Library Check"
         verbose_name_plural = "Library Checks"
-        constraints = (
-            models.UniqueConstraint(fields=["mushaf", "snapshot", "blob_id"], name="unique_library_check"),
-        )
+        constraints = (models.UniqueConstraint(fields=["mushaf", "snapshot", "blob_id"], name="unique_library_check"),)
 
     def __str__(self) -> str:
         return f"looks right: {self.role} {self.subtype} blob {self.blob_id} of {self.snapshot_id}"

@@ -263,9 +263,7 @@ def calibration_library_members(
 ) -> JsonResponse:
     """Every member of one fingerprint's group, the farthest first, a page at a time."""
     mushaf = mushaf_service.get_mushaf(mushaf_id, user=current_user(request), write=False)
-    return _json(
-        library_service.library_members(mushaf, page_number, group, offset=offset, count=count, limit=limit)
-    )
+    return _json(library_service.library_members(mushaf, page_number, group, offset=offset, count=count, limit=limit))
 
 
 class CompareIn(DraftIn):

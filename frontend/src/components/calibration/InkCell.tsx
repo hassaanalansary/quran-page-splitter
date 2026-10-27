@@ -17,6 +17,7 @@ export const GALLERY_ZOOMS = [1.5, 2, 3] as const;
  */
 export function InkCell({
   imageUrl,
+  imageSize,
   crop,
   zoom,
   settled = true,
@@ -28,6 +29,9 @@ export function InkCell({
   children,
 }: {
   imageUrl: string | null;
+  /** The image's own size. Lets it be loaded lazily: before it loads, an image of no
+   * size, moved into place, sits outside the cell, and is never thought in view. */
+  imageSize?: { w: number; h: number };
   /** The blob's box in its image's own pixels. */
   crop: Rect;
   zoom: number;
@@ -78,9 +82,11 @@ export function InkCell({
           src={mediaUrl(imageUrl)}
           alt=""
           draggable={false}
-          loading="lazy"
+          loading={imageSize ? "lazy" : "eager"}
           className="pointer-events-none absolute left-0 top-0 max-w-none select-none"
           style={{
+            width: imageSize?.w,
+            height: imageSize?.h,
             transform: `translate(${left}px, ${top}px) scale(${zoom})`,
             transformOrigin: "0 0",
             imageRendering: zoom > 1.6 ? "pixelated" : undefined,

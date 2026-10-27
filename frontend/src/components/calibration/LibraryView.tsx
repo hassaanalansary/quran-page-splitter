@@ -310,6 +310,7 @@ export function LibraryView({
         key={shape.key}
         data={shape.key}
         imageUrl={shape.image_url}
+        imageSize={shape.image_size}
         crop={shape.crop}
         zoom={zoom}
         ring={chosen?.shape.key === shape.key ? "chosen" : first && winner(kind) ? "gold" : null}
@@ -531,6 +532,7 @@ export function LibraryView({
                   <InkCell
                     key={shape.key}
                     imageUrl={shape.image_url}
+                    imageSize={shape.image_size}
                     crop={shape.crop}
                     zoom={zoom}
                     settled={false}

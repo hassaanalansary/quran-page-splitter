@@ -270,6 +270,8 @@ export type LibraryShape = {
   page_number: number;
   line_number: number;
   image_url: string;
+  /** The line image's size, image pixels. */
+  image_size: { w: number; h: number };
   crop: Rect;
   area: number;
   confirmed_at: string | null;

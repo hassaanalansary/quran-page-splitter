@@ -1411,6 +1411,7 @@ export const en = {
     gutterPage: "p. {{page}}",
     legendShort: "PAWs don't close",
     legendUnfit: "Marks don't fit its text",
+    legendUnsettled: "Mark whose type isn't settled",
     legendFlagged: "Flagged by you",
     flagShort: {
       mixed: "Mixed",

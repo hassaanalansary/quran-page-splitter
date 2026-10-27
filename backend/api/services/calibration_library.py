@@ -101,6 +101,8 @@ class _Shapes:
             "page_number": source.page_number,
             "line_number": source.line_number,
             "image_url": source.image.url,
+            # The line image's own size, so the view can lay it out before it loads.
+            "image_size": {"w": source.metadata["bbox"]["w"], "h": source.metadata["bbox"]["h"]},
             "crop": {
                 "x": raw["x"] + source.metadata["offset_x"],
                 "y": raw["y"] + source.metadata["offset_y"],
