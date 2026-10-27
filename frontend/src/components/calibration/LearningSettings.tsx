@@ -10,13 +10,8 @@ import { calibrationKeys, setCalibrationSettings } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import type { CalibrationSettings } from "@/lib/calibration/types";
 
-/** A small outlined button beside the LIMIT field. */
-const SMALL =
-  "h-8 cursor-pointer rounded-control border border-rule-2 bg-card px-2.5 text-[12.5px] font-semibold text-ink transition-colors hover:bg-sheet disabled:cursor-default disabled:opacity-50";
-
-/** The fingerprint library's LIMIT is refused above this — the server's `LIMIT_CEILING`. */
-const LIMIT_CEILING = 10;
-
+/** The page's learning switch. The library's LIMIT is set in the Library mode, where
+ * what it changes can be previewed. */
 export function LearningSettings({
   mushafId,
   page,
@@ -31,15 +26,13 @@ export function LearningSettings({
   const { t } = useTranslation();
   const client = useQueryClient();
   const [open, setOpen] = useState(false);
-  const [limitDraft, setLimitDraft] = useState(String(settings.limit));
   // A LIMIT equal to the default is saved as "the default", so it follows the default.
   const savedLimit = settings.limit === settings.default_limit ? null : settings.limit;
   const mutation = useMutation({
     mutationFn: (change: { experimental: boolean; limit: number | null }) =>
       setCalibrationSettings(mushafId, settings.revision, change),
-    onSuccess: (saved) => {
+    onSuccess: () => {
       setOpen(false);
-      setLimitDraft(String(saved.limit));
       void client.invalidateQueries({ queryKey: calibrationKeys.page(mushafId, page) });
     },
     onError: (error: Error) => {
@@ -47,10 +40,6 @@ export function LearningSettings({
       void client.invalidateQueries({ queryKey: calibrationKeys.page(mushafId, page) });
     },
   });
-  const typed = Number(limitDraft);
-  const limitValid =
-    limitDraft.trim() !== "" && Number.isFinite(typed) && typed > 0 && typed <= LIMIT_CEILING;
-  const limitChanged = limitValid && typed !== settings.limit;
   const busy = disabled || mutation.isPending;
   return (
     <>
@@ -64,49 +53,6 @@ export function LearningSettings({
           }
         />
       </label>
-      <div className="flex flex-col gap-1">
-        <label className="flex items-center justify-between gap-3 text-[13px] text-ink">
-          {t("calibration.libraryLimit")}
-          <span className="flex items-center gap-1.5">
-            <input
-              type="number"
-              inputMode="decimal"
-              step={0.01}
-              min={0.01}
-              max={LIMIT_CEILING}
-              value={limitDraft}
-              disabled={busy}
-              aria-invalid={!limitValid}
-              onChange={(event) => setLimitDraft(event.target.value)}
-              className="h-8 w-20 rounded-control border border-rule-2 bg-card px-2 font-mono text-[13px] text-ink outline-none focus:border-lapis aria-[invalid=true]:border-stop disabled:opacity-50"
-            />
-            <button
-              type="button"
-              className={SMALL}
-              disabled={busy || !limitChanged}
-              onClick={() =>
-                mutation.mutate({
-                  experimental: settings.experimental,
-                  limit: typed === settings.default_limit ? null : typed,
-                })
-              }
-            >
-              {t("calibration.applyLimit")}
-            </button>
-            <button
-              type="button"
-              className={`${SMALL} border-transparent bg-transparent text-ink-2`}
-              disabled={busy || savedLimit === null}
-              onClick={() => mutation.mutate({ experimental: settings.experimental, limit: null })}
-            >
-              {t("calibration.defaultLimit")}
-            </button>
-          </span>
-        </label>
-        <p className="m-0 text-[12px] leading-snug text-ink-3">
-          {t("calibration.libraryLimitHelp", { value: settings.default_limit })}
-        </p>
-      </div>
       <SatrDialogFrame
         open={open}
         onOpenChange={(next) => !mutation.isPending && setOpen(next)}

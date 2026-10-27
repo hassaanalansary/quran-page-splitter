@@ -1,7 +1,6 @@
 import type { MouseEvent } from "react";
 import { useTranslation } from "react-i18next";
 
-import { mediaUrl } from "@/lib/api";
 import {
   doubtOf,
   isSelected,
@@ -15,15 +14,9 @@ import {
 } from "@/lib/calibration/model";
 import type { CalibrationBlob, CalibrationLine } from "@/lib/calibration/types";
 
+import { GALLERY_ZOOMS, InkCell } from "./InkCell";
 import { useTypeName } from "./labels";
 import { subtypeGlyph } from "./subtypes";
-
-/** Page px shown around each blob, so a mark keeps a little of what it sits on. */
-const PAD = 6;
-/** Screen px a cell may take; a larger body is cut to its middle, never shrunk. */
-const MAX_W = 180;
-const MAX_H = 120;
-export const GALLERY_ZOOMS = [1.5, 2, 3] as const;
 
 /**
  * The page's marks side by side, one group per type — or all its ink by role — so
@@ -193,14 +186,25 @@ export function MarkGallery({
                 .filter(Boolean)
                 .join("\n");
               return (
-                <Cell
+                <InkCell
                   key={`${line.snapshot_id}:${blob.id}`}
-                  line={line}
-                  blob={blob}
+                  data={`${line.snapshot_id}:${blob.id}`}
+                  imageUrl={line.image_url ?? null}
+                  crop={{
+                    x: blob.x - line.bbox.x,
+                    y: blob.y - line.bbox.y,
+                    w: blob.w,
+                    h: blob.h,
+                  }}
                   zoom={zoom}
-                  chosen={isSelected(selection, line.snapshot_id, blob.id)}
+                  ring={
+                    isSelected(selection, line.snapshot_id, blob.id)
+                      ? "chosen"
+                      : doubt
+                        ? "doubt"
+                        : null
+                  }
                   settled={blob.role !== "mark" || !!shown?.typed}
-                  doubtful={!!doubt}
                   title={title}
                   onClick={(event) => pick(line, blob, event)}
                   onOpen={() => onOpen({ snapshot: line.snapshot_id, ids: [blob.id] })}
@@ -211,80 +215,5 @@ export function MarkGallery({
         </section>
       ))}
     </div>
-  );
-}
-
-/** One blob, cut from its line's image at the gallery's zoom and centred in its cell,
- * its own box outlined so a mark beside other ink is still the one meant. */
-function Cell({
-  line,
-  blob,
-  zoom,
-  chosen,
-  settled,
-  doubtful,
-  title,
-  onClick,
-  onOpen,
-}: {
-  line: CalibrationLine;
-  blob: CalibrationBlob;
-  zoom: number;
-  chosen: boolean;
-  /** Typed (or a body): drawn solid. A guess nobody accepted is dashed. */
-  settled: boolean;
-  doubtful: boolean;
-  title: string;
-  onClick: (event: MouseEvent) => void;
-  onOpen: () => void;
-}) {
-  const w = Math.min(MAX_W, (blob.w + 2 * PAD) * zoom);
-  const h = Math.min(MAX_H, (blob.h + 2 * PAD) * zoom);
-  // The blob's middle, in zoomed line-image px, lands in the cell's middle.
-  const left = w / 2 - (blob.x - line.bbox.x + blob.w / 2) * zoom;
-  const top = h / 2 - (blob.y - line.bbox.y + blob.h / 2) * zoom;
-  return (
-    <button
-      type="button"
-      data-gallery={`${line.snapshot_id}:${blob.id}`}
-      title={title}
-      aria-label={title}
-      aria-pressed={chosen}
-      onClick={onClick}
-      onDoubleClick={onOpen}
-      className={`relative flex-none cursor-pointer overflow-hidden rounded-sm border bg-white ${
-        settled ? "border-rule-2" : "border-dashed border-rule-2"
-      } ${chosen ? "ring-2 ring-lapis" : doubtful ? "ring-2 ring-warn" : ""}`}
-      style={{
-        width: w,
-        height: h,
-        contentVisibility: "auto",
-        containIntrinsicSize: `${w}px ${h}px`,
-      }}
-    >
-      {line.image_url && (
-        <img
-          src={mediaUrl(line.image_url)}
-          alt=""
-          draggable={false}
-          loading="lazy"
-          className="pointer-events-none absolute left-0 top-0 max-w-none select-none"
-          style={{
-            transform: `translate(${left}px, ${top}px) scale(${zoom})`,
-            transformOrigin: "0 0",
-            imageRendering: zoom > 1.6 ? "pixelated" : undefined,
-          }}
-        />
-      )}
-      <span
-        className="pointer-events-none absolute rounded-[1px] border border-lapis/60"
-        style={{
-          left: w / 2 - (blob.w * zoom) / 2 - 1,
-          top: h / 2 - (blob.h * zoom) / 2 - 1,
-          width: blob.w * zoom + 2,
-          height: blob.h * zoom + 2,
-        }}
-      />
-    </button>
   );
 }

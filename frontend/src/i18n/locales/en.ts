@@ -828,6 +828,60 @@ export const en = {
     modeGallery: "Gallery",
     modeGalleryHelp:
       "The page's marks side by side, one group per type — or all its ink by role — to catch the odd one out at a glance",
+    modeLibrary: "Library",
+    modeLibraryHelp:
+      "Every fingerprint the confirmed pages taught, kind by kind — what answers for this page's ink",
+    library: {
+      says: "Library says",
+      oneBlob: "Select one blob to see what the library says about it.",
+      asking: "Asking the library…",
+      nothingYet: "The library has nothing to answer with yet: confirm a page first.",
+      nearestMark: "nearest mark {{distance}}",
+      nearestLetter: "nearest letter {{distance}}",
+      runnerUp: "runner-up {{type}} {{distance}}",
+      ownCount: "{{count}} mark(s) typed on this page weigh in too",
+      show: "Show in Library →",
+      letters: "Letters",
+      untypedMarks: "Untyped marks",
+      loading: "Building the library…",
+      from: "page {{page}} · line {{line}}",
+      distance: "distance {{distance}}",
+      new: "New since you last looked",
+      asSeen: "As page {{page}} sees it · {{count}} confirmed page(s)",
+      nothingConfirmed: "No other page is confirmed yet",
+      leftOut: "page {{page}} left out of its own library",
+      counts: "{{fingerprints}} fingerprints · {{examples}} examples",
+      preview: "Preview",
+      previewHelp: "Rebuild the library at this LIMIT and show it, without saving anything",
+      older:
+        "This page's draft was read when {{then}} page(s) were confirmed; the library now has {{now}}. Process the page again to read it with this one.",
+      previewing: "Preview at {{limit}}, not saved",
+      previewFingerprints: "fingerprints {{delta}}",
+      discard: "Discard",
+      selected: "Selected · page {{page}} · line {{line}} · blob {{id}}",
+      thisPage: "Typed on this page (not confirmed)",
+      empty:
+        "Nothing teaches this page yet: once another page is confirmed, its examples show here.",
+      kindCount: "{{count}} fingerprint(s) · {{examples}} examples",
+      showLetters: "Show",
+      hideLetters: "Hide",
+      fingerprintOf: "Fingerprint of {{kind}} · ×{{count}}",
+      memberOf: "A member of {{kind}}",
+      confirmedOn: "confirmed {{date}}",
+      toFingerprint: "{{distance}} from its fingerprint",
+      looksRight: "Looks right",
+      looksRightHelp:
+        "Say this example is right as it is confirmed. It stands until its page's label for it changes.",
+      openSource: "Open its source",
+      kept: "Kept beside it, nearest to farthest · {{count}}",
+      keptNone: "Every member is printed like the fingerprint.",
+      showAll: "All {{count}} members",
+      hideAll: "Hide the members",
+      allFarthest: "The {{shown}} farthest of {{count}}, farthest first",
+      back: "Back to Library · page {{page}}",
+      sourceChanged:
+        "That example's line has changed since its page was confirmed, so it can't be picked out here.",
+    },
     gallery: {
       kindLabel: "What the gallery groups by",
       byType: "By type",
@@ -960,18 +1014,6 @@ export const en = {
         "The engine was unsure of this one; the text settled it: its word's small letter on the line.",
       many: "{{count}} blobs · line {{line}}",
       engineRead: "The engine read it as a {{role}} (score {{score}}/14).",
-      tabType: "Which type?",
-      tabRole: "Body or mark?",
-      tabTypeHelp:
-        "The typed marks nearest this mark, type by type — why it is expected to be what it is",
-      tabRoleHelp:
-        "The confirmed blobs nearest this one, of either role — what calibration reads body-or-mark from",
-      typeHintUntyped:
-        "Each type scored by its own three nearest typed marks — from the confirmed pages and this one; smaller is closer. A picture opens its page.",
-      typeHintTyped:
-        "Only the other confirmed pages' typed marks — do they agree with your type? A picture opens its page.",
-      oneBlob: "Select one blob to see the examples nearest it.",
-      oneMark: "Select one mark to see which typed marks it is nearest.",
       typed: "typed",
       expectedSure: "expected · sure — not typed yet",
       expectedLikely: "expected · likely — not typed yet",
@@ -986,11 +1028,6 @@ export const en = {
         "Typed {{typed}}, but the other pages' examples clearly say {{type}} — a slip of the hand? A wrong type on a confirmed page teaches every page after it.",
       acceptOne: "Accept {{type}}",
       acceptMany: "Accept expected ({{count}})",
-      loadingEvidence: "Finding its nearest typed examples…",
-      noEvidence: "No typed mark is like it yet.",
-      distanceHelp: "How far this type's nearest examples are, on average — smaller is closer",
-      exampleTitle:
-        "Page {{page}}, line {{line}} · distance {{distance}} · ×{{copies}} — opens that page",
       label: "Selection",
       whatItIs: "What it is",
       roleGroup: "Role",
@@ -1064,11 +1101,6 @@ export const en = {
       "A body printed touching across a word break belongs to both words; the cut between them sits at its middle",
     share: "Share",
     release: "Take back my decisions on these",
-    proposes: "Calibration would read it as a {{role}}.",
-    noProposal: "Calibration makes no proposal: {{reasons}}.",
-    loadingExamples: "Looking for examples…",
-    noExamples: "No confirmed example is close to it yet.",
-    exampleFrom: "Page {{page}}, line {{line}}",
 
     // Why a blob asks for a look — signals, never verdicts
     attention: {
@@ -1091,17 +1123,6 @@ export const en = {
       constraintConflict: "No reading of its aya honours every decision made on it.",
       releasedLock:
         "Calibration locked it, and its aya could only be read with the lock taken off.",
-    },
-    // Why calibration makes no proposal
-    reason: {
-      noExamples: "there are no confirmed examples yet",
-      mixedNeighbors: "its nearest examples disagree",
-      insufficientSupport: "too few examples agree about it",
-      insufficientPages: "its examples come from too few pages",
-      tooFar: "its nearest examples are not close enough",
-      missingOpposite: "there is no example of the other role to compare it with",
-      insufficientMargin: "an example of the other role is almost as close",
-      insufficientRatio: "the other role's nearest example is not twice as far away",
     },
 
     wordNav: {

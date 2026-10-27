@@ -22,17 +22,6 @@ const ATTENTION = {
   "released-lock": "releasedLock",
 } as const;
 
-const REASONS = {
-  no_examples: "noExamples",
-  mixed_neighbors: "mixedNeighbors",
-  insufficient_support: "insufficientSupport",
-  insufficient_pages: "insufficientPages",
-  too_far: "tooFar",
-  missing_opposite: "missingOpposite",
-  insufficient_margin: "insufficientMargin",
-  insufficient_ratio: "insufficientRatio",
-} as const;
-
 const EXCEPTIONS = {
   mixed: "mixed",
   broken: "broken",
@@ -60,12 +49,6 @@ export function attentionKey(flag: string) {
 export function attentionHelpKey(flag: string) {
   const key = lookup(ATTENTION, flag);
   return key ? (`calibration.attentionHelp.${key}` as const) : null;
-}
-
-/** Why calibration made no proposal for a blob. */
-export function reasonKey(reason: string) {
-  const key = lookup(REASONS, reason);
-  return key ? (`calibration.reason.${key}` as const) : null;
 }
 
 /** A blob's hand-set exception ("broken"), as the reviewer chose it. */

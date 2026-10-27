@@ -30,8 +30,8 @@ import {
   ApiError,
   calibrationKeys,
   cancelCalibration,
+  compareWithLibrary,
   confirmCalibration,
-  explainType,
   exportUrl,
   isJobRunning,
   isJobSettled,
@@ -106,7 +106,7 @@ import type {
   CalibrationDocument,
   CalibrationDraft,
   CalibrationLine,
-  TypeEvidence,
+  LibraryCompare,
 } from "@/lib/calibration/types";
 import { revealInScroller } from "@/lib/reveal";
 import { cn } from "@/lib/utils";
@@ -120,7 +120,8 @@ import { LearningSettings } from "./LearningSettings";
 import { MarkGallery } from "./MarkGallery";
 import { WordPlayer } from "./WordPlayback";
 import { exceptionKey, problemKey, useTypeName } from "./labels";
-import { SelectionBar, type EvidenceTab } from "./SelectionBar";
+import { LibraryView, type LibraryPlace } from "./LibraryView";
+import { SelectionBar } from "./SelectionBar";
 import { HOTKEY_TYPES, subtypeGlyph } from "./subtypes";
 
 const PAD = 20;
@@ -131,6 +132,42 @@ const MIN_ZOOM = 0.25;
 const FIT_ZOOM = 1;
 const MAX_ZOOM = 8;
 const STEP = 1.4;
+/** The zoom a blob opened from the Library is shown at. */
+const SOURCE_ZOOM = 3;
+
+type EditorMode = "blobs" | "gallery" | "library";
+const MODE_LABEL = {
+  blobs: "calibration.modeBlobs",
+  gallery: "calibration.modeGallery",
+  library: "calibration.modeLibrary",
+} as const;
+const MODE_HELP = {
+  blobs: "calibration.modeBlobsHelp",
+  gallery: "calibration.modeGalleryHelp",
+  library: "calibration.modeLibraryHelp",
+} as const;
+
+/** How the Ink step was arrived at — see the route's search. */
+export type InkEntry = { mode?: "library"; blob?: string; from?: number };
+
+/** Where the Library was when a source was opened from it, for "Back to Library":
+ * kept for the tab only, and read defensively — it may be gone or garbled. */
+const placeKey = (mushafId: string) => `qps.library.place.${mushafId}`;
+function writePlace(mushafId: string, place: LibraryPlace) {
+  try {
+    sessionStorage.setItem(placeKey(mushafId), JSON.stringify(place));
+  } catch {
+    // Storage blocked: coming back starts the Library at the top, which is harmless.
+  }
+}
+function readPlace(mushafId: string): LibraryPlace | null {
+  try {
+    const value = JSON.parse(sessionStorage.getItem(placeKey(mushafId)) ?? "null");
+    return value && typeof value.scroll === "number" ? (value as LibraryPlace) : null;
+  } catch {
+    return null;
+  }
+}
 /** Exceptions listed in the panel before the rest are left to the confirm dialog. */
 const LISTED = 20;
 
@@ -175,12 +212,21 @@ export function CalibrationEditor({
   pageCount,
   onPageChange,
   isRTL,
+  entry = {},
+  onOpenSource,
+  onBackToLibrary,
 }: {
   mushafId: string;
   page: number;
   pageCount: number;
   onPageChange: (page: number) => void;
   isRTL: boolean;
+  /** How the page was arrived at: in the Library, or at one blob opened from it (and
+   * the page the Library was on, to go back to). */
+  entry?: InkEntry;
+  /** Open one blob's page with the blob selected — a fingerprint's source. */
+  onOpenSource: (page: number, blob: string, from: number) => void;
+  onBackToLibrary: (page: number) => void;
 }) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
@@ -204,7 +250,7 @@ export function CalibrationEditor({
   const [preview, setPreview] = useState<Preview | null>(null);
   /** A newer answer arrived over unsaved edits and was not taken. */
   const [held, setHeld] = useState(false);
-  const [mode, setMode] = useState<"blobs" | "gallery">("blobs");
+  const [mode, setMode] = useState<EditorMode>("blobs");
   /** The gallery groups marks by type, or all ink by role — at one zoom. */
   const [galleryKind, setGalleryKind] = useState<GalleryKind>("types");
   const [galleryZoom, setGalleryZoom] = useState(2);
@@ -218,20 +264,20 @@ export function CalibrationEditor({
   const [tanween, setTanween] = useState<Set<string>>(() => new Set());
   /** Marks that may be noise the line's cutting left — for the reviewer to erase. */
   const [noise, setNoise] = useState<NoiseSuspects>(() => new Map());
-  /** The typed examples nearest the one selected mark, for the selection bar: which
-   * mark, asked against which typing, and the answer. */
-  const [evidence, setEvidence] = useState<{
+  /** What the library answers for the one selected blob: which blob, asked against
+   * which draft, and the answer. */
+  const [comparison, setComparison] = useState<{
     key: string;
-    mark: string;
-    data: TypeEvidence | null;
+    blob: string;
+    data: LibraryCompare | null;
     loading: boolean;
   } | null>(null);
+  /** A LIMIT the Library is previewing: the library rebuilt at it, nothing saved. */
+  const [previewLimit, setPreviewLimit] = useState<number | null>(null);
   const [learnedFrom, setLearnedFrom] = useState({ examples: 0, here: 0 });
   const [showTypes, setShowTypes] = useState(true);
   /** With a kind of mark shown, let a click pick the faded ink too — to fix a miss. */
   const [pickAll, setPickAll] = useState(false);
-  /** What the bar explains about one mark: which type it is, or body or mark. */
-  const [evidenceTab, setEvidenceTab] = useState<EvidenceTab>("type");
   const [dim, setDim] = useState(false);
   const [zoom, setZoom] = useState(FIT_ZOOM);
   const [box, setBox] = useState(0);
@@ -697,46 +743,46 @@ export function CalibrationEditor({
   const passes = (line: CalibrationLine, blob: CalibrationLine["blobs"][number]) =>
     passesFilter(blob, line.snapshot_id, selectionFilter, expectations, doubts);
 
-  // The one selected mark's evidence: asked for shortly after it is selected, and
-  // again when the typing it is judged against changes — the last answer for the
-  // same mark stays up meanwhile, so typing it does not blank the bar.
-  const explained =
+  // What the library answers for the one selected blob: asked for shortly after it is
+  // selected, and again when the draft it is judged against changes — the last answer
+  // for the same blob stays up meanwhile, so editing it does not blank the bar.
+  const compared =
     canGuess &&
-    evidenceTab === "type" &&
     selectedBlobs.length === 1 &&
-    selectedBlobs[0].role === "mark"
+    (selectedBlobs[0].role === "body" || selectedBlobs[0].role === "mark")
       ? selectedBlobs[0]
       : null;
-  const explainedMark = explained ? `${selection.snapshot}:${explained.id}` : "";
-  const explainKey = explainedMark ? `${explainedMark}|${typing}` : "";
+  const comparedBlob = compared ? `${selection.snapshot}:${compared.id}` : "";
+  const compareKey = comparedBlob ? `${comparedBlob}|${signature}|${previewLimit ?? ""}` : "";
   useEffect(() => {
     const current = docRef.current;
-    if (!explainKey || !canGuess || !current) return;
-    const mark = explainKey.split("|")[0];
-    const [snapshot, blob] = mark.split(":");
+    if (!compareKey || !canGuess || !current) return;
+    const blob = compareKey.split("|")[0];
+    const [snapshot, id] = blob.split(":");
     const abort = new AbortController();
-    setEvidence((previous) =>
-      previous?.key === explainKey
+    setComparison((previous) =>
+      previous?.key === compareKey
         ? previous
         : {
-            key: explainKey,
-            mark,
-            data: previous?.mark === mark ? previous.data : null,
+            key: compareKey,
+            blob,
+            data: previous?.blob === blob ? previous.data : null,
             loading: true,
           },
     );
     const timer = window.setTimeout(() => {
-      explainType(
+      compareWithLibrary(
         mushafId,
         page,
         draftOf(current, linesRef.current, newRequestId()),
-        { snapshot_id: snapshot, blob_id: Number(blob) },
+        { snapshot_id: snapshot, blob_id: Number(id) },
+        previewLimit,
         abort.signal,
       )
-        .then((data) => setEvidence({ key: explainKey, mark, data, loading: false }))
+        .then((data) => setComparison({ key: compareKey, blob, data, loading: false }))
         .catch(() =>
-          setEvidence((previous) =>
-            previous?.key === explainKey ? { ...previous, loading: false } : previous,
+          setComparison((previous) =>
+            previous?.key === compareKey ? { ...previous, loading: false } : previous,
           ),
         );
     }, 250);
@@ -744,7 +790,41 @@ export function CalibrationEditor({
       window.clearTimeout(timer);
       abort.abort();
     };
-  }, [explainKey, canGuess, mushafId, page]);
+    // `previewLimit` is in the key.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [compareKey, canGuess, mushafId, page]);
+  const answer = compared
+    ? comparison?.blob === comparedBlob
+      ? comparison
+      : { data: null, loading: true }
+    : null;
+
+  // Arriving: in the Library, or at a blob opened from it — selected, shown close.
+  const arrived = useRef<string | null>(null);
+  const [returnTo, setReturnTo] = useState<LibraryPlace | null>(null);
+  useEffect(() => {
+    if (builtPage !== page) return;
+    const key = `${page}|${entry.mode ?? ""}|${entry.blob ?? ""}`;
+    if (arrived.current === key) return;
+    arrived.current = key;
+    if (entry.mode === "library") {
+      setMode("library");
+      setReturnTo(readPlace(mushafId));
+    }
+    if (entry.blob) {
+      const [snapshot, id] = entry.blob.split(":");
+      const line = lines.find((candidate) => candidate.snapshot_id === snapshot);
+      if (!line?.blobs.some((blob) => blob.id === Number(id))) {
+        toast.info(t("calibration.library.sourceChanged"));
+        return;
+      }
+      setMode("blobs");
+      setZoom(SOURCE_ZOOM);
+      requestAnimationFrame(() => selectAndReveal({ snapshot, ids: [Number(id)] }));
+    }
+    // Once per arrival; the lines are the page's own by then.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [builtPage, page, entry.mode, entry.blob]);
 
   // What a kind-of-mark filter shows on the page, and how many of those are only
   // expected — what "Accept the shown" would type.
@@ -1117,6 +1197,28 @@ export function CalibrationEditor({
       )
     ) : !column ? (
       center(<p className="text-[12.5px] text-ink-3">{t("calibration.noLines")}</p>)
+    ) : mode === "library" ? (
+      <LibraryView
+        mushafId={mushafId}
+        page={page}
+        settings={doc.settings}
+        selected={
+          selectedLine && selectedBlobs.length === 1
+            ? { line: selectedLine, blob: selectedBlobs[0] }
+            : null
+        }
+        compare={answer}
+        previewLimit={previewLimit}
+        onPreviewLimit={setPreviewLimit}
+        zoom={galleryZoom}
+        onZoom={setGalleryZoom}
+        scroller={scrollRef}
+        restore={returnTo}
+        onOpenSource={(shape, place) => {
+          writePlace(mushafId, place);
+          onOpenSource(shape.page_number, shape.key, page);
+        }}
+      />
     ) : mode === "gallery" ? (
       <MarkGallery
         groups={gallery}
@@ -1258,14 +1360,12 @@ export function CalibrationEditor({
             aria-label={t("calibration.modeLabel")}
             className="inline-flex flex-none rounded-lg bg-deep p-[3px]"
           >
-            {(["blobs", "gallery"] as const).map((value) => (
+            {(["blobs", "gallery", "library"] as const).map((value) => (
               <button
                 key={value}
                 type="button"
                 aria-pressed={mode === value}
-                title={t(
-                  value === "blobs" ? "calibration.modeBlobsHelp" : "calibration.modeGalleryHelp",
-                )}
+                title={t(MODE_HELP[value])}
                 onClick={() => setMode(value)}
                 className={`h-[30px] cursor-pointer rounded-[6px] px-[13px] text-[13px] transition-colors ${
                   mode === value
@@ -1273,11 +1373,22 @@ export function CalibrationEditor({
                     : "font-medium text-on-deep hover:bg-white/10"
                 }`}
               >
-                {t(value === "blobs" ? "calibration.modeBlobs" : "calibration.modeGallery")}
+                {t(MODE_LABEL[value])}
               </button>
             ))}
           </div>
+          {entry.from !== undefined && (
+            <button
+              type="button"
+              className={`${OUTLINE} h-[34px] flex-none gap-1.5 px-2.5 text-[12.5px]`}
+              onClick={() => onBackToLibrary(entry.from!)}
+            >
+              <ChevronRight size={15} className="ltr:rotate-180" aria-hidden="true" />
+              {t("calibration.library.back", { page: entry.from })}
+            </button>
+          )}
           <select
+            hidden={mode === "library"}
             aria-label={t("calibration.selectionFilter")}
             title={t("calibration.filter.help")}
             className="h-[34px] max-w-[220px] flex-none cursor-pointer rounded-control border border-rule-2 bg-card px-2 text-[13px] text-ink outline-none focus:border-lapis"
@@ -1371,7 +1482,7 @@ export function CalibrationEditor({
               <Play size={13} aria-hidden="true" />
               {t("wordPlayback.open")}
             </button>
-            {mode !== "gallery" && (
+            {mode === "blobs" && (
               <span className="inline-flex items-center gap-0.5">
                 <IconButton
                   label={t("canvas.zoomOut")}
@@ -1546,25 +1657,16 @@ export function CalibrationEditor({
           {canvas}
         </div>
 
-        {processed && (
+        {processed && mode !== "library" && (
           <SelectionBar
-            mushafId={mushafId}
-            page={page}
             line={selectedLine}
             blobs={selectedBlobs}
             expectations={expectations}
             doubts={doubts}
             checks={checks}
             noise={noise}
-            evidence={
-              explained
-                ? evidence?.mark === explainedMark
-                  ? evidence
-                  : { data: null, loading: true }
-                : null
-            }
-            tab={evidenceTab}
-            onTab={setEvidenceTab}
+            library={answer}
+            onShowInLibrary={() => setMode("library")}
             disabled={!editable}
             onRole={(role) => commit(setRole(lines, selection, role))}
             onSubtype={(value) => commit(setSubtype(lines, selection, value))}

@@ -1,16 +1,13 @@
-import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { mediaUrl, useCalibrationExamples } from "@/lib/api";
+import { mediaUrl } from "@/lib/api";
 import type {
   Allocation,
   BlobException,
   CalibrationBlob,
   CalibrationLine,
 } from "@/lib/calibration/types";
-
-import { reasonKey, useTypeName } from "./labels";
 
 const EXCEPTIONS: BlobException[] = ["", "mixed", "broken", "fused", "uncertain"];
 
@@ -249,89 +246,6 @@ export function OwnershipControls({
           {t("calibration.release")}
         </button>
       )}
-    </div>
-  );
-}
-
-/**
- * Body or mark? The confirmed blobs nearest one blob, of either role — what
- * calibration reads a role from — and what it makes of them. Asked for when shown.
- */
-export function RoleExamples({
-  mushafId,
-  page,
-  line,
-  blob,
-}: {
-  mushafId: string;
-  page: number;
-  line: CalibrationLine;
-  blob: CalibrationBlob;
-}) {
-  const { t } = useTranslation();
-  const text = blob.role === "body" || blob.role === "mark";
-  const subtype = useTypeName();
-  const { data, isLoading } = useCalibrationExamples(
-    mushafId,
-    page,
-    text ? line.snapshot_id : null,
-    text ? blob.id : null,
-  );
-  if (!text) return null;
-  return (
-    <div className="flex flex-col gap-1">
-      <p className="m-0 text-[12px] leading-snug text-ink-3">
-        {t("calibration.bar.engineRead", {
-          role: t(`calibration.role.${blob.initial_role}`),
-          score: blob.body_score,
-        })}{" "}
-        {blob.proposed_role
-          ? t("calibration.proposes", { role: t(`calibration.role.${blob.proposed_role}`) })
-          : t("calibration.noProposal", {
-              reasons: (blob.proposal.reasons?.length
-                ? blob.proposal.reasons
-                : (data?.reasons ?? ["no_examples"])
-              )
-                .map((reason) => {
-                  const key = reasonKey(reason);
-                  return key ? t(key) : reason;
-                })
-                .join(", "),
-            })}
-      </p>
-      {isLoading && (
-        <span className="text-[12px] text-ink-3">{t("calibration.loadingExamples")}</span>
-      )}
-      {data && !data.neighbors.length && (
-        <span className="text-[12px] text-ink-3">{t("calibration.noExamples")}</span>
-      )}
-      {data?.neighbors.map((example) => (
-        <div
-          key={`${example.snapshot_id}:${example.blob_id}`}
-          className="flex items-center gap-2 text-[12px] text-ink-2"
-        >
-          {example.image_url && example.crop && (
-            <BlobCrop url={example.image_url} {...example.crop} box={30} />
-          )}
-          <span className="min-w-0 flex-1 truncate">
-            <span className="font-semibold">{t(`calibration.role.${example.role}`)}</span>
-            {example.subtype ? ` · ${subtype(example.subtype)}` : ""} ·{" "}
-            <Link
-              to="/mushafs/$mushafId/ink"
-              params={{ mushafId }}
-              search={{ page: example.page_number }}
-              className="underline underline-offset-2 hover:text-lapis-text"
-            >
-              {t("calibration.exampleFrom", {
-                page: example.page_number,
-                line: example.line_number,
-              })}
-            </Link>
-            {example.copies > 1 ? ` · ×${example.copies}` : ""}
-          </span>
-          <span className="flex-none font-mono text-ink-3">{example.distance.toFixed(3)}</span>
-        </div>
-      ))}
     </div>
   );
 }

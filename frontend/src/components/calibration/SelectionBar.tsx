@@ -1,4 +1,3 @@
-import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -22,11 +21,11 @@ import type {
   BlobException,
   CalibrationBlob,
   CalibrationLine,
+  LibraryCompare,
   TextRole,
-  TypeEvidence,
 } from "@/lib/calibration/types";
 
-import { BlobCrop, OwnershipControls, RoleExamples } from "./BlobDetails";
+import { BlobCrop, OwnershipControls } from "./BlobDetails";
 import { ROLE_RGB } from "./colors";
 import { attentionHelpKey, attentionKey, useTypeName } from "./labels";
 import { HOTKEY_TYPES, SUBTYPES, SUBTYPE_GLYPHS, hotkeyOf, subtypeGlyph } from "./subtypes";
@@ -37,35 +36,31 @@ const HEIGHT = 262;
 
 const glyph = subtypeGlyph;
 
-export type EvidenceTab = "type" | "role";
-
 /**
  * Everything about the selection, in one place under the lines, at one height.
  *
  *     ┌ picture · role · type · status · where, who decided ─────────────────────┐
- *     ├ what it is ──────────────┬ belongs to ─────────┬ why ──────────────────┤
- *     │ Body|Mark  Erase         │ word · aya · PAWs   │ [Which type?][Body or │
- *     │ Accept ‹type›  (A)       │ marks fit the text  │  mark?]  the nearest  │
- *     │ another type · + Pair    │ give it · share     │  examples, as         │
- *     │ doubt · flags            │ unattach · flag     │  pictures             │
+ *     ├ what it is ──────────────┬ belongs to ─────────┬ library says ─────────┤
+ *     │ Body|Mark  Erase         │ word · aya · PAWs   │ mark · nearest mark,  │
+ *     │ Accept ‹type›  (A)       │ marks fit the text  │  nearest letter       │
+ *     │ another type · + Pair    │ give it · share     │ kasra 0.31 · runner-up│
+ *     │ doubt · flags            │ unattach · flag     │ [Show in Library]     │
  *     ├ ← → blob · ↑ ↓ line · Ctrl ← → word · B M · 1–9 0 · N · Ctrl S ──────────┤
  *
- * *Which type?* is the mark-type matcher: each type's own nearest typed marks. *Body
- * or mark?* is the role matcher: the confirmed blobs nearest this one, of either
- * role. The editor owns the draft, so it asks for the type evidence and passes it in.
+ * *Library says* is the fingerprint library's answer for the one selected blob —
+ * body or mark from the nearest letter and mark, and a mark's type — with the way to
+ * its full picture in the Library mode. The editor owns the draft, so it asks and
+ * passes the answer in.
  */
 export function SelectionBar({
-  mushafId,
-  page,
   line,
   blobs,
   expectations,
   doubts,
   checks,
   noise,
-  evidence,
-  tab,
-  onTab,
+  library,
+  onShowInLibrary,
   disabled,
   onRole,
   onSubtype,
@@ -78,8 +73,6 @@ export function SelectionBar({
   onRelease,
   onUnassign,
 }: {
-  mushafId: string;
-  page: number;
   line: CalibrationLine | null;
   blobs: CalibrationBlob[];
   expectations: Expectations;
@@ -88,10 +81,10 @@ export function SelectionBar({
   checks: MarkChecks;
   /** Marks that may be noise the line's cutting left. */
   noise: NoiseSuspects;
-  /** The type evidence for the one selected mark; null when it is not asked for. */
-  evidence: { data: TypeEvidence | null; loading: boolean } | null;
-  tab: EvidenceTab;
-  onTab: (tab: EvidenceTab) => void;
+  /** What the library answers for the one selected blob; null when it is not asked. */
+  library: { data: LibraryCompare | null; loading: boolean } | null;
+  /** Open the Library mode on this blob. */
+  onShowInLibrary: () => void;
   disabled: boolean;
   onRole: (role: TextRole) => void;
   onSubtype: (subtype: string) => void;
@@ -165,14 +158,11 @@ export function SelectionBar({
   const choices = [...HOTKEY_TYPES, ...SUBTYPES.filter((value) => !hotkeyOf(value))];
   const typeValue =
     marks.length > 0 && choices.some((value) => typedAs(value)) ? marks[0].subtype : "";
-  const oneMark = single?.role === "mark" ? single : null;
   const oneText = single && (single.role === "body" || single.role === "mark") ? single : null;
   const texts = blobs.filter((blob) => blob.role === "body" || blob.role === "mark");
   /** Every text blob selected is erased: the button restores them. */
   const erased = texts.length > 0 && texts.every((blob) => blob.erased);
   const suspicion = single ? noiseFor(single, line.snapshot_id, noise) : null;
-  // A body has no type to explain: its evidence is the role's.
-  const showing: EvidenceTab = oneMark ? tab : "role";
 
   // ── what it is ─────────────────────────────────────────────────────────────
   let headline: { name: string; glyph?: string } | null = null;
@@ -570,55 +560,70 @@ export function SelectionBar({
             </span>
           </section>
 
-          {/* ── why ── */}
-          <section className="flex min-h-0 flex-col gap-2 px-4 py-3">
-            <div
-              role="tablist"
-              className="inline-flex flex-none self-start rounded-lg bg-sunk p-[3px]"
-            >
-              {(["type", "role"] as const).map((value) => (
-                <button
-                  key={value}
-                  type="button"
-                  role="tab"
-                  aria-selected={showing === value}
-                  disabled={value === "type" && !oneMark}
-                  onClick={() => onTab(value)}
-                  title={t(
-                    value === "type"
-                      ? "calibration.bar.tabTypeHelp"
-                      : "calibration.bar.tabRoleHelp",
-                  )}
-                  className={`h-7 cursor-pointer rounded-control px-3 text-[12.5px] transition-colors disabled:cursor-default disabled:opacity-40 ${
-                    showing === value
-                      ? "bg-card font-semibold text-ink shadow-[0_1px_2px_rgba(0,0,0,0.08)]"
-                      : "font-medium text-ink-2 hover:text-ink"
-                  }`}
-                >
-                  {t(value === "type" ? "calibration.bar.tabType" : "calibration.bar.tabRole")}
-                </button>
-              ))}
-            </div>
-            <div className="min-h-0 flex-1 overflow-y-auto">
-              {showing === "type" && oneMark ? (
-                <TypeEvidencePanel
-                  mushafId={mushafId}
-                  evidence={evidence}
-                  typeName={typeName}
-                  typed={!!shown[0]?.typed}
-                />
-              ) : showing === "role" && oneText ? (
-                <RoleExamples mushafId={mushafId} page={page} line={line} blob={oneText} />
-              ) : (
-                <p className="m-0 text-[12px] text-ink-3">
-                  {t(
-                    oneMark || !marks.length
-                      ? "calibration.bar.oneBlob"
-                      : "calibration.bar.oneMark",
-                  )}
-                </p>
-              )}
-            </div>
+          {/* ── what the library says ── */}
+          <section className="flex min-h-0 flex-col gap-2 overflow-y-auto px-4 py-3">
+            <PaneTitle>{t("calibration.library.says")}</PaneTitle>
+            {!oneText ? (
+              <p className={`m-0 ${quiet}`}>{t("calibration.library.oneBlob")}</p>
+            ) : !library || (library.loading && !library.data) ? (
+              <span className={quiet}>{t("calibration.library.asking")}</span>
+            ) : !library.data?.answer ? (
+              <span className={quiet}>{t("calibration.library.nothingYet")}</span>
+            ) : (
+              <>
+                <span className="text-[13px] leading-snug text-ink">
+                  <strong>{t(`calibration.role.${library.data.answer.role}`)}</strong>
+                  <span className="font-mono text-[12px] text-ink-3">
+                    {" · "}
+                    {t("calibration.library.nearestMark", {
+                      distance: library.data.answer.nearest_mark.toFixed(2),
+                    })}
+                    {" · "}
+                    {t("calibration.library.nearestLetter", {
+                      distance: library.data.answer.nearest_letter.toFixed(2),
+                    })}
+                  </span>
+                </span>
+                {library.data.type && (
+                  <span className="flex flex-wrap items-baseline gap-x-2 text-[13px] leading-snug">
+                    <span className="font-semibold text-ink">
+                      <span dir="rtl" className="font-quran text-mark-text">
+                        {glyph(library.data.type.subtype)}
+                      </span>{" "}
+                      {typeName(library.data.type.subtype)}
+                      {library.data.type.sure && " ★"}
+                    </span>
+                    {library.data.type.distance !== null && (
+                      <span className="font-mono text-[12px] text-ink-3">
+                        {library.data.type.distance.toFixed(2)}
+                      </span>
+                    )}
+                    {library.data.type.runner_up && (
+                      <span className="text-[12px] text-ink-3">
+                        {t("calibration.library.runnerUp", {
+                          type: typeName(library.data.type.runner_up),
+                          distance: library.data.type.runner_distance?.toFixed(2) ?? "—",
+                        })}
+                      </span>
+                    )}
+                  </span>
+                )}
+                {library.data.own.length > 0 && (
+                  <span className={quiet}>
+                    {t("calibration.library.ownCount", { count: library.data.own.length })}
+                  </span>
+                )}
+              </>
+            )}
+            {oneText && (
+              <button
+                type="button"
+                onClick={onShowInLibrary}
+                className="mt-auto inline-flex h-[34px] flex-none cursor-pointer items-center justify-center self-start rounded-control border border-lapis bg-lapis-wash px-3 text-[12.5px] font-semibold text-lapis-text transition-colors hover:bg-lapis hover:text-on-lapis"
+              >
+                {t("calibration.library.show")}
+              </button>
+            )}
           </section>
         </div>
       </div>
@@ -665,69 +670,6 @@ function Kbd({ children }: { children: string }) {
     <kbd className="rounded border border-rule-2 bg-card px-[5px] py-px font-mono text-[11px] text-ink">
       {children}
     </kbd>
-  );
-}
-
-/** Which type? Each type near the mark, its score, and its own nearest typed marks. */
-function TypeEvidencePanel({
-  mushafId,
-  evidence,
-  typeName,
-  typed,
-}: {
-  mushafId: string;
-  evidence: { data: TypeEvidence | null; loading: boolean } | null;
-  typeName: (subtype: string) => string;
-  typed: boolean;
-}) {
-  const { t } = useTranslation();
-  return (
-    <div className="flex flex-col gap-1">
-      <p className="m-0 text-[12px] leading-snug text-ink-3">
-        {t(typed ? "calibration.bar.typeHintTyped" : "calibration.bar.typeHintUntyped")}
-      </p>
-      {!evidence || (evidence.loading && !evidence.data) ? (
-        <span className="text-[11px] text-ink-3">{t("calibration.bar.loadingEvidence")}</span>
-      ) : !evidence.data?.candidates.length ? (
-        <span className="text-[11px] text-ink-3">{t("calibration.bar.noEvidence")}</span>
-      ) : (
-        evidence.data.candidates.map((candidate, index) => (
-          <div key={candidate.subtype} className="flex items-center gap-1.5">
-            <span
-              className={`w-[96px] flex-none truncate text-[11.5px] ${
-                index === 0 ? "font-semibold text-ink" : "text-ink-2"
-              }`}
-              title={typeName(candidate.subtype)}
-            >
-              <span dir="rtl">{glyph(candidate.subtype)}</span> {typeName(candidate.subtype)}
-            </span>
-            <span
-              className="w-8 flex-none text-[10px] tabular-nums text-ink-3"
-              title={t("calibration.bar.distanceHelp")}
-            >
-              {candidate.distance.toFixed(2)}
-            </span>
-            {candidate.examples.map((example) => (
-              <Link
-                key={`${example.snapshot_id}:${example.blob_id}`}
-                to="/mushafs/$mushafId/ink"
-                params={{ mushafId }}
-                search={{ page: example.page_number }}
-                title={t("calibration.bar.exampleTitle", {
-                  page: example.page_number,
-                  line: example.line_number,
-                  distance: example.distance.toFixed(3),
-                  copies: example.copies,
-                })}
-                className="rounded-sm outline-offset-1 hover:outline hover:outline-2 hover:outline-lapis"
-              >
-                <BlobCrop url={example.image_url} {...example.crop} box={32} />
-              </Link>
-            ))}
-          </div>
-        ))
-      )}
-    </div>
   );
 }
 

@@ -253,30 +253,6 @@ export type CalibrationTypes = {
   tanween?: { snapshot_id: string; blob_id: number }[];
 };
 
-/** One typed mark shown as evidence: where it was typed, and how near it is. */
-export type TypeEvidenceExample = {
-  snapshot_id: string;
-  blob_id: number;
-  page_number: number;
-  line_number: number;
-  distance: number;
-  /** How many identical typed marks this example stands for. */
-  copies: number;
-  image_url: string;
-  /** The mark's box inside that line's image, image pixels. */
-  crop: Rect;
-};
-
-/** Why one mark is expected to be what it is: the types nearest it, nearest first,
- * each scored by the mean distance to its own nearest examples — which it carries. */
-export type TypeEvidence = {
-  snapshot_id: string;
-  blob_id: number;
-  /** A typed mark is compared with the other pages only — the question its doubt asks. */
-  typed: boolean;
-  candidates: { subtype: string; distance: number; examples: TypeEvidenceExample[] }[];
-};
-
 export type CalibrationPageState = {
   page: number;
   revision: number;
@@ -284,35 +260,96 @@ export type CalibrationPageState = {
   processed: boolean;
 };
 
-export type CalibrationExample = {
+/** One confirmed example as the Library mode draws it: where it is, and its crop of
+ * its line's image (image pixels). `looks_right` is a person's check that still
+ * stands for the label it is confirmed as. */
+export type LibraryShape = {
+  key: string;
   snapshot_id: string;
   blob_id: number;
   page_number: number;
   line_number: number;
-  role: TextRole;
-  subtype: string;
-  distance: number;
-  /** How many confirmed blobs this kept shape stands for: its group's size when it
-   * is the group's fingerprint, 1 for a member kept beside it. */
-  copies: number;
-  /** Its group's fingerprint (else a member kept to show the group's reach). */
-  fingerprint?: boolean;
-  image_url: string | null;
-  /** The blob's box inside that line's image, image pixels. */
-  crop: Rect | null;
+  image_url: string;
+  crop: Rect;
+  area: number;
+  confirmed_at: string | null;
+  looks_right: boolean;
+  /** To the group's fingerprint, for a member. */
+  distance?: number;
 };
 
-export type CalibrationExamples = {
-  proposed_role: TextRole | null;
-  confidence: number;
-  reasons: string[];
-  /** Distance to the nearest kept letter and the nearest kept mark. */
-  nearest_letter?: number;
-  nearest_mark?: number;
-  support_count?: number;
-  distinct_pages?: number;
-  neighbors: CalibrationExample[];
-  mode: string;
+/** One fingerprint and the members kept beside it, spread nearest to farthest. */
+export type LibraryGroup = {
+  /** Stable for one build of the library: what the members are asked by. */
+  id: string;
+  count: number;
+  /** The distance of its farthest member from the fingerprint. */
+  farthest: number;
+  fingerprint: LibraryShape;
+  kept: LibraryShape[];
+};
+
+/** A kind of example: the letters, one mark type, or the untyped marks. */
+export type LibraryKind = {
+  role: TextRole;
+  subtype: string;
+  examples: number;
+  groups: LibraryGroup[];
+};
+
+/** The library that answers for one page: every other confirmed page, grouped. */
+export type CalibrationLibrary = {
+  page: number;
+  /** Built at another LIMIT for the asking; nothing saved. */
+  preview: boolean;
+  limit: number;
+  saved_limit: number;
+  default_limit: number;
+  comparison: string;
+  /** The confirmed pages it is built from. */
+  pages: number[];
+  /** The page itself, when it is confirmed: never in its own library. */
+  left_out: number | null;
+  /** The pages the page's draft was read with, when it was processed. */
+  draft_pages: number[] | null;
+  examples: number;
+  fingerprints: number;
+  kinds: LibraryKind[];
+};
+
+export type LibraryMembers = {
+  group: string;
+  total: number;
+  offset: number;
+  members: LibraryShape[];
+};
+
+/** One blob of the page against the library: what it answers, and the blob's
+ * distance to every kept shape, by `LibraryShape.key`. */
+export type LibraryCompare = {
+  snapshot_id: string;
+  blob_id: number;
+  role: string;
+  subtype: string;
+  typed: boolean;
+  answer: {
+    role: TextRole;
+    confidence: number;
+    nearest_letter: number;
+    nearest_mark: number;
+    letter: string;
+    mark: string;
+  } | null;
+  type: {
+    subtype: string;
+    distance: number | null;
+    sure: boolean;
+    runner_up: string;
+    runner_distance: number | null;
+  } | null;
+  distances: Record<string, number>;
+  /** The marks typed on this page, nearest first: not confirmed, so a row apart. */
+  own: (LibraryShape & { subtype: string; distance: number })[];
 };
 
 export type EvaluationCounts = Partial<{
