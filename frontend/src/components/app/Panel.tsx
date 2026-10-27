@@ -17,20 +17,24 @@ export function StepBody({ children }: { children: ReactNode }) {
   );
 }
 
-/** The step's name, with its other-language twin in gold, atop the inspector. */
-function InspectorTitle() {
+/** The step's name, with its other-language twin in gold, atop the inspector;
+ * `intro` is the line under it saying what the step is for. */
+function InspectorTitle({ intro }: { intro?: string }) {
   const { t } = useTranslation();
   const other = useOtherLanguage();
   const step = useShellStep();
   if (!step) return null;
   return (
-    <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
-      <h1 className="m-0 font-display text-[28px] font-semibold leading-tight">
-        {t(`header.steps.${step}`)}
-      </h1>
-      <span lang={other.lng} className="font-display text-[18px] text-gold-text">
-        {other.t(`header.steps.${step}`)}
-      </span>
+    <div className="flex flex-col gap-1.5">
+      <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
+        <h1 className="m-0 font-display text-[28px] font-semibold leading-tight">
+          {t(`header.steps.${step}`)}
+        </h1>
+        <span lang={other.lng} className="font-display text-[18px] text-gold-text">
+          {other.t(`header.steps.${step}`)}
+        </span>
+      </div>
+      {intro && <p className="m-0 text-[13.5px] leading-normal text-ink-2">{intro}</p>}
     </div>
   );
 }
@@ -44,11 +48,13 @@ export function Aside({
   children,
   status,
   footer,
+  intro,
   wide = false,
 }: {
   children: ReactNode;
   status?: ReactNode;
   footer?: ReactNode;
+  intro?: string;
   wide?: boolean;
 }) {
   return (
@@ -59,7 +65,7 @@ export function Aside({
       )}
     >
       <div className="flex min-h-0 flex-1 flex-col gap-[18px] overflow-y-auto p-5">
-        <InspectorTitle />
+        <InspectorTitle intro={intro} />
         {children}
       </div>
       {(status || footer) && (

@@ -15,7 +15,6 @@ import { PageStage } from "@/components/canvas/PageStage";
 import { RectInputs } from "@/components/canvas/RectInputs";
 import { ImageWithRedBox, TemplatePreview } from "@/components/canvas/TemplatePreview";
 import { ZoomPane } from "@/components/canvas/ZoomPane";
-import { Button } from "@/components/ui/button";
 import {
   ApiError,
   pageImageUrl,
@@ -221,9 +220,16 @@ function TemplatesPage() {
   const activeDirty = isDirty(activeType);
   const canSave = activeDirty && !saveMutation.isPending;
 
+  const activeName = t(`templates.name_${activeType}`);
+  const stateOf = (type: TemplateType) =>
+    isDirty(type)
+      ? { label: t("templates.unsaved"), tone: "text-gold-text" }
+      : isSaved(type)
+        ? { label: t("templates.saved"), tone: "text-done-text" }
+        : { label: t("templates.notSet"), tone: "text-ink-3" };
+
   return (
     <StepBody>
-      {/* Left: crop the selected template on the page */}
       <div data-tour="tpl-canvas" className="relative flex flex-1 overflow-hidden">
         <PageStage
           imageUrl={pageUrl}
@@ -246,133 +252,124 @@ function TemplatesPage() {
         />
       </div>
 
-      {/* Center: handle the selected template fully — capture, ignore, save */}
-      <div
-        data-tour="tpl-capture"
-        className="flex w-[400px] flex-shrink-0 flex-col gap-3 overflow-auto border-s border-rule bg-card p-4"
-      >
-        <div className="text-[12px] font-semibold capitalize text-ink">{label(activeType)}</div>
-
-        <TemplatePreview mode="template" pageUrl={pageUrl} working={working} />
-        <RectInputs rect={working} onChange={setWorking} max={natural} />
-        {preview <= OPENING_PAGES && <WarnNote>{t("templates.openingPageWarning")}</WarnNote>}
-        <Button onClick={capture} disabled={!working || working.w < 2}>
-          {cap ? t("templates.recrop") : t("templates.capture", { label: label(activeType) })}
-        </Button>
-
-        <IgnoreSection
-          templateUrl={templateUrl}
-          ignoreRect={ignoreRect}
-          editing={editingIgnore}
-          onEdit={() => setEditingIgnore(true)}
-          onDone={() => {
-            setEditingIgnore(false);
-            if (ignores[activeType]) toast.success(t("templates.ignoreSetToast"));
-          }}
-          onChange={(r) => setIgnores((p) => ({ ...p, [activeType]: r ?? null }))}
-          onClear={() => {
-            setIgnores((p) => ({ ...p, [activeType]: null }));
-            setEditingIgnore(false);
-            toast.success(t("templates.ignoreCleared"));
-          }}
-        />
-
-        <div className="mt-auto flex flex-col gap-1.5">
-          {hasTemplate(activeType) && (
-            <span
-              className={`flex items-center gap-1.5 text-[11.5px] ${
-                activeDirty ? "text-lapis-text" : "text-done-text"
-              }`}
-            >
-              <span
-                className={`h-1.5 w-1.5 flex-none rounded-full ${activeDirty ? "bg-lapis" : "bg-done"}`}
-                aria-hidden
-              />
-              {activeDirty ? t("templates.dirtyHint") : t("templates.cleanHint")}
-            </span>
-          )}
-          <Button onClick={() => saveMutation.mutate(activeType)} disabled={!canSave}>
-            {saveMutation.isPending ? (
-              <BusyLabel>{t("common.saving")}</BusyLabel>
-            ) : activeDirty ? (
-              t("templates.saveNamed", { label: label(activeType) })
-            ) : (
-              <>
-                <Check size={14} /> {t("templates.savedBtn")}
-              </>
-            )}
-          </Button>
-        </div>
-      </div>
-
-      {/* Right: selection cards */}
       <Aside
         wide
-        status={status}
+        status={activeDirty ? <StatusLine>{t("templates.dirtyHint")}</StatusLine> : status}
         footer={
-          <Button asChild variant="outline">
-            <Link to="/mushafs/$mushafId/process" params={{ mushafId }}>
+          <div className="flex flex-col gap-3">
+            <button
+              type="button"
+              onClick={() => saveMutation.mutate(activeType)}
+              disabled={!canSave}
+              className="inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-control bg-lapis text-[14px] font-semibold text-on-lapis transition-colors hover:bg-lapis/90 disabled:cursor-default disabled:opacity-50"
+            >
+              {saveMutation.isPending ? (
+                <BusyLabel>{t("common.saving")}</BusyLabel>
+              ) : activeDirty || !hasTemplate(activeType) ? (
+                t("templates.saveNamed", { label: label(activeType) })
+              ) : (
+                <>
+                  <Check size={15} aria-hidden="true" /> {t("templates.savedBtn")}
+                </>
+              )}
+            </button>
+            <Link
+              to="/mushafs/$mushafId/process"
+              params={{ mushafId }}
+              className="inline-flex h-11 items-center justify-center rounded-control border border-rule-2 text-[14px] font-semibold text-ink-3 no-underline transition-colors hover:bg-card hover:text-ink"
+            >
               {t("templates.continueProcess")}
             </Link>
-          </Button>
+          </div>
         }
       >
-        <WarnNote>{t("templates.openingPagesTip")}</WarnNote>
-        <WarnNote>{t("templates.cropTip")}</WarnNote>
-        <div data-tour="tpl-targets" className="flex flex-col gap-3">
+        <div
+          data-tour="tpl-targets"
+          role="radiogroup"
+          aria-label={t("templates.pickerLabel")}
+          className="flex flex-col gap-1.5"
+        >
           {TEMPLATE_TYPES.map((type) => {
-            const name = t(`templates.name_${type}`);
-            const hint = t(`templates.hint_${type}`);
             const url = templateUrlOf(type);
-            const dirty = isDirty(type);
-            const saved = isSaved(type);
+            const state = stateOf(type);
             const active = activeType === type;
             return (
-              <button
+              <label
                 key={type}
-                type="button"
-                onClick={() => selectType(type)}
-                className={`overflow-hidden cursor-pointer rounded-xl border p-3 text-start transition-colors ${
-                  active
-                    ? "border-lapis ring-2 ring-lapis/30 bg-card"
-                    : saved
-                      ? "border-done/80 ring-1 ring-done/30 bg-done/5 hover:bg-done/10"
-                      : "border-rule hover:border-rule-2"
+                className={`flex cursor-pointer items-center gap-3 rounded-card border px-3 py-2.5 transition-colors ${
+                  active ? "border-lapis bg-lapis-wash" : "border-rule bg-card hover:border-rule-2"
                 }`}
               >
-                <div className="mb-2 flex items-start gap-2">
-                  <span className="flex-1 text-[13px] font-semibold text-ink">{name}</span>
-                  <span className="flex flex-col items-end gap-1">
-                    {dirty ? (
-                      <span className="text-[11px] font-medium text-lapis-text">
-                        {t("templates.unsaved")}
-                      </span>
-                    ) : saved ? (
-                      <span className="px-1.5 py-[1px] text-[10px] border-done/40 bg-done-wash rounded-pill border flex items-center gap-1 text-[11px] font-medium text-done-text">
-                        <Check size={12} /> {t("templates.saved")}
-                      </span>
-                    ) : (
-                      <span className="text-[11px] text-ink-3">{t("templates.notSet")}</span>
-                    )}
-                    {hasIgnore(type) && (
-                      <span className="rounded-pill border border-stop/40 bg-stop-wash px-1.5 py-[1px] text-[10px] font-medium text-stop-text">
-                        {t("templates.ignoreChip")}
-                      </span>
-                    )}
-                  </span>
-                </div>
-                <p className="mb-2 text-[11px] text-ink-3">{hint}</p>
-                <div className="flex h-16 w-full items-center justify-center overflow-hidden rounded border border-rule bg-sheet">
-                  {url ? (
-                    <img src={url} alt={name} className="max-h-full max-w-full object-contain" />
-                  ) : (
-                    <span className="text-[10px] text-ink-3">{t("templates.noCrop")}</span>
+                <input
+                  type="radio"
+                  name="template"
+                  checked={active}
+                  onChange={() => selectType(type)}
+                  className="h-4 w-4 flex-none cursor-pointer accent-lapis"
+                />
+                <span className="min-w-0 flex-1 text-[14px] font-semibold">
+                  {t(`templates.name_${type}`)}
+                </span>
+                {/* A crop of the scan: it stays on white, as the page does. */}
+                <span className="flex h-8 w-16 flex-none items-center justify-center overflow-hidden rounded-[4px] border border-rule-2 bg-white">
+                  {url && <img src={url} alt="" className="max-h-full max-w-full object-contain" />}
+                </span>
+                <span className="flex w-[74px] flex-none flex-col items-end gap-0.5">
+                  <span className={`text-[12px] font-semibold ${state.tone}`}>{state.label}</span>
+                  {hasIgnore(type) && (
+                    <span className="text-[11px] text-stop-text">{t("templates.ignoreChip")}</span>
                   )}
-                </div>
-              </button>
+                </span>
+              </label>
             );
           })}
         </div>
+
+        <section
+          data-tour="tpl-capture"
+          className="flex flex-col gap-3 rounded-card border border-rule bg-card p-4"
+        >
+          <div className="flex items-baseline justify-between gap-2">
+            <h2 className="m-0 text-[15px] font-semibold">{activeName}</h2>
+            <span className={`text-[12px] font-semibold ${stateOf(activeType).tone}`}>
+              {stateOf(activeType).label}
+            </span>
+          </div>
+          <p className="m-0 text-[12.5px] leading-normal text-ink-3">
+            {t(`templates.hint_${activeType}`)}
+          </p>
+          <TemplatePreview mode="template" pageUrl={pageUrl} working={working} />
+          <RectInputs rect={working} onChange={setWorking} max={natural} />
+          {preview <= OPENING_PAGES && <WarnNote>{t("templates.openingPageWarning")}</WarnNote>}
+          <button
+            type="button"
+            onClick={capture}
+            disabled={!working || working.w < 2}
+            className="inline-flex h-10 cursor-pointer items-center justify-center rounded-control border border-ink text-[13.5px] font-semibold text-ink transition-colors hover:bg-sunk disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {cap ? t("templates.recrop") : t("templates.capture", { label: label(activeType) })}
+          </button>
+
+          <IgnoreSection
+            templateUrl={templateUrl}
+            ignoreRect={ignoreRect}
+            editing={editingIgnore}
+            onEdit={() => setEditingIgnore(true)}
+            onDone={() => {
+              setEditingIgnore(false);
+              if (ignores[activeType]) toast.success(t("templates.ignoreSetToast"));
+            }}
+            onChange={(r) => setIgnores((p) => ({ ...p, [activeType]: r ?? null }))}
+            onClear={() => {
+              setIgnores((p) => ({ ...p, [activeType]: null }));
+              setEditingIgnore(false);
+              toast.success(t("templates.ignoreCleared"));
+            }}
+          />
+        </section>
+
+        <WarnNote>{t("templates.openingPagesTip")}</WarnNote>
+        <WarnNote>{t("templates.cropTip")}</WarnNote>
       </Aside>
 
       <TourOverlay tour={tour} />
@@ -382,8 +379,8 @@ function TemplatesPage() {
 
 function WarnNote({ children }: { children: React.ReactNode }) {
   return (
-    <p className="flex gap-1.5 rounded-md border border-warn/25 bg-warn-wash px-2.5 py-2 text-[11px] leading-snug text-warn-text">
-      <TriangleAlert size={13} className="mt-[1px] flex-none" />
+    <p className="m-0 flex gap-2 rounded-lg bg-warn-wash px-3.5 py-2.5 text-[12.5px] leading-normal text-warn-text">
+      <TriangleAlert size={14} className="mt-0.5 flex-none" aria-hidden="true" />
       <span>{children}</span>
     </p>
   );
@@ -411,15 +408,15 @@ function IgnoreSection({
   const { t } = useTranslation();
   if (!templateUrl) {
     return (
-      <p className="rounded-md border border-rule bg-sheet px-3 py-2 text-[11px] text-ink-3">
+      <p className="m-0 rounded-lg border border-rule-soft bg-sheet px-3 py-2.5 text-[12.5px] text-ink-3">
         {t("templates.captureFirstToIgnore")}
       </p>
     );
   }
   return (
-    <div className="flex flex-col gap-2 rounded-md border border-rule bg-sheet p-3">
+    <div className="flex flex-col gap-2 rounded-lg border border-rule-soft bg-sheet p-3">
       <div className="flex items-center justify-between gap-2">
-        <span className="flex items-center gap-1.5 text-[12px] font-semibold text-ink">
+        <span className="flex items-center gap-1.5 text-[13px] font-semibold capitalize text-ink">
           {t("templates.ignoreLabel")}
           {ignoreRect && (
             <span className="inline-flex items-center gap-1 rounded-pill border border-done/40 bg-done/10 px-1.5 py-[1px] text-[10px] font-medium text-done-text">

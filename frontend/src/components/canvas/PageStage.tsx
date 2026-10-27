@@ -1,9 +1,8 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
-import { ChevronNav } from "@/components/canvas/ChevronNav";
 import { PageCanvas } from "@/components/canvas/PageCanvas";
-import { PageJump } from "@/components/canvas/PageJump";
+import { PagePill } from "@/components/canvas/PagePill";
 import { PageRail } from "@/components/canvas/PageRail";
 import { ToolToggle } from "@/components/canvas/ToolToggle";
 import { ZoomControl, type Zoom } from "@/components/canvas/ZoomControl";
@@ -42,10 +41,10 @@ type Props = {
 };
 
 /**
- * A single zoomable/pannable page with select & hand tools, chevron prev/next,
- * a click-to-jump page indicator, and an optional crop rectangle. The building
- * blocks (ChevronNav, PageJump, ZoomControl, ToolToggle, PageCanvas) are all
- * standalone and reused elsewhere.
+ * A single zoomable/pannable page with an optional crop rectangle. The toolbar
+ * sits on the well above it: select & hand tools, the page pill (next, a
+ * click-to-jump page indicator, previous) and zoom. The building blocks (PagePill,
+ * ZoomControl, ToolToggle, PageCanvas) are standalone and reused elsewhere.
  */
 export function PageStage({
   imageUrl,
@@ -92,24 +91,24 @@ export function PageStage({
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      {/* Toolbar */}
+      {/* Toolbar, on the well */}
       <div
         data-tour="canvas-toolbar"
-        className="flex h-9 flex-shrink-0 items-center gap-2 border-b border-rule bg-card px-3"
+        className="flex flex-shrink-0 flex-wrap items-center justify-between gap-2.5 bg-well px-4 py-3"
       >
-        <ToolToggle value={effectiveTool} onChange={setTool} />
-        {toolbarExtras && (
-          <>
-            <div className="mx-1 h-5 w-px bg-rule" />
-            {toolbarExtras}
-          </>
-        )}
-        <div className="ms-auto">
-          <ZoomControl value={zoom} onChange={setZoom} />
+        <div className="flex items-center gap-2.5">
+          <ToolToggle value={effectiveTool} onChange={setTool} />
+          {toolbarExtras}
         </div>
+        <PagePill
+          page={page}
+          pageCount={pageCount}
+          onPageChange={onPageChange}
+          label={renderLabel?.(page)}
+        />
+        <ZoomControl value={zoom} onChange={setZoom} />
       </div>
 
-      {/* Canvas + chevrons + floating page indicator */}
       <div className="relative flex flex-1 overflow-hidden">
         <PageCanvas
           imageUrl={imageUrl}
@@ -126,19 +125,10 @@ export function PageStage({
           locked={cropping ? !!crop.locked : false}
           onToggleLock={cropping ? crop.onLockToggle : undefined}
         />
-        <ChevronNav page={page} pageCount={pageCount} onPageChange={onPageChange} />
-        <div className="absolute bottom-3 left-1/2 z-10 -translate-x-1/2 rounded-pill border border-rule bg-card/90 px-3 py-1.5 shadow-[var(--shadow-card)] backdrop-blur">
-          <PageJump
-            page={page}
-            pageCount={pageCount}
-            onPageChange={onPageChange}
-            label={renderLabel?.(page)}
-          />
-        </div>
       </div>
 
       {/* Status bar: live cursor + crop dimensions */}
-      <div className="flex h-7 flex-shrink-0 items-center gap-4 border-t border-rule bg-card px-3 text-[12px] text-ink-3">
+      <div className="flex h-7 flex-shrink-0 items-center gap-4 border-t border-rule bg-sheet px-4 text-[12px] text-ink-3">
         <span className="font-mono">
           {cursor ? `x: ${cursor.x}  y: ${cursor.y}` : "x: —  y: —"}
         </span>
