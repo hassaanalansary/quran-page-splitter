@@ -1,7 +1,8 @@
-import { createFileRoute, Outlet, useParams, useRouterState } from "@tanstack/react-router";
+import { createFileRoute, Link, Outlet, useParams, useRouterState } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 
 import { LoadingState } from "@/components/app/SatrLoader";
+import { ErrorState, STATE_SECONDARY } from "@/components/app/States";
 import type { StepSlug } from "@/components/app/details/helpers";
 import { ShellStepContext } from "@/components/app/shell/context";
 import { Spine } from "@/components/app/shell/Spine";
@@ -49,9 +50,15 @@ function WorkspaceLayout() {
             </Centered>
           ) : isError ? (
             <Centered>
-              <span className="text-stop-text">
-                {error instanceof Error ? error.message : t("workspace.loadFailed")}
-              </span>
+              <ErrorState
+                title={t("workspace.loadFailed")}
+                body={error instanceof Error ? error.message : undefined}
+                className="w-full max-w-[420px]"
+              >
+                <Link to="/" className={STATE_SECONDARY}>
+                  {t("header.allMushafs")}
+                </Link>
+              </ErrorState>
             </Centered>
           ) : null}
         </div>

@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 
+import { PageGhost } from "@/components/canvas/PageGhost";
 import { PagePill } from "@/components/canvas/PagePill";
 import { PageRail } from "@/components/canvas/PageRail";
 import { ToolToggle } from "@/components/canvas/ToolToggle";
@@ -87,6 +89,7 @@ export function ReviewEditCanvas({
   pageExtra,
   zoomExtra,
 }: Props) {
+  const { t } = useTranslation();
   const [tool, setTool] = useState<CanvasTool>("select");
   const { scrollRef: wrapRef, effectiveTool, handCursor, containerProps } = useSpacePan({ tool });
 
@@ -356,7 +359,7 @@ export function ReviewEditCanvas({
               <img
                 ref={imgRef}
                 src={imageUrl}
-                alt={`Page ${page}`}
+                alt={t("canvas.pageAlt", { page })}
                 draggable={false}
                 onLoad={(e) =>
                   setNatural({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })
@@ -391,8 +394,8 @@ export function ReviewEditCanvas({
             </div>
           ) : (
             <div className="flex h-full items-center justify-center">
-              <div className="rounded-md bg-card/80 px-6 py-4 text-[13px] text-ink-2 shadow-[var(--shadow-card)]">
-                No image for page {page}.
+              <div className="rounded-card bg-card px-6 py-4 text-[13px] text-ink-2 shadow-[var(--shadow-card)]">
+                {t("canvas.noPageImage")}
               </div>
             </div>
           )}

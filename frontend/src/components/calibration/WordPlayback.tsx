@@ -2,7 +2,6 @@ import { ChevronLeft, ChevronRight, Pause, Pencil, Play, Repeat, RotateCcw } fro
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
-import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { mediaUrl, pageImageUrl } from "@/lib/api";
 import {
@@ -494,16 +493,16 @@ function Player({
                   {attentionKey(flag) ? t(attentionKey(flag)!) : flag}
                 </span>
               ))}
-              <Button
-                variant="outline"
-                className="mt-1 h-8 gap-2"
+              <button
+                type="button"
+                className="inline-flex cursor-pointer items-center justify-center rounded-control border border-rule-2 bg-card font-semibold text-ink transition-colors hover:bg-sheet disabled:cursor-default disabled:opacity-50 mt-1 h-8 gap-2 px-3 text-[12.5px]"
                 onClick={() =>
                   onInspect({ snapshot: current.line.snapshot_id, ids: [selectedBlob.id] })
                 }
               >
                 <Pencil size={13} />
                 {t("wordPlayback.inspect")}
-              </Button>
+              </button>
             </div>
           )}
           <p className="text-[11px] text-ink-3">

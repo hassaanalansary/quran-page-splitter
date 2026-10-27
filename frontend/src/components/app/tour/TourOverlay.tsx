@@ -1,4 +1,3 @@
-import { X } from "lucide-react";
 import { useEffect, useLayoutEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
@@ -108,13 +107,13 @@ export function TourOverlay({ tour }: { tour: TourController }) {
 
       {spot && (
         <div
-          className="pointer-events-none absolute rounded-lg ring-2 ring-lapis/70"
+          className="pointer-events-none absolute rounded-lg"
           style={{
             top: spot.top,
             left: spot.left,
             width: spot.width,
             height: spot.height,
-            boxShadow: "0 0 0 9999px var(--scrim)",
+            boxShadow: "0 0 0 4px var(--gold), 0 0 0 9999px var(--scrim)",
           }}
         />
       )}
@@ -122,31 +121,29 @@ export function TourOverlay({ tour }: { tour: TourController }) {
       <div
         role="dialog"
         aria-modal="true"
-        className="absolute flex flex-col gap-2 rounded-xl border border-rule bg-card p-4 shadow-xl"
+        aria-label={step.title}
+        className="absolute flex flex-col gap-2 rounded-card bg-card p-3.5 text-ink shadow-[0_10px_30px_rgba(0,0,0,0.3)]"
         style={{ top: cardTop, left: cardLeft, width: CARD_W }}
       >
-        <div className="flex items-start gap-2">
-          <h3 className="flex-1 text-[13.5px] font-semibold text-ink">{step.title}</h3>
+        <span className="font-mono text-[11.5px] font-semibold text-ink-3">
+          {t("tour.stepCount", { current: index + 1, total: steps.length })}
+        </span>
+        <strong className="text-[15px] leading-snug">{step.title}</strong>
+        <p className="m-0 text-[12.5px] leading-normal text-ink-2">{step.body}</p>
+        <div className="mt-1 flex items-center justify-between">
           <button
             type="button"
-            aria-label={t("tour.skip")}
             onClick={stop}
-            className="-me-1 -mt-1 flex-none rounded p-1 text-ink-3 hover:bg-sheet hover:text-ink"
+            className="h-8 cursor-pointer px-2 text-[12.5px] font-semibold text-ink-3 hover:text-ink"
           >
-            <X size={14} />
+            {t("tour.skip")}
           </button>
-        </div>
-        <p className="text-[12px] leading-[1.5] text-ink-2">{step.body}</p>
-        <div className="mt-1 flex items-center justify-between">
-          <span className="font-mono text-[10.5px] text-ink-3">
-            {t("tour.stepCount", { current: index + 1, total: steps.length })}
-          </span>
           <div className="flex gap-1.5">
             {!isFirst && (
               <button
                 type="button"
                 onClick={back}
-                className="rounded-md border-[1.5px] border-rule-2 bg-card px-2.5 py-1 text-[11.5px] font-medium text-ink-2 hover:bg-sheet"
+                className="h-8 cursor-pointer rounded-control border border-rule-2 bg-card px-2.5 text-[12.5px] font-semibold text-ink hover:bg-sheet"
               >
                 {t("tour.back")}
               </button>
@@ -154,12 +151,25 @@ export function TourOverlay({ tour }: { tour: TourController }) {
             <button
               type="button"
               onClick={isLast ? stop : next}
-              className="rounded-md bg-lapis px-2.5 py-1 text-[11.5px] font-semibold text-on-lapis hover:bg-lapis/90"
+              className="h-8 cursor-pointer rounded-control bg-lapis px-3 text-[12.5px] font-semibold text-on-lapis hover:bg-lapis/90"
             >
               {isLast ? t("tour.done") : t("tour.next")}
             </button>
           </div>
         </div>
+      </div>
+
+      {/* Where the tour is: the current step a long gold bar. */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-0 bottom-6 flex justify-center gap-1.5"
+      >
+        {steps.map((_, i) => (
+          <span
+            key={i}
+            className={`h-[5px] rounded-[3px] ${i === index ? "w-[22px] bg-gold" : "w-2 bg-white/40"}`}
+          />
+        ))}
       </div>
     </div>,
     document.body,

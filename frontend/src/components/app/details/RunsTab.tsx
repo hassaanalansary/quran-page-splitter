@@ -1,11 +1,12 @@
 import { Link } from "@tanstack/react-router";
-import { ScrollText } from "lucide-react";
+import { History, ScrollText } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { Run } from "@/lib/api";
 import { AbortDiagnostics } from "@/components/app/AbortDiagnostics";
 import { RunLogDialog } from "@/components/app/RunLogDialog";
+import { EmptyState, STATE_PRIMARY } from "@/components/app/States";
 
 import {
   fmtDayTime,
@@ -23,19 +24,15 @@ export function RunsTab({ mushafId, runs }: { mushafId: string; runs: Run[] | un
   const { t } = useTranslation();
   if (!runs || runs.length === 0) {
     return (
-      <div className="flex flex-col items-center gap-3 rounded-panel border border-rule bg-card px-6 py-14 text-center">
-        <span className="font-display text-[20px] font-semibold">{t("details.runs_none")}</span>
-        <span className="max-w-[420px] text-[13.5px] leading-normal text-ink-2">
-          {t("details.runs_noneDesc")}
-        </span>
-        <Link
-          to="/mushafs/$mushafId/process"
-          params={{ mushafId }}
-          className="mt-1 inline-flex h-10 items-center rounded-control bg-lapis px-4 text-[13.5px] font-semibold text-on-lapis no-underline hover:bg-lapis/90"
-        >
+      <EmptyState
+        icon={<History size={28} strokeWidth={1.6} aria-hidden="true" />}
+        title={t("details.runs_none")}
+        body={t("details.runs_noneDesc")}
+      >
+        <Link to="/mushafs/$mushafId/process" params={{ mushafId }} className={STATE_PRIMARY}>
           {t("details.runs_new")}
         </Link>
-      </div>
+      </EmptyState>
     );
   }
 

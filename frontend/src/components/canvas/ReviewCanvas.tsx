@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { PageRail } from "@/components/canvas/PageRail";
 import type { Line, LineType, Rect } from "@/lib/api/types";
@@ -42,6 +43,7 @@ export function ReviewCanvas({
   processed,
   reviewed,
 }: Props) {
+  const { t } = useTranslation();
   const scrollRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
   const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);
@@ -94,7 +96,7 @@ export function ReviewCanvas({
               <img
                 ref={imgRef}
                 src={imageUrl}
-                alt={`Page ${page}`}
+                alt={t("canvas.pageAlt", { page })}
                 draggable={false}
                 onLoad={(e) =>
                   setNatural({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })

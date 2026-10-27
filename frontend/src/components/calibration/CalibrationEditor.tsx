@@ -1,5 +1,4 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useBlocker } from "@tanstack/react-router";
 import {
   ChevronDown,
   ChevronLeft,
@@ -17,6 +16,7 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
 import { CanvasHelp } from "@/components/app/CanvasHelp";
+import { useLeaveGuard } from "@/components/app/LeaveGuard";
 import { Aside, Hint, PanelCard, StatusLine, StepBody } from "@/components/app/Panel";
 import { BusyLabel, LoadingState } from "@/components/app/SatrLoader";
 import { WordRunProgress } from "@/components/app/WordRunProgress";
@@ -790,13 +790,11 @@ export function CalibrationEditor({
   // ── leaving ────────────────────────────────────────────────────────────────
   // Blocks a page change too, not only leaving the step: the lines are rebuilt per
   // page, so it would drop them unasked.
-  useBlocker({
-    enableBeforeUnload: () => dirtyRef.current,
-    shouldBlockFn: ({ current, next }) => {
-      if (!dirtyRef.current) return false;
-      if (current.pathname === next.pathname && pageOf(current) === pageOf(next)) return false;
-      return !window.confirm(t("calibration.leaveConfirm"));
-    },
+  const leaveDialog = useLeaveGuard({
+    dirty: () => dirtyRef.current,
+    leaves: (current, next) =>
+      current.pathname !== next.pathname || pageOf(current) !== pageOf(next),
+    body: t("calibration.leaveBody", { page }),
   });
 
   // ── keyboard ───────────────────────────────────────────────────────────────
@@ -1850,6 +1848,7 @@ export function CalibrationEditor({
         pending={confirmMutation.isPending}
         onConfirm={(acknowledge) => confirmMutation.mutate(acknowledge)}
       />
+      {leaveDialog}
     </StepBody>
   );
 }

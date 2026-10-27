@@ -2,7 +2,7 @@ import { createFileRoute, Link, useParams } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { LoadingState } from "@/components/app/SatrLoader";
+import { ErrorState, HubSkeleton, STATE_SECONDARY } from "@/components/app/States";
 import { ExportTab } from "@/components/app/details/ExportTab";
 import { HubBand, HubTopBar } from "@/components/app/details/HubHeader";
 import { continueTarget, pipelineSteps, runAbortPage } from "@/components/app/details/helpers";
@@ -50,23 +50,24 @@ function MushafDetailsPage() {
 
   if (isPending)
     return (
-      <Centered>
-        <LoadingState>{t("workspace.loadingMushaf")}</LoadingState>
-      </Centered>
+      <div className="flex h-screen w-full flex-col overflow-hidden bg-paper">
+        <HubSkeleton />
+      </div>
     );
   if (isError || !mushaf) {
     return (
       <Centered>
-        <div className="flex flex-col items-center gap-3">
-          <span className="text-stop-text">
-            {error instanceof Error ? error.message : t("workspace.loadFailed")}
-          </span>
-          {/* Reaching a mushaf that isn't yours lands here, so there has to be a
-              way out — otherwise the only option is the browser's back button. */}
-          <Link to="/" className="text-[12.5px] font-semibold text-lapis-text hover:underline">
+        {/* Reaching a mushaf that isn't yours lands here, so there has to be a
+            way out — otherwise the only option is the browser's back button. */}
+        <ErrorState
+          title={t("workspace.loadFailed")}
+          body={error instanceof Error ? error.message : undefined}
+          className="w-full max-w-[420px]"
+        >
+          <Link to="/" className={STATE_SECONDARY}>
             {t("header.allMushafs")}
           </Link>
-        </div>
+        </ErrorState>
       </Centered>
     );
   }

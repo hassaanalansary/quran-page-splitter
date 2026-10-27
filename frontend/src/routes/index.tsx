@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Globe, Plus, Trash2, Upload } from "lucide-react";
+import { BookOpen, Globe, Plus, Trash2, Upload } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -9,6 +9,13 @@ import { DeleteMushafDialog } from "@/components/app/DeleteMushafDialog";
 import { ImportBundleDialog } from "@/components/app/ImportBundleDialog";
 import { MushafStatusBadge } from "@/components/app/MushafStatusBadge";
 import { OrnamentStrip } from "@/components/app/Ornament";
+import {
+  CardSkeleton,
+  EmptyState,
+  ErrorState,
+  STATE_PRIMARY,
+  STATE_SECONDARY,
+} from "@/components/app/States";
 import { TopBar } from "@/components/app/TopBar";
 import { useOtherLanguage } from "@/hooks/use-other-language";
 import { requireSessionOrGallery } from "@/lib/auth/guard";
@@ -23,7 +30,7 @@ export const Route = createFileRoute("/")({
 function HomePage() {
   const { t } = useTranslation();
   const other = useOtherLanguage();
-  const { data: mushafs, isPending, isError, error } = useMushafs();
+  const { data: mushafs, isPending, isError, error, refetch } = useMushafs();
   const [createOpen, setCreateOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
 
@@ -70,15 +77,35 @@ function HomePage() {
 
         <div className="mx-auto flex w-full max-w-[1240px] flex-col gap-[30px] px-7 pb-9 pt-7">
           {isError ? (
-            <div className="rounded-card border border-stop/20 bg-stop-wash px-4 py-3 text-sm text-stop-text">
-              {error instanceof Error ? error.message : t("home.loadFailed")}
-            </div>
+            <ErrorState
+              title={t("home.loadFailed")}
+              body={error instanceof Error ? error.message : undefined}
+              className="max-w-[460px]"
+            >
+              <button type="button" onClick={() => void refetch()} className={STATE_PRIMARY}>
+                {t("errorPage.tryAgain")}
+              </button>
+            </ErrorState>
+          ) : !isPending && mushafs.length === 0 ? (
+            <EmptyState
+              icon={<BookOpen size={30} strokeWidth={1.6} aria-hidden="true" />}
+              title={t("home.emptyTitle")}
+              body={t("home.emptyBody")}
+            >
+              <button type="button" onClick={() => setCreateOpen(true)} className={STATE_PRIMARY}>
+                {t("home.newMushaf")}
+              </button>
+              <button type="button" onClick={() => setImportOpen(true)} className={STATE_SECONDARY}>
+                {t("bundle.detect.title")}
+              </button>
+            </EmptyState>
           ) : (
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(214px,1fr))] gap-[18px]">
+            <div
+              aria-busy={isPending}
+              className="grid grid-cols-[repeat(auto-fill,minmax(214px,1fr))] gap-[18px]"
+            >
               {isPending
-                ? Array.from({ length: 4 }).map((_, i) => (
-                    <div key={i} className="min-h-[300px] animate-pulse rounded-card bg-sunk" />
-                  ))
+                ? Array.from({ length: 4 }).map((_, i) => <CardSkeleton key={i} />)
                 : mushafs.map((m) => <MushafCard key={m.id} mushaf={m} />)}
               {!isPending && <AddCard onClick={() => setCreateOpen(true)} />}
             </div>

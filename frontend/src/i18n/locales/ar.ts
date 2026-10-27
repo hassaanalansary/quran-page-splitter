@@ -19,6 +19,9 @@ export const ar: typeof en = {
     loading: "جارٍ التحميل…",
     saving: "جارٍ الحفظ…",
     dash: "—",
+    leaveTitle: "المغادرة دون حفظ؟",
+    leaveAnyway: "غادِر على أي حال",
+    keepEditing: "واصل التحرير",
   },
   lang: {
     label: "اللغة",
@@ -45,6 +48,7 @@ export const ar: typeof en = {
     progressProcessed: "{{done}} من {{total}} صفحة معالَجة",
     progressReviewed: "{{done}} من {{total}} مراجَعة",
     progressExported: "{{done}} من {{total}} سطراً مُصدَّراً",
+    howItWorks: "كيف تعمل هذه الخطوة",
   },
   hub: {
     breadcrumb: "مسار التنقل",
@@ -250,6 +254,8 @@ export const ar: typeof en = {
       unpublishFailed: "تعذّرت إزالة هذا المصحف.",
       save: "حفظ الوصف",
     },
+    noMatchSearch: "لا مصاحف تطابق «{{search}}»",
+    clearSearch: "امسح البحث",
   },
   bundle: {
     title: "حزمة العمل",
@@ -339,6 +345,8 @@ export const ar: typeof en = {
     deleteTitle: "حذف المصحف",
     deleted: "تم حذف «{{name}}».",
     deleteFailed: "تعذّر الحذف.",
+    emptyTitle: "لا مصاحف بعد",
+    emptyBody: "ابدأ من ملف PDF لمصحف مطبوع، أو استورد حزمة شاركها أحدهم.",
   },
 
   deleteDialog: {
@@ -350,12 +358,12 @@ export const ar: typeof en = {
   },
   notFound: {
     title: "الصفحة غير موجودة",
-    body: "الصفحة التي تبحث عنها غير موجودة أو تم نقلها.",
+    body: "لا مصحف ولا خطوة في هذا العنوان.",
     goHome: "الصفحة الرئيسية",
   },
   errorPage: {
     title: "تعذّر تحميل هذه الصفحة",
-    body: "حدث خطأ لدينا. يمكنك إعادة التحميل أو العودة إلى الصفحة الرئيسية.",
+    body: "لم يُجِب الخادم. كل ما حفظته في أمان.",
     tryAgain: "إعادة المحاولة",
     goHome: "الصفحة الرئيسية",
   },
@@ -654,7 +662,6 @@ export const ar: typeof en = {
     chip_text: "نص",
     chip_sura_header: "سورة",
     chip_besmella: "بسملة",
-    leaveConfirm: "لديك تعديلات مراجعة غير محفوظة. المغادرة دون حفظ؟",
     saveFailed: "فشل الحفظ.",
     markedReviewed: "تم وسم الصفحات {{from}}–{{to}} كمُراجَعة.",
     nothingToSave: "لا شيء للحفظ.",
@@ -713,13 +720,13 @@ export const ar: typeof en = {
     previewLines: "الأسطر {{from}}–{{to}}",
     previewSegments: "{{count}} مقطع",
     previewSpeed: "السرعة",
+    leaveBody: "لديك {{count}} تعديل مراجعة غير محفوظ. المغادرة تُسقطها.",
   },
   finalize: {
     cutsSaved: "تم حفظ القصّات.",
     saveFailed: "فشل الحفظ.",
     exportedToast: "تم تصدير {{count}} صورة سطر.",
     exportFailed: "فشل التصدير.",
-    leaveConfirm: "لديك قصّات غير محفوظة. المغادرة دون حفظ؟",
     unsavedStatus: "قصّات غير محفوظة",
     savedStatus: "جميع القصّات محفوظة",
     saveCuts: "حفظ القصّات",
@@ -757,6 +764,7 @@ export const ar: typeof en = {
     viewerOn_white: "صورة PNG شفافة، معروضة على الأبيض",
     viewerOn_dark: "صورة PNG شفافة، معروضة على الأسود — والمِداد بالأبيض",
     viewerOn_checker: "صورة PNG شفافة، معروضة على خلفية الشبكة",
+    leaveBody: "لديك قصّات غير محفوظة في الصفحة {{page}}. المغادرة تُسقطها.",
   },
   words: {
     running: "جارٍ التشغيل…",
@@ -776,12 +784,14 @@ export const ar: typeof en = {
     redo: "إعادة",
 
     // الشرط
-    gateStatus: "الصفحة {{page}} ليست جاهزة لتقسيم الكلمات",
-    gateUnprocessed: "لم تُعالَج الصفحة {{page}} بعد، فليس فيها أسطر تُقسَّم إلى كلمات.",
+    gateStatus: "الصفحة {{page}} ليست جاهزة للحبر",
+    gateUnprocessed:
+      "لا يقرأ الحبر صفحةً إلا بعد معالجتها ومراجعتها. لم تُعالَج الصفحة {{page}} بعد، فليس فيها أسطر تُقرأ.",
     gateUnreviewed:
-      "لم تُراجَع الصفحة {{page}} بعد. يرتكز تقسيم الكلمات على فواصل الآيات، ومواضعها تُضبط في المراجعة — والتشغيل قبل ذلك يضع كل قصّة في غير موضعها.",
+      "لا يقرأ الحبر صفحةً إلا بعد معالجتها ومراجعتها: فهو يرتكز على فواصل الآيات التي تضبطها المراجعة. الصفحة {{page}} معالَجة لكنها لم تُراجَع بعد.",
     gateToProcess: "اذهب إلى المعالجة",
     gateToReview: "راجع الصفحة {{page}}",
+    gateTitle: "الصفحة {{page}} ليست جاهزة للحبر",
   },
   calibration: {
     // شريط الأدوات
@@ -1159,7 +1169,6 @@ export const ar: typeof en = {
     confirmedToast: "اعتُمدت الصفحة {{page}}.",
     requestFailed: "فشل الطلب.",
     reload: "أعد التحميل",
-    leaveConfirm: "لديك تعديلات معايرة غير محفوظة. أتغادر دون حفظ؟",
 
     // الحالة
     statusNotProcessed: "عالج هذه الصفحة للبدء",
@@ -1362,6 +1371,8 @@ export const ar: typeof en = {
       shortages: "آيات ينقصها أجزاء",
       noise: "شوائب محتملة",
     },
+    leaveBody: "لديك تعديلات حبر غير محفوظة في الصفحة {{page}}. المغادرة تُسقطها.",
+    notNow: "ليس الآن",
   },
   details: {
     tab_overview: "نظرة عامة",
@@ -1663,6 +1674,10 @@ export const ar: typeof en = {
     toolGroup: "أداة اللوحة",
     diag_counts: "عناوين السور {{headers}} · مناطق النص {{regions}}",
     diag_header: "عنوان",
+    noPageImage: "لا صورة لهذه الصفحة.",
+    pageAlt: "الصفحة {{page}}",
+    rail_processed: "الصفحة {{page}} · معالَجة",
+    rail_reviewed: "الصفحة {{page}} · مُراجَعة",
   },
   guide: {
     title: "كيف تعمل هذه الخطوة",
@@ -1709,6 +1724,8 @@ export const ar: typeof en = {
       s6: "مربّع كل كلمة مأخوذ من حبرها ويتبعه — لا يُقطع شيء باليد، فإذا أُسند الحبر إلى كلمته صحّ مربّعها. والجسم المشترك بين كلمتين يُقطع عند منتصفه. وDel يمحو الحبر الذي هو تشويش: لا يتبع كلمةً، وتُصدَّر صورة السطر من دونه.",
       s7: "المعاينة تعيد حساب الآيات المتأثرة دون حفظ، ويمكن قبولها أو تجاهلها. حفظ المسودة يحتفظ بالعمل غير المكتمل. تأكيد الصفحة يعلّم الصفحة التالية التي تعالجها. فعّل تطبيق التعلّم للقرارات التلقائية التجريبية. أنواع العلامات المقترحة قابلة للتعديل وتحتاج تأكيدًا صريحًا كي تُستخدم لتعليم النوع.",
     },
+    stepEyebrow: "الخطوة {{n}} · {{name}}",
+    gotIt: "فهمت",
   },
   tips: {
     firstPage: "رقم صفحة PDF الفعلية التي يبدأ فيها نص القرآن. ما قبلها يُعدّ مقدمة.",
@@ -1748,6 +1765,7 @@ export const ar: typeof en = {
     finalize: "اسحب حافة السطر العلوية أو السفلية لقصّه · اضغط Shift للمحو · وSpace للتحريك.",
     calibration:
       "← → البقعة التالية · ↑ ↓ السطر · Ctrl+← → الكلمة · B جسم · M علامة · 1–9 و0 النوع · A قبول النوع المتوقَّع · N التالي للنظر · Ctrl+S يحفظ المسودّة",
+    hide: "إخفاء",
   },
   tour: {
     next: "التالي",

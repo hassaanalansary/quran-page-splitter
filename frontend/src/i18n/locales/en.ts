@@ -19,6 +19,9 @@ export const en = {
     loading: "Loading…",
     saving: "Saving…",
     dash: "—",
+    leaveTitle: "Leave without saving?",
+    leaveAnyway: "Leave anyway",
+    keepEditing: "Keep editing",
   },
   lang: {
     label: "Language",
@@ -46,6 +49,7 @@ export const en = {
     progressProcessed: "{{done}} of {{total}} pages processed",
     progressReviewed: "{{done}} of {{total}} reviewed",
     progressExported: "{{done}} of {{total}} lines exported",
+    howItWorks: "How this step works",
   },
   // The mushaf hub (overview, pages, runs, export, settings)
   hub: {
@@ -266,6 +270,8 @@ export const en = {
       unpublishFailed: "Could not remove this mushaf.",
       save: "Save description",
     },
+    noMatchSearch: "No mushafs match “{{search}}”",
+    clearSearch: "Clear search",
   },
   bundle: {
     title: "Work bundle",
@@ -360,6 +366,8 @@ export const en = {
     deleteTitle: "Delete mushaf",
     deleted: "Deleted “{{name}}”.",
     deleteFailed: "Failed to delete.",
+    emptyTitle: "No mushafs yet",
+    emptyBody: "Start from the PDF of a printed mushaf, or import a bundle someone shared.",
   },
 
   deleteDialog: {
@@ -371,12 +379,12 @@ export const en = {
   },
   notFound: {
     title: "Page not found",
-    body: "The page you're looking for doesn't exist or has been moved.",
+    body: "No mushaf or step lives at this address.",
     goHome: "Go home",
   },
   errorPage: {
     title: "This page didn't load",
-    body: "Something went wrong on our end. You can try refreshing or head back home.",
+    body: "The server didn't answer. Everything you saved is safe.",
     tryAgain: "Try again",
     goHome: "Go home",
   },
@@ -680,7 +688,6 @@ export const en = {
     chip_text: "text",
     chip_sura_header: "sura",
     chip_besmella: "besmella",
-    leaveConfirm: "You have unsaved review edits. Leave without saving?",
     saveFailed: "Save failed.",
     markedReviewed: "Marked pages {{from}}–{{to}} reviewed.",
     nothingToSave: "Nothing to save.",
@@ -739,13 +746,13 @@ export const en = {
     previewLines: "lines {{from}}–{{to}}",
     previewSegments: "{{count}} segment(s)",
     previewSpeed: "Speed",
+    leaveBody: "You have {{count}} unsaved review edit(s). Leaving drops them.",
   },
   finalize: {
     cutsSaved: "Cuts saved.",
     saveFailed: "Save failed.",
     exportedToast: "Exported {{count}} line image(s).",
     exportFailed: "Export failed.",
-    leaveConfirm: "You have unsaved cuts. Leave without saving?",
     unsavedStatus: "Unsaved cuts",
     savedStatus: "All cuts saved",
     saveCuts: "Save cuts",
@@ -783,6 +790,7 @@ export const en = {
     viewerOn_white: "Transparent PNG, shown on white",
     viewerOn_dark: "Transparent PNG, shown on black — the ink drawn white",
     viewerOn_checker: "Transparent PNG, shown on the grid backdrop",
+    leaveBody: "You have unsaved cuts on page {{page}}. Leaving drops them.",
   },
   words: {
     running: "Running…",
@@ -802,13 +810,14 @@ export const en = {
     redo: "Redo",
 
     // The gate
-    gateStatus: "Page {{page}} is not ready for word detection",
+    gateStatus: "Page {{page}} isn't ready for Ink",
     gateUnprocessed:
-      "Page {{page}} has not been processed yet, so it has no lines to cut into words.",
+      "Ink reads a page only once it is processed and reviewed. Page {{page}} hasn't been processed yet, so it has no lines to read.",
     gateUnreviewed:
-      "Page {{page}} has not been reviewed yet. Word detection anchors on the aya separators, and Review is where their positions are settled — running before that puts every cut in the wrong place.",
+      "Ink reads a page only once it is processed and reviewed: it anchors on the aya separators Review settles. Page {{page}} is processed but not reviewed yet.",
     gateToProcess: "Go to Process",
     gateToReview: "Review page {{page}}",
+    gateTitle: "Page {{page}} isn't ready for Ink",
   },
   calibration: {
     // The toolbar
@@ -1195,7 +1204,6 @@ export const en = {
     confirmedToast: "Page {{page}} confirmed.",
     requestFailed: "The request failed.",
     reload: "Reload",
-    leaveConfirm: "You have unsaved calibration edits. Leave without saving?",
 
     // Status
     statusNotProcessed: "Process this page to start",
@@ -1401,6 +1409,8 @@ export const en = {
       shortages: "Ayat short of PAWs",
       noise: "Possible noise",
     },
+    leaveBody: "You have unsaved Ink edits on page {{page}}. Leaving drops them.",
+    notNow: "Not now",
   },
   details: {
     tab_overview: "Overview",
@@ -1705,6 +1715,10 @@ export const en = {
     toolGroup: "Canvas tool",
     diag_counts: "sura headers {{headers}} · text regions {{regions}}",
     diag_header: "header",
+    noPageImage: "No image for this page.",
+    pageAlt: "Page {{page}}",
+    rail_processed: "Page {{page}} · processed",
+    rail_reviewed: "Page {{page}} · reviewed",
   },
   guide: {
     title: "How this works",
@@ -1751,6 +1765,8 @@ export const en = {
       s6: "Every word's box is taken from its ink and follows it — nothing is cut by hand, so give the ink to the right word and the box is right. A body two words share is cut at its middle. Del erases ink that is noise: it belongs to no word, and the line's image is exported without it.",
       s7: "Preview recalculates affected ayat without saving; accept or discard it. Save draft keeps unfinished work. Confirm page makes it teach the next page you process. Enable Apply learning to new pages for experimental automatic role decisions. Suggested mark types remain editable and need explicit confirmation to teach their type.",
     },
+    stepEyebrow: "Step {{n}} · {{name}}",
+    gotIt: "Got it",
   },
   tips: {
     firstPage:
@@ -1795,6 +1811,7 @@ export const en = {
       "Drag a line's top or bottom edge to trim it · hold Shift to erase · hold Space to pan.",
     calibration:
       "← → next blob · ↑ ↓ line · Ctrl+← → word · B body · M mark · 1–9, 0 type · A accept the expected type · N the next thing to look at · Ctrl+S saves the draft",
+    hide: "Hide",
   },
   tour: {
     next: "Next",

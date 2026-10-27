@@ -1,11 +1,12 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute, useBlocker, useNavigate, useParams } from "@tanstack/react-router";
+import { createFileRoute, useNavigate, useParams } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
 import { Aside, Hint, StatusLine, StepBody } from "@/components/app/Panel";
 import { CanvasHelp } from "@/components/app/CanvasHelp";
+import { useLeaveGuard } from "@/components/app/LeaveGuard";
 import { InfoTip } from "@/components/app/InfoTip";
 import { ExportedLineDialog, type ExportedLine } from "@/components/app/ExportedLineDialog";
 import { LineNavigator } from "@/components/app/LineNavigator";
@@ -234,13 +235,9 @@ function FinalizePage() {
 
   const busy = saveMutation.isPending || exportMutation.isPending;
 
-  useBlocker({
-    enableBeforeUnload: () => dirty,
-    shouldBlockFn: ({ current, next }) => {
-      if (current.pathname === next.pathname) return false;
-      if (!dirty) return false;
-      return !window.confirm(t("finalize.leaveConfirm"));
-    },
+  const leaveDialog = useLeaveGuard({
+    dirty: () => dirty,
+    body: t("finalize.leaveBody", { page }),
   });
 
   const tourSteps: TourStep[] = [
@@ -636,6 +633,7 @@ function FinalizePage() {
       </Aside>
 
       <ExportedLineDialog lines={exportedLines} current={viewing} onCurrentChange={setViewing} />
+      {leaveDialog}
 
       <TourOverlay tour={tour} />
     </StepBody>

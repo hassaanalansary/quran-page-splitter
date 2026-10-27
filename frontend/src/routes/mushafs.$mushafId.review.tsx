@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute, Link, useBlocker, useNavigate, useParams } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate, useParams } from "@tanstack/react-router";
 import { Play, Plus, Redo2, Trash2, Undo2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { Aside, Field, StatusLine, StepBody } from "@/components/app/Panel";
 import { AyaPreviewDialog } from "@/components/app/AyaPreviewDialog";
 import { CanvasHelp } from "@/components/app/CanvasHelp";
+import { useLeaveGuard } from "@/components/app/LeaveGuard";
 import { LineNavigator } from "@/components/app/LineNavigator";
 import { BusyLabel, LoadingState } from "@/components/app/SatrLoader";
 import { TourOverlay } from "@/components/app/tour/TourOverlay";
@@ -275,13 +276,9 @@ function ReviewPage() {
   }
 
   // ── leave guard (free within the route; confirm on real navigation) ─────────
-  useBlocker({
-    enableBeforeUnload: () => unsavedCount > 0,
-    shouldBlockFn: ({ current, next }) => {
-      if (current.pathname === next.pathname) return false;
-      if (unsavedCount === 0) return false;
-      return !window.confirm(t("review.leaveConfirm"));
-    },
+  const leaveDialog = useLeaveGuard({
+    dirty: () => unsavedCount > 0,
+    body: t("review.leaveBody", { count: unsavedCount }),
   });
 
   // ── mutation helpers (keyed by line uid; every edit lands in history) ───────
@@ -738,6 +735,7 @@ function ReviewPage() {
         suraName={suraName}
       />
 
+      {leaveDialog}
       <TourOverlay tour={tour} />
     </StepBody>
   );

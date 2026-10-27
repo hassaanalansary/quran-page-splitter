@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 
 type Props = {
   page: number;
@@ -81,13 +82,16 @@ function Chip({
   onClick: () => void;
   state: "reviewed" | "processed" | "none";
 }) {
+  const { t } = useTranslation();
   const color =
     state === "reviewed" ? "var(--done)" : state === "processed" ? "var(--lapis)" : null;
   return (
     <button
       type="button"
       onClick={onClick}
-      title={state === "none" ? `Page ${n}` : `Page ${n} · ${state}`}
+      title={
+        state === "none" ? t("canvas.pageAlt", { page: n }) : t(`canvas.rail_${state}`, { page: n })
+      }
       className={[
         "relative h-7 min-w-7 flex-shrink-0 rounded px-2 text-[12px] font-medium tabular-nums transition-colors",
         active ? "bg-lapis text-on-lapis" : "bg-sheet text-ink-2 hover:bg-sunk hover:text-ink",

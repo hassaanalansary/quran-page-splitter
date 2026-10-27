@@ -42,8 +42,8 @@ export function ThemeMenuChoice() {
   const { preference } = useTheme();
 
   return (
-    <div className="flex items-center justify-between gap-3 px-2 py-1.5">
-      <span className="text-[13px] text-ink">{t("theme.label")}</span>
+    <div className="flex items-center justify-between gap-3 px-4 py-2">
+      <span className="text-[13.5px] text-ink">{t("theme.label")}</span>
       <DropdownMenuPrimitive.RadioGroup
         value={preference}
         onValueChange={(value) => setThemePreference(value as ThemePreference)}
@@ -55,7 +55,7 @@ export function ThemeMenuChoice() {
             key={option}
             value={option}
             onSelect={(event) => event.preventDefault()}
-            className="flex h-7 cursor-pointer select-none items-center rounded-[5px] px-[9px] text-[12px] font-medium text-ink-2 outline-none focus-visible:ring-2 focus-visible:ring-lapis data-[state=checked]:bg-card data-[state=checked]:font-semibold data-[state=checked]:text-ink"
+            className="flex h-7 cursor-pointer select-none items-center rounded-[5px] px-[9px] text-[12.5px] font-medium text-ink-2 outline-none focus-visible:ring-2 focus-visible:ring-lapis data-[state=checked]:bg-card data-[state=checked]:font-semibold data-[state=checked]:text-ink"
           >
             {t(`theme.${option}`)}
           </DropdownMenuPrimitive.RadioItem>

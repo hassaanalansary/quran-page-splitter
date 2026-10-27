@@ -69,6 +69,7 @@ export function FilmstripViewer({
   scrub,
   crop,
 }: Props) {
+  const { t } = useTranslation();
   const prevPageRef = useRef(page);
   const [aspect, setAspect] = useState(DEFAULT_ASPECT);
   const [whoosh, setWhoosh] = useState({ pct: 0, anim: false });
@@ -185,7 +186,7 @@ export function FilmstripViewer({
                 {withImage ? (
                   <img
                     src={pageImageUrl(mushafId, p, version)}
-                    alt={`Page ${p}`}
+                    alt={t("canvas.pageAlt", { page: p })}
                     draggable={false}
                     onLoad={(e) => {
                       const el = e.currentTarget;

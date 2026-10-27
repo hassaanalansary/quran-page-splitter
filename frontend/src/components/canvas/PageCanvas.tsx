@@ -5,6 +5,8 @@ import { useSpacePan, type CanvasTool } from "@/hooks/use-space-pan";
 import { useCtrlWheelZoom } from "@/hooks/use-ctrl-wheel-zoom";
 import { useZoomToPointer } from "@/hooks/use-zoom-to-pointer";
 
+import { PageGhost } from "./PageGhost";
+
 export type { CanvasTool };
 
 type Props = {
@@ -281,11 +283,12 @@ export function PageCanvas({
         </div>
       ) : (
         <div className="flex h-full items-center justify-center">
-          <div className="rounded-md bg-card/80 px-6 py-4 text-[13px] text-ink-2 shadow-[var(--shadow-card)]">
-            Add images using the + tile below to begin.
+          <div className="rounded-card bg-card px-6 py-4 text-[13px] text-ink-2 shadow-[var(--shadow-card)]">
+            {t("canvas.noPageImage")}
           </div>
         </div>
       )}
+      {imageUrl && !natural && <PageGhost />}
     </div>
   );
 }

@@ -1,7 +1,9 @@
 import { Link } from "@tanstack/react-router";
+import { FileStack } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { EmptyState, STATE_PRIMARY } from "@/components/app/States";
 import type { PageSummary } from "@/lib/api";
 
 type SortKey = "page" | "lines" | "ayat" | "segments" | "status";
@@ -63,19 +65,15 @@ export function PagesTab({
 
   if (all.length === 0) {
     return (
-      <div className="flex flex-col items-center gap-3 rounded-panel border border-rule bg-card px-6 py-14 text-center">
-        <span className="font-display text-[20px] font-semibold">{t("details.pg_none")}</span>
-        <span className="max-w-[420px] text-[13.5px] leading-normal text-ink-2">
-          {t("details.pg_noneDesc")}
-        </span>
-        <Link
-          to="/mushafs/$mushafId/process"
-          params={{ mushafId }}
-          className="mt-1 inline-flex h-10 items-center rounded-control bg-lapis px-4 text-[13.5px] font-semibold text-on-lapis no-underline hover:bg-lapis/90"
-        >
+      <EmptyState
+        icon={<FileStack size={28} strokeWidth={1.6} aria-hidden="true" />}
+        title={t("details.pg_none")}
+        body={t("details.pg_noneDesc")}
+      >
+        <Link to="/mushafs/$mushafId/process" params={{ mushafId }} className={STATE_PRIMARY}>
           {t("details.pg_goProcess")}
         </Link>
-      </div>
+      </EmptyState>
     );
   }
 

@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { Download, Search } from "lucide-react";
+import { Download, Library, Search, SearchX } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -9,6 +9,7 @@ import { BilingualTitle } from "@/components/app/BilingualTitle";
 import { MushafStatusBadge } from "@/components/app/MushafStatusBadge";
 import { OrnamentStrip } from "@/components/app/Ornament";
 import { BusyLabel } from "@/components/app/SatrLoader";
+import { CardSkeleton, EmptyState, ErrorState, STATE_PRIMARY } from "@/components/app/States";
 import { useOtherLanguage } from "@/hooks/use-other-language";
 import { baseLanguage } from "@/i18n/config";
 import {
@@ -132,24 +133,54 @@ function GalleryPage() {
         </div>
 
         {gallery.isError ? (
-          <div className="rounded-card border border-stop/20 bg-stop-wash px-4 py-3 text-sm text-stop-text">
-            {gallery.error instanceof Error ? gallery.error.message : t("gallery.loadFailed")}
-          </div>
+          <ErrorState
+            title={t("gallery.loadFailed")}
+            body={gallery.error instanceof Error ? gallery.error.message : undefined}
+            className="max-w-[460px]"
+          >
+            <button type="button" onClick={() => void gallery.refetch()} className={STATE_PRIMARY}>
+              {t("errorPage.tryAgain")}
+            </button>
+          </ErrorState>
         ) : gallery.isPending ? (
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-5">
+          <div
+            aria-busy="true"
+            className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-5"
+          >
             {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="h-[330px] animate-pulse rounded-card bg-sunk" />
+              <CardSkeleton key={i} tall />
             ))}
           </div>
         ) : items.length === 0 ? (
-          <div className="rounded-card border border-dashed border-rule-2 bg-card/50 px-6 py-12 text-center">
-            <p className="text-sm font-medium text-ink">
-              {filtered ? t("gallery.noMatch") : t("gallery.empty")}
-            </p>
-            <p className="mt-1 text-sm text-ink-3">
-              {filtered ? t("gallery.noMatchHint") : t("gallery.emptyHint")}
-            </p>
-          </div>
+          filtered ? (
+            <EmptyState
+              icon={<SearchX size={28} strokeWidth={1.6} aria-hidden="true" />}
+              title={
+                search.trim()
+                  ? t("gallery.noMatchSearch", { search: search.trim() })
+                  : t("gallery.noMatch")
+              }
+              body={t("gallery.noMatchHint")}
+            >
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchText("");
+                  setQiraa(null);
+                  setCompleted(false);
+                }}
+                className="h-[34px] cursor-pointer px-3 text-[13.5px] font-semibold text-lapis-text hover:underline"
+              >
+                {t("gallery.clearSearch")}
+              </button>
+            </EmptyState>
+          ) : (
+            <EmptyState
+              icon={<Library size={28} strokeWidth={1.6} aria-hidden="true" />}
+              title={t("gallery.empty")}
+              body={t("gallery.emptyHint")}
+            />
+          )
         ) : (
           <>
             <div

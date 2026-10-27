@@ -1,7 +1,6 @@
 import type { MouseEvent } from "react";
 import { useTranslation } from "react-i18next";
 
-import { Button } from "@/components/ui/button";
 import { mediaUrl } from "@/lib/api";
 import {
   doubtOf,
@@ -148,15 +147,15 @@ export function MarkGallery({
                 : t("calibration.gallery.count", { count: group.items.length })}
             </span>
             {kind === "types" && group.key && group.expected > 0 && (
-              <Button
-                variant="outline"
-                className="h-7 px-2 text-[11.5px]"
+              <button
+                type="button"
+                className="inline-flex cursor-pointer items-center justify-center rounded-control border border-rule-2 bg-card font-semibold text-ink transition-colors hover:bg-sheet disabled:cursor-default disabled:opacity-50 h-7 px-2.5 text-[12px]"
                 disabled={!editable}
                 onClick={() => onAcceptGroup(group.key)}
                 title={t("calibration.filter.acceptShownHelp")}
               >
                 {t("calibration.filter.acceptShown", { count: group.expected })}
-              </Button>
+              </button>
             )}
           </div>
           <div dir="rtl" className="flex flex-wrap items-end gap-1.5">

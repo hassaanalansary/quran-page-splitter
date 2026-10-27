@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
 import { OrnamentStrip } from "@/components/app/Ornament";
+import { ErrorState, STATE_SECONDARY } from "@/components/app/States";
 import { BusyLabel } from "@/components/app/SatrLoader";
 import { fmtDate } from "@/components/app/details/helpers";
 import {
@@ -60,22 +61,28 @@ function GalleryDetailPage() {
         </section>
         {isError && (
           <div className="mx-auto max-w-[1240px] px-7 py-7">
-            <div className="rounded-card border border-dashed border-rule-2 bg-card/50 px-6 py-12 text-center">
-              <p className="text-sm font-medium text-ink">
-                {error instanceof ApiError && error.status === 404
-                  ? t("gallery.detail.gone")
-                  : error instanceof Error
-                    ? error.message
-                    : t("gallery.loadFailed")}
-              </p>
-              <p className="mt-1 text-sm text-ink-3">{t("gallery.detail.goneHint")}</p>
-              <Link
-                to="/gallery"
-                className="mt-4 inline-flex h-[38px] items-center rounded-control border border-rule-2 bg-card px-4 text-[13px] font-semibold text-ink hover:bg-sheet"
+            {error instanceof ApiError && error.status === 404 ? (
+              <ErrorState
+                tone="gone"
+                title={t("gallery.detail.gone")}
+                body={t("gallery.detail.goneHint")}
+                className="max-w-[460px]"
               >
-                {t("gallery.backToGallery")}
-              </Link>
-            </div>
+                <Link to="/gallery" className={STATE_SECONDARY}>
+                  {t("gallery.backToGallery")}
+                </Link>
+              </ErrorState>
+            ) : (
+              <ErrorState
+                title={t("gallery.loadFailed")}
+                body={error instanceof Error ? error.message : undefined}
+                className="max-w-[460px]"
+              >
+                <Link to="/gallery" className={STATE_SECONDARY}>
+                  {t("gallery.backToGallery")}
+                </Link>
+              </ErrorState>
+            )}
           </div>
         )}
       </>

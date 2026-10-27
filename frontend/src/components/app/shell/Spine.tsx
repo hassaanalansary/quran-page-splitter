@@ -1,11 +1,12 @@
 import { Link } from "@tanstack/react-router";
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, HelpCircle } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { OrnamentStrip } from "@/components/app/Ornament";
 import type { StepSlug } from "@/components/app/details/helpers";
 import { pageImageUrl, type MushafDetail } from "@/lib/api";
+import { openGuide } from "@/lib/guide";
 
 import { PHASES, STEP_ROUTES, useStepStates, type StepStates } from "./context";
 
@@ -145,6 +146,17 @@ export function Spine({ mushaf, active }: { mushaf: MushafDetail; active: StepSl
             })}
           </div>
         ))}
+      </div>
+
+      <div className="flex-none border-t border-rule-soft px-4 pb-4 pt-3 max-lg:hidden">
+        <button
+          type="button"
+          onClick={openGuide}
+          className="inline-flex cursor-pointer items-center gap-2 text-[13px] font-semibold text-lapis-text hover:underline"
+        >
+          <HelpCircle className="h-[15px] w-[15px]" aria-hidden="true" />
+          {t("shell.howItWorks")}
+        </button>
       </div>
     </nav>
   );

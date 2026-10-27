@@ -193,6 +193,9 @@
   --stop-wash: #f7e1dc;
   --toast: #1f1b16;
   --on-toast: #f4efe6;
+  --on-toast-done: #6fb38a; /* a toast's dot: the other theme's colours, on the inverse */
+  --on-toast-warn: #e0a33b;
+  --on-toast-info: #8db2e6;
 
   /* depth */
   --scrim: rgba(31, 27, 22, 0.45);
@@ -297,6 +300,9 @@
   --stop-wash: #3a1d17;
   --toast: #f1ebdf;
   --on-toast: #1f1b16;
+  --on-toast-done: #2e6e46;
+  --on-toast-warn: #9a5b00;
+  --on-toast-info: #1e4e8c;
 
   --scrim: rgba(0, 0, 0, 0.62);
   --shadow-card: 0 12px 32px rgba(0, 0, 0, 0.5);

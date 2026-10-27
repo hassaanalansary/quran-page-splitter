@@ -1,35 +1,35 @@
+import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { useTranslation } from "react-i18next";
 
 import { baseLanguage, SUPPORTED_LANGUAGES } from "@/i18n/config";
 
-/** Segmented EN / ع control that switches the UI language (persisted). */
-export function LanguageSwitcher() {
+/** English · العربية, as a segmented row inside the account menu, beside the
+ * theme's. Choosing keeps the menu open. */
+export function LanguageMenuChoice() {
   const { t, i18n } = useTranslation();
   const current = baseLanguage(i18n.language);
 
   return (
-    <div
-      className="flex items-center gap-0.5 rounded-pill border border-rule p-0.5"
-      role="group"
-      aria-label={t("lang.label")}
-    >
-      {SUPPORTED_LANGUAGES.map((lng) => {
-        const active = current === lng;
-        return (
-          <button
+    <div className="flex items-center justify-between gap-3 px-4 py-2">
+      <span className="text-[13.5px] text-ink">{t("lang.label")}</span>
+      <DropdownMenuPrimitive.RadioGroup
+        value={current}
+        onValueChange={(value) => void i18n.changeLanguage(value)}
+        aria-label={t("lang.label")}
+        className="inline-flex rounded-[7px] bg-sunk p-0.5"
+      >
+        {SUPPORTED_LANGUAGES.map((lng) => (
+          <DropdownMenuPrimitive.RadioItem
             key={lng}
-            type="button"
-            onClick={() => void i18n.changeLanguage(lng)}
-            aria-pressed={active}
-            title={t(`lang.${lng}` as const)}
-            className={`min-w-[26px] rounded-pill px-2 py-0.5 text-[11px] font-semibold leading-none transition-colors ${
-              active ? "bg-lapis text-on-lapis" : "text-ink-2 hover:bg-sheet"
-            }`}
+            value={lng}
+            lang={lng}
+            onSelect={(event) => event.preventDefault()}
+            className="flex h-7 cursor-pointer select-none items-center rounded-[5px] px-2.5 text-[12.5px] font-medium text-ink-2 outline-none focus-visible:ring-2 focus-visible:ring-lapis data-[state=checked]:bg-card data-[state=checked]:font-semibold data-[state=checked]:text-ink"
           >
-            {t(`lang.short_${lng}` as const)}
-          </button>
-        );
-      })}
+            {t(`lang.${lng}` as const)}
+          </DropdownMenuPrimitive.RadioItem>
+        ))}
+      </DropdownMenuPrimitive.RadioGroup>
     </div>
   );
 }
