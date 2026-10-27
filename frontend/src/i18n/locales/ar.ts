@@ -720,6 +720,7 @@ export const ar: typeof en = {
     previewLines: "الأسطر {{from}}–{{to}}",
     previewSegments: "{{count}} مقطع",
     previewSpeed: "السرعة",
+    previewKeys: "← → آيةً آيةً · المسافة للتشغيل والإيقاف",
     leaveBody: "لديك {{count}} تعديل مراجعة غير محفوظ. المغادرة تُسقطها.",
   },
   finalize: {

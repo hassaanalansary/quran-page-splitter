@@ -746,6 +746,7 @@ export const en = {
     previewLines: "lines {{from}}–{{to}}",
     previewSegments: "{{count}} segment(s)",
     previewSpeed: "Speed",
+    previewKeys: "← → aya by aya · Space plays and pauses",
     leaveBody: "You have {{count}} unsaved review edit(s). Leaving drops them.",
   },
   finalize: {
