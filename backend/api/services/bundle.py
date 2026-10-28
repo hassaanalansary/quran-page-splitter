@@ -36,7 +36,6 @@ from typing import Any
 
 from django.core.files.base import ContentFile
 from django.db import transaction
-from django.db.models import F
 from ninja.errors import HttpError
 from ninja.files import UploadedFile
 
@@ -354,10 +353,6 @@ def restore_calibration(target: Mushaf, data: dict, read_file: Callable[[str, st
     importing over a worked target: imported revisions are appended after it, and
     every reference to a revision number is shifted to match.
     """
-    from api.models import CalibrationSettings
-
-    # Activation is local consent, never portable data, even on an existing target.
-    CalibrationSettings.objects.filter(mushaf=target).update(experimental=False, revision=F("revision") + 1)
     lines = {
         (page_number, line_number): str(pk)
         for page_number, line_number, pk in Line.objects.filter(page__mushaf=target).values_list(

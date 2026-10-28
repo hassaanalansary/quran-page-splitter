@@ -116,7 +116,6 @@ import { BulkPanel } from "./BulkPanel";
 import { HIGHLIGHT_RGB, ROLE_RGB, UNSETTLED_RGB } from "./colors";
 import { ConfirmPageDialog } from "./ConfirmPageDialog";
 import { EvaluationPanel } from "./EvaluationPanel";
-import { LearningSettings } from "./LearningSettings";
 import { MarkGallery } from "./MarkGallery";
 import { WordPlayer } from "./WordPlayback";
 import { exceptionKey, problemKey, useTypeName } from "./labels";
@@ -2015,22 +2014,7 @@ export function CalibrationEditor({
 
           <div className="flex flex-col overflow-hidden rounded-card border border-rule bg-card">
             {doc?.settings && (
-              <Fold
-                title={t("calibration.pageSection", { page })}
-                badge={
-                  doc.settings.experimental ? (
-                    <span className="rounded bg-gold-wash px-1.5 py-px text-[11px] font-semibold text-gold-text">
-                      {t("calibration.experimentalBadge")}
-                    </span>
-                  ) : undefined
-                }
-              >
-                <LearningSettings
-                  mushafId={mushafId}
-                  page={page}
-                  settings={doc.settings}
-                  disabled={busy || running || !!preview || held}
-                />
+              <Fold title={t("calibration.pageSection", { page })}>
                 {processed && (
                   <PageCard
                     mushafId={mushafId}
@@ -2114,11 +2098,7 @@ function PageCard({
         </dd>
       </dl>
       <p className="text-[10.5px] leading-snug text-ink-3">
-        {t(
-          profile.mode === "experimental"
-            ? "calibration.experimentalNote"
-            : "calibration.shadowNote",
-        )}
+        {t(profile.mode === "shadow" ? "calibration.shadowNote" : "calibration.learnedNote")}
       </p>
       <a
         href={exportUrl(mushafId, { page })}

@@ -115,7 +115,6 @@ export type CalibrationProfile = {
  * force — `default_limit` unless one was set — in its `comparison`'s own units. */
 export type CalibrationSettings = {
   revision: number;
-  experimental: boolean;
   comparison: string;
   limit: number;
   default_limit: number;
@@ -463,8 +462,6 @@ export type CalibrationReadiness = {
     minutes: number;
   }[];
   cost: { process_seconds: number | null; review_minutes: number | null };
-  /** The learning switch: whether new pages apply the learning, not only show it. */
-  experimental: boolean;
 };
 
 /** What a batch over a range would do, page by page — nothing is started. */
@@ -479,5 +476,4 @@ export type BatchPlan = {
   drafted: number;
   /** What a page has taken to process here lately; null before any has. */
   process_seconds: number | null;
-  experimental: boolean;
 };

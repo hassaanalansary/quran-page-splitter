@@ -691,11 +691,11 @@ class CalibrationRevision(BaseModel):
 
 
 class CalibrationSettings(BaseModel):
-    """Local opt-in, deliberately absent from copied/imported calibration data."""
+    """How the mushaf's fingerprint library compares shapes: local, never carried by a
+    copy or an import."""
 
     mushaf = models.OneToOneField(Mushaf, on_delete=models.CASCADE, related_name="calibration_settings")
     revision = models.PositiveIntegerField(default=0)
-    experimental = models.BooleanField(default=False)
     #: How the fingerprint library compares two blobs (``core.word_boundary.library.COMPARISONS``).
     comparison = models.CharField(max_length=32, default="descriptor32")
     #: The library's LIMIT, in the comparison's own units; null means its default.

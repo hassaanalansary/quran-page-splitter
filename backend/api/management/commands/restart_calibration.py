@@ -83,7 +83,6 @@ class Command(BaseCommand):
             )
         setting = CalibrationSettings.objects.filter(mushaf=mushaf).first()
         if setting:
-            setting.experimental = False
             setting.revision += 1
             setting.save()
         calibration._LIBRARIES.clear()

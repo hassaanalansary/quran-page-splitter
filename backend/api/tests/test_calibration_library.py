@@ -6,6 +6,8 @@ page 2 processed and open. So page 2's library holds page 1's ten examples, ever
 kind of them printed pixel for pixel alike: three groups, one fingerprint each.
 """
 
+from unittest import mock
+
 from api.models import CalibrationProfile, CalibrationSettings, LibraryCheck
 from api.services import calibration as calibration_service
 from api.services import calibration_library as library_service
@@ -101,6 +103,17 @@ class LibraryDocumentTests(LibraryTestCase):
         self.assertEqual((members["total"], len(members["members"])), (6, 6))
         self.assertEqual({member["page_number"] for member in members["members"]}, {1})
         self.assertEqual(self.client.get(self.url(2, "/library/members"), {"group": "body::x:1"}).status_code, 404)
+
+
+class PricingTests(LibraryTestCase):
+    def test_a_page_with_a_library_is_read_with_its_answers_priced_in(self):
+        with (
+            mock.patch.object(calibration_service, "align_document", wraps=calibration_service.align_document) as align,
+            drawn_pages(bar=True),
+        ):
+            self.client.post(self.url(2, "/process"))
+        self.assertTrue(any(call.kwargs.get("calibration_locks") for call in align.call_args_list))
+        self.assertEqual(self.document(2)["profile"]["mode"], "learned")
 
 
 class CompareTests(LibraryTestCase):

@@ -136,16 +136,10 @@ export function startCalibrationBatch(id: string, range: BatchRange) {
 }
 
 /** Save the whole setting: `limit` null is the comparison's default LIMIT. */
-export function setCalibrationSettings(
-  id: string,
-  revision: number,
-  change: { experimental: boolean; limit: number | null },
-) {
+export function setCalibrationSettings(id: string, revision: number, limit: number | null) {
   return apiJson<CalibrationSettings>("PUT", `/api/mushafs/${id}/calibration/settings`, {
     revision,
-    experimental: change.experimental,
-    limit: change.limit,
-    acknowledge_unvalidated: change.experimental,
+    limit,
   });
 }
 

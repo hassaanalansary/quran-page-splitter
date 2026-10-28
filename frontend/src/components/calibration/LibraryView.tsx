@@ -122,10 +122,7 @@ export function LibraryView({
 
   const limitMutation = useMutation({
     mutationFn: (limit: number | null) =>
-      setCalibrationSettings(mushafId, settings!.revision, {
-        experimental: settings!.experimental,
-        limit,
-      }),
+      setCalibrationSettings(mushafId, settings!.revision, limit),
     onSuccess: (next) => {
       setLimitDraft(String(next.limit));
       onPreviewLimit(null);

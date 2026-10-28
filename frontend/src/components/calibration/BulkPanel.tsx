@@ -650,9 +650,6 @@ function BatchForm({
             </span>
           </label>
 
-          {current && current.process + current.drafted > 0 && !current.experimental && (
-            <Notice tone="warn">{t("calibration.bulk.learningOff")}</Notice>
-          )}
           {current &&
             current.process + current.drafted > 0 &&
             readiness &&

@@ -223,7 +223,6 @@ def readiness(mushaf: Mushaf) -> Doc:
             for row in rows
         ],
         "cost": cost(mushaf, rows),
-        "experimental": calibration.settings_document(mushaf)["experimental"],
     }
 
 

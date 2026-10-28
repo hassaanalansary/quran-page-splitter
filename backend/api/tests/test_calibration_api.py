@@ -501,25 +501,17 @@ class ConfirmTests(CalibrationApiTestCase):
 
 
 class SettingsTests(CalibrationApiTestCase):
-    def test_experimental_requires_acknowledgment_and_checks_revision(self):
+    def test_a_save_checks_the_revision(self):
         url = f"/api/mushafs/{self.mushaf.id}/calibration/settings"
-        data = {"revision": 0, "experimental": True}
-        self.assertEqual(self.client.put(url, data, content_type="application/json").status_code, 422)
-        data["acknowledge_unvalidated"] = True
+        data = {"revision": 0, "limit": 0.4}
         response = self.client.put(url, data, content_type="application/json")
         self.assertEqual(response.status_code, 200, response.content)
-        self.assertTrue(response.json()["experimental"])
         self.assertEqual(self.client.put(url, data, content_type="application/json").status_code, 409)
 
-    def test_experimental_run_keeps_an_unlocked_baseline(self):
-        CalibrationSettings.objects.create(mushaf=self.mushaf, experimental=True)
-        with mock.patch.object(
-            calibration_service, "align_document", wraps=calibration_service.align_document
-        ) as align:
-            self.process(1)
-        self.assertTrue(any(call.kwargs.get("calibration_locks") for call in align.call_args_list))
+    def test_a_learned_draft_keeps_an_unlocked_baseline(self):
+        self.process(1)
         doc = self.document(1)
-        self.assertEqual(doc["profile"]["mode"], "experimental")
+        self.assertEqual(doc["profile"]["mode"], "learned")
         stored = CalibrationRevision.objects.get(review__mushaf=self.mushaf, kind="processed")
         self.assertEqual(stored.payload["profile"]["mode"], "shadow")
         self.assertEqual(stored.payload["profile"]["pages"], [])
@@ -528,21 +520,19 @@ class SettingsTests(CalibrationApiTestCase):
 
     def test_the_limit_is_saved_checked_and_part_of_the_profile(self):
         url = f"/api/mushafs/{self.mushaf.id}/calibration/settings"
-        data = {"revision": 0, "experimental": False, "limit": 0.4}
+        data = {"revision": 0, "limit": 0.4}
         response = self.client.put(url, data, content_type="application/json")
         self.assertEqual(response.status_code, 200, response.content)
         saved = response.json()
         self.assertEqual((saved["comparison"], saved["limit"], saved["default_limit"]), ("descriptor32", 0.4, 0.27))
         for refused in ({"limit": 0}, {"limit": -1}, {"limit": 11}, {"comparison": "unknown"}):
-            body = {"revision": 1, "experimental": False, **refused}
+            body = {"revision": 1, **refused}
             self.assertEqual(self.client.put(url, body, content_type="application/json").status_code, 422)
         self.process(1)
         profile = CalibrationProfile.objects.get(signature=self.document(1)["profile"]["signature"])
         self.assertEqual(profile.payload["limit"], 0.4)
         # A null LIMIT is the comparison's default again.
-        response = self.client.put(
-            url, {"revision": 1, "experimental": False, "limit": None}, content_type="application/json"
-        )
+        response = self.client.put(url, {"revision": 1, "limit": None}, content_type="application/json")
         self.assertEqual(response.json()["limit"], 0.27)
 
     def test_predicted_subtypes_do_not_teach_without_explicit_confirmation(self):
@@ -834,7 +824,7 @@ class CopyTests(CalibrationApiTestCase):
         self.assertEqual(report["confirmed_pages"], 1)
 
     def test_importing_over_a_worked_mushaf_shifts_every_revision_reference(self):
-        CalibrationSettings.objects.create(mushaf=self.mushaf, experimental=True, revision=3)
+        CalibrationSettings.objects.create(mushaf=self.mushaf, revision=3)
         _, output = bundle.build(self.mushaf.pk, user=self.mushaf.owner)
         with output:
             data = output.read()
@@ -851,8 +841,7 @@ class CopyTests(CalibrationApiTestCase):
         self.assertEqual(review.revisions.get(number=processed).kind, "processed")
         self.assertFalse(self.document(1)["stale"])
         setting = CalibrationSettings.objects.get(mushaf=self.mushaf)
-        self.assertFalse(setting.experimental)
-        self.assertEqual(setting.revision, 4)
+        self.assertEqual(setting.revision, 3)
 
 
 class MarkEdgeTests(CalibrationApiTestCase):

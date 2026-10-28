@@ -13,10 +13,11 @@ already decided it:
 
 * **the reviewer** — a role they set, or a blob they gave to a word, is a hard
   constraint the alignment cannot break (``core.word_boundary.inputs.BlobConstraint``);
-* **calibration** — a blob whose nearest confirmed examples agree closely and
-  unanimously. For now in **shadow**: the proposal is recorded and shown beside the
-  engine's own reading, never applied. Applying them waits for an evaluation the
-  reviewer has read and approved — see :func:`evaluation`.
+* **calibration** — the fingerprint library built from the confirmed pages answers
+  body or mark for every blob, with how sure it is. Not a lock but a *price*: reading
+  a blob against a sure answer costs more than leaving a word a PAW short (see
+  :func:`_constrain`). The engine's reading without it is kept beside, as the
+  prediction record — see :func:`evaluation`.
 
 Everything else keeps the frozen engine's scoring.
 
@@ -117,17 +118,19 @@ ENGINE_DOUBTS = ("uncertain", "search-override", "ambiguous")
 LIBRARY_VERSION = 1
 #: Refused above this: a LIMIT that groups every shape together is a typo, not a setting.
 LIMIT_CEILING = 10.0
+#: The profile mode of a draft read with the library's answers priced in. Drafts read
+#: before learning always applied say "shadow" (or "experimental", when it was opted
+#: into); a realign prices them all the same.
+LEARNED = "learned"
 
 
 def settings_document(mushaf: Mushaf) -> Doc:
-    """The mushaf's calibration settings: experimental learning, and the library's
-    comparison and LIMIT (``limit`` is what is in force; ``default_limit`` what an
-    unset LIMIT means for that comparison)."""
+    """The mushaf's calibration settings: the library's comparison and LIMIT (``limit``
+    is what is in force; ``default_limit`` what an unset LIMIT means for that comparison)."""
     setting = CalibrationSettings.objects.filter(mushaf=mushaf).first()
     method = comparison(setting.comparison if setting else None)
     return {
         "revision": setting.revision if setting else 0,
-        "experimental": bool(setting and setting.experimental),
         "comparison": method.name,
         "limit": setting.library_limit if setting and setting.library_limit is not None else method.default_limit,
         "default_limit": method.default_limit,
@@ -140,18 +143,15 @@ def save_settings(mushaf: Mushaf, data: Doc, *, user: User | None) -> Doc:
     setting, _ = CalibrationSettings.objects.get_or_create(mushaf=mushaf)
     if setting.revision != data["revision"]:
         _refuse("stale_revision")
-    if data["experimental"] and not data.get("acknowledge_unvalidated"):
-        _refuse("invalid_edits", 422)
     # Every save says the whole setting: a null LIMIT is the comparison's default.
     chosen = data.get("comparison") or setting.comparison or DEFAULT_COMPARISON
     limit = data.get("limit")
     if chosen not in COMPARISONS or (limit is not None and not 0 < limit <= LIMIT_CEILING):
         _refuse("invalid_edits", 422)
-    setting.experimental = data["experimental"]
     setting.comparison = chosen
     setting.library_limit = limit
     setting.revision += 1
-    setting.save(update_fields=["experimental", "comparison", "library_limit", "revision", "updated_at"])
+    setting.save(update_fields=["comparison", "library_limit", "revision", "updated_at"])
     activity.emit(
         mushaf, ActivityTypeChoices.CALIBRATION_SAVED, {"action": "settings", **settings_document(mushaf)}, actor=user
     )
@@ -655,7 +655,7 @@ def _blank_row(snapshot: CalibrationSnapshot, line: Line, library: Library, *, r
 
     Each text blob carries calibration's *proposal* — body or mark, from the library,
     with how sure it is; nothing when the library does not yet know both letters and
-    marks. In shadow mode that is all it is.
+    marks. The reading prices it (:func:`_constrain`).
     """
     data = snapshot.metadata
     ornaments = {ident for group in data["separators"] for ident in group}
@@ -767,7 +767,6 @@ def process_page(
     system = word_inputs.counting_system_for(mushaf)
     stream = words_service.word_stream(system, start=start, end=end)
     lines = _span_lines(mushaf, start, end)
-    experimental = settings_document(mushaf)["experimental"]
     profile, library = profile_for(mushaf, page)
     templates = snapshots.Templates.of(mushaf)
     approved = _approved_rows(mushaf, {line.page.page_number for line in lines} - {page})
@@ -814,18 +813,16 @@ def process_page(
     # What the text says about the ink that reading put on the line — its small waw
     # and ya — goes on the draft, never on the prediction record.
     reread = _place_text_locks(document) if _follows_text(mushaf) else set()
-    # Keep the canonical, unlocked prediction immutable for honest comparisons.
-    # The setting is pinned to this run, not retroactively applied to older pages.
-    if experimental:
-        document["profile"]["mode"] = "experimental"
+    # Keep the canonical, unlocked prediction immutable for honest comparisons; the
+    # draft is that reading again with the library's answers priced in.
+    document["profile"]["mode"] = LEARNED
+    if library.examples or reread:
         document = align_document(mushaf, document, calibration_locks=True)
-    elif reread:
-        document = align_document(mushaf, document)
     alive()
 
     # The draft: that reading, with what people already decided put back on it.
     if _carry_decisions(document, before):
-        document = align_document(mushaf, document, calibration_locks=document["profile"]["mode"] == "experimental")
+        document = align_document(mushaf, document, calibration_locks=True)
     _apply_text_types(mushaf, document)
     alive()
     shown = _shown(document)
@@ -1023,8 +1020,8 @@ def align_document(
 
     Human roles and assignments are hard constraints. With ``calibration_locks``,
     calibration's proposals price each blob's roles by how sure the library is (see
-    :func:`_constrain`) — which is the third result the evaluation compares; the
-    editor never asks for it while calibration is in shadow.
+    :func:`_constrain`) — as every draft is read; only the prediction record is read
+    without them.
 
     With ``text_locks`` the text's own word is added: the small waw and ya it puts on
     the writing line are locked as marks (:func:`_place_text_locks`), provisionally,
@@ -1363,8 +1360,8 @@ def _constrain(
 
     A person's decision is a hard lock. The text's is provisional: the engine knows
     it as a "calibration" lock, which it releases aya by aya when it leaves an aya
-    unreadable. Calibration's — the library's answer, when ``calibration_locks`` (the
-    experimental opt-in) — is no lock at all but a *price*: reading the blob against
+    unreadable. Calibration's — the library's answer, with ``calibration_locks`` — is
+    no lock at all but a *price*: reading the blob against
     the library costs as much as the library is sure (``Blob.library_*``), so a sure
     answer outweighs a missing PAW and an unsure one bends. The text outranks it —
     the library cannot tell a small waw from a waw, and the text names every one.
@@ -1921,7 +1918,7 @@ def preview(mushaf: Mushaf, page: int, data: Doc) -> Doc:
         mushaf,
         edited,
         affected_ayas=set(edited.get("pending_ayas", [])),
-        calibration_locks=edited.get("profile", {}).get("mode") == "experimental",
+        calibration_locks=True,
     )
     _apply_text_types(mushaf, document)
     document["pending_ayas"] = []
@@ -2016,7 +2013,7 @@ def save(mushaf: Mushaf, page: int, data: Doc, *, confirm: bool = False, user: U
             mushaf,
             document,
             affected_ayas=set(document.get("pending_ayas", [])),
-            calibration_locks=document.get("profile", {}).get("mode") == "experimental",
+            calibration_locks=True,
         )
         _apply_text_types(mushaf, document)
         document["pending_ayas"] = []

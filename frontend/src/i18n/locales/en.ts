@@ -1163,7 +1163,6 @@ export const en = {
     // The page
     pageTitle: "Page {{page}}",
     pageSection: "Page {{page}} · learning",
-    experimentalBadge: "experimental",
     draft: "Draft",
     revision: "revision {{revision}}",
     confirmation: "Confirmed",
@@ -1180,14 +1179,9 @@ export const en = {
     applyLimit: "Apply",
     defaultLimit: "Default",
     shadowNote:
-      "This page was processed in shadow mode: learned role predictions were not applied.",
-    experimentalSwitch: "Apply learning to new pages (experimental)",
-    experimentalTitle: "Apply unvalidated learning?",
-    experimentalWarning:
-      "Confirmed pages will guide body/mark decisions on newly processed pages, starting with examples from the first confirmed page: the fingerprint library's answer for every blob is applied. Predictions can be wrong. Continue reviewing every page. Saved drafts do not teach. Existing pages are not rewritten. Turning this off stops application on new pages.",
-    enableExperimental: "Enable for new pages",
-    experimentalNote:
-      "This page was read with the learned body/mark answers (experimental): overturning a sure one cost more than leaving a word a PAW short. Review is still required.",
+      "This page was read before the library's answers were applied. Process it again to read it with them.",
+    learnedNote:
+      "Read with the library's body/mark answers: going against a sure one costs more than leaving a word a PAW short. Review is still required.",
     heldHint:
       "This page changed elsewhere while you were editing it, so saving these edits would be refused. Reload to take the new version — your unsaved edits here are dropped.",
     staleHint:
@@ -1378,8 +1372,6 @@ export const en = {
       estimate:
         "About {{time}}, at {{seconds}} s a page. You can keep reviewing and confirming while it runs; a confirmed page is never processed over, and a draft processed again keeps your decisions.",
       estimateUnknown: "Process one page first to estimate how long the batch takes.",
-      learningOff:
-        "The learning switch is off: these pages will show the learning's proposals without applying them. Turn on “Apply learning to new pages” under Page · learning first to have them applied.",
       notReady:
         "The meter suggests calibrating a few more pages first. You can start anyway — and later process the drafts nobody touched again, with the box above.",
       running: "A page or a batch is being processed. Wait for it, or stop it, to start another.",
@@ -1441,7 +1433,6 @@ export const en = {
       noise: "Possible noise",
     },
     leaveBody: "You have unsaved Ink edits on page {{page}}. Leaving drops them.",
-    notNow: "Not now",
   },
   details: {
     tab_overview: "Overview",
@@ -1794,7 +1785,7 @@ export const en = {
       s4: "In Blobs mode, click a blob — or press ← — and the bar under the lines says what it is, its type, and its word. ← → move blob by blob, ↑ ↓ line by line, Ctrl+← → word by word, Shift adds the next. Under each line every mark shows its type: solid when typed, dashed when only expected. A accepts the expected type, 1–9 and 0 type the selected marks, B sets Body, M sets Mark. Choose a type in the filter to see only its marks, in blue — the quick way to catch one that is not what it says. Tick Clicks pick the faded ink too to fix one the filter missed, then Accept the expected ones in one go. Doubtful lists typed marks the other pages disagree with. Gallery lays a type's marks side by side — one scroll instead of a scan of the page.",
       s5: "Assign ink to a word: its box spans all of its ink, bodies and marks alike. A mark that belongs to no word would stretch its neighbour's box, so Unassign marks leaves it unattached. Shared bodies need per-word PAW contributions.",
       s6: "Every word's box is taken from its ink and follows it — nothing is cut by hand, so give the ink to the right word and the box is right. A body two words share is cut at its middle. Del erases ink that is noise: it belongs to no word, and the line's image is exported without it.",
-      s7: "Preview recalculates affected ayat without saving; accept or discard it. Save draft keeps unfinished work. Confirm page makes it teach the next page you process. Enable Apply learning to new pages for experimental automatic role decisions. Suggested mark types remain editable and need explicit confirmation to teach their type.",
+      s7: "Preview recalculates affected ayat without saving; accept or discard it. Save draft keeps unfinished work. Confirm page makes it teach the next page you process. Body or mark is read with the library's answers. Suggested mark types remain editable and need explicit confirmation to teach their type.",
     },
     stepEyebrow: "Step {{n}} · {{name}}",
     gotIt: "Got it",

@@ -94,8 +94,6 @@ class ProcessOut(Schema):
 
 class SettingsIn(Schema):
     revision: int = Field(ge=0)
-    experimental: bool
-    acknowledge_unvalidated: bool = False
     #: The library's comparison; omitted keeps the current one.
     comparison: str | None = None
     #: The library's LIMIT; null is the comparison's default.

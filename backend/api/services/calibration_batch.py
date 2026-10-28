@@ -151,7 +151,6 @@ def plan(mushaf: Mushaf, first: int, last: int, *, refresh: bool = False) -> Doc
         "process": sum(len(found.get(reason, [])) for reason in PROCESS),
         "drafted": len(found.get("drafted", [])),
         "process_seconds": calibration_progress.cost(mushaf)["process_seconds"],
-        "experimental": calibration.settings_document(mushaf)["experimental"],
     }
 
 
