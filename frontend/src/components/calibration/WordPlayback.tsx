@@ -9,6 +9,7 @@ import {
   Pencil,
   Play,
   Repeat,
+  ScanSearch,
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -33,14 +34,17 @@ import {
   belongsAt,
   inkColor,
   playbackWords,
+  wordAtPoint,
   wordBlobs,
   wordCrop,
 } from "@/lib/calibration/playback";
 import type { CalibrationLine } from "@/lib/calibration/types";
 import { revealInScroller } from "@/lib/reveal";
 
+import { paint, type Raster } from "./inkPaint";
 import { useTypeName } from "./labels";
 import { subtypeGlyph } from "./subtypes";
+import { WordAnatomy } from "./WordAnatomy";
 
 const SPEEDS = { slow: 2400, normal: 1300, fast: 650 } as const;
 type Speed = keyof typeof SPEEDS;
@@ -56,7 +60,6 @@ const DIMMED = 0.2;
 const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 6;
 
-type Raster = { ids: Uint32Array; width: number; height: number };
 type Rasters = { lines: Map<string, Raster>; failed: Set<string>; settled: boolean };
 
 /** How visible the other words are, from the fade slider's position. */
@@ -73,7 +76,9 @@ function othersOpacity(fade: number) {
  *     the current word ── its body black, each mark in its type's colour, on a gold wash
  *
  * The view follows the current word. Fit width or fit height; Ctrl + wheel zooms.
- * Read-only: "Edit this word" goes back to the editor with its ink selected.
+ * The word under the pointer is ringed, with its text; a click opens it large, every
+ * blob named (`WordAnatomy`). Read-only: "Edit this word" goes back to the editor
+ * with its ink selected.
  */
 export function WordPlayer({
   page,
@@ -123,12 +128,15 @@ export function WordPlayer({
   const [attempt, setAttempt] = useState(0);
   const [full, setFull] = useState(false);
   const [room, setRoom] = useState({ w: 0, h: 0 });
+  const [hover, setHover] = useState(-1);
+  const [anatomy, setAnatomy] = useState(false);
 
   const root = useRef<HTMLDivElement>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const base = useRef<HTMLCanvasElement>(null);
   const top = useRef<HTMLCanvasElement>(null);
   const wash = useRef<HTMLDivElement>(null);
+  const sheet = useRef<HTMLDivElement>(null);
 
   const rasters = useRasters(own, attempt);
   const safeIndex = Math.min(index, Math.max(0, entries.length - 1));
@@ -252,6 +260,21 @@ export function WordPlayer({
     if (document.fullscreenElement) void document.exitFullscreen();
     else void root.current?.requestFullscreen?.();
   };
+  // The word under the pointer, in page px from where the sheet's ink starts.
+  const wordUnder = (event: MouseEvent) => {
+    const origin = sheet.current?.getBoundingClientRect();
+    if (!origin || !block) return -1;
+    return wordAtPoint(
+      entries,
+      (event.clientX - origin.left) / scale + block.x,
+      (event.clientY - origin.top) / scale + block.y,
+    );
+  };
+  const open = (at: number) => {
+    setPlaying(false);
+    setIndex(at);
+    setAnatomy(true);
+  };
   const inspect = () => {
     if (!current) return;
     if (document.fullscreenElement) void document.exitFullscreen();
@@ -267,6 +290,7 @@ export function WordPlayer({
       if (event.key === "ArrowLeft") jump(safeIndex + 1);
       else if (event.key === "ArrowRight") jump(safeIndex - 1);
       else if (event.code === "Space") togglePlay();
+      else if (event.key === "Escape" && anatomy) setAnatomy(false);
       else if (event.key === "Escape" && !document.fullscreenElement) onExit();
       else return;
       event.preventDefault();
@@ -281,59 +305,93 @@ export function WordPlayer({
   const marks = current ? [...new Set([...types.values()])].sort((a, b) => a.localeCompare(b)) : [];
   const risks = current ? wordRisks(current.line, current.word, checks) : [];
   const opacity = othersOpacity(fade);
+  const hovered = entries[hover];
+  const hoverCrop = hovered ? wordCrop(hovered) : null;
 
   return (
     <div ref={root} className="flex min-h-0 min-w-0 flex-1 flex-col bg-well">
-      <div ref={scroller} className="relative min-h-0 flex-1 overflow-auto">
-        {block ? (
-          // dir=ltr: a picture of a page measured in pixels.
-          <div dir="ltr" className="flex min-h-full w-max min-w-full" style={{ padding: PAD }}>
-            <div
-              className="relative m-auto flex-none rounded-[10px] bg-white shadow-[0_8px_24px_rgba(0,0,0,0.14)]"
-              style={{ width: block.w * scale + 2 * SHEET, height: block.h * scale + 2 * SHEET }}
-              role="img"
-              aria-label={t("wordPlayback.fullPage", { page, index: safeIndex + 1 })}
-            >
-              <div className="absolute" style={{ left: SHEET, top: SHEET }}>
-                {current && crop && (
-                  <div
-                    ref={wash}
-                    className="absolute rounded-[4px]"
-                    style={{
-                      left: (current.line.bbox.x + crop.x - block.x) * scale,
-                      top: (current.line.bbox.y + crop.y - block.y) * scale,
-                      width: crop.w * scale,
-                      height: crop.h * scale,
-                      background: "var(--ov-aya-lit)",
-                      boxShadow: "0 0 0 1.5px var(--ov-aya-lit-ring)",
-                    }}
-                  />
-                )}
-                {[base, top].map((layer, i) => (
-                  <canvas
-                    key={i}
-                    ref={layer}
-                    width={block.w}
-                    height={block.h}
-                    className="absolute left-0 top-0 block"
-                    style={{
-                      width: block.w * scale,
-                      height: block.h * scale,
-                      opacity: i === 0 ? opacity : 1,
-                      imageRendering: scale > 1.6 ? "pixelated" : undefined,
-                    }}
-                  />
-                ))}
-              </div>
-              {!rasters.settled && (
-                <div className="absolute inset-0 flex items-center justify-center bg-white/70 text-[13px] text-[color:var(--ov-text)]">
-                  <BusyLabel>{t("wordPlayback.loading")}</BusyLabel>
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        <div ref={scroller} className="relative min-h-0 flex-1 overflow-auto">
+          {block ? (
+            // dir=ltr: a picture of a page measured in pixels.
+            <div dir="ltr" className="flex min-h-full w-max min-w-full" style={{ padding: PAD }}>
+              <div
+                className="relative m-auto flex-none rounded-[10px] bg-white shadow-[0_8px_24px_rgba(0,0,0,0.14)]"
+                style={{
+                  width: block.w * scale + 2 * SHEET,
+                  height: block.h * scale + 2 * SHEET,
+                  cursor: hover >= 0 ? "pointer" : undefined,
+                }}
+                role="img"
+                aria-label={t("wordPlayback.fullPage", { page, index: safeIndex + 1 })}
+                onMouseMove={(event) => setHover(wordUnder(event.nativeEvent))}
+                onMouseLeave={() => setHover(-1)}
+                onClick={(event) => {
+                  const at = wordUnder(event.nativeEvent);
+                  if (at >= 0) open(at);
+                }}
+              >
+                <div ref={sheet} className="absolute" style={{ left: SHEET, top: SHEET }}>
+                  {current && crop && (
+                    <div
+                      ref={wash}
+                      className="absolute rounded-[4px]"
+                      style={{
+                        left: (current.line.bbox.x + crop.x - block.x) * scale,
+                        top: (current.line.bbox.y + crop.y - block.y) * scale,
+                        width: crop.w * scale,
+                        height: crop.h * scale,
+                        background: "var(--ov-aya-lit)",
+                        boxShadow: "0 0 0 1.5px var(--ov-aya-lit-ring)",
+                      }}
+                    />
+                  )}
+                  {[base, top].map((layer, i) => (
+                    <canvas
+                      key={i}
+                      ref={layer}
+                      width={block.w}
+                      height={block.h}
+                      className="absolute left-0 top-0 block"
+                      style={{
+                        width: block.w * scale,
+                        height: block.h * scale,
+                        opacity: i === 0 ? opacity : 1,
+                        imageRendering: scale > 1.6 ? "pixelated" : undefined,
+                      }}
+                    />
+                  ))}
+                  {hovered && hoverCrop && (
+                    <HoverTip
+                      left={(hovered.line.bbox.x + hoverCrop.x - block.x) * scale}
+                      top={(hovered.line.bbox.y + hoverCrop.y - block.y) * scale}
+                      width={hoverCrop.w * scale}
+                      height={hoverCrop.h * scale}
+                      text={hovered.word.text || t("wordPlayback.unlabelled")}
+                      aya={t("wordPlayback.aya", { aya: hovered.word.aya })}
+                      hint={t("wordPlayback.hoverHint")}
+                    />
+                  )}
                 </div>
-              )}
+                {!rasters.settled && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-white/70 text-[13px] text-[color:var(--ov-text)]">
+                    <BusyLabel>{t("wordPlayback.loading")}</BusyLabel>
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        ) : (
-          <p className="p-8 text-center text-[13px] text-ink-3">{t("wordPlayback.empty")}</p>
+          ) : (
+            <p className="p-8 text-center text-[13px] text-ink-3">{t("wordPlayback.empty")}</p>
+          )}
+        </div>
+        {anatomy && current && (
+          <WordAnatomy
+            entry={current}
+            raster={rasters.lines.get(current.line.snapshot_id)}
+            expectations={expectations}
+            byType={byType}
+            onClose={() => setAnatomy(false)}
+          />
         )}
       </div>
 
@@ -427,6 +485,18 @@ export function WordPlayer({
                 {t("wordPlayback.preview")}
               </span>
             )}
+            <button
+              type="button"
+              onClick={() => setAnatomy(!anatomy)}
+              disabled={!current || !wordBlobs(current).length}
+              aria-pressed={anatomy}
+              className={`inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-control px-3 text-[13px] font-semibold transition-colors disabled:cursor-default disabled:opacity-50 ${
+                anatomy ? "bg-on-deep text-deep" : "bg-white/10 hover:bg-white/20"
+              }`}
+            >
+              <ScanSearch size={14} aria-hidden="true" />
+              {t("wordPlayback.parts")}
+            </button>
             <button
               type="button"
               onClick={inspect}
@@ -568,37 +638,6 @@ export function WordPlayer({
   );
 }
 
-/** Paint a line's ink into a layer at (dx, dy): each pixel's blob, by `colour`, which
- * says nothing for ink that is not drawn. Through a scratch canvas, so the line's
- * empty pixels leave its neighbours' ink alone where the boxes overlap. */
-function paint(
-  context: CanvasRenderingContext2D,
-  raster: Raster,
-  dx: number,
-  dy: number,
-  colour: (id: number, x: number) => readonly [number, number, number] | null,
-) {
-  if (!raster.width || !raster.height) return;
-  const image = new ImageData(raster.width, raster.height);
-  const data = image.data;
-  for (let i = 0; i < raster.ids.length; i++) {
-    const id = raster.ids[i];
-    if (!id) continue;
-    const rgb = colour(id, i % raster.width);
-    if (!rgb) continue;
-    const p = i * 4;
-    data[p] = rgb[0];
-    data[p + 1] = rgb[1];
-    data[p + 2] = rgb[2];
-    data[p + 3] = 255;
-  }
-  const scratch = document.createElement("canvas");
-  scratch.width = raster.width;
-  scratch.height = raster.height;
-  scratch.getContext("2d")?.putImageData(image, 0, 0);
-  context.drawImage(scratch, dx, dy);
-}
-
 /** Every line's label raster — which blob each pixel is. A line that fails is said and
  * skipped; the rest play. */
 function useRasters(lines: CalibrationLine[], attempt: number): Rasters {
@@ -661,6 +700,59 @@ function useRasters(lines: CalibrationLine[], attempt: number): Rasters {
     return () => abort.abort();
   }, [lines, attempt]);
   return state;
+}
+
+/** The word under the pointer: a lapis ring, and its text in a tip above it — below it
+ * when the ring is near the sheet's top. */
+function HoverTip({
+  left,
+  top,
+  width,
+  height,
+  text,
+  aya,
+  hint,
+}: {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+  text: string;
+  aya: string;
+  hint: string;
+}) {
+  const above = top > 96;
+  return (
+    <>
+      <div
+        className="pointer-events-none absolute rounded-[4px]"
+        style={{
+          left,
+          top,
+          width,
+          height,
+          background: "var(--ov-hover-wash)",
+          boxShadow: "0 0 0 2px var(--ov-line-selected)",
+        }}
+      />
+      <div
+        className="pointer-events-none absolute z-10 flex flex-col items-center gap-0.5 whitespace-nowrap rounded-control bg-deep px-3 py-2 text-on-deep shadow-[0_6px_18px_rgba(0,0,0,0.25)]"
+        style={{
+          left: left + width / 2,
+          top: above ? top - 8 : top + height + 8,
+          transform: above ? "translate(-50%, -100%)" : "translateX(-50%)",
+        }}
+      >
+        <span lang="ar" dir="rtl" className="font-quran text-[28px] leading-tight">
+          {text}
+        </span>
+        <span className="font-mono text-[11px] text-on-deep-2">{aya}</span>
+        <span dir="auto" className="text-[11px] text-on-deep-2">
+          {hint}
+        </span>
+      </div>
+    </>
+  );
 }
 
 function BarButton({

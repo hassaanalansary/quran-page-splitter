@@ -227,6 +227,7 @@
   --ov-remove: #a8321f; /* the remove button on a selected cut */
   --ov-aya-lit: rgba(201, 150, 46, 0.38); /* the preview's lit aya */
   --ov-aya-lit-ring: rgba(201, 150, 46, 0.9);
+  --ov-hover-wash: rgba(30, 78, 140, 0.1); /* the word under the pointer (word player) */
 
   /* the detection log: a terminal, the same in both themes */
   --term: #15120e;

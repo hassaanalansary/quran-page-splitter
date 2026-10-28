@@ -1,6 +1,16 @@
 // Run with node --experimental-strip-types src/lib/calibration/playback.check.ts.
 import assert from "node:assert/strict";
-import { MARK_INK, belongsAt, inkColor, playbackWords, wordBlobs, wordCrop } from "./playback.ts";
+import {
+  MARK_INK,
+  belongsAt,
+  bodyPieces,
+  inkColor,
+  piecesOf,
+  playbackWords,
+  wordAtPoint,
+  wordBlobs,
+  wordCrop,
+} from "./playback.ts";
 import type { CalibrationBlob, CalibrationLine, CalibrationWord } from "./types.ts";
 
 function blob(id: number, role: "body" | "mark", owner: number | null): CalibrationBlob {
@@ -107,5 +117,33 @@ assert.deepEqual(inkColor(line.blobs[1], "unknown-type", true), MARK_INK);
 const crop = wordCrop(entries[0]);
 assert.ok(crop.x + line.bbox.x <= 110 && crop.x + crop.w + line.bbox.x >= 127);
 assert.ok(crop.y === 0 && crop.y + crop.h <= line.bbox.h);
+// The word under the pointer: its line's height, its box's x span.
+assert.equal(wordAtPoint(entries, 115, 30), 0);
+assert.equal(wordAtPoint(entries, 105, 30), 1);
+assert.equal(wordAtPoint(entries, 125, 30), -1, "past the first word's right edge");
+assert.equal(wordAtPoint(entries, 115, 45), -1, "below every line");
+
+// A word's text in the pieces its ink prints, each letter with its marks.
+assert.deepEqual(piecesOf("بِسْمِ"), ["بِسْمِ"]);
+assert.deepEqual(piecesOf("ٱلرَّحْمَٰنِ"), ["ٱ", "لرَّ", "حْمَٰنِ"]);
+assert.deepEqual(piecesOf("شَىْءٍ"), ["شَىْ", "ءٍ"]);
+assert.deepEqual(piecesOf("وَعَمِلُوا۟"), ["وَ", "عَمِلُو", "ا۟"]);
+// Each body takes as many pieces as its PAWs, right to left; a fragment none.
+const pieces = bodyPieces({
+  line: {
+    ...line,
+    blobs: [
+      { ...blob(1, "body", 1), x: 116 },
+      { ...blob(5, "body", 1), x: 113, allocations: [{ word_id: 1, paws: 0 }] },
+      { ...blob(4, "body", 1), x: 110 },
+    ],
+  },
+  word: { ...word, text: "وَعَمِلُوا۟", expected_paws: 3 },
+  wordIndex: 0,
+});
+assert.deepEqual(pieces.get(1), { pieces: ["وَ"], first: 1, share: 1, total: 3 });
+assert.deepEqual(pieces.get(5), { pieces: [], first: 2, share: 0, total: 3 });
+assert.deepEqual(pieces.get(4), { pieces: ["عَمِلُو"], first: 2, share: 1, total: 3 });
+
 assert.equal(JSON.stringify(line), before, "playback must never mutate annotations");
 console.log("Word playback checks passed.");

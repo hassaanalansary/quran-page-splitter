@@ -87,3 +87,84 @@ export function wordCrop(entry: PlaybackWord) {
     h: Math.max(1, Math.min(line.bbox.h, bottom - line.bbox.y + 12) - y),
   };
 }
+
+/** The word under a point of the page (page px): its line's height, its box's x span.
+ * The index into `entries`, or -1. */
+export function wordAtPoint(entries: PlaybackWord[], x: number, y: number): number {
+  return entries.findIndex(
+    ({ line, word }) =>
+      word.word_id !== null &&
+      y >= line.bbox.y &&
+      y < line.bbox.y + line.bbox.h &&
+      x >= word.end_x &&
+      x < word.start_x,
+  );
+}
+
+// The joining rules of the server's core/text/arabic.py — the one source; keep these
+// equal to its NON_JOINERS, NON_RECEIVERS and MARKS.
+const NON_JOINERS = new Set("اأإآٱدذرزوؤةءٲٳٵٶٷٮۃ");
+const NON_RECEIVERS = new Set("ءٴ");
+function isMarkChar(ch: string): boolean {
+  const c = ch.codePointAt(0) ?? 0;
+  return (
+    (c >= 0x0610 && c <= 0x061a) ||
+    (c >= 0x064b && c <= 0x065f) ||
+    c === 0x0670 ||
+    (c >= 0x06d6 && c <= 0x06ed) ||
+    c === 0x0640
+  );
+}
+
+/** A word's text cut into the pieces its ink prints (PAWs), right to left, each letter
+ * keeping the marks written on it: بِسْمِ is one piece, ٱلرَّحْمَٰنِ three. */
+export function piecesOf(text: string): string[] {
+  const letters: string[] = [];
+  for (const ch of text) {
+    if (isMarkChar(ch) && letters.length) letters[letters.length - 1] += ch;
+    else letters.push(ch);
+  }
+  const pieces: string[] = [];
+  let current = "";
+  for (const letter of letters) {
+    const base = [...letter][0];
+    if (NON_RECEIVERS.has(base) && current) {
+      pieces.push(current);
+      current = "";
+    }
+    current += letter;
+    if (NON_JOINERS.has(base)) {
+      pieces.push(current);
+      current = "";
+    }
+  }
+  if (current) pieces.push(current);
+  return pieces;
+}
+
+/** Which pieces of its word's text each body prints: the bodies right to left, each
+ * taking as many pieces as the PAWs it is given for this word — none for a broken
+ * fragment, two for two printed touching. `first` is the first piece's number from 1. */
+export function bodyPieces(
+  entry: PlaybackWord,
+): Map<number, { pieces: string[]; first: number; share: number; total: number }> {
+  const pieces = piecesOf(entry.word.text);
+  const found = new Map<
+    number,
+    { pieces: string[]; first: number; share: number; total: number }
+  >();
+  let at = 0;
+  for (const blob of wordBlobs(entry)) {
+    if (blob.role !== "body") continue;
+    const share =
+      blob.allocations.find((allocation) => allocation.word_id === entry.word.word_id)?.paws ?? 0;
+    found.set(blob.id, {
+      pieces: pieces.slice(at, at + share),
+      first: at + 1,
+      share,
+      total: pieces.length,
+    });
+    at += share;
+  }
+  return found;
+}
