@@ -3,7 +3,8 @@
 @import "tw-animate-css";
 
 /*
- * SATR (سَطْر). Design tokens from the redesign (design/redesign/tokens.css),
+ * SATR (سَطْر). Design tokens from the redesign (satr-design/redesign/tokens.css —
+ * the design pack, kept beside this repository, not in it),
  * Direction A "Tablet", in light and dark.
  *
  * The raw tokens keep the boards' names (--paper, --lapis-wash…) and live on :root;
@@ -237,7 +238,7 @@
   --term-live-text: #8fcba5;
   --term-live-wash: #1e3a2a;
 
-  /* the SATR mark (design/brand/satr/brand.css) */
+  /* the SATR mark (satr-design/brand/satr/brand.css) */
   --satr-tile: #173e70;
   --satr-gold: #c9962e;
   --satr-mark: #15808f; /* tashkeel on paper */
@@ -344,7 +345,7 @@
 }
 
 /*
-  The SATR loaders (design/brand/satr/loader), as components/app/SatrLoader.tsx draws
+  The SATR loaders (satr-design/brand/satr/loader), as components/app/SatrLoader.tsx draws
   them. Writing: the line draws in, the letters are written, the fatha and sukun
   arrive as found marks and then take the mark colour, ۞ is set, and it loops (2.4 s).
   Inline: the teeth of س rise in turn under the fatha (1.2 s). Both pulse instead

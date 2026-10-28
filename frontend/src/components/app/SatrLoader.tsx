@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import { SATR_FATHA, SATR_LETTERS, SATR_STAR, SATR_SUKUN } from "./satrMark";
 
 /*
- * The SATR loaders (design/brand/satr/loader/*-currentcolor.svg), inline so the
+ * The SATR loaders (satr-design/brand/satr/loader/*-currentcolor.svg), inline so the
  * theme reaches them: the letters take `color`, the rest the --satr-* tokens. Their
  * animation lives in styles.css (.satr-ld-*, .satr-li-*). Both are decoration: the
  * wait's own words sit beside them.

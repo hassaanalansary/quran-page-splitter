@@ -1,7 +1,7 @@
-// The SATR mark's geometry (design/brand/satr/source/geom.py, as exported to the
-// SVGs in design/brand/satr/). One copy here for the lockup, the symbol, the glyph
+// The SATR mark's geometry (satr-design/brand/satr/source/geom.py, as exported to the
+// SVGs in satr-design/brand/satr/). One copy here for the lockup, the symbol, the glyph
 // and the loaders. Never redraw the sukun: it is traced from this mushaf's own
-// sukun fingerprint (design/brand/satr/README.md §1).
+// sukun fingerprint (satr-design/brand/satr/README.md §1).
 
 /** سطر as one stroke, 8 units wide: the symbol, the glyph and the writing loader. */
 export const SATR_LETTERS = [
