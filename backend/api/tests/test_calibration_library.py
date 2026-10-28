@@ -123,13 +123,14 @@ class CompareTests(LibraryTestCase):
         self.assertEqual((answer["answer"]["role"], answer["answer"]["nearest_letter"]), ("body", 0.0))
         self.assertIsNone(answer["type"])
 
-    def test_the_marks_typed_on_this_page_have_a_row_of_their_own(self):
+    def test_an_untyped_mark_counts_the_marks_typed_on_this_page(self):
         body = self.draft(self.doc)
         self.type_mark(body, 1, BAR[0], "fatha")
         line = self.doc["lines"][0]
-        answer = self.compare(body, line, self.blob_at(line, BAR[0]))
-        (own,) = answer["own"]
-        self.assertEqual((own["subtype"], own["distance"], own["page_number"]), ("fatha", 0.0, 2))
+        self.assertEqual(self.compare(body, line, self.blob_at(line, BAR[0]))["own"], 1)
+        # A typed mark is asked of the other pages only.
+        self.type_mark(body, 0, BAR[0], "fatha")
+        self.assertEqual(self.compare(body, line, self.blob_at(line, BAR[0]))["own"], 0)
 
 
 class LooksRightTests(LibraryTestCase):

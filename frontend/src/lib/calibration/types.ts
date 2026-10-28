@@ -350,8 +350,8 @@ export type LibraryCompare = {
     runner_distance: number | null;
   } | null;
   distances: Record<string, number>;
-  /** The marks typed on this page, nearest first: not confirmed, so a row apart. */
-  own: (LibraryShape & { subtype: string; distance: number })[];
+  /** How many marks typed on this page took part in an untyped mark's guess. */
+  own: number;
 };
 
 export type EvaluationCounts = Partial<{

@@ -608,9 +608,9 @@ export function SelectionBar({
                     )}
                   </span>
                 )}
-                {library.data.own.length > 0 && (
+                {library.data.own > 0 && (
                   <span className={quiet}>
-                    {t("calibration.library.ownCount", { count: library.data.own.length })}
+                    {t("calibration.library.ownCount", { count: library.data.own })}
                   </span>
                 )}
               </>

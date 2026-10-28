@@ -213,8 +213,8 @@ def compare(mushaf: Mushaf, page: int, data: Doc) -> Doc:
 
     From the draft as the editor holds it, so typing not yet saved counts: an untyped
     mark is asked of the library *and* the marks typed on this page, as its guess is
-    (``own``, a row of its own: they are not confirmed). A typed one is asked of the
-    other pages only — the question its doubt asks.
+    (``own`` counts them). A typed one is asked of the other pages only — the question
+    its doubt asks.
     """
     review = calibration._review(mushaf, page)
     if review is None or not review.payload.get("lines"):
@@ -264,19 +264,6 @@ def compare(mushaf: Mushaf, page: int, data: Doc) -> Doc:
         if guess["subtype"]:
             kind = {key: guess[key] for key in ("subtype", "distance", "sure", "runner_up", "runner_distance")}
 
-    own = []
-    if own_samples:
-        method = library.method
-        near = method.distances(
-            method.stack([method.describe(sample["features"]) for sample in own_samples]), [method.describe(features)]
-        )[0]
-        shapes = _Shapes(mushaf, own_samples)
-        for sample, distance in zip(own_samples, near, strict=True):
-            shape = shapes.of(sample, "mark", sample["subtype"])
-            if shape is not None:
-                own.append({**shape, "subtype": sample["subtype"], "distance": round(float(distance), 4)})
-        own.sort(key=lambda entry: (entry["distance"], entry["subtype"]))
-
     return {
         "snapshot_id": data["snapshot_id"],
         "blob_id": data["blob_id"],
@@ -286,7 +273,8 @@ def compare(mushaf: Mushaf, page: int, data: Doc) -> Doc:
         "answer": answer,
         "type": kind,
         "distances": distances,
-        "own": own,
+        # How many marks typed on this page took part in the guess: none for a typed mark.
+        "own": len(own_samples) if blob["role"] == "mark" and not typed else 0,
     }
 
 

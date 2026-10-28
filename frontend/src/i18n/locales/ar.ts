@@ -833,7 +833,6 @@ export const ar: typeof en = {
       previewFingerprints: "البصمات {{delta}}",
       discard: "تجاهل",
       selected: "المحدَّد · الصفحة {{page}} · السطر {{line}} · البقعة {{id}}",
-      thisPage: "نُوِّعت في هذه الصفحة (غير معتمدة)",
       empty: "لا شيء يعلّم هذه الصفحة بعد: متى اعتُمدت صفحة أخرى ظهرت أمثلتها هنا.",
       kindCount: "{{count}} بصمة · {{examples}} مثالًا",
       showLetters: "أظهر",

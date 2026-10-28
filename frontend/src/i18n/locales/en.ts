@@ -859,7 +859,6 @@ export const en = {
       previewFingerprints: "fingerprints {{delta}}",
       discard: "Discard",
       selected: "Selected · page {{page}} · line {{line}} · blob {{id}}",
-      thisPage: "Typed on this page (not confirmed)",
       empty:
         "Nothing teaches this page yet: once another page is confirmed, its examples show here.",
       kindCount: "{{count}} fingerprint(s) · {{examples}} examples",

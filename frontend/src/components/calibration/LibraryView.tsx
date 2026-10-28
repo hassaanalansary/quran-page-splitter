@@ -522,37 +522,6 @@ export function LibraryView({
               )}
             </span>
           </div>
-          {!!compare?.data?.own.length && (
-            <div className="flex flex-col gap-1.5">
-              <span className="text-[12px] font-semibold text-ink-2">
-                {t("calibration.library.thisPage")}
-              </span>
-              <div dir="rtl" className="flex flex-wrap items-end gap-1.5">
-                {compare.data.own.map((shape) => (
-                  <InkCell
-                    key={shape.key}
-                    imageUrl={shape.image_url}
-                    imageSize={shape.image_size}
-                    crop={shape.crop}
-                    zoom={zoom}
-                    settled={false}
-                    title={`${typeName(shape.subtype)}\n${t("calibration.library.distance", {
-                      distance: shape.distance.toFixed(2),
-                    })}`}
-                  >
-                    <Badge className="bottom-0 end-0 bg-card/90 font-mono text-ink-2">
-                      {shape.distance.toFixed(2)}
-                    </Badge>
-                    <Badge className="start-0 top-0 bg-card/90 text-mark-text">
-                      <span dir="rtl" className="font-quran">
-                        {subtypeGlyph(shape.subtype)}
-                      </span>
-                    </Badge>
-                  </InkCell>
-                ))}
-              </div>
-            </div>
-          )}
         </section>
       )}
 
