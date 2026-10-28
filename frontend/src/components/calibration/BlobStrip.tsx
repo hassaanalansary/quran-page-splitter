@@ -15,6 +15,7 @@ import {
   expectationKey,
   expectedType,
   highlights,
+  isFusedBody,
   isSelected,
   isTyped,
   labelAt,
@@ -24,6 +25,7 @@ import {
   noiseFor,
   passesFilter,
   selectIds,
+  subtypeParts,
   typedByText,
   wordCount,
   type BlobFilter,
@@ -575,6 +577,11 @@ export function BlobStrip({
                         style={{ background: "var(--ov-warn)" }}
                       >
                         ⚑ {key ? t(`calibration.flagShort.${blob.exception as FlagKind}`) : ""}
+                        {isFusedBody(blob) && blob.subtype && (
+                          <span dir="rtl" className="ms-1 font-quran text-[12px]">
+                            {subtypeParts(blob.subtype).map(subtypeGlyph).join(" ")}
+                          </span>
+                        )}
                       </span>
                     </span>
                   );

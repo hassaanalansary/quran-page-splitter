@@ -440,9 +440,38 @@ export function setException(
 ): CalibrationLine[] {
   return onLine(lines, selection, (line, chosen) => ({
     ...line,
-    blobs: line.blobs.map((blob) =>
-      chosen.has(blob.id) && isText(blob) && !blob.erased ? { ...blob, exception } : blob,
-    ),
+    blobs: line.blobs.map((blob) => {
+      if (!chosen.has(blob.id) || !isText(blob) || blob.erased) return blob;
+      // A body no longer mixed holds no marks: the ones named in it go.
+      return isFusedBody(blob) && exception !== "mixed"
+        ? { ...blob, exception, subtype: "", subtype_explicit: false }
+        : { ...blob, exception };
+    }),
+  }));
+}
+
+/** A body flagged mixed: a mark printed touching its letter, one blob with it. Its
+ * `subtype` names the marks in it, which the word's check counts as its ink. */
+export function isFusedBody(blob: CalibrationBlob): boolean {
+  return blob.role === "body" && blob.exception === "mixed" && !blob.erased;
+}
+
+/** Name a mark in the selected mixed bodies, or take the name off again. */
+export function toggleFusedMark(
+  lines: CalibrationLine[],
+  selection: BlobSelection,
+  part: string,
+): CalibrationLine[] {
+  return onLine(lines, selection, (line, chosen) => ({
+    ...line,
+    blobs: line.blobs.map((blob) => {
+      if (!chosen.has(blob.id) || !isFusedBody(blob)) return blob;
+      const parts = subtypeParts(blob.subtype);
+      const subtype = composeSubtype(
+        parts.includes(part) ? parts.filter((other) => other !== part) : [...parts, part],
+      );
+      return { ...blob, subtype, subtype_explicit: !!subtype };
+    }),
   }));
 }
 
@@ -767,8 +796,8 @@ export function typeCounts(lines: CalibrationLine[], expectations: Expectations)
 }
 
 /** Everything the server's guesses depend on — which blobs are marks, which are
- * typed as what, and which are erased. A change here asks for new guesses; giving ink
- * to another word does not. */
+ * typed as what, which are erased, and the marks named in a mixed body. A change here
+ * asks for new guesses; giving ink to another word does not. */
 export function typingSignature(lines: CalibrationLine[]): string {
   return lines
     .filter((line) => !line.readonly)
@@ -776,13 +805,15 @@ export function typingSignature(lines: CalibrationLine[]): string {
       (line) =>
         `${line.snapshot_id}:` +
         line.blobs
-          .filter((blob) => blob.role === "mark" || blob.erased)
+          .filter((blob) => blob.role === "mark" || blob.erased || isFusedBody(blob))
           .map((blob) =>
             blob.erased
               ? `${blob.id}x`
-              : isTyped(blob)
-                ? `${blob.id}=${blob.subtype}`
-                : `${blob.id}`,
+              : isFusedBody(blob)
+                ? `${blob.id}~${blob.subtype}`
+                : isTyped(blob)
+                  ? `${blob.id}=${blob.subtype}`
+                  : `${blob.id}`,
           )
           .join(","),
     )

@@ -1,13 +1,18 @@
+import { X } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { mediaUrl } from "@/lib/api";
+import { isFusedBody, subtypeParts } from "@/lib/calibration/model";
 import type {
   Allocation,
   BlobException,
   CalibrationBlob,
   CalibrationLine,
 } from "@/lib/calibration/types";
+
+import { useTypeName } from "./labels";
+import { SUBTYPES, SUBTYPE_GLYPHS, subtypeGlyph } from "./subtypes";
 
 const EXCEPTIONS: BlobException[] = ["", "mixed", "broken", "fused", "uncertain"];
 
@@ -64,14 +69,15 @@ export function BlobCrop({
 /**
  * Which word the selected ink belongs to, and the rarer decisions about it: give it
  * to a word with a PAW count, share one body across a word break, leave marks
- * unattached, flag ink out of the ordinary, take decisions back. Recording
- * ownership changes nobody's role.
+ * unattached, flag ink out of the ordinary — and name the marks printed in a mixed
+ * body — take decisions back. Recording ownership changes nobody's role.
  */
 export function OwnershipControls({
   line,
   blobs,
   disabled,
   onException,
+  onFusedMark,
   onAssign,
   onShare,
   onRelease,
@@ -81,13 +87,17 @@ export function OwnershipControls({
   blobs: CalibrationBlob[];
   disabled: boolean;
   onException: (exception: BlobException) => void;
+  /** Name a mark printed in the mixed body, or take it off. */
+  onFusedMark: (part: string) => void;
   onAssign: (wordId: number, paws: number) => void;
   onShare: (shares: Allocation[]) => void;
   onRelease: () => void;
   onUnassign: () => void;
 }) {
   const { t } = useTranslation();
+  const typeName = useTypeName();
   const single = blobs.length === 1 ? blobs[0] : null;
+  const fused = single && isFusedBody(single) ? subtypeParts(single.subtype) : null;
   const labelled = line.words.filter((word) => word.word_id !== null);
   const [target, setTarget] = useState<number | "">("");
   const [paws, setPaws] = useState(1);
@@ -235,6 +245,53 @@ export function OwnershipControls({
           </button>
         )}
       </div>
+
+      {fused && (
+        <div className="flex flex-col gap-1.5">
+          <span className="font-semibold text-ink-2">{t("calibration.fusedMarks.title")}</span>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {fused.map((part) => (
+              <button
+                key={part}
+                type="button"
+                disabled={disabled}
+                onClick={() => onFusedMark(part)}
+                title={t("calibration.fusedMarks.remove")}
+                className="inline-flex h-[30px] cursor-pointer items-center gap-1.5 rounded-pill border border-rule-2 bg-card px-2.5 text-[12.5px] text-ink transition-colors hover:bg-sheet disabled:cursor-default disabled:opacity-50"
+              >
+                <span dir="rtl" className="font-quran text-[16px] leading-none text-mark-text">
+                  {subtypeGlyph(part)}
+                </span>
+                {typeName(part)}
+                <X size={12} aria-hidden="true" className="text-ink-3" />
+              </button>
+            ))}
+            <select
+              className={`${selectClass} h-[30px] flex-none`}
+              value=""
+              disabled={disabled}
+              aria-label={t("calibration.fusedMarks.add")}
+              onChange={(event) => event.target.value && onFusedMark(event.target.value)}
+            >
+              <option value="" disabled>
+                {t("calibration.fusedMarks.add")}
+              </option>
+              {SUBTYPES.filter((value) => value !== "other" && !fused.includes(value)).map(
+                (value) => (
+                  <option key={value} value={value}>
+                    {SUBTYPE_GLYPHS[value]} · {typeName(value)}
+                  </option>
+                ),
+              )}
+            </select>
+          </div>
+          {!fused.length && (
+            <span className="text-[12px] leading-snug text-ink-3">
+              {t("calibration.fusedMarks.help")}
+            </span>
+          )}
+        </div>
+      )}
 
       {decided && (
         <button

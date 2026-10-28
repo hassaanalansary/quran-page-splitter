@@ -157,6 +157,10 @@ may not match what the JSON describes (`outdated` catches a change of size).
 - `words` lists a line's words in reading order (right to left).
 - `paws` is how many pieces of its word a body is: 1 normally, 2 or more for
   bodies printed touching, 0 for a broken fragment.
+- `flag` is a person's note that the blob is out of the ordinary: `mixed` (a body
+  and a mark in one blob), `broken`, `fused` or `uncertain`. A `mixed` body may carry
+  `marks`: the marks printed touching it, as a person named them (`"fatha"`, two or
+  more joined by `+`).
 
 ### How far each page got
 

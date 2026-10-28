@@ -342,6 +342,17 @@ class TextTypeTests(CalibrationApiTestCase):
         self.assertEqual((words[1]["ok"], words[1]["missing"]), (True, []))
         self.assertEqual((words[2]["ok"], words[2]["missing"], words[2]["extra"]), (False, ["ijamDot", "fatha"], []))
 
+    def test_the_marks_named_in_a_mixed_body_count_for_its_word(self):
+        # نَ's dot and fatha printed touching its letter: one blob with it.
+        body = self.draft(self.doc)
+        letter = self.draft_blob(body, 0, BODIES[1][0])
+        letter.update(subtype="fatha+ijamDot", subtype_explicit=True)
+        words = {word["word_id"]: word for word in self.suggest(body)["words"]}
+        self.assertFalse(words[2]["ok"])  # named, but the body is not flagged mixed
+        letter["exception"] = "mixed"
+        words = {word["word_id"]: word for word in self.suggest(body)["words"]}
+        self.assertEqual((words[2]["ok"], words[2]["missing"], words[2]["extra"]), (True, [], []))
+
     def test_a_typed_mark_the_text_names_otherwise_is_doubted_by_it(self):
         body = self.draft(self.doc)
         self.draft_blob(body, 0, DOT[0]).update(subtype="fatha", subtype_explicit=True, explicit=True)

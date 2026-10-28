@@ -937,6 +937,12 @@ export const en = {
       fused: "Fused — letters printed touching",
       uncertain: "Not sure what this is",
     },
+    fusedMarks: {
+      title: "Marks printed in it",
+      add: "Add a mark…",
+      remove: "Take this mark off",
+      help: "Name the marks printed touching this letter: its word's check counts them, and stops saying they are missing.",
+    },
     subtypeTitle: "Kind of mark (optional)",
     types: {
       title: "Mark types",

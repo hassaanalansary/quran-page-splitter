@@ -10,6 +10,10 @@ type matcher makes of each — and reads the answers back as types:
 * a mark a person typed that the text names otherwise is a doubt;
 * a word whose ink and text do not fit says what is missing and what is left over.
 
+A mark printed touching its letter is one blob with it. A person flags that body
+*mixed* and names the marks in it (:func:`fused_marks`); the word's check counts them
+as ink like any other, so the word stops lacking them.
+
 The embraced pause sign ``∴`` is found from the ink first (:func:`embraced`): three loose
 dots look like any other dots, so the matcher cannot tell them from a letter's. Where
 the text also has it, it is sure; where it has not, it is still the ink's best guess —
@@ -56,6 +60,14 @@ def human_typed(blob: Doc) -> bool:
         and bool(blob.get("subtype_explicit", True))
         and blob.get("subtype_source") != "text"
     )
+
+
+def fused_marks(blob: Doc) -> str:
+    """The marks a person named in a body flagged *mixed* — printed touching its letter,
+    one blob with it — as one type ("fatha", "shadda+fatha"); "" for any other blob."""
+    if blob["role"] != "body" or blob.get("exception") != "mixed" or blob.get("erased"):
+        return ""
+    return blob.get("subtype") or ""
 
 
 def lane_of(blob: Doc, band: list[int]) -> Lane:
@@ -218,6 +230,13 @@ def check_rows(
                 )
                 for blob in own
                 if blob["role"] == "mark"
+            ]
+            # Marks inside a letter's blob: where in it they sit is not known, so on the
+            # line, which fits a slot above or below at a little cost.
+            found += [
+                FoundMark(id=blob["id"], x=blob["x"] + blob["w"] / 2, lane="line", typed=fused_marks(blob))
+                for blob in own
+                if fused_marks(blob)
             ]
             check = check_word(
                 text_marks(text, pause=pauses.get(ident, ""), ijam=ijam),

@@ -67,6 +67,7 @@ export function SelectionBar({
   onAddPart,
   onAccept,
   onException,
+  onFusedMark,
   onErase,
   onAssign,
   onShare,
@@ -92,6 +93,8 @@ export function SelectionBar({
   onAddPart: (part: string) => void;
   onAccept: () => void;
   onException: (exception: BlobException) => void;
+  /** Name a mark printed in a mixed body, or take it off. */
+  onFusedMark: (part: string) => void;
   /** Erase the selected ink, or restore it. */
   onErase: (erased: boolean) => void;
   onAssign: (wordId: number, paws: number) => void;
@@ -550,6 +553,7 @@ export function SelectionBar({
               blobs={blobs}
               disabled={disabled}
               onException={onException}
+              onFusedMark={onFusedMark}
               onAssign={onAssign}
               onShare={onShare}
               onRelease={onRelease}

@@ -101,6 +101,7 @@ names the aya it closes) or "symbol" (a sajda or rub' sign; "symbol" names it). 
 may carry a "type" (fatha, kasra, sukun, shadda, ...; two types joined by "+" are two
 marks printed as one blob), set by a person or by the Quran text ("type_by"). "words"
 lists the word ids a blob belongs to; "paws" is how many pieces of its word a body is.
+A body flagged "mixed" holds a mark printed touching it; "marks" names them.
 A blob marked "erased" is no ink of the text - noise a person erased: it belongs to no
 word, and the line PNG and both maps are cut without it.
 
@@ -281,6 +282,9 @@ def _blob(blob: Doc, place: _Placement, ornaments: dict[int, str], symbols: dict
         entry["words"] = [allocation["word_id"] for allocation in allocations]
         if role == "body":
             entry["paws"] = sum(allocation["paws"] for allocation in allocations)
+            if fused := text_marks.fused_marks(blob):
+                # Marks printed touching the letter, one blob with it, as a person named them.
+                entry["marks"] = fused
         typed = _type_of(blob)
         if role == "mark":
             entry["type"], entry["type_by"] = typed if typed else (None, None)

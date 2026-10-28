@@ -76,6 +76,7 @@ import {
   requestIds,
   setErased,
   setException,
+  toggleFusedMark,
   setRole,
   setSubtype,
   shareBetween,
@@ -1713,6 +1714,7 @@ export function CalibrationEditor({
             onAddPart={(part) => commit(addSubtypePart(lines, selection, part, expectations))}
             onAccept={() => commit(acceptExpected(lines, expectations, selection))}
             onException={(value) => commit(setException(lines, selection, value))}
+            onFusedMark={(part) => commit(toggleFusedMark(lines, selection, part))}
             onErase={(erased) => commit(setErased(lines, selection, erased))}
             onAssign={(wordId, paws) => commit(assignToWord(lines, selection, wordId, paws))}
             onShare={(shares) => commit(shareBetween(lines, selection, shares))}

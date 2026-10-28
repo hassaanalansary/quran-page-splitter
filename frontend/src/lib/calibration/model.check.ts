@@ -57,6 +57,7 @@ import {
   selectIds,
   setErased,
   setException,
+  toggleFusedMark,
   setRole,
   setSubtype,
   noiseFor,
@@ -704,4 +705,26 @@ assert.deepEqual(inkOf(line(), null), []);
   assert.deepEqual(wordRisks(page, page.words[1], checks), ["marks"]);
   assert.deepEqual(wordRisks(page, page.words[1]), [], "no checks, no such risk");
   assert.deepEqual([...tanweenOf([{ snapshot_id: "s1", blob_id: 4 }])], ["s1:4"]);
+}
+
+// A mixed body names the marks printed in it; they stay out of every mark count, and
+// go when the flag does.
+{
+  const mixed = setException([line()], sel([3]), "mixed");
+  const named = toggleFusedMark(toggleFusedMark(mixed, sel([3]), "fatha"), sel([3]), "shadda");
+  assert.equal(pick(named, 3).subtype, "shadda+fatha");
+  assert.equal(pick(named, 3).subtype_explicit, true);
+  assert.equal(isTyped(pick(named, 3)), false, "a body is never a typed mark");
+  assert.notEqual(
+    typingSignature(named),
+    typingSignature(mixed),
+    "naming one asks for a new check",
+  );
+  assert.equal(pick(toggleFusedMark(named, sel([3]), "shadda"), 3).subtype, "fatha");
+  assert.equal(
+    pick(toggleFusedMark([line()], sel([3]), "fatha"), 3).subtype,
+    "",
+    "only a mixed body",
+  );
+  assert.equal(pick(setException(named, sel([3]), "broken"), 3).subtype, "");
 }
