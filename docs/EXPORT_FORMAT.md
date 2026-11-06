@@ -3,8 +3,8 @@
 Everything the tool knows about a mushaf's pages, in one zip: every line, aya, word
 and blob, placed on the page and on each line's PNG, plus two pixel maps per line.
 
-Download it from **Details → Export → Words, marks & pixel maps**, from the gallery
-page of a published mushaf, or for one page from *Page · learning* in Calibrate.
+Download it from **Details → Export → Words, marks & maps**, from the gallery
+page of a published mushaf, or for one page from *Page N · learning* in Ink.
 
 ```
 GET /api/mushafs/{id}/export.zip                  the whole mushaf
@@ -34,7 +34,7 @@ mushaf-export.zip
 ```
 
 A line PNG appears only once that page's lines were exported (*Export all lines*).
-Maps appear only for lines calibrated in Calibrate — they need the blobs.
+Maps appear only for lines processed in Ink — they need the blobs.
 
 ---
 
@@ -166,10 +166,10 @@ may not match what the JSON describes (`outdated` catches a change of size).
 
 | `calibration.state` | meaning                                                       |
 |---------------------|---------------------------------------------------------------|
-| `confirmed`         | approved in Calibrate, and unchanged since                    |
-| `edited`            | approved, then changed — confirm it again                     |
-| `draft`             | processed in Calibrate, never approved: **nobody checked it** |
-| `none`              | never calibrated: word boxes only, no blobs and no maps       |
+| `confirmed`         | confirmed in Ink, and unchanged since                         |
+| `edited`            | confirmed, then changed — confirm it again                    |
+| `draft`             | processed in Ink, never confirmed: **nobody checked it**      |
+| `none`              | never processed in Ink: word boxes only, no blobs and no maps |
 
 The export hides nothing; which states to trust is the reading app's call.
 
