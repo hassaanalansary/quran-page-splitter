@@ -1,7 +1,8 @@
 """Export final transparent line PNGs from a page's coordinates + erase strokes.
 
 Each line is cropped from the freshly rendered page, its white background is
-made transparent, eraser strokes are punched out of the alpha channel, and the
+made transparent, eraser strokes are punched out of the alpha channel — and so,
+pixel for pixel, is every blob a person erased in Calibrate — and the
 PNG is saved under ``media/mushafs/<id>/lines/`` with its path recorded on
 the line. With ``Mushaf.export_uniform_size`` on, every line of a page is then
 centred on a transparent canvas the size of that page's largest line, so the
@@ -17,6 +18,7 @@ import uuid
 import zipfile
 from tempfile import SpooledTemporaryFile
 
+import numpy as np
 from django.core.files.base import ContentFile
 from django.db.models import Prefetch
 from ninja.errors import HttpError
@@ -44,11 +46,21 @@ def export_lines(*, user: User, mushaf_id: uuid.UUID, page_number: int) -> dict:
 
     column = coordinates.page_column(page)
     lines = list(page.lines.order_by("line_number").prefetch_related("erase_strokes"))
+    # Imported here: calibration reaches this module through line_images.
+    from api.services import calibration
+
+    # Blobs a person erased in Calibrate — noise the cutting left — go too.
+    erased = calibration.erased_ink(mushaf, page_number, lines)
 
     # Rendered up front rather than streamed one at a time: a uniform canvas can
     # only be sized once every line on the page has been cut and erased. Fifteen
     # RGBA line crops is a manageable amount to hold.
-    rendered = [(line, render_line_image(image, line, column)) for line in lines]
+    rendered = []
+    for line in lines:
+        rgba = render_line_image(image, line, column)
+        if str(line.pk) in erased:
+            cut_erased(rgba, _origin(line, column), erased[str(line.pk)])
+        rendered.append((line, rgba))
     canvas: tuple[int, int] | None = None
     if mushaf.export_uniform_size and rendered:
         canvas = (
@@ -212,8 +224,7 @@ def render_line_image(image: Image.Image, line: Line, column: dict | None) -> Im
     # untouched. Only the vertical extent (Y/H) comes from the line.
     col_x = column["x"] if column else line.bbox_x
     col_w = column["w"] if column else line.bbox_w
-    left = max(0, col_x)
-    top = max(0, line.bbox_y)
+    left, top = _origin(line, column)
     right = min(image.width, col_x + col_w)
     bottom = min(image.height, line.bbox_y + line.bbox_h)
     rgba = make_transparent(image.crop((left, top, right, bottom)))
@@ -232,3 +243,28 @@ def render_line_image(image: Image.Image, line: Line, column: dict | None) -> Im
         rgba.putalpha(alpha)
 
     return rgba
+
+
+def _origin(line: Line, column: dict | None) -> tuple[int, int]:
+    """The page x and y of a line image's top-left pixel, as ``render_line_image`` cuts it."""
+    return max(0, column["x"] if column else line.bbox_x), max(0, line.bbox_y)
+
+
+def cut_erased(rgba: Image.Image, origin: tuple[int, int], erased: tuple[np.ndarray, int, int]) -> None:
+    """Punch the ink a person erased in Calibrate out of a line image's alpha. In place.
+
+    ``erased`` is ``calibration.erased_ink``'s: a mask and the page x and y of its
+    top-left; ``origin`` is the image's own. Exact to the pixel, unlike a brush stroke —
+    and kept out of ``render_line_image``, which also feeds the snapshots the erase was
+    made on.
+    """
+    mask, x, y = erased
+    alpha = np.array(rgba.getchannel("A"))
+    dx, dy = x - origin[0], y - origin[1]
+    sx, sy, tx, ty = max(0, -dx), max(0, -dy), max(0, dx), max(0, dy)
+    width = min(mask.shape[1] - sx, alpha.shape[1] - tx)
+    height = min(mask.shape[0] - sy, alpha.shape[0] - ty)
+    if width <= 0 or height <= 0:
+        return
+    alpha[ty : ty + height, tx : tx + width][mask[sy : sy + height, sx : sx + width]] = 0
+    rgba.putalpha(Image.fromarray(alpha))

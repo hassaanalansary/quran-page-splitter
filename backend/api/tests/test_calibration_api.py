@@ -18,6 +18,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import mock
 
+import numpy as np
 from django.core.files.base import ContentFile
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
@@ -33,12 +34,11 @@ from api.models import (
     Line,
     LineTypeChoices,
     LineWord,
-    LineWordStatus,
     Page,
     Segment,
     Template,
 )
-from api.services import bundle, cloning, word_coordinates
+from api.services import bundle, cloning, coordinates, data_export, export
 from api.services import calibration as calibration_service
 from api.services import calibration_snapshots as snapshots
 from api.services import mushaf as mushaf_service
@@ -71,10 +71,18 @@ def _ring_template() -> bytes:
 STRAY = (560, 566)
 #: A flat stroke over every line's second body: a mark of another shape than the dot.
 BAR = (465, 485)
+#: A small square on the writing line just left of the first body — where a small waw
+#: or ya sits after its word's heh.
+SMALL = (566, 574)
 
 
 def _drawn_page(
-    *, fused: bool = False, ringless: tuple[int, ...] = (), stray: bool = False, bar: bool = False
+    *,
+    fused: bool = False,
+    ringless: tuple[int, ...] = (),
+    stray: bool = False,
+    bar: bool = False,
+    small: bool = False,
 ) -> Image.Image:
     """The picture a page renders as — see the module docstring.
 
@@ -92,6 +100,8 @@ def _drawn_page(
             draw.rectangle([STRAY[0], top + 1, STRAY[1] - 1, top + 3], fill="black")
         if bar:
             draw.rectangle([BAR[0], top + 2, BAR[1] - 1, top + 3], fill="black")
+        if small and number == 1:
+            draw.rectangle([SMALL[0], top + 19, SMALL[1] - 1, top + 30], fill="black")
         if number not in ringless:
             draw.rectangle([RING[0], top + 10, RING[1] - 1, top + 29], outline="black", width=3)
     return image
@@ -104,6 +114,7 @@ def drawn_pages(
     ringless: dict[int, tuple[int, ...]] | None = None,
     stray: bool = False,
     bar: bool = False,
+    small: bool = False,
 ):
     """Render every page as drawn: ``fused_page`` with its first line fused, and
     ``ringless`` mapping a page number to its lines printed without an ornament."""
@@ -114,6 +125,7 @@ def drawn_pages(
             ringless=(ringless or {}).get(page.page_number, ()),
             stray=stray and page.page_number == 1,
             bar=bar,
+            small=small and page.page_number == 1,
         )
 
     with mock.patch("api.services.line_images._render_page", side_effect=render):
@@ -202,10 +214,6 @@ class CalibrationApiTestCase(ApiTestCase):
                             )
                         }
                         for blob in line["blobs"]
-                    ],
-                    "words": [
-                        {key: word[key] for key in ("word_id", "start_x", "end_x", "override", "shared")}
-                        for word in line["words"]
                     ],
                 }
                 for line in document["lines"]
@@ -412,12 +420,28 @@ class PreviewTests(CalibrationApiTestCase):
         response = self.client.post(self.url(1, "/preview"), body, content_type="application/json")
         self.assertEqual(response.status_code, 422)
 
-    def test_a_dragged_edge_survives_the_preview(self):
+    def test_edges_sent_by_a_client_are_ignored_and_boxes_follow_the_ink(self):
+        """No edge is placed by hand: a draft carries blob decisions, and every box is
+        the extent of its word's ink — whatever a client sends beside them."""
         body = self.draft(self.doc)
-        body["lines"][0]["words"][1].update(end_x=450, override=True)
-        response = self.client.post(self.url(1, "/preview"), body, content_type="application/json")
-        words = response.json()["lines"][0]["words"]
-        self.assertEqual((words[1]["end_x"], words[1]["override"]), (450, True))
+        body["lines"][0]["words"] = [{"word_id": 2, "start_x": 900, "end_x": 450, "override": True, "shared": False}]
+        for response in (
+            self.client.post(self.url(1, "/preview"), body, content_type="application/json"),
+            self.put(1, body),
+        ):
+            self.assertEqual(response.status_code, 200, response.content)
+            words = response.json()["lines"][0]["words"]
+            self.assertEqual([(w["start_x"], w["end_x"]) for w in words], [(right, left) for left, right in BODIES])
+            self.assertNotIn("override", words[1])
+
+    def test_a_box_follows_the_ink_given_to_its_word(self):
+        body = self.draft(self.doc)
+        # The second body handed to word 1: word 1 now reaches across it, and word 2,
+        # left with no ink, keeps the edges it had.
+        self.draft_blob(body, 0, BODIES[1][0]).update(allocations=[{"word_id": 1, "paws": 1}], ownership_explicit=True)
+        words = self.put(1, body).json()["lines"][0]["words"]
+        self.assertEqual((words[0]["start_x"], words[0]["end_x"]), (BODIES[0][1], BODIES[1][0]))
+        self.assertEqual((words[1]["start_x"], words[1]["end_x"]), (BODIES[1][1], BODIES[1][0]))
 
     def test_accepting_a_preview_stores_what_it_showed(self):
         body = self.draft(self.doc)
@@ -446,18 +470,18 @@ class ConfirmTests(CalibrationApiTestCase):
         self.process(1)
         self.doc = self.document(1)
 
-    def test_confirming_writes_the_words_and_protects_the_page(self):
+    def test_confirming_writes_the_words(self):
         response = self.confirm(1, self.draft(self.doc))
         self.assertEqual(response.status_code, 200, response.content)
         self.assertEqual(response.json()["confirmed_revision"], 2)
         line = Line.objects.get(page__mushaf=self.mushaf, page__page_number=1, line_number=1)
-        self.assertEqual(list(line.words.values_list("word_id", flat=True)), [1, 2, 3])
-        # No engine verdict is invented for a confirmed line: it needs no review.
-        self.assertFalse(LineWordStatus.objects.filter(line=line).exists())
+        self.assertEqual(
+            list(line.words.values_list("word_id", "start_x", "end_x")),
+            [(word, right, left) for word, (left, right) in zip((1, 2, 3), BODIES, strict=True)],
+        )
         approval = CalibrationRevision.objects.get(review__page_number=1, number=2)
         self.assertEqual(approval.kind, "confirmed")
         self.assertNotIn("context", approval.payload)
-        self.assertEqual(word_coordinates.protected_lines([line]), {line.pk})
 
     def test_exceptions_must_be_acknowledged(self):
         body = self.draft(self.doc)
@@ -477,31 +501,39 @@ class ConfirmTests(CalibrationApiTestCase):
 
 
 class SettingsTests(CalibrationApiTestCase):
-    def test_experimental_requires_acknowledgment_and_checks_revision(self):
+    def test_a_save_checks_the_revision(self):
         url = f"/api/mushafs/{self.mushaf.id}/calibration/settings"
-        data = {"revision": 0, "experimental": True}
-        self.assertEqual(self.client.put(url, data, content_type="application/json").status_code, 422)
-        data["acknowledge_unvalidated"] = True
+        data = {"revision": 0, "limit": 0.4}
         response = self.client.put(url, data, content_type="application/json")
         self.assertEqual(response.status_code, 200, response.content)
-        self.assertTrue(response.json()["experimental"])
         self.assertEqual(self.client.put(url, data, content_type="application/json").status_code, 409)
 
-    def test_experimental_run_keeps_an_unlocked_baseline(self):
-        CalibrationSettings.objects.create(mushaf=self.mushaf, experimental=True)
-        with mock.patch.object(
-            calibration_service, "align_document", wraps=calibration_service.align_document
-        ) as align:
-            self.process(1)
-        self.assertTrue(any(call.kwargs.get("calibration_locks") for call in align.call_args_list))
+    def test_a_learned_draft_keeps_an_unlocked_baseline(self):
+        self.process(1)
         doc = self.document(1)
-        self.assertEqual(doc["profile"]["mode"], "experimental")
+        self.assertEqual(doc["profile"]["mode"], "learned")
         stored = CalibrationRevision.objects.get(review__mushaf=self.mushaf, kind="processed")
         self.assertEqual(stored.payload["profile"]["mode"], "shadow")
         self.assertEqual(stored.payload["profile"]["pages"], [])
         profile = CalibrationProfile.objects.get(signature=doc["profile"]["signature"])
-        self.assertEqual(profile.payload["config"]["min_distinct_pages"], 1)
-        self.assertEqual(profile.payload["config"]["min_support"], 5)
+        self.assertEqual((profile.payload["comparison"], profile.payload["limit"]), ("descriptor32", 0.27))
+
+    def test_the_limit_is_saved_checked_and_part_of_the_profile(self):
+        url = f"/api/mushafs/{self.mushaf.id}/calibration/settings"
+        data = {"revision": 0, "limit": 0.4}
+        response = self.client.put(url, data, content_type="application/json")
+        self.assertEqual(response.status_code, 200, response.content)
+        saved = response.json()
+        self.assertEqual((saved["comparison"], saved["limit"], saved["default_limit"]), ("descriptor32", 0.4, 0.27))
+        for refused in ({"limit": 0}, {"limit": -1}, {"limit": 11}, {"comparison": "unknown"}):
+            body = {"revision": 1, **refused}
+            self.assertEqual(self.client.put(url, body, content_type="application/json").status_code, 422)
+        self.process(1)
+        profile = CalibrationProfile.objects.get(signature=self.document(1)["profile"]["signature"])
+        self.assertEqual(profile.payload["limit"], 0.4)
+        # A null LIMIT is the comparison's default again.
+        response = self.client.put(url, {"revision": 1, "limit": None}, content_type="application/json")
+        self.assertEqual(response.json()["limit"], 0.27)
 
     def test_predicted_subtypes_do_not_teach_without_explicit_confirmation(self):
         self.process(1)
@@ -517,10 +549,8 @@ class SettingsTests(CalibrationApiTestCase):
 class RestartTests(CalibrationApiTestCase):
     def test_restart_requires_apply_backs_up_and_excludes_old_confirmations(self):
         self.process(1)
-        doc = self.document(1)
-        body = self.draft(doc)
-        body["lines"][0]["words"][0].update(start_x=620, override=True)
-        self.assertEqual(self.confirm(1, body).status_code, 200)
+        self.assertEqual(self.confirm(1, self.draft(self.document(1))).status_code, 200)
+        self.assertTrue(LineWord.objects.filter(line__page__mushaf=self.mushaf, line__page__page_number=1).exists())
         before = self.document(1)
         output = io.StringIO()
         call_command("restart_calibration", str(self.mushaf.pk), stdout=output)
@@ -535,39 +565,8 @@ class RestartTests(CalibrationApiTestCase):
         self.assertEqual(calibration_service._approved(self.mushaf, 2), [])
         self.assertTrue(review.revisions.filter(kind="confirmed").exists())
         self.assertFalse(self.document(1)["processed"])
-        self.assertEqual(LineWord.objects.filter(line__page__mushaf=self.mushaf, word_id=1).get().start_x, 610)
-
-
-class RestartArchiveTests(CalibrationApiTestCase):
-    def test_restart_restores_the_latest_hand_cuts_from_before_calibration(self):
-        line = Line.objects.get(page__mushaf=self.mushaf, page__page_number=1, line_number=1)
-        for first in ((650, 550), (640, 560)):  # cut by hand twice: two archives
-            word_coordinates.replace_page_words(
-                line.page,
-                [
-                    {
-                        "line_id": line.pk,
-                        "words": [
-                            {"word_id": 1, "start_x": first[0], "end_x": first[1]},
-                            {"word_id": 2, "start_x": 549, "end_x": 440},
-                            {"word_id": 3, "start_x": 439, "end_x": 330},
-                        ],
-                    }
-                ],
-                counting_system=None,
-            )
-        self.process(1)
-        self.assertEqual(self.confirm(1, self.draft(self.document(1))).status_code, 200)
-        with TemporaryDirectory() as directory:
-            call_command(
-                "restart_calibration",
-                str(self.mushaf.pk),
-                apply=True,
-                backup=Path(directory) / "backup.zip",
-                stdout=io.StringIO(),
-            )
-        restored = line.words.get(word_id=1)
-        self.assertEqual((restored.start_x, restored.end_x), (640, 560))
+        # Words exist only by confirmation: a restarted page has none.
+        self.assertFalse(LineWord.objects.filter(line__page__mushaf=self.mushaf, line__page__page_number=1).exists())
 
 
 class LearningTests(CalibrationApiTestCase):
@@ -583,22 +582,14 @@ class LearningTests(CalibrationApiTestCase):
         document = self.document(2)
         self.assertEqual(document["profile"]["pages"], [1])
         self.assertEqual(document["profile"]["examples"], 8)  # 3 bodies + 1 dot, twice
+        self.assertLessEqual(document["profile"]["fingerprints"], 8)
         profile = CalibrationProfile.objects.get(signature=document["profile"]["signature"])
         self.assertEqual(profile.mode, "shadow")
-        # Two distinct shapes cannot clear a gate that asks for five: it abstains.
+        # The library answers once it knows letters and marks, and says how sure.
         blob = self.blob_at(document["lines"][0], BODIES[0][0])
-        self.assertIsNone(blob["proposed_role"])
-        self.assertIn("insufficient_support", blob["proposal"]["reasons"])
-
-    def test_the_inspector_shows_where_the_nearest_examples_came_from(self):
-        line = self.document(2)["lines"][0]
-        blob = self.blob_at(line, BODIES[0][0])
-        response = self.client.get(self.url(2, "/examples"), {"snapshot": line["snapshot_id"], "blob": blob["id"]})
-        self.assertEqual(response.status_code, 200, response.content)
-        nearest = response.json()["neighbors"][0]
-        self.assertEqual((nearest["role"], nearest["page_number"], nearest["copies"]), ("body", 1, 6))
-        self.assertEqual(nearest["distance"], 0.0)
-        self.assertIsNotNone(nearest["crop"])
+        self.assertEqual(blob["proposed_role"], "body")
+        self.assertEqual(blob["proposal"]["reasons"], [])
+        self.assertGreater(blob["proposal"]["confidence"], 0.5)
 
     def test_the_evaluation_lays_three_results_against_the_confirmation(self):
         response = self.client.get(f"/api/mushafs/{self.mushaf.id}/calibration/evaluation")
@@ -613,7 +604,12 @@ class LearningTests(CalibrationApiTestCase):
     def test_visual_comparison_uses_retained_snapshots_and_confirmed_not_draft_edges(self):
         original = self.document(1)
         body = self.draft(original)
-        body["lines"][0]["words"][0].update(start_x=650, override=True)
+        # After confirming, the second body is given to word 1 in the draft: its box
+        # now reaches across it, but the confirmed reading's does not.
+        middle = self.blob_at(original["lines"][0], BODIES[1][0])["id"]
+        next(blob for blob in body["lines"][0]["blobs"] if blob["id"] == middle).update(
+            allocations=[{"word_id": 1, "paws": 1}], ownership_explicit=True
+        )
         self.assertEqual(self.put(1, body).status_code, 200)
         with mock.patch("api.services.line_images._render_page", side_effect=AssertionError("no PDF rendering")):
             response = self.client.get(self.url(1, "/evaluation"))
@@ -621,27 +617,11 @@ class LearningTests(CalibrationApiTestCase):
         row = response.json()["lines"][0]
         self.assertIn("/calibration/", row["image_url"])
         self.assertEqual(set(row["readings"]), {"frozen", "canonical", "calibrated", "confirmed"})
-        self.assertEqual(row["readings"]["confirmed"]["words"][0]["start_x"], BODIES[0][1])
-        self.assertEqual(self.document(1)["lines"][0]["words"][0]["start_x"], 650)
+        self.assertEqual(row["readings"]["confirmed"]["words"][0]["end_x"], BODIES[0][0])
+        self.assertEqual(self.document(1)["lines"][0]["words"][0]["end_x"], BODIES[1][0])
 
     def test_visual_comparison_requires_confirmation(self):
         self.assertEqual(self.client.get(self.url(2, "/evaluation")).status_code, 404)
-
-    def test_examples_come_from_the_profile_the_page_was_read_with(self):
-        line = self.document(2)["lines"][0]
-        blob = self.blob_at(line, BODIES[0][0])
-        query = {"snapshot": line["snapshot_id"], "blob": blob["id"]}
-        before = self.client.get(self.url(2, "/examples"), query).json()
-        # Page 1 is confirmed again with every blob flagged, so today it teaches
-        # nothing — but page 2's proposals were made from the first confirmation.
-        body = self.draft(self.document(1))
-        for row in body["lines"]:
-            for edit in row["blobs"]:
-                edit["exception"] = "uncertain"
-        self.assertEqual(self.confirm(1, {**body, "acknowledge_exceptions": True}).status_code, 200)
-        after = self.client.get(self.url(2, "/examples"), query).json()
-        self.assertTrue(before["neighbors"])
-        self.assertEqual(after["neighbors"], before["neighbors"])
 
     def test_page_states_list_both_pages(self):
         response = self.client.get(f"/api/mushafs/{self.mushaf.id}/calibration/pages")
@@ -660,52 +640,7 @@ class SurvivalTests(CalibrationApiTestCase):
         review = CalibrationReview.objects.get(mushaf=self.mushaf, page_number=1)
         self.assertEqual(review.confirmed_revision, 2)
         self.assertFalse(LineWord.objects.filter(line__page__page_number=1).exists())
-        # The corrected words were archived before their lines went.
-        self.assertEqual(len(review.payload["legacy_lines"]), 2)
         self.assertTrue(self.document(1)["stale"])
-
-
-class LegacyEdgeTests(CalibrationApiTestCase):
-    """Cuts corrected by hand in the word editor, before or after calibration."""
-
-    def hand_cut(self, line: Line, first: tuple[int, int]) -> None:
-        """Line 1's three words cut by hand, the first at ``first``."""
-        word_coordinates.replace_page_words(
-            line.page,
-            [
-                {
-                    "line_id": line.pk,
-                    "words": [
-                        {"word_id": 1, "start_x": first[0], "end_x": first[1]},
-                        {"word_id": 2, "start_x": 549, "end_x": 440},
-                        {"word_id": 3, "start_x": 439, "end_x": 330},
-                    ],
-                }
-            ],
-            counting_system=None,
-        )
-
-    def test_hand_made_cuts_survive_processing_and_confirmation(self):
-        line = Line.objects.get(page__mushaf=self.mushaf, page__page_number=1, line_number=1)
-        self.hand_cut(line, (650, 550))
-        self.process(1)
-        first = self.document(1)["lines"][0]["words"][0]
-        self.assertEqual((first["word_id"], first["start_x"], first["end_x"], first["override"]), (1, 650, 550, True))
-        # The prediction record is the engine's own reading, untouched by the hand.
-        predicted = CalibrationRevision.objects.get(review__page_number=1, kind="processed")
-        engine = predicted.payload["lines"][0]["words"][0]
-        self.assertEqual((engine["start_x"], engine["end_x"], engine["override"]), (610, 580, False))
-        response = self.confirm(1, self.draft(self.document(1)))
-        self.assertEqual(response.status_code, 200, response.content)
-        self.assertEqual(line.words.get(word_id=1).start_x, 650)
-        self.assertEqual(line.words.get(word_id=1).end_x, 550)
-
-    def test_cuts_corrected_after_processing_reach_the_open_draft(self):
-        self.process(1)
-        line = Line.objects.get(page__mushaf=self.mushaf, page__page_number=1, line_number=1)
-        self.hand_cut(line, (640, 560))
-        first = self.document(1)["lines"][0]["words"][0]
-        self.assertEqual((first["start_x"], first["end_x"], first["override"]), (640, 560, True))
 
 
 class FusionTests(CalibrationApiTestCase):
@@ -789,7 +724,6 @@ class ReprocessTests(CalibrationApiTestCase):
         self.doc = self.document(1)
         body = self.draft(self.doc)
         self.draft_blob(body, 0, DOT[0]).update(role="mark", explicit=True, subtype="ijamDot")
-        body["lines"][0]["words"][0].update(start_x=620, override=True)
         self.assertEqual(self.put(1, body).status_code, 200)
         # Line 2 is re-reviewed: its snapshot, and so the page, goes stale.
         Segment.objects.filter(line__page__page_number=1, line__line_number=2).update(bbox_w=700 - RING[0] - 1)
@@ -799,15 +733,15 @@ class ReprocessTests(CalibrationApiTestCase):
         self.assertFalse(fresh["stale"])
         dot = self.blob_at(fresh["lines"][0], DOT[0])
         self.assertEqual((dot["explicit"], dot["subtype"], dot["decision_source"]), (True, "ijamDot", "human"))
-        first = fresh["lines"][0]["words"][0]
-        self.assertEqual((first["start_x"], first["override"]), (620, True))
+        # The boxes are the new reading's, from the ink.
+        words = fresh["lines"][0]["words"]
+        self.assertEqual([(w["start_x"], w["end_x"]) for w in words], [(right, left) for left, right in BODIES])
         # ... and the new prediction record carries none of it.
         predicted = (
             CalibrationRevision.objects.filter(review__page_number=1, kind="processed").order_by("number").last()
         )
         assert predicted is not None
         self.assertFalse(any(blob["explicit"] for blob in predicted.payload["lines"][0]["blobs"]))
-        self.assertFalse(predicted.payload["lines"][0]["words"][0]["override"])
 
 
 class CrossingTestCase(CalibrationApiTestCase):
@@ -890,7 +824,7 @@ class CopyTests(CalibrationApiTestCase):
         self.assertEqual(report["confirmed_pages"], 1)
 
     def test_importing_over_a_worked_mushaf_shifts_every_revision_reference(self):
-        CalibrationSettings.objects.create(mushaf=self.mushaf, experimental=True, revision=3)
+        CalibrationSettings.objects.create(mushaf=self.mushaf, revision=3)
         _, output = bundle.build(self.mushaf.pk, user=self.mushaf.owner)
         with output:
             data = output.read()
@@ -907,8 +841,7 @@ class CopyTests(CalibrationApiTestCase):
         self.assertEqual(review.revisions.get(number=processed).kind, "processed")
         self.assertFalse(self.document(1)["stale"])
         setting = CalibrationSettings.objects.get(mushaf=self.mushaf)
-        self.assertFalse(setting.experimental)
-        self.assertEqual(setting.revision, 4)
+        self.assertEqual(setting.revision, 3)
 
 
 class MarkEdgeTests(CalibrationApiTestCase):
@@ -929,55 +862,22 @@ class MarkEdgeTests(CalibrationApiTestCase):
             self.assertEqual(self.client.post(self.url(1, "/process")).status_code, 202)
         self.doc = self.document(1)
 
-    def test_a_cut_made_before_boxes_held_marks_grows_to_hold_its_own(self):
-        # A cut from the word editor that stops just short of the mark it holds.
-        line = Line.objects.get(page__mushaf=self.mushaf, page__page_number=1, line_number=1)
-        word_coordinates.replace_page_words(
-            line.page,
-            [
-                {
-                    "line_id": line.pk,
-                    "words": [
-                        {"word_id": 1, "start_x": 610, "end_x": 562},
-                        {"word_id": 2, "start_x": 549, "end_x": 440},
-                        {"word_id": 3, "start_x": 439, "end_x": 330},
-                    ],
-                }
-            ],
-            counting_system=None,
-        )
-        self.process_stray()
-        first = self.doc["lines"][0]["words"][0]
-        self.assertEqual((first["start_x"], first["end_x"], first["override"]), (610, STRAY[0], True))
-
-    def test_a_dragged_box_never_leaves_its_own_ink_outside(self):
+    def test_a_mark_given_to_another_word_moves_both_boxes(self):
         self.process_stray()
         body = self.draft(self.doc)
-        body["lines"][0]["words"][0].update(start_x=605, end_x=575, override=True)
-        self.assertEqual(self.put(1, body).status_code, 200)
-        first = self.document(1)["lines"][0]["words"][0]
-        self.assertEqual((first["start_x"], first["end_x"], first["override"]), (BODIES[0][1], STRAY[0], True))
-        # Wider than its ink is the hand's to say.
-        body = self.draft(self.document(1))
-        body["lines"][0]["words"][0].update(start_x=620, end_x=550, override=True)
-        self.assertEqual(self.put(1, body).status_code, 200)
-        first = self.document(1)["lines"][0]["words"][0]
-        self.assertEqual((first["start_x"], first["end_x"]), (620, 550))
+        self.draft_blob(body, 0, STRAY[0]).update(allocations=[{"word_id": 2, "paws": 0}], ownership_explicit=True)
+        response = self.put(1, body)
+        self.assertEqual(response.status_code, 200, response.content)
+        words = response.json()["lines"][0]["words"]
+        self.assertEqual((words[0]["start_x"], words[0]["end_x"]), (BODIES[0][1], BODIES[0][0]))
+        self.assertEqual((words[1]["start_x"], words[1]["end_x"]), (STRAY[1], BODIES[1][0]))
 
-    def test_a_stored_box_leaving_its_marks_out_is_shown_holding_them(self):
+    def test_sending_back_the_draft_as_it_stands_is_no_edit(self):
         self.process_stray()
+        self.assertEqual(self.put(1, self.draft(self.doc)).status_code, 200)
         review = CalibrationReview.objects.get(mushaf=self.mushaf, page_number=1)
-        review.payload["lines"][0]["words"][0].update(start_x=610, end_x=580, override=True)
-        review.save(update_fields=["payload"])
-        first = self.document(1)["lines"][0]["words"][0]
-        self.assertEqual((first["start_x"], first["end_x"], first["override"]), (610, STRAY[0], True))
-        # Reading writes nothing, and sending back what was shown is no edit.
-        review.refresh_from_db()
-        self.assertEqual(review.payload["lines"][0]["words"][0]["end_x"], 580)
-        self.assertEqual(self.put(1, self.draft(self.document(1))).status_code, 200)
-        review.refresh_from_db()
         self.assertEqual(review.payload["pending_ayas"], [])
-        self.assertEqual(review.payload["lines"][0]["words"][0]["end_x"], STRAY[0])
+        self.assertEqual([row["words"] for row in review.payload["lines"]], [row["words"] for row in self.doc["lines"]])
 
 
 class DecisionTests(CalibrationApiTestCase):
@@ -1174,18 +1074,74 @@ class TypeDoubtTests(CalibrationApiTestCase):
         doubts = [(d["blob_id"], d["typed"], d["subtype"], d["sure"]) for d in response.json()["doubts"]]
         self.assertEqual(doubts, [(slip["id"], "ijamDot", "fatha", True)])
 
-    def test_the_evidence_is_the_nearest_examples_of_each_near_type(self):
-        line = self.doc["lines"][0]
-        bar = self.blob_at(line, BAR[0])
-        body = {**self.draft(self.doc), "snapshot_id": line["snapshot_id"], "blob_id": bar["id"]}
-        response = self.client.post(self.url(2, "/types/evidence"), body, content_type="application/json")
+
+class EraseTests(CalibrationApiTestCase):
+    """The stray speck by word 1, erased: noise the line's cutting left, not ink of
+    the text — read around, kept through processing, cut out of the line's PNG."""
+
+    def setUp(self):
+        super().setUp()
+        with drawn_pages(stray=True):
+            self.client.post(self.url(1, "/process"))
+        self.doc = self.document(1)
+
+    def erase(self, document: dict, erased: bool = True) -> dict:
+        body = self.draft(document, realign=True)
+        self.draft_blob(body, 0, STRAY[0])["erased"] = erased
+        response = self.put(1, body)
         self.assertEqual(response.status_code, 200, response.content)
-        answer = response.json()
-        self.assertFalse(answer["typed"])
-        self.assertEqual([entry["subtype"] for entry in answer["candidates"]], ["fatha", "ijamDot"])
-        best = answer["candidates"][0]
-        self.assertEqual(best["distance"], 0.0)
-        # Both of page 1's bars are one bitmap: one example, typed twice.
-        (example,) = best["examples"]
-        self.assertEqual((example["page_number"], example["copies"]), (1, 2))
-        self.assertEqual((example["crop"]["w"], bool(example["image_url"])), (BAR[1] - BAR[0], True))
+        return response.json()
+
+    def exported_alpha(self) -> tuple[np.ndarray, tuple[int, int]]:
+        picture = io.BytesIO()
+        _drawn_page(stray=True).save(picture, format="PNG")
+        with mock.patch.object(export.pdf, "render_page", return_value=picture.getvalue()):
+            export.export_lines(user=default_user(), mushaf_id=self.mushaf.id, page_number=1)
+        line = Line.objects.get(page__mushaf=self.mushaf, page__page_number=1, line_number=1)
+        with line.line_png.open("rb") as handle:
+            alpha = np.asarray(Image.open(handle).convert("RGBA").getchannel("A"))
+        return alpha, export._origin(line, coordinates.page_column(line.page))
+
+    def png_state(self) -> dict:
+        page = Page.objects.get(mushaf=self.mushaf, page_number=1)
+        document, _ = data_export._page(data_export._Context.of(self.mushaf), page, images=False, maps=False)
+        return document["lines"][0]
+
+    def test_erased_ink_belongs_to_no_word_and_the_word_reads_without_it(self):
+        line = self.doc["lines"][0]
+        # Read at first as word 1's mark, so word 1's box reaches out to hold it.
+        self.assertTrue(self.blob_at(line, STRAY[0])["allocations"])
+        self.assertEqual(line["words"][0]["end_x"], STRAY[0])
+        line = self.erase(self.doc)["lines"][0]
+        stray = self.blob_at(line, STRAY[0])
+        self.assertEqual((stray["erased"], stray["allocations"], stray["attention"]), (True, [], []))
+        self.assertEqual(line["words"][0]["end_x"], BODIES[0][0])
+
+    def test_an_erase_holds_when_the_page_is_processed_again(self):
+        saved = self.erase(self.doc)
+        with drawn_pages(stray=True):
+            calibration_service.process_page(self.mushaf, 1, expected_revision=saved["revision"], user=default_user())
+        line = self.document(1)["lines"][0]
+        self.assertEqual(self.blob_at(line, STRAY[0])["erased"], True)
+        self.assertEqual(line["words"][0]["end_x"], BODIES[0][0])
+
+    def test_an_ornament_is_not_erased(self):
+        body = self.draft(self.doc)
+        next(blob for blob in body["lines"][0]["blobs"] if blob["role"] == "ornament")["erased"] = True
+        self.assertEqual(self.put(1, body).status_code, 422)
+
+    def test_the_line_image_is_exported_without_it(self):
+        self.erase(self.doc)
+        alpha, (left, top) = self.exported_alpha()
+        middle = LINE_TOPS[0] + 2 - top
+        self.assertEqual(alpha[middle, STRAY[0] + 2 - left], 0)
+        self.assertGreater(alpha[middle, DOT[0] + 2 - left], 0)
+
+    def test_the_data_export_says_a_png_was_cut_with_other_erases(self):
+        saved = self.erase(self.doc)
+        self.exported_alpha()
+        line = self.png_state()
+        self.assertFalse(line["png"]["outdated"])
+        self.assertTrue(next(blob for blob in line["blobs"] if blob["box"]["page"][0] == STRAY[0])["erased"])
+        self.erase(saved, erased=False)
+        self.assertTrue(self.png_state()["png"]["outdated"])

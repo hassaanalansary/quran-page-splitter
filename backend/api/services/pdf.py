@@ -47,6 +47,20 @@ def render_page_from(doc: fitz.Document, pdf_index: int, dpi: int = DEFAULT_DPI)
     return bytes(pixmap.tobytes("png"))
 
 
+def page_sizes(pdf_path: str, dpi: int = DEFAULT_DPI) -> dict[int, tuple[int, int]]:
+    """Every page's size in pixels as ``render_page`` would render it, by 1-based
+    physical index — the page rectangle scaled and rounded outward, exactly what a
+    render's pixmap measures, without rendering anything."""
+    zoom = dpi / 72.0
+    matrix = fitz.Matrix(zoom, zoom)
+    sizes: dict[int, tuple[int, int]] = {}
+    with open_document(pdf_path) as doc:
+        for index in range(doc.page_count):
+            box = (doc.load_page(index).rect * matrix).irect
+            sizes[index + 1] = (int(box.width), int(box.height))
+    return sizes
+
+
 def render_page(pdf_path: str, pdf_index: int, dpi: int = DEFAULT_DPI) -> bytes:
     """Render one PDF page (1-based physical index) to PNG bytes."""
     with open_document(pdf_path) as doc:

@@ -74,8 +74,7 @@ class SuraHeaderLocator:
             # few horizontal positions, and the true alignment may be out of reach.
             best_y, best_x = np.unravel_index(int(np.argmax(match)), match.shape)
             logger.warning(
-                "  No sura header passed threshold %.4f — best score %.4f at y=%d x=%d "
-                "(%d x %d candidate offsets)",
+                "  No sura header passed threshold %.4f — best score %.4f at y=%d x=%d (%d x %d candidate offsets)",
                 spec.threshold,
                 float(match[best_y, best_x]),
                 int(best_y),

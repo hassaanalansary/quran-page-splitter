@@ -43,6 +43,30 @@ export function linesZipUrl(id: string, pageNumber?: number): string {
   return `${API_BASE}/api/mushafs/${id}/lines.zip${query}`;
 }
 
+/** What the full data export carries beside its JSON — both on unless turned off. */
+export type ExportOptions = { page?: number; images?: boolean; maps?: boolean };
+
+function exportQuery({ page, images = true, maps = true }: ExportOptions): string {
+  const query = new URLSearchParams();
+  if (page != null) query.set("page", String(page));
+  if (!images) query.set("images", "false");
+  if (!maps) query.set("maps", "false");
+  const text = query.toString();
+  return text ? `?${text}` : "";
+}
+
+/** Download URL for the full data export (schema mushaf-export/v2): every line, aya,
+ * word and blob in page and line-PNG pixels, with each line's word and blob maps —
+ * the whole mushaf, or one page. See backend/api/services/data_export.py. */
+export function exportUrl(id: string, options: ExportOptions = {}): string {
+  return `${API_BASE}/api/mushafs/${id}/export.zip${exportQuery(options)}`;
+}
+
+/** The same export of a published mushaf, open to everyone. */
+export function galleryExportUrl(id: string, options: ExportOptions = {}): string {
+  return `${API_BASE}/api/gallery/${id}/export.zip${exportQuery(options)}`;
+}
+
 export function getReviewData(id: string, signal?: AbortSignal): Promise<ReviewData> {
   return apiGet<ReviewData>(`/api/mushafs/${id}/review-data`, signal);
 }

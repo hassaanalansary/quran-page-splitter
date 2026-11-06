@@ -83,7 +83,6 @@ db.sqlite3.*
 .mypy_cache/
 .ruff_cache/
 media/
-.env
 
 # Pre-migration data snapshots (see backup/README.md)
 backup/

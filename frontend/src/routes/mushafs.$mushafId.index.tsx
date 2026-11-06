@@ -2,9 +2,9 @@ import { createFileRoute, Link, useParams } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { MushafHeader } from "@/components/app/MushafHeader";
-import { DetailsRail } from "@/components/app/details/DetailsRail";
+import { ErrorState, HubSkeleton, STATE_SECONDARY } from "@/components/app/States";
 import { ExportTab } from "@/components/app/details/ExportTab";
+import { HubBand, HubTopBar } from "@/components/app/details/HubHeader";
 import { continueTarget, pipelineSteps, runAbortPage } from "@/components/app/details/helpers";
 import { OverviewTab } from "@/components/app/details/OverviewTab";
 import { PagesTab } from "@/components/app/details/PagesTab";
@@ -12,12 +12,12 @@ import { RunsTab } from "@/components/app/details/RunsTab";
 import { SettingsTab } from "@/components/app/details/SettingsTab";
 import {
   useActivity,
+  useCalibrationPages,
   useMushaf,
   usePageSummaries,
   useRuns,
   useStats,
   useTemplates,
-  useWordsCoverage,
 } from "@/lib/api";
 
 export const Route = createFileRoute("/mushafs/$mushafId/")({ component: MushafDetailsPage });
@@ -35,7 +35,7 @@ function MushafDetailsPage() {
   const { data: runs } = useRuns(mushafId);
   const { data: activity } = useActivity(mushafId);
   const { data: templates } = useTemplates(mushafId);
-  const { data: wordCoverage } = useWordsCoverage(mushafId);
+  const { data: calibrationPages } = useCalibrationPages(mushafId);
   const [tab, setTab] = useState<Tab>("overview");
 
   const templatesReady =
@@ -48,46 +48,57 @@ function MushafDetailsPage() {
     return latest && latest.status === "aborted_line_detection" ? runAbortPage(latest) : null;
   }, [runs]);
 
-  if (isPending) return <Centered>{t("workspace.loadingMushaf")}</Centered>;
+  if (isPending)
+    return (
+      <div className="flex h-screen w-full flex-col overflow-hidden bg-paper">
+        <HubSkeleton />
+      </div>
+    );
   if (isError || !mushaf) {
     return (
       <Centered>
-        <div className="flex flex-col items-center gap-3">
-          <span className="text-error">
-            {error instanceof Error ? error.message : t("workspace.loadFailed")}
-          </span>
-          {/* Reaching a mushaf that isn't yours lands here, so there has to be a
-              way out — otherwise the only option is the browser's back button. */}
-          <Link to="/" className="text-[12.5px] font-semibold text-navy hover:underline">
+        {/* Reaching a mushaf that isn't yours lands here, so there has to be a
+            way out — otherwise the only option is the browser's back button. */}
+        <ErrorState
+          title={t("workspace.loadFailed")}
+          body={error instanceof Error ? error.message : undefined}
+          className="w-full max-w-[420px]"
+        >
+          <Link to="/" className={STATE_SECONDARY}>
             {t("header.allMushafs")}
           </Link>
-        </div>
+        </ErrorState>
       </Centered>
     );
   }
 
-  const steps = pipelineSteps(mushaf, templatesReady, stats, abortPage, wordCoverage);
-  const cta = continueTarget(mushaf, templatesReady, summaries, stats, wordCoverage);
+  const steps = pipelineSteps(mushaf, templatesReady, stats, abortPage, calibrationPages);
+  const cta = continueTarget(mushaf, templatesReady, summaries, stats, calibrationPages);
 
   return (
-    <div className="flex h-screen w-full flex-col overflow-hidden bg-bg-page">
-      <MushafHeader mushaf={mushaf} activeSlug={null} cta={cta} />
+    <div className="flex h-screen w-full flex-col overflow-hidden bg-paper">
+      <HubTopBar mushaf={mushaf} />
 
-      <div className="grid min-h-0 flex-1 grid-cols-[282px_1fr]">
-        <DetailsRail mushaf={mushaf} stats={stats} summaries={summaries} templates={templates} />
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <HubBand mushaf={mushaf} stats={stats} steps={steps} cta={cta} />
 
-        <div className="flex min-w-0 flex-col overflow-y-auto">
-          {/* tab bar */}
-          <div className="flex flex-shrink-0 items-center gap-6 border-b border-border bg-white px-5">
+        <div className="border-b border-rule bg-sheet">
+          <div
+            role="tablist"
+            aria-label={t("hub.sections")}
+            className="mx-auto flex max-w-[1240px] gap-[26px] overflow-x-auto px-7"
+          >
             {TAB_IDS.map((id) => (
               <button
                 key={id}
                 type="button"
+                role="tab"
+                aria-selected={tab === id}
                 onClick={() => setTab(id)}
-                className={`flex h-[42px] cursor-pointer items-center gap-2 border-b-2 px-0.5 text-[12.5px] font-semibold tracking-[0.01em] transition-colors ${
+                className={`flex h-[50px] flex-none cursor-pointer items-center gap-2 border-b-2 text-[14.5px] transition-colors ${
                   tab === id
-                    ? "border-orange text-navy"
-                    : "border-transparent text-text-muted hover:text-text-secondary"
+                    ? "border-ink font-semibold text-ink"
+                    : "border-transparent font-medium text-ink-3 hover:text-ink-2"
                 }`}
               >
                 {t(`details.tab_${id}`)}
@@ -98,32 +109,36 @@ function MushafDetailsPage() {
               </button>
             ))}
           </div>
+        </div>
 
-          {/* tab body */}
-          <div className="min-h-0 flex-1 overflow-y-auto bg-bg-page px-5 pb-6 pt-[18px]">
-            {tab === "overview" && (
-              <OverviewTab
-                mushaf={mushaf}
-                steps={steps}
-                stats={stats}
-                activity={activity}
-                abortPage={abortPage}
-                onShowRuns={() => setTab("runs")}
-                onShowPages={() => setTab("pages")}
-              />
-            )}
-            {tab === "pages" && (
-              <PagesTab
-                mushafId={mushafId}
-                summaries={summaries}
-                remaining={mushaf.logical_page_count - mushaf.processed_page_count}
-                abortPage={abortPage}
-              />
-            )}
-            {tab === "runs" && <RunsTab mushafId={mushafId} runs={runs} />}
-            {tab === "export" && <ExportTab mushaf={mushaf} stats={stats} summaries={summaries} />}
-            {tab === "settings" && <SettingsTab key={mushaf.updated_at} mushaf={mushaf} />}
-          </div>
+        <div role="tabpanel" className="mx-auto w-full max-w-[1240px] px-7 pb-10 pt-[26px]">
+          {tab === "overview" && (
+            <OverviewTab
+              mushaf={mushaf}
+              steps={steps}
+              stats={stats}
+              activity={activity}
+              summaries={summaries}
+              templates={templates}
+              nextPage={cta.slug === "review" ? (cta.reviewPage ?? null) : null}
+              calibrationPages={calibrationPages}
+              abortPage={abortPage}
+              onShowRuns={() => setTab("runs")}
+              onShowPages={() => setTab("pages")}
+            />
+          )}
+          {tab === "pages" && (
+            <PagesTab
+              mushafId={mushafId}
+              summaries={summaries}
+              logical={mushaf.logical_page_count}
+              remaining={mushaf.logical_page_count - mushaf.processed_page_count}
+              abortPage={abortPage}
+            />
+          )}
+          {tab === "runs" && <RunsTab mushafId={mushafId} runs={runs} />}
+          {tab === "export" && <ExportTab mushaf={mushaf} stats={stats} summaries={summaries} />}
+          {tab === "settings" && <SettingsTab key={mushaf.updated_at} mushaf={mushaf} />}
         </div>
       </div>
     </div>
@@ -132,7 +147,7 @@ function MushafDetailsPage() {
 
 function CountChip({ n }: { n: number }) {
   return (
-    <span className="rounded-[10px] bg-bg-muted px-1.5 py-px font-mono text-[9.5px] font-bold text-text-secondary">
+    <span className="rounded-pill bg-sunk px-[7px] py-px font-mono text-[11.5px] text-ink-2">
       {n}
     </span>
   );
@@ -140,7 +155,7 @@ function CountChip({ n }: { n: number }) {
 
 function Centered({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex h-screen items-center justify-center bg-bg-page text-sm text-text-secondary">
+    <div className="flex h-screen items-center justify-center bg-paper text-sm text-ink-2">
       {children}
     </div>
   );

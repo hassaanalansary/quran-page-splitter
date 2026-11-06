@@ -63,9 +63,7 @@ class WordsFromAyatTests(SimpleTestCase):
 
 class AyaStartsTests(SimpleTestCase):
     def test_marks_every_boundary_plus_an_end_sentinel(self):
-        stream = words_from_ayat(
-            [Aya(sura=7, number=82, words=["a", "b"]), Aya(sura=7, number=83, words=["c"])]
-        )
+        stream = words_from_ayat([Aya(sura=7, number=82, words=["a", "b"]), Aya(sura=7, number=83, words=["c"])])
         self.assertEqual(aya_starts(stream), [0, 2, 3])
 
     def test_empty_stream(self):

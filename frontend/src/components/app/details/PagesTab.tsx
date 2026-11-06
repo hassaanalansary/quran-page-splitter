@@ -1,22 +1,24 @@
 import { Link } from "@tanstack/react-router";
+import { FileStack } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { EmptyState, STATE_PRIMARY } from "@/components/app/States";
 import type { PageSummary } from "@/lib/api";
 
 type SortKey = "page" | "lines" | "ayat" | "segments" | "status";
 type Filter = "all" | "reviewed" | "processed";
 
-const GRID = "grid grid-cols-[1fr_1fr_4fr_1fr_1fr_1fr_1fr_1fr]";
-
 export function PagesTab({
   mushafId,
   summaries,
+  logical,
   remaining,
   abortPage,
 }: {
   mushafId: string;
   summaries: PageSummary[] | undefined;
+  logical: number;
   remaining: number;
   abortPage: number | null;
 }) {
@@ -50,6 +52,8 @@ export function PagesTab({
 
   const all = summaries ?? [];
   const reviewedCount = all.filter((s) => s.reviewed).length;
+  // The page Review would open next: the first one still to review.
+  const nextPage = all.find((s) => !s.reviewed)?.page_number ?? null;
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) setSortDir((d) => (d === 1 ? -1 : 1));
@@ -58,240 +62,202 @@ export function PagesTab({
       setSortDir(1);
     }
   }
-  const arrow = (key: SortKey) => (sortKey === key ? (sortDir === 1 ? " ↑" : " ↓") : "");
 
   if (all.length === 0) {
     return (
-      <div className="flex flex-col items-center gap-3 rounded-[11px] border border-border bg-white px-6 py-14 text-center">
-        <span className="text-[13px] font-semibold text-text-primary">{t("details.pg_none")}</span>
-        <span className="max-w-[380px] text-[11.5px] leading-[1.6] text-text-secondary">
-          {t("details.pg_noneDesc")}
-        </span>
-        <Link
-          to="/mushafs/$mushafId/process"
-          params={{ mushafId }}
-          className="mt-1 rounded-lg bg-navy px-4 py-2 text-[12px] font-bold text-white transition-colors hover:bg-navy-hover"
-        >
+      <EmptyState
+        icon={<FileStack size={28} strokeWidth={1.6} aria-hidden="true" />}
+        title={t("details.pg_none")}
+        body={t("details.pg_noneDesc")}
+      >
+        <Link to="/mushafs/$mushafId/process" params={{ mushafId }} className={STATE_PRIMARY}>
           {t("details.pg_goProcess")}
         </Link>
-      </div>
+      </EmptyState>
     );
   }
 
+  const chip = (active: boolean) =>
+    `h-[34px] cursor-pointer rounded-pill px-[13px] text-[13px] transition-colors ${
+      active
+        ? "bg-ink font-semibold text-paper"
+        : "border border-rule-2 bg-card font-medium text-ink-2 hover:border-ink-4"
+    }`;
+  const sortable = (key: SortKey, label: string, end = false) => (
+    <th
+      scope="col"
+      aria-sort={sortKey === key ? (sortDir === 1 ? "ascending" : "descending") : undefined}
+      className={`border-b border-rule px-3.5 py-3 ${end ? "text-end" : "text-start"}`}
+    >
+      <button
+        type="button"
+        onClick={() => toggleSort(key)}
+        className="cursor-pointer text-[12px] font-semibold uppercase tracking-[0.06em] text-ink-3 hover:text-lapis-text"
+      >
+        {label}
+        {sortKey === key && (sortDir === 1 ? " ↑" : " ↓")}
+      </button>
+    </th>
+  );
+  const plain = (label: string) => (
+    <th
+      scope="col"
+      className="border-b border-rule px-3.5 py-3 text-start text-[12px] font-semibold uppercase tracking-[0.06em] text-ink-3"
+    >
+      {label}
+    </th>
+  );
+
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      {/* toolbar */}
-      <div className="mb-3 flex items-center gap-2">
-        <span className="text-[11.5px] font-bold text-text-primary">{t("details.pg_title")}</span>
-        <span className="text-[11.5px] text-text-muted">
-          {t("details.pg_remaining", { count: remaining })}
-        </span>
-        <div className="ms-auto flex items-center gap-1.5">
-          <FilterChip
-            active={filter === "all"}
+    <div className="flex flex-col gap-[18px]">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
+        <div className="me-2 flex flex-col gap-0.5">
+          <h2 className="m-0 font-display text-[24px] font-semibold">{t("details.pg_title")}</h2>
+          <span className="text-[13px] text-ink-3">
+            {t("hub.pagesSub", { processed: all.length, total: logical })}{" "}
+            {t("details.pg_remaining", { count: remaining })}
+          </span>
+        </div>
+        <div role="group" aria-label={t("hub.filterPages")} className="flex flex-wrap gap-1.5">
+          <button
+            type="button"
+            aria-pressed={filter === "all"}
             onClick={() => setFilter("all")}
-            label={t("details.pg_all", { count: all.length })}
-          />
-          <FilterChip
-            active={filter === "reviewed"}
+            className={chip(filter === "all")}
+          >
+            {t("details.pg_all", { count: all.length })}
+          </button>
+          <button
+            type="button"
+            aria-pressed={filter === "reviewed"}
             onClick={() => setFilter("reviewed")}
-            label={t("details.pg_reviewed", { count: reviewedCount })}
-          />
-          <FilterChip
-            active={filter === "processed"}
+            className={chip(filter === "reviewed")}
+          >
+            {t("details.pg_reviewed", { count: reviewedCount })}
+          </button>
+          <button
+            type="button"
+            aria-pressed={filter === "processed"}
             onClick={() => setFilter("processed")}
-            label={t("details.pg_processed", { count: all.length - reviewedCount })}
-          />
-          {abortPage && (
-            <Link
-              to="/mushafs/$mushafId/process"
-              params={{ mushafId }}
-              className="ms-1 rounded-[7px] bg-orange-tint px-[11px] py-1 text-[10.5px] font-bold text-orange transition-colors hover:bg-orange-glow"
-            >
-              {t("details.pg_resume", { page: abortPage })}
-            </Link>
-          )}
+            className={chip(filter === "processed")}
+          >
+            {t("details.pg_processed", { count: all.length - reviewedCount })}
+          </button>
         </div>
+        {abortPage && (
+          <Link
+            to="/mushafs/$mushafId/process"
+            params={{ mushafId }}
+            className="ms-auto inline-flex h-[38px] items-center rounded-control bg-lapis px-3.5 text-[13.5px] font-semibold text-on-lapis no-underline hover:bg-lapis/90"
+          >
+            {t("details.pg_resume", { page: abortPage })}
+          </Link>
+        )}
       </div>
 
-      {/* table */}
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[11px] border border-border bg-white">
-        <div className="flex-1 overflow-auto">
-          <div className={`${GRID} sticky top-0 z-10 border-b border-border bg-bg-surface`}>
-            <HeaderButton
-              label={t("details.col_page")}
-              arrow={arrow("page")}
-              onClick={() => toggleSort("page")}
-            />
-            <HeaderCell label={t("details.col_pdf")} />
-            <HeaderCell label={t("details.col_sura")} />
-            <HeaderButton
-              label={t("details.col_lines")}
-              arrow={arrow("lines")}
-              onClick={() => toggleSort("lines")}
-            />
-            <HeaderButton
-              label={t("details.col_ayat")}
-              arrow={arrow("ayat")}
-              onClick={() => toggleSort("ayat")}
-            />
-            <HeaderButton
-              label={t("details.col_segs")}
-              arrow={arrow("segments")}
-              onClick={() => toggleSort("segments")}
-            />
-            <HeaderButton
-              label={t("details.col_status")}
-              arrow={arrow("status")}
-              onClick={() => toggleSort("status")}
-            />
-            <div className="px-3 py-[9px]" />
-          </div>
-          {rows.map((row, i) => (
-            <PageRow key={row.page_number} row={row} mushafId={mushafId} zebra={i % 2 === 1} />
-          ))}
-        </div>
-        {/* totals footer */}
-        <div className={`${GRID} shrink-0 border-t border-border bg-bg-surface`}>
-          <div className="col-span-3 px-3 py-2 text-[12px] font-semibold uppercase tracking-[0.05em] text-text-secondary">
-            {t("details.pg_sigma", { count: rows.length })}
-          </div>
-          <div className="px-3 py-2 text-center font-mono text-[12px] font-bold font-semibold text-text-primary">
-            {totals.lines}
-          </div>
-          <div className="px-3 py-2 text-center font-mono text-[12px] font-bold font-semibold text-text-primary">
-            {totals.ayat}
-          </div>
-          <div className="px-3 py-2 text-center font-mono text-[12px] font-bold font-semibold text-text-muted">
-            {totals.segments}
-          </div>
-          <div className="col-span-2" />
-        </div>
+      <div className="overflow-x-auto rounded-panel border border-rule bg-card">
+        <table className="w-full min-w-[760px] border-collapse text-[14px]">
+          <thead className="sticky top-0 z-[1] bg-sheet">
+            <tr>
+              {sortable("page", t("details.col_page"))}
+              {plain(t("details.col_pdf"))}
+              {plain(t("details.col_sura"))}
+              {sortable("lines", t("details.col_lines"), true)}
+              {sortable("ayat", t("details.col_ayat"), true)}
+              {sortable("segments", t("details.col_segs"), true)}
+              {sortable("status", t("details.col_status"))}
+              <th scope="col" className="border-b border-rule px-[18px] py-3">
+                <span className="sr-only">{t("details.pg_open")}</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <PageRow
+                key={row.page_number}
+                row={row}
+                mushafId={mushafId}
+                next={row.page_number === nextPage}
+              />
+            ))}
+          </tbody>
+          <tfoot className="bg-sheet">
+            <tr>
+              <td colSpan={3} className="px-[18px] py-3 text-[13px] text-ink-3">
+                {t("details.pg_sigma", { count: rows.length })}
+              </td>
+              <td className="px-3.5 py-3 text-end font-mono font-semibold">{totals.lines}</td>
+              <td className="px-3.5 py-3 text-end font-mono font-semibold">{totals.ayat}</td>
+              <td className="px-3.5 py-3 text-end font-mono font-semibold">{totals.segments}</td>
+              <td colSpan={2} />
+            </tr>
+          </tfoot>
+        </table>
       </div>
     </div>
   );
 }
 
-function FilterChip({
-  active,
-  onClick,
-  label,
-}: {
-  active: boolean;
-  onClick: () => void;
-  label: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`cursor-pointer rounded-[7px] border px-2.5 py-1 text-[10.5px] font-semibold transition ${
-        active
-          ? "border-navy bg-navy text-white"
-          : "border-border bg-white text-text-secondary hover:border-border-strong"
-      }`}
-    >
-      {label}
-    </button>
-  );
-}
-
-function HeaderCell({ label }: { label: string }) {
-  return (
-    <div className="flex items-center px-3 py-[9px] text-[12px] font-semibold uppercase tracking-[0.07em] text-text-secondary">
-      {label}
-    </div>
-  );
-}
-
-function HeaderButton({
-  label,
-  arrow,
-  onClick,
-  right,
-}: {
-  label: string;
-  arrow: string;
-  onClick: () => void;
-  right?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`flex cursor-pointer items-center justify-center px-3 py-[9px] text-[12px] font-semibold uppercase tracking-[0.07em] text-text-secondary transition-colors hover:text-navy ${right ? "justify-end" : ""}`}
-    >
-      {label}
-      <span className="font-bold text-orange">{arrow}</span>
-    </button>
-  );
-}
-
-function PageRow({ row, mushafId, zebra }: { row: PageSummary; mushafId: string; zebra: boolean }) {
+function PageRow({ row, mushafId, next }: { row: PageSummary; mushafId: string; next: boolean }) {
   const { t } = useTranslation();
   const firstSura = row.suras[0];
+  const status = row.reviewed
+    ? { label: t("details.status_reviewed"), chip: "bg-done-wash text-done-text", dot: "bg-done" }
+    : next
+      ? { label: t("hub.statusNext"), chip: "bg-gold-wash text-ink", dot: "bg-gold" }
+      : {
+          label: t("details.status_processed"),
+          chip: "bg-lapis-wash text-lapis-text",
+          dot: "bg-lapis",
+        };
+  const cell = "border-b border-rule-soft px-3.5 py-[11px]";
   return (
-    <div
-      className={`${GRID} items-center border-t border-border transition-colors hover:bg-orange-tint ${
-        zebra ? "bg-[oklch(0.985_0.004_247)]" : "bg-white"
-      }`}
-    >
-      <div className="px-3 py-2 font-mono text-[12px] font-bold text-text-primary">
-        {String(row.page_number).padStart(2, "0")}
-      </div>
-      <div className="px-3 py-2 font-mono text-[11px] font-medium text-text-muted">
-        p.{row.source_pdf_page}
-      </div>
-      <div className="flex min-w-0 items-center gap-2 px-3 py-[5px]">
-        {firstSura ? (
-          <>
-            <span className="whitespace-nowrap text-[11.5px] font-medium text-text-primary">
-              {firstSura.transliteration}
+    <tr className={next ? "bg-gold-wash" : "transition-colors hover:bg-sheet"}>
+      <td className={`${cell} ps-[18px] font-mono font-semibold`}>{row.page_number}</td>
+      <td className={`${cell} font-mono text-ink-3`}>{row.source_pdf_page}</td>
+      <td className={cell}>
+        <span className="inline-flex flex-wrap items-center gap-2">
+          {firstSura ? (
+            <>
+              <span>{firstSura.transliteration}</span>
+              <span dir="rtl" className="font-cite text-[15px] leading-none text-ink-2">
+                {firstSura.name_arabic}
+              </span>
+              {row.suras.length > 1 && (
+                <span className="text-[12px] text-ink-3">+{row.suras.length - 1}</span>
+              )}
+            </>
+          ) : (
+            <span className="text-ink-3">—</span>
+          )}
+          {row.has_header && (
+            <span className="rounded-[4px] bg-gold-wash px-[7px] py-px text-[11.5px] font-semibold text-gold-text">
+              {t("details.pg_header")}
             </span>
-            <span dir="rtl" className="font-arabic text-[13px] leading-none text-text-secondary">
-              {firstSura.name_arabic}
-            </span>
-            {row.suras.length > 1 && (
-              <span className="text-[10px] text-text-muted">+{row.suras.length - 1}</span>
-            )}
-          </>
-        ) : (
-          <span className="text-[11px] text-text-muted">—</span>
-        )}
-        {row.has_header && (
-          <span className="flex-none rounded-[9px] bg-orange-tint px-[5px] py-px text-[8.5px] font-semibold uppercase tracking-[0.04em] text-orange">
-            {t("details.pg_header")}
-          </span>
-        )}
-      </div>
-      <div className="px-3 py-2 text-center font-mono text-[11.5px] font-medium text-text-primary">
-        {row.lines}
-      </div>
-      <div className="px-3 py-2 text-center font-mono text-[11.5px] font-medium text-text-primary">
-        {row.ayat}
-      </div>
-      <div className="px-3 py-2 text-center font-mono text-[11.5px] font-medium text-text-muted">
-        {row.segments}
-      </div>
-      <div className="flex items-center justify-center gap-1.5 px-3 py-2">
-        <span
-          className="h-[7px] w-[7px] flex-none rounded-full"
-          style={{ background: row.reviewed ? "var(--success)" : "var(--navy-light)" }}
-        />
-        <span className="text-[11px] font-medium text-text-secondary">
-          {row.reviewed ? t("details.status_reviewed") : t("details.status_processed")}
+          )}
         </span>
-      </div>
-      <div className="px-3 py-2 text-end">
+      </td>
+      <td className={`${cell} text-end font-mono`}>{row.lines}</td>
+      <td className={`${cell} text-end font-mono`}>{row.ayat}</td>
+      <td className={`${cell} text-end font-mono`}>{row.segments}</td>
+      <td className={cell}>
+        <span
+          className={`inline-flex items-center gap-1.5 rounded-pill px-[9px] py-[3px] text-[12px] font-semibold ${status.chip}`}
+        >
+          <span className={`h-1.5 w-1.5 rounded-full ${status.dot}`} />
+          {status.label}
+        </span>
+      </td>
+      <td className={`${cell} pe-[18px] text-end`}>
         <Link
           to="/mushafs/$mushafId/review"
           params={{ mushafId }}
           search={{ page: row.page_number }}
-          className="whitespace-nowrap text-[11px] font-semibold text-orange hover:text-orange-hover"
+          className="whitespace-nowrap text-[13px] font-semibold text-lapis-text no-underline hover:text-lapis-text/80"
         >
           {t("details.pg_open")}
         </Link>
-      </div>
-    </div>
+      </td>
+    </tr>
   );
 }

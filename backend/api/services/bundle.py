@@ -36,7 +36,6 @@ from typing import Any
 
 from django.core.files.base import ContentFile
 from django.db import transaction
-from django.db.models import F
 from ninja.errors import HttpError
 from ninja.files import UploadedFile
 
@@ -52,7 +51,6 @@ from api.models import (
     EraseStroke,
     Line,
     LineWord,
-    LineWordStatus,
     Mushaf,
     Page,
     Segment,
@@ -111,11 +109,10 @@ def serialize_tree(mushaf: Mushaf) -> list[dict]:
 
     for line in (
         Line.objects.filter(page__mushaf=mushaf)
-        .select_related("page", "word_status")
+        .select_related("page")
         .prefetch_related("words")
         .order_by("line_number")
     ):
-        status = getattr(line, "word_status", None)
         lines_by_page.setdefault(line.page.page_number, []).append(
             {
                 "line_number": line.line_number,
@@ -131,15 +128,6 @@ def serialize_tree(mushaf: Mushaf) -> list[dict]:
                     {"word_id": word.word_id, "position": word.position, "start_x": word.start_x, "end_x": word.end_x}
                     for word in line.words.all()
                 ],
-                "word_status": {
-                    "status": status.status,
-                    "reason": status.reason,
-                    "deviations": status.deviations,
-                    "ties": status.ties,
-                    "edited": status.edited,
-                }
-                if status
-                else None,
             }
         )
 
@@ -258,21 +246,8 @@ def write_tree(target: Mushaf, pages: list[dict]) -> None:
         ],
         batch_size=BATCH_SIZE,
     )
-    LineWordStatus.objects.bulk_create(
-        [
-            LineWordStatus(
-                line=new_line_by_key[(page_number, line["line_number"])],
-                **{
-                    key: value
-                    for key, value in line["word_status"].items()
-                    if key in ("status", "reason", "deviations", "ties", "edited")
-                },
-            )
-            for page_number, line in line_rows
-            if line.get("word_status")
-        ],
-        batch_size=BATCH_SIZE,
-    )
+    # A bundle written before word statuses were dropped still carries a
+    # ``word_status`` per line; nothing reads it.
 
 
 def serialize_calibration(mushaf: Mushaf) -> dict:
@@ -378,10 +353,6 @@ def restore_calibration(target: Mushaf, data: dict, read_file: Callable[[str, st
     importing over a worked target: imported revisions are appended after it, and
     every reference to a revision number is shifted to match.
     """
-    from api.models import CalibrationSettings
-
-    # Activation is local consent, never portable data, even on an existing target.
-    CalibrationSettings.objects.filter(mushaf=target).update(experimental=False, revision=F("revision") + 1)
     lines = {
         (page_number, line_number): str(pk)
         for page_number, line_number, pk in Line.objects.filter(page__mushaf=target).values_list(
