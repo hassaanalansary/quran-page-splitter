@@ -188,7 +188,7 @@ def extract_line(line: Line, rendered_page: Image.Image, templates: Templates) -
         spans,
         ayat,
     )
-    ink = analyse_line(source)
+    ink = analyse_line(source)  # This is the core engine
     # Every blob, taken before the partition: ornaments and symbols keep their ids
     # and their geometry, so the reviewer can see them on the raster.
     all_blobs = list(ink.components)

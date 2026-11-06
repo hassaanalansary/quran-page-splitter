@@ -196,8 +196,9 @@ def page_calibration(request: HttpRequest, mushaf_id: uuid.UUID, page_number: in
 @router.post("/{mushaf_id}/pages/{page_number}/calibration/process", response={202: ProcessOut})
 def process_calibration(request: HttpRequest, mushaf_id: uuid.UUID, page_number: int) -> tuple[int, dict]:
     """Process one page for review; returns at once with the job to poll."""
-    mushaf = mushaf_service.get_mushaf(mushaf_id, user=current_user(request))
-    job = calibration_service.start_page(mushaf, page_number, user=current_user(request))
+    user = current_user(request)
+    mushaf = mushaf_service.get_mushaf(mushaf_id, user=user)
+    job = calibration_service.start_page(mushaf, page_number, user=user)
     return 202, {"job": jobs_service.to_dict(job)}
 
 

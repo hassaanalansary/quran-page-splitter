@@ -558,26 +558,26 @@ def page_states(mushaf: Mushaf) -> list[Doc]:
 # ---------------------------------------------------------------------------
 # Processing a page
 # ---------------------------------------------------------------------------
-def _span_for_page(mushaf: Mushaf, page: int) -> tuple[tuple[int, int], tuple[int, int]]:
+def _span_for_page(mushaf: Mushaf, page_number: int) -> tuple[tuple[int, int], tuple[int, int]]:
     """The first and last aya printed on the page — the span that covers it.
 
     Those ayat may start on the page before and end on the page after; the lines
     there are read as context, never saved. A page whose segments are not all
     numbered cannot be addressed at all, and is refused rather than guessed.
     """
-    row = Page.objects.filter(mushaf=mushaf, page_number=page).first()
-    if row is None:
-        _refuse("not_found", 404, page=page)
-    if not row.reviewed:
-        _refuse("not_reviewed", 422, page=page)
+    page = Page.objects.filter(mushaf=mushaf, page_number=page_number).first()
+    if page is None:
+        _refuse("not_found", 404, page=page_number)
+    if not page.reviewed:
+        _refuse("not_reviewed", 422, page=page_number)
     rows = list(
-        Segment.objects.filter(line__page=row, line__type=LineTypeChoices.TEXT)
+        Segment.objects.filter(line__page=page, line__type=LineTypeChoices.TEXT)
         .order_by("line__line_number", "segment_order")
         .values_list("line__sura_id", "aya_number")
     )
     numbered = [(sura, aya) for sura, aya in rows if sura is not None and aya is not None]
     if not rows or len(numbered) != len(rows):
-        _refuse("not_numbered", 422, page=page)
+        _refuse("not_numbered", 422, page=page_number)
     return numbered[0], numbered[-1]
 
 
