@@ -115,7 +115,7 @@ npm run build          # → frontend/dist
 - **Line endings**: the working tree is CRLF (`core.autocrlf=true`).
 - **Routes**: `routeTree.gen.ts` is generated; a `foo.index.tsx` needs a `foo.tsx`
   layout, or every `/foo` URL 404s.
-- **Secrets** stay in `backend/.env`, which is not committed; `.env.dist` lists the keys.
+- **Secrets** are in `backend/.env`, which is committed; `.env.dist` lists the keys with placeholders.
 
 ---
 
