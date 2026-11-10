@@ -44,6 +44,7 @@ from django.db import transaction
 
 from api.models import CalibrationReview, CalibrationRevision, Mushaf
 from api.services import calibration as calibration_service
+from api.services.jobs.dispatch import INLINE
 from api.services.jobs.kinds.calibration_page import start_calibration_page_job
 
 
@@ -104,8 +105,8 @@ class Command(BaseCommand):
             )
             self.stdout.write(f"  process_page returned {done}")
         else:
-            # The view's own call, minus HTTP. inline=True: the job's runner runs here.
-            job = start_calibration_page_job(mushaf, page, user=mushaf.owner, inline=True)
+            # The view's own call, minus HTTP. INLINE: the job's runner runs here.
+            job = start_calibration_page_job(mushaf, page, user=mushaf.owner, job_runner=INLINE)
             self.stdout.write(f"  job {job.id}  state={job.state}  error={job.error or '-'}")
         self._report(mushaf, page)
 

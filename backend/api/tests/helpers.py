@@ -230,7 +230,7 @@ class FakeJobRunners:
         first_page: int = 1,
         last_page: int = 1,
         user: Any = None,
-        inline: bool | None = None,
+        job_runner: str | None = None,
     ) -> ProcessJob:
         """What every ``start_…_job`` does, with ``runner`` as the work: the admission
         rules, the row, the dispatch. It leaves out only a kind's own preflight."""
@@ -239,4 +239,4 @@ class FakeJobRunners:
         refuse_if_queue_is_full()
         refuse_if_user_has_too_many_jobs(user)
         job = create_job_row(mushaf, first_page=first_page, last_page=last_page, user=user)
-        return dispatch_job(job, inline=inline)
+        return dispatch_job(job, job_runner=job_runner)

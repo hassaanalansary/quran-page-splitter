@@ -26,6 +26,7 @@ from api.services.jobs.admission import refuse_if_mushaf_has_active_job
 from api.services.jobs.cancellation import request_job_cancellation
 from api.services.jobs.claiming import claim_queued_job
 from api.services.jobs.dead_jobs import mark_silent_jobs_interrupted, mark_unclaimed_jobs_interrupted
+from api.services.jobs.dispatch import THREAD
 from api.services.jobs.execution import execute_job
 from api.services.jobs.kinds.detection import start_detection_job
 from api.services.jobs.queries import find_active_job_of_mushaf, find_job_by_id, find_latest_job_of_mushaf
@@ -347,7 +348,7 @@ class ThreadedEndpointTests(FakeJobRunners, MediaTransactionTestCase):
     def test_cancel_a_running_job_returns_it_flagged(self):
         mushaf = bare_mushaf()
         gate = GatedRunner()
-        self.start_job_with_runner(mushaf, gate, inline=False)
+        self.start_job_with_runner(mushaf, gate, job_runner=THREAD)
         self.addCleanup(gate.release.set)
         self.assertTrue(gate.entered.wait(JOB_TIMEOUT))
 
@@ -361,7 +362,7 @@ class ThreadedEndpointTests(FakeJobRunners, MediaTransactionTestCase):
     def test_starting_while_one_is_running_is_409(self):
         mushaf = bare_mushaf()
         gate = GatedRunner()
-        self.start_job_with_runner(mushaf, gate, inline=False)
+        self.start_job_with_runner(mushaf, gate, job_runner=THREAD)
         self.addCleanup(gate.release.set)
         self.assertTrue(gate.entered.wait(JOB_TIMEOUT))
 

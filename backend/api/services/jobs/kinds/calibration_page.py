@@ -39,7 +39,7 @@ from api.services.jobs.progress import record_job_outcome, record_job_progress
 
 
 def start_calibration_page_job(
-    mushaf: Mushaf, page: int, *, user: User | None, inline: bool | None = None
+    mushaf: Mushaf, page: int, *, user: User | None, job_runner: str | None = None
 ) -> ProcessJob:
     """Start processing one page for review and return its job. Refuses what it can up front.
 
@@ -75,16 +75,18 @@ def start_calibration_page_job(
         lines_done=0,
         aya_span=(plan.start, plan.end),
     )
-    return dispatch_job(job, inline=inline)
+    return dispatch_job(job, job_runner=job_runner)
 
 
 def run_calibration_page_job(job: ProcessJob) -> None:
     """Process the page named in the job's ``params``, as the user who asked for it,
     and settle the job: ``completed`` when the draft was stored, ``cancelled`` when a
-    cancel arrived before anything was."""
+    cancel arrived before anything was. A cancelled job names the page in
+    ``stopped_on_page``: nothing of it was stored."""
+    page = int(job.params["page"])
     stored = process_page(
         job.mushaf,
-        int(job.params["page"]),
+        page,
         expected_revision=int(job.params["expected_revision"]),
         user=job.requested_by,
         progress=lambda lines_done: record_job_progress(job.id, phase="detecting", lines_done=lines_done),
@@ -94,4 +96,5 @@ def run_calibration_page_job(job: ProcessJob) -> None:
         job.id,
         ProcessJobStateChoices.COMPLETED if stored else ProcessJobStateChoices.CANCELLED,
         pages_saved=1 if stored else 0,
+        stopped_on_page=None if stored else page,
     )

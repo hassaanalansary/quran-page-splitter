@@ -15,6 +15,7 @@ dependencies = [
     "pymupdf>=1.27.2.3",
     "django-allauth[headless-spec,socialaccount]>=65.19.1",
     "psycopg[binary]>=3.3.4",
+    "celery[redis]>=5.7.0",
 ]
 
 [dependency-groups]
@@ -80,6 +81,11 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "environ"
+ignore_missing_imports = true
+
+# Celery and kombu ship no type information.
+[[tool.mypy.overrides]]
+module = ["celery.*", "kombu.*"]
 ignore_missing_imports = true
 
 # django-allauth ships no py.typed marker; the django-stubs plugin still pulls

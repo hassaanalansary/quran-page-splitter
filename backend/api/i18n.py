@@ -33,6 +33,10 @@ MESSAGES: dict[str, dict[str, str]] = {
         "en": "You already have {count} processing job(s) running. Wait for one to finish, or cancel it.",
         "ar": "لديك بالفعل {count} عملية معالجة قيد التشغيل. انتظر انتهاء إحداها أو ألغِها.",
     },
+    "job_queue_unavailable": {
+        "en": "The job queue cannot be reached, so the job was not started. Try again shortly.",
+        "ar": "تعذّر الوصول إلى قائمة انتظار المهام، فلم تبدأ العملية. حاول بعد قليل.",
+    },
     "bundle_invalid": {
         "en": "That file is not a readable work bundle.",
         "ar": "هذا الملف ليس حزمة عمل صالحة للقراءة.",

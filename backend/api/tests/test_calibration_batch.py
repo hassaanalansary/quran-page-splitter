@@ -143,6 +143,8 @@ class RunTests(BatchTestCase):
             job = self.batch().json()["job"]
         self.assertEqual((job["state"], job["report"]["processed"]), ("cancelled", [1]))
         self.assertFalse(self.drafted(2))
+        # Where a later batch would pick up: the first page this one did not finish.
+        self.assertEqual(job["stopped_on_page"], 2)
 
     def test_one_failing_page_does_not_cost_the_rest(self):
         real = calibration_service.process_page

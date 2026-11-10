@@ -36,7 +36,7 @@ def start_detection_job(
     detection_settings: dict[str, Any],
     *,
     user: User | None = None,
-    inline: bool | None = None,
+    job_runner: str | None = None,
 ) -> ProcessJob:
     """Start detection over the page range in ``detection_settings`` and return its job.
 
@@ -44,6 +44,9 @@ def start_detection_job(
     and the engine's settings. Everything that can be refused is refused here, while
     the caller can still be told. "A job is already running" comes before a bad
     payload, because it is the more useful answer when both are true.
+
+    ``job_runner`` overrides the ``JOB_RUNNER`` setting for this one job. The debug
+    commands pass it.
     """
     first_page = int(detection_settings["page_range_start"])
     last_page = int(detection_settings["page_range_end"])
@@ -60,7 +63,7 @@ def start_detection_job(
         last_page=last_page,
         total=max(0, last_page - first_page + 1),
     )
-    return dispatch_job(job, inline=inline)
+    return dispatch_job(job, job_runner=job_runner)
 
 
 def run_detection_job(job: ProcessJob) -> None:

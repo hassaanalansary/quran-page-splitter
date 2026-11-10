@@ -1,4 +1,4 @@
-"""The job system: long work that a request starts and a worker thread finishes.
+"""The job system: long work that a request starts and a worker finishes.
 
 Processing a page range takes seconds per page, and minutes to hours for a whole
 mushaf, so the request only starts the work. The ``ProcessJob`` row is the state both
@@ -9,18 +9,23 @@ column that the worker reads between pages.
 
 ::
 
-    browser        request (web process)                  worker thread
-    POST ────────▶ start_…_job                 kinds/
-                   ├ refuse_if_…  (409 / 429)  admission
-                   ├ create_queued_job         creation    state = queued, params = {…}
-                   └ dispatch_job ── job id ─────────────▶ execute_job          execution
-    ◀── 202, the job                                       ├ claim_queued_job   claiming
-    GET poll ────▶ find_latest_job_of_mushaf   queries     │    queued → running
-                   └ serialize_job             serializers ├ load_job_runner    runner_registry
-    cancel ──────▶ request_job_cancellation    cancellation├ run_…_job          kinds/
-                   ├ queued:  cancelled at once            │  ├ record_job_progress
-                   └ running: sets the flag                │  └ is_job_cancellation_requested
-                                                           └ record_job_outcome progress
+    browser        request (web process)             redis      Celery worker (a child process)
+    POST ────────▶ start_…_job              kinds/
+                   ├ refuse_if_…  (409/429) admission
+                   ├ create_queued_job      creation             state = queued, params = {…}
+                   └ dispatch_job ─ on commit ─▶ [queue] ─▶ run_job_task(job id)   api/tasks.py
+    ◀── 202, the job                                        └ execute_job          execution
+    GET poll ────▶ find_latest_job_of_mushaf   queries         ├ claim_queued_job  claiming
+                   └ serialize_job             serializers     │    queued → running
+    cancel ──────▶ request_job_cancellation    cancellation    ├ load_job_runner   runner_registry
+                   ├ queued:  cancelled at once                ├ run_…_job         kinds/
+                   └ running: sets the flag                    │  ├ record_job_progress
+                                                               │  └ is_job_cancellation_requested
+                                                               └ record_job_outcome  progress
+
+That is ``JOB_RUNNER=celery``. With ``thread``, ``dispatch_job`` starts a thread of the
+web process that calls ``execute_job``. With ``inline`` it calls ``execute_job`` itself.
+Everything from ``execute_job`` down is the same in all three.
 
 The modules, in the order a job meets them:
 
@@ -28,12 +33,14 @@ The modules, in the order a job meets them:
                      request) and ``run_…_job`` (the worker)
 ``admission``        the rules that refuse a job before it exists
 ``creation``         writes the job's row, in the ``queued`` state
-``dispatch``         hands the job's id to whatever runs it: the request itself, or a thread
+``dispatch``         hands the job's id to whatever runs it: Celery, a thread, or the request
+``api/tasks.py``     the Celery task: it calls ``execute_job``
 ``execution``        claims the job, runs it, and makes sure it settles, whatever happens
 ``claiming``         ``queued`` → ``running``, for one worker only
 ``runner_registry``  which ``run_…_job`` belongs to which kind
 ``progress``         the worker's writes to the row: progress ticks and the final outcome
 ``cancellation``     cancels a queued job at once, and flags a running one
+``worker_events``    what a Celery worker does for its jobs when it starts and when it stops
 ``dead_jobs``        marks jobs that nothing will finish as ``interrupted``
 ``queries``          finds jobs for the pollers and for the rules above
 ``states``           which states are final

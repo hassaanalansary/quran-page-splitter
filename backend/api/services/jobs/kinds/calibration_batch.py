@@ -52,7 +52,7 @@ def start_calibration_batch_job(
     *,
     refresh: bool = False,
     user: User | None = None,
-    inline: bool | None = None,
+    job_runner: str | None = None,
 ) -> ProcessJob:
     """Start processing pages ``first``..``last`` as one job and return it. Refuses a
     range in which there is nothing it could process."""
@@ -81,13 +81,14 @@ def start_calibration_batch_job(
             "busy_seconds": 0.0,
         },
     )
-    return dispatch_job(job, inline=inline)
+    return dispatch_job(job, job_runner=job_runner)
 
 
 def run_calibration_batch_job(job: ProcessJob) -> None:
     """Walk the job's page range, as the user who asked for it, and settle the job:
     ``completed`` at the end of the range, ``cancelled`` at the page where a cancel
-    reached it."""
+    reached it. That page is ``stopped_on_page``: the first page the batch did not
+    finish."""
     mushaf = job.mushaf
     refresh = bool(job.params["refresh"])
     report: Doc = dict(job.report or {})
@@ -112,6 +113,7 @@ def run_calibration_batch_job(job: ProcessJob) -> None:
         ProcessJobStateChoices.CANCELLED if cancelled else ProcessJobStateChoices.COMPLETED,
         pages_saved=len(report["processed"]),
         report=report,
+        stopped_on_page=page_number if cancelled else None,
     )
 
 

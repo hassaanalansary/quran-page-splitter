@@ -44,6 +44,7 @@ from ninja.errors import HttpError
 from api.models import Mushaf, ProcessingRun, ProcessJob
 from api.services import processing as processing_service
 from api.services.jobs.cancellation import request_job_cancellation
+from api.services.jobs.dispatch import INLINE, THREAD
 from api.services.jobs.kinds.detection import start_detection_job
 from api.services.jobs.states import is_job_finished
 
@@ -102,6 +103,10 @@ class Command(BaseCommand):
             )
         )
 
+        if options["rollback"] and options["via"] == "job-thread":
+            # The job is handed to its thread when the transaction commits, and a
+            # transaction that is rolled back never does.
+            raise CommandError("--rollback cannot be combined with --via job-thread. Use --via job-inline.")
         if options["rollback"]:
             # Per-page transactions nest as savepoints, so one outer rollback
             # discards the run row and every page it wrote.
@@ -137,7 +142,7 @@ class Command(BaseCommand):
         if options["via"] == "service":
             result = processing_service.process(mushaf, **params, should_cancel=should_cancel, on_progress=on_progress)
         else:  # job-inline
-            job = start_detection_job_or_command_error(mushaf, params, inline=True)
+            job = start_detection_job_or_command_error(mushaf, params, job_runner=INLINE)
             result = {
                 "status": job.state,
                 "pages_saved": job.pages_saved,
@@ -149,7 +154,7 @@ class Command(BaseCommand):
 
     def _run_threaded(self, mushaf: Mushaf, params: dict, cancel_after: int | None) -> None:
         """The real path: a worker thread runs it, this thread polls and cancels."""
-        job = start_detection_job_or_command_error(mushaf, params, inline=False)
+        job = start_detection_job_or_command_error(mushaf, params, job_runner=THREAD)
         self.stdout.write(f"  job {job.id} started on a worker thread")
 
         cancelled = False
@@ -189,10 +194,10 @@ class Command(BaseCommand):
             self.stdout.write(self.style.ERROR(f"  error           {result['error']}"))
 
 
-def start_detection_job_or_command_error(mushaf: Mushaf, params: dict, *, inline: bool) -> ProcessJob:
+def start_detection_job_or_command_error(mushaf: Mushaf, params: dict, *, job_runner: str) -> ProcessJob:
     """The view's own call, minus HTTP. A refusal becomes a command error with its message."""
     try:
-        return start_detection_job(mushaf, params, inline=inline)
+        return start_detection_job(mushaf, params, job_runner=job_runner)
     except HttpError as refused:
         raise CommandError(f"The job was refused ({refused.status_code}): {refused}") from None
 
