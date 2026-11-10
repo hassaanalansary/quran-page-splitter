@@ -14,7 +14,8 @@ import {
 import { BusyLabel } from "@/components/app/SatrLoader";
 import {
   ApiError,
-  isJobRunning,
+  isJobActive,
+  isJobQueued,
   planCalibrationBatch,
   startCalibrationBatch,
   useCalibrationReadiness,
@@ -23,6 +24,7 @@ import {
   type CalibrationBatchReport,
   type ProcessJob,
 } from "@/lib/api";
+import { queuedJobLabel } from "@/lib/jobQueue";
 import type {
   BatchPlan,
   CalibrationReadiness,
@@ -78,8 +80,8 @@ export function BulkPanel({
   const [open, setOpen] = useState(false);
   const { data: readiness } = useCalibrationReadiness(mushafId);
   const batch = job?.kind === "calibration_batch" ? job : null;
-  const running = isJobRunning(batch);
-  const busy = isJobRunning(job);
+  const running = isJobActive(batch);
+  const busy = isJobActive(job);
 
   return (
     <div className="flex flex-col gap-2">
@@ -821,8 +823,18 @@ function BatchProgress({
         <div className="h-full rounded-full bg-lapis transition-all" style={{ width: `${pct}%` }} />
       </div>
       <span className="text-[12.5px] leading-snug text-ink-2">
-        {t("calibration.bulk.progressLine", { page: job.current_page ?? "…", processed, skipped })}
-        {failed > 0 && ` · ${t("calibration.bulk.progressFailed", { count: failed })}`}
+        {isJobQueued(job) ? (
+          queuedJobLabel(t, job)
+        ) : (
+          <>
+            {t("calibration.bulk.progressLine", {
+              page: job.current_page ?? "…",
+              processed,
+              skipped,
+            })}
+            {failed > 0 && ` · ${t("calibration.bulk.progressFailed", { count: failed })}`}
+          </>
+        )}
       </span>
       {perPage !== null && remaining > 0 && (
         <span className="text-[12px] text-ink-3">

@@ -23,6 +23,11 @@ export const ar: typeof en = {
     leaveAnyway: "غادِر على أي حال",
     keepEditing: "واصل التحرير",
   },
+  // مهمة تنتظر عاملًا. تشترك فيها كل شاشة تعرض مهمة.
+  jobQueue: {
+    ahead: "في قائمة الانتظار، {{count}} قبلك",
+    next: "في قائمة الانتظار، دورك التالي",
+  },
   lang: {
     label: "اللغة",
     en: "English",
@@ -443,6 +448,11 @@ export const ar: typeof en = {
     cancelConfirmKeep: "متابعة المعالجة",
     cancelConfirmStop: "أوقفها",
     cancelRequestedToast: "سيتوقّف بعد الصفحة الحالية. تبقى الصفحات المنجزة محفوظة.",
+    // إلغاء تشغيل ما زال في قائمة الانتظار
+    cancelQueuedIntro: "لم يبدأ بعد، فسيُزال من قائمة الانتظار فقط.",
+    cancelQueuedToast: "أُزيل من قائمة الانتظار. لم تُعالَج أي صفحة.",
+    cancelQueuedStatus: "أُزيل من قائمة الانتظار قبل أن يبدأ.",
+    cancelQueuedLead: "كان ما زال في قائمة الانتظار، فلم تُعالَج أي صفحة. ابدأه من جديد متى شئت.",
     cancelFailed: "تعذّر إيقاف المعالجة.",
     cancelledToast: "أُوقفت المعالجة — حُفظت {{count}} صفحة.",
     cancelStatus: "أُوقفت عند الصفحة {{page}} — حُفظت {{count}} صفحة.",
@@ -456,6 +466,8 @@ export const ar: typeof en = {
     processFailed: "فشلت المعالجة.",
     interruptedToast:
       "أوقف الخادم هذه العملية قبل اكتمالها — حُفظت {{count}} صفحة ويمكن المتابعة منها.",
+    unclaimedToast:
+      "لم يلتقط أي عامل هذا التشغيل، فلم يبدأ. تأكّد من أن العامل يعمل ثم ابدأه من جديد.",
     loadedToast: "تم تحميل الإعدادات من التشغيل {{label}}.",
     loadedToastResume: "تم تحميل الإعدادات من التشغيل {{label}} · الاستئناف من ص.{{from}}.",
     // قفل الحدود
@@ -532,6 +544,8 @@ export const ar: typeof en = {
     headerSlotsHint: "ارتفاعات الأسطر التي يشغلها العنوان",
     maxHeadersHint: "أقصى عدد في صفحة واحدة",
     runningNote: "التشغيل يجري على الخادم — يمكنك مغادرة هذه الصفحة. الإعدادات مقفلة حتى ينتهي.",
+    queuedNote:
+      "التشغيل ينتظر دوره على الخادم — يمكنك مغادرة هذه الصفحة. الإعدادات مقفلة حتى ينتهي.",
     runCardTitle: "التشغيل {{n}} · الصفحات {{start}}–{{end}}",
     runCardRange: "الصفحات {{start}}–{{end}}",
     runCardSaved: "من {{total}} صفحة محفوظة",

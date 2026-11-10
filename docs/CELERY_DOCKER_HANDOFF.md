@@ -13,7 +13,7 @@ Last updated: 2026-11-10.
 | 2 | Jobs described by their row | done | ruff, mypy, backend tests, the migration forward and back on a row of data |
 | 3 | Celery | done | ruff, mypy, backend tests, and a real worker against a real Redis (see below) |
 | 4 | The real queue | done | ruff, mypy, backend tests |
-| 5 | Frontend | not started | |
+| 5 | Frontend | done | `npx tsc --noEmit`, `npm run lint`, and the process screen in a real browser (see below) |
 | 6 | Docker | not started | |
 | 7 | Docs | not started | |
 
@@ -132,11 +132,40 @@ Choices made where the plan left a detail open:
 - **The refusals changed order for the calibration jobs.** A page or a batch on a mushaf that already has a job now answers 409 before it looks at the page or the range.
 - **The thread tests pin `JOB_RUNNER="thread"`.** `just test` runs inside a container whose environment says `celery`, and those tests would otherwise publish to the real Redis.
 
+### Phase 5: the frontend
+
+The screens that show a job now know the `queued` state.
+
+- `lib/api/types.ts`: the `queued` state, `queue_position`, and `requested_at` + `run_started_at` in place of `started_at`. `isJobRunning` is renamed `isJobActive` (queued or running). `isJobQueued` and `didJobNeverStart` are new.
+- `lib/jobQueue.ts`: `queuedJobLabel`, the one place that words "Queued, 2 ahead of you" and "Queued, next in line".
+- Process screen: the run card, the note under it, the caption under the stop button, the cancel dialog (no ledger for a job that has not started), and the outcome of a job that was cancelled in the queue or that no worker picked up.
+- Calibration: a queued page job and a queued batch show the queue label, not a 0% bar.
+- New strings, each in `en.ts` and `ar.ts`: `jobQueue.ahead`, `jobQueue.next`, `process.queuedNote`, `process.cancelQueuedIntro`, `process.cancelQueuedToast`, `process.cancelQueuedStatus`, `process.cancelQueuedLead`, `process.unclaimedToast`.
+
+Checks: `npx tsc --noEmit` passed. `npm run lint` gave 0 errors and 6 warnings, all in `components/ui/` files this branch does not touch.
+
+Checked in a real browser in the cloud (Vite dev server, Django with `JOB_RUNNER=celery`, a local Redis, no worker, three queued jobs):
+
+| What | Result |
+|---|---|
+| The third job's process screen | "Queued, 2 ahead of you", with the waiting note |
+| The first job's process screen | "Queued, next in line" |
+| Stop a queued job from the screen | The dialog said it only leaves the queue. After it: the outcome card, the status line and the toast for a job that never started |
+| The same screen in Arabic | "في قائمة الانتظار، 1 قبلك", right to left |
+
+**`frontend/dist` is committed and was not rebuilt.** It still reads `started_at` and knows no `queued` state. Run `npm run build` in `frontend/` before you serve the bundle.
+
+Choices made where the plan left a detail open:
+
+- **No elapsed timer exists in the frontend**, so nothing reads `run_started_at` for one. The field is in the type, and `didJobNeverStart` reads it.
+- **The strings carry no plural forms**, like the rest of both locale files: "Queued, 1 ahead of you" is the same sentence as for 2.
+
 ## Not verified
 
 - The Docker files will be written without being run. Their first real run is on the owner's machine (plan §9).
 - A long job across a worker stop. The stop hook was seen to flag the right row, and every runner is tested to stop on the flag. A real multi-page run that is cancelled by `docker compose restart celeryworker` and settles `cancelled` with a resume page was not run: the cloud has no real mushaf (plan §9, step 7).
 - Two jobs at once in two worker children, each with its own run log (plan §9, step 10).
+- A queued job on the calibration screens. The page job and the batch got the same label as the process screen, and `tsc` and the linter pass, but only the process screen was opened in a browser.
 - The queue against a real worker with every slot busy: a third job shows "1 ahead of you" and starts when a slot frees (plan §9, step 5). The rules and `queue_position` are tested on the rows, with the publish to Redis replaced.
 
 ## For whoever continues

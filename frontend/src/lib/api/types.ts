@@ -242,8 +242,11 @@ export type AbortInfo = {
   debug_images: string[];
 };
 
-/** Terminal states a run settles in; anything else means it is still working. */
+/** A job's state. `queued` and `running` are active: the job holds its mushaf.
+ * Every other state is one a job settles in. */
 export type ProcessJobState =
+  /** Requested, and waiting for a worker to start it. */
+  | "queued"
   | "running"
   | "completed"
   | "aborted_line_detection"
@@ -297,6 +300,9 @@ export type ProcessJob = {
   id: string;
   mushaf_id: string;
   state: ProcessJobState;
+  /** A queued job's place in the queue: how many queued jobs were requested
+   * before it. Null once the job is no longer queued. */
+  queue_position: number | null;
   phase: ProcessJobPhase;
   page_range_start: number;
   page_range_end: number;
@@ -307,7 +313,11 @@ export type ProcessJob = {
   current_page: number | null;
   /** A cancel has been asked for but the run hasn't settled yet. */
   cancel_requested: boolean;
-  started_at: string;
+  /** When the job was asked for. */
+  requested_at: string;
+  /** When a worker began it. Null while the job is queued, and for a job that was
+   * cancelled before it started. */
+  run_started_at: string | null;
   ended_at: string | null;
   run_id: string | null;
   log_url: string | null;
@@ -344,8 +354,21 @@ export function isJobSettled(job: ProcessJob | null | undefined): boolean {
   return !!job && PROCESS_JOB_DONE.includes(job.state);
 }
 
-export function isJobRunning(job: ProcessJob | null | undefined): boolean {
+/** Is this job queued or running? An active job is the one to poll, and it
+ * holds its mushaf: nothing else can be started there until it settles. */
+export function isJobActive(job: ProcessJob | null | undefined): boolean {
   return !!job && !isJobSettled(job);
+}
+
+/** Is this job waiting for a worker? Nothing of it has run yet. */
+export function isJobQueued(job: ProcessJob | null | undefined): boolean {
+  return job?.state === "queued";
+}
+
+/** Did this job settle without ever starting? It was cancelled while it waited,
+ * or no worker picked it up. */
+export function didJobNeverStart(job: ProcessJob | null | undefined): boolean {
+  return !!job && isJobSettled(job) && job.run_started_at === null;
 }
 
 /** One stored processing run (GET /api/mushafs/{id}/runs, newest first). */

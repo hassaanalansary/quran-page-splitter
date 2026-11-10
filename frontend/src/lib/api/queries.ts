@@ -11,7 +11,7 @@ import { getPage, listPages } from "./pages";
 import { getProcessJob, listRuns } from "./processing";
 import { listQiraat } from "./qiraat";
 import { DEFAULT_QIRAA, listSuras } from "./suras";
-import { isJobRunning, type ProcessJob } from "./types";
+import { isJobActive, type ProcessJob } from "./types";
 
 export const queryKeys = {
   session: ["session"] as const,
@@ -84,7 +84,7 @@ export function useProcessJob(id: string, intervalMs = 1000) {
   return useQuery<ProcessJob | null>({
     queryKey: queryKeys.processJob(id),
     queryFn: ({ signal }) => getProcessJob(id, signal),
-    refetchInterval: (query) => (isJobRunning(query.state.data) ? intervalMs : false),
+    refetchInterval: (query) => (isJobActive(query.state.data) ? intervalMs : false),
     // A poll is the point — never serve it from cache.
     staleTime: 0,
     refetchOnWindowFocus: true,
