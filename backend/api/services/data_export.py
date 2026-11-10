@@ -239,7 +239,7 @@ def _calibration_state(mushaf: Mushaf, review: CalibrationReview | None, rows: l
         "state": state,
         "revision": review.revision,
         "confirmed_revision": review.confirmed_revision,
-        "stale": not calibration._sources_current(mushaf, rows),
+        "stale": not calibration.are_line_snapshots_current(mushaf, rows),
     }
 
 

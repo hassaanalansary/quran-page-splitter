@@ -250,7 +250,7 @@ CSRF_COOKIE_HTTPONLY = False
 # Run processing jobs on the request thread instead of a worker thread. Off in
 # real use (the point of a job is that the request returns immediately); tests
 # turn it on so a POST settles before it returns, keeping them deterministic and
-# free of cross-thread DB visibility problems. See api/services/jobs.py.
+# free of cross-thread DB visibility problems. See api/services/jobs/dispatch.py.
 PROCESS_JOBS_INLINE = False
 
 # --- Processing concurrency ----------------------------------------------

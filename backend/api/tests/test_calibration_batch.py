@@ -10,9 +10,13 @@ from django.test import SimpleTestCase
 
 from api.models import CalibrationReview, CalibrationRevision, Page, ProcessJob, Segment
 from api.services import calibration as calibration_service
-from api.services import calibration_batch
 from api.services import calibration_progress as progress
+from api.services.calibration_batch import decide_batch_page_when_reached
 from api.tests.test_calibration_api import DOT, CalibrationApiTestCase, drawn_pages
+
+#: The module of the batch job. Its runner imports the functions it calls by name, so
+#: a test that replaces one of them has to replace it there.
+BATCH_JOB = "api.services.jobs.kinds.calibration_batch"
 
 
 class BatchTestCase(CalibrationApiTestCase):
@@ -114,15 +118,14 @@ class RunTests(BatchTestCase):
         self.process(2)
         document = self.document(2)
 
-        def reach_then_save(mushaf, number, *, refresh):
-            reached = real_reach(mushaf, number, refresh=refresh)
+        def decide_then_save(mushaf, number, *, refresh):
+            decided = decide_batch_page_when_reached(mushaf, number, refresh=refresh)
             # Someone saves page 2 after the batch decided it, before it is stored.
             if number == 2:
                 calibration_service.save(mushaf, 2, self.draft(document), user=self.user)
-            return reached
+            return decided
 
-        real_reach = calibration_batch._reach
-        with mock.patch.object(calibration_batch, "_reach", side_effect=reach_then_save):
+        with mock.patch(f"{BATCH_JOB}.decide_batch_page_when_reached", side_effect=decide_then_save):
             report = self.batch(refresh=True).json()["job"]["report"]
         self.assertEqual(report["processed"], [1])
         self.assertEqual([failure["page"] for failure in report["failed"]], [2])
@@ -132,7 +135,7 @@ class RunTests(BatchTestCase):
         def stop_once_page_1_is_stored(job_id):
             return self.drafted(1)
 
-        with mock.patch("api.services.calibration_batch.jobs.cancel_requested", side_effect=stop_once_page_1_is_stored):
+        with mock.patch(f"{BATCH_JOB}.is_job_cancellation_requested", side_effect=stop_once_page_1_is_stored):
             job = self.batch().json()["job"]
         self.assertEqual((job["state"], job["report"]["processed"]), ("cancelled", [1]))
         self.assertFalse(self.drafted(2))
@@ -146,8 +149,8 @@ class RunTests(BatchTestCase):
             return real(mushaf, page, **kwargs)
 
         with (
-            mock.patch.object(calibration_service, "process_page", side_effect=fail_page_1),
-            self.assertLogs("api.services.calibration_batch", level="ERROR"),
+            mock.patch(f"{BATCH_JOB}.process_page", side_effect=fail_page_1),
+            self.assertLogs(BATCH_JOB, level="ERROR"),
         ):
             job = self.batch().json()["job"]
         self.assertEqual(job["state"], "completed")

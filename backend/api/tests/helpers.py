@@ -12,7 +12,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase, TransactionTestCase, override_settings
 from PIL import Image
 
-from api.models import Mushaf
+from api.models import Mushaf, ProcessJob
 
 
 def make_pdf_bytes(num_pages: int = 1) -> bytes:
@@ -130,3 +130,8 @@ def bare_mushaf(name: str = "M", last_quran_pdf_page: int = 10, owner: Any = Non
         first_quran_pdf_page=1,
         last_quran_pdf_page=last_quran_pdf_page,
     )
+
+
+def delete_all_jobs() -> None:
+    """Drop every job row, so one test's jobs never count against the next test's limits."""
+    ProcessJob.objects.all().delete()

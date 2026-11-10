@@ -22,8 +22,12 @@ from api.services import calibration as calibration_service
 from api.services import calibration_batch as batch_service
 from api.services import calibration_library as library_service
 from api.services import calibration_progress as progress_service
-from api.services import jobs as jobs_service
 from api.services import mushaf as mushaf_service
+from api.services.jobs.cancellation import request_job_cancellation
+from api.services.jobs.kinds.calibration_batch import start_calibration_batch_job
+from api.services.jobs.kinds.calibration_page import start_calibration_page_job
+from api.services.jobs.queries import find_latest_job_of_mushaf
+from api.services.jobs.serializers import serialize_job
 from api.views.processing import JobOut, JobStatusOut
 
 router = Router(tags=["calibration"])
@@ -122,8 +126,8 @@ def calibration_job(request: HttpRequest, mushaf_id: uuid.UUID) -> dict:
     """The mushaf's current or latest calibration processing — one page or a batch.
     The polling endpoint; ``kind`` says which."""
     mushaf_service.get_mushaf(mushaf_id, user=current_user(request), write=False)
-    job = jobs_service.latest_for(mushaf_id, kind=CALIBRATION_JOBS)
-    return {"job": jobs_service.to_dict(job) if job else None}
+    job = find_latest_job_of_mushaf(mushaf_id, kind=CALIBRATION_JOBS)
+    return {"job": serialize_job(job) if job else None}
 
 
 @router.post("/{mushaf_id}/calibration/cancel", response=JobOut)
@@ -131,8 +135,8 @@ def cancel_calibration(request: HttpRequest, mushaf_id: uuid.UUID) -> dict:
     """Stop the page or the batch being processed. A batch stops between pages, and
     every page it finished stays processed."""
     mushaf_service.get_mushaf(mushaf_id, user=current_user(request))
-    job = jobs_service.request_cancel(mushaf_id, kind=CALIBRATION_JOBS, message="calibration_no_active_job")
-    return jobs_service.to_dict(job)
+    job = request_job_cancellation(mushaf_id, kind=CALIBRATION_JOBS, message="calibration_no_active_job")
+    return serialize_job(job)
 
 
 class BatchIn(Schema):
@@ -157,8 +161,8 @@ def calibration_batch(request: HttpRequest, mushaf_id: uuid.UUID, data: BatchIn)
     mushaf = mushaf_service.get_mushaf(mushaf_id, user=current_user(request))
     if data.dry_run:
         return 200, batch_service.plan(mushaf, data.first, data.last, refresh=data.refresh)
-    job = batch_service.start(mushaf, data.first, data.last, refresh=data.refresh, user=current_user(request))
-    return 202, {"job": jobs_service.to_dict(job)}
+    job = start_calibration_batch_job(mushaf, data.first, data.last, refresh=data.refresh, user=current_user(request))
+    return 202, {"job": serialize_job(job)}
 
 
 @router.get("/{mushaf_id}/calibration/readiness")
@@ -198,8 +202,8 @@ def process_calibration(request: HttpRequest, mushaf_id: uuid.UUID, page_number:
     """Process one page for review; returns at once with the job to poll."""
     user = current_user(request)
     mushaf = mushaf_service.get_mushaf(mushaf_id, user=user)
-    job = calibration_service.start_page(mushaf, page_number, user=user)
-    return 202, {"job": jobs_service.to_dict(job)}
+    job = start_calibration_page_job(mushaf, page_number, user=user)
+    return 202, {"job": serialize_job(job)}
 
 
 @router.put("/{mushaf_id}/pages/{page_number}/calibration")

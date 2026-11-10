@@ -1,11 +1,11 @@
-"""Tests for background processing jobs: the registry, cancellation, endpoints.
+"""Tests for background processing jobs: the job system, cancellation, endpoints.
 
 Two layers, deliberately separated:
 
-* Registry tests drive :mod:`api.services.jobs` with a *fake* runner on a real
-  worker thread. They use a TransactionTestCase because job state is now a
-  database row: a worker thread has its own connection and cannot see writes
-  still sitting in a TestCase's uncommitted transaction.
+* Job-system tests drive :mod:`api.services.jobs` with a *fake* runner on a real
+  worker thread. They use a TransactionTestCase because job state is a database
+  row: a worker thread has its own connection and cannot see writes still sitting
+  in a TestCase's uncommitted transaction.
 * Endpoint tests run jobs inline (``PROCESS_JOBS_INLINE``), so a POST settles
   before it returns and assertions need no waiting.
 """
@@ -19,16 +19,27 @@ from django.test import override_settings
 from django.utils import timezone
 from ninja.errors import HttpError
 
-from api.models import ProcessingRun, ProcessJob, RunStatusChoices
-from api.services import jobs as jobs_service
+from api.models import ProcessingRun, ProcessJob, ProcessJobKindChoices, RunStatusChoices
 from api.services import mushaf as mushaf_service
 from api.services import processing as processing_service
+from api.services.jobs.admission import (
+    refuse_if_mushaf_has_active_job,
+    refuse_if_queue_is_full,
+    refuse_if_user_has_too_many_jobs,
+)
+from api.services.jobs.cancellation import is_job_cancellation_requested, request_job_cancellation
+from api.services.jobs.creation import create_queued_job
+from api.services.jobs.dispatch import dispatch_job
+from api.services.jobs.progress import record_job_outcome
+from api.services.jobs.queries import find_active_job_of_mushaf, find_job_by_id, find_latest_job_of_mushaf
+from api.services.jobs.states import is_job_finished
 from api.tests.helpers import (
     ApiTestCase,
     MediaTestCase,
     MediaTransactionTestCase,
     bare_mushaf,
     default_user,
+    delete_all_jobs,
     make_pdf_bytes,
     make_png_bytes,
     make_user,
@@ -94,26 +105,48 @@ class _Gate:
         self.entered.set()
         self.release.wait(timeout=_TIMEOUT)
         # A fresh read: the cancel flag is a column another connection wrote.
-        self.saw_cancel = jobs_service.cancel_requested(job.id)
-        jobs_service.settle(job.id, "cancelled" if self.saw_cancel else "completed")
+        self.saw_cancel = is_job_cancellation_requested(job.id)
+        record_job_outcome(job.id, "cancelled" if self.saw_cancel else "completed")
+
+
+def complete_job_at_once(job) -> None:
+    """A runner that settles its job at once."""
+    record_job_outcome(job.id, "completed")
+
+
+def start_job_with_runner(mushaf, runner, *, first_page: int = 1, last_page: int = 1, user=None, inline=None):
+    """What every ``start_…_job`` does, with ``runner`` as the work: the admission
+    rules, the row, the dispatch. It leaves out only a kind's own preflight."""
+    refuse_if_mushaf_has_active_job(mushaf.id)
+    refuse_if_queue_is_full()
+    refuse_if_user_has_too_many_jobs(user)
+    job = create_queued_job(
+        kind=ProcessJobKindChoices.DETECTION,
+        mushaf=mushaf,
+        requested_by=user,
+        first_page=first_page,
+        last_page=last_page,
+        total=last_page - first_page + 1,
+    )
+    return dispatch_job(job, runner, inline=inline)
 
 
 @override_settings(MAX_CONCURRENT_JOBS=10, MAX_CONCURRENT_JOBS_PER_USER=10)
-class JobRegistryTests(MediaTransactionTestCase):
-    """Registry behaviour, exercised across a real worker thread.
+class JobSystemTests(MediaTransactionTestCase):
+    """The job system, exercised across a real worker thread.
 
-    The caps are lifted here so these tests are about the registry rather than
+    The caps are lifted here so these tests are about the job system rather than
     about throttling; ConcurrencyCapTests covers the caps themselves.
     """
 
     def setUp(self):
-        jobs_service.reset()
-        self.addCleanup(jobs_service.reset)
+        delete_all_jobs()
+        self.addCleanup(delete_all_jobs)
 
     def test_start_returns_a_running_job_and_is_findable_by_mushaf(self):
         mushaf = bare_mushaf()
         gate = _Gate()
-        job = jobs_service.start(mushaf, _params(3, 12), runner=gate)
+        job = start_job_with_runner(mushaf, gate, first_page=3, last_page=12)
         self.addCleanup(gate.release.set)
 
         self.assertTrue(gate.entered.wait(_TIMEOUT))
@@ -122,40 +155,40 @@ class JobRegistryTests(MediaTransactionTestCase):
         self.assertEqual(job.total, 10)
         self.assertEqual((job.page_range_start, job.page_range_end), (3, 12))
         # Found without the client having to remember the job id.
-        self.assertEqual(jobs_service.latest_for(mushaf.id).id, job.id)
-        self.assertEqual(jobs_service.active_for(mushaf.id).id, job.id)
+        self.assertEqual(find_latest_job_of_mushaf(mushaf.id).id, job.id)
+        self.assertEqual(find_active_job_of_mushaf(mushaf.id).id, job.id)
 
     def test_second_start_for_the_same_mushaf_is_rejected(self):
         mushaf = bare_mushaf()
         gate = _Gate()
-        jobs_service.start(mushaf, _params(), runner=gate)
+        start_job_with_runner(mushaf, gate)
         self.addCleanup(gate.release.set)
         self.assertTrue(gate.entered.wait(_TIMEOUT))
 
         with self.assertRaises(HttpError) as caught:
-            jobs_service.start(mushaf, _params(), runner=_Gate())
+            start_job_with_runner(mushaf, _Gate())
         self.assertEqual(caught.exception.status_code, 409)
 
     def test_another_mushaf_may_run_at_the_same_time(self):
         first, second = bare_mushaf("A"), bare_mushaf("B")
         gate_a, gate_b = _Gate(), _Gate()
-        jobs_service.start(first, _params(), runner=gate_a)
-        jobs_service.start(second, _params(), runner=gate_b)
+        start_job_with_runner(first, gate_a)
+        start_job_with_runner(second, gate_b)
         self.addCleanup(gate_a.release.set)
         self.addCleanup(gate_b.release.set)
 
         self.assertTrue(gate_a.entered.wait(_TIMEOUT))
         self.assertTrue(gate_b.entered.wait(_TIMEOUT))
-        self.assertIsNotNone(jobs_service.active_for(first.id))
-        self.assertIsNotNone(jobs_service.active_for(second.id))
+        self.assertIsNotNone(find_active_job_of_mushaf(first.id))
+        self.assertIsNotNone(find_active_job_of_mushaf(second.id))
 
     def test_cancel_flags_the_job_and_the_worker_sees_the_event(self):
         mushaf = bare_mushaf()
         gate = _Gate()
-        job = jobs_service.start(mushaf, _params(), runner=gate)
+        job = start_job_with_runner(mushaf, gate)
         self.assertTrue(gate.entered.wait(_TIMEOUT))
 
-        returned = jobs_service.request_cancel(mushaf.id)
+        returned = request_job_cancellation(mushaf.id)
 
         self.assertEqual(returned.id, job.id)
         job.refresh_from_db()
@@ -167,26 +200,26 @@ class JobRegistryTests(MediaTransactionTestCase):
         _wait_until_finished(self, job)
         self.assertTrue(gate.saw_cancel)
         self.assertEqual(job.state, "cancelled")
-        self.assertIsNone(jobs_service.active_for(mushaf.id))
+        self.assertIsNone(find_active_job_of_mushaf(mushaf.id))
 
     def test_cancel_without_a_running_job_is_404(self):
         mushaf = bare_mushaf()
         with self.assertRaises(HttpError) as caught:
-            jobs_service.request_cancel(mushaf.id)
+            request_job_cancellation(mushaf.id)
         self.assertEqual(caught.exception.status_code, 404)
 
     def test_a_settled_job_stays_visible_and_a_new_one_replaces_it(self):
         mushaf = bare_mushaf()
-        first = jobs_service.start(mushaf, _params(), runner=lambda job: jobs_service.settle(job.id, "completed"))
+        first = start_job_with_runner(mushaf, complete_job_at_once)
         _wait_until_finished(self, first)
-        self.assertEqual(jobs_service.latest_for(mushaf.id).id, first.id)
+        self.assertEqual(find_latest_job_of_mushaf(mushaf.id).id, first.id)
 
-        second = jobs_service.start(mushaf, _params(), runner=lambda job: jobs_service.settle(job.id, "completed"))
+        second = start_job_with_runner(mushaf, complete_job_at_once)
         _wait_until_finished(self, second)
-        self.assertEqual(jobs_service.latest_for(mushaf.id).id, second.id)
+        self.assertEqual(find_latest_job_of_mushaf(mushaf.id).id, second.id)
         # Rows are kept rather than dropped: unlike the old in-memory dict, the
         # table is a run history worth having, and it grows only per run.
-        self.assertIsNotNone(jobs_service.get(first.id))
+        self.assertIsNotNone(find_job_by_id(first.id))
 
     def test_a_raising_runner_settles_the_job_as_error(self):
         mushaf = bare_mushaf()
@@ -194,7 +227,7 @@ class JobRegistryTests(MediaTransactionTestCase):
         def boom(job):
             raise RuntimeError("engine exploded")
 
-        job = jobs_service.start(mushaf, _params(), runner=boom)
+        job = start_job_with_runner(mushaf, boom)
         _wait_until_finished(self, job)
 
         self.assertEqual(job.state, "error")
@@ -203,7 +236,7 @@ class JobRegistryTests(MediaTransactionTestCase):
 
     def test_a_runner_that_forgets_to_settle_is_not_left_running(self):
         mushaf = bare_mushaf()
-        job = jobs_service.start(mushaf, _params(), runner=lambda job: None)
+        job = start_job_with_runner(mushaf, lambda job: None)
         _wait_until_finished(self, job)
 
         self.assertEqual(job.state, "error")
@@ -215,8 +248,8 @@ class ProcessCancellationTests(MediaTestCase):
 
     def setUp(self):
         suras.seed_reference_data()
-        jobs_service.reset()
-        self.addCleanup(jobs_service.reset)
+        delete_all_jobs()
+        self.addCleanup(delete_all_jobs)
 
     def test_cancelled_run_is_recorded_and_saves_nothing_it_did_not_finish(self):
         mushaf = _mushaf(pages=3)
@@ -288,8 +321,8 @@ class ProcessEndpointTests(ApiTestCase):
     def setUp(self):
         super().setUp()  # signs the client in; without it every call 401s
         suras.seed_reference_data()
-        jobs_service.reset()
-        self.addCleanup(jobs_service.reset)
+        delete_all_jobs()
+        self.addCleanup(delete_all_jobs)
 
     def _start(self, mushaf, start: int = 1, end: int = 1):
         return self.client.post(
@@ -348,15 +381,15 @@ class ThreadedEndpointTests(MediaTransactionTestCase):
     """
 
     def setUp(self):
-        jobs_service.reset()
-        self.addCleanup(jobs_service.reset)
+        delete_all_jobs()
+        self.addCleanup(delete_all_jobs)
         self.user = default_user()
         self.client.force_login(self.user)
 
     def test_cancel_a_running_job_returns_it_flagged(self):
         mushaf = bare_mushaf()
         gate = _Gate()
-        jobs_service.start(mushaf, _params(), runner=gate, inline=False)
+        start_job_with_runner(mushaf, gate, inline=False)
         self.addCleanup(gate.release.set)
         self.assertTrue(gate.entered.wait(_TIMEOUT))
 
@@ -370,7 +403,7 @@ class ThreadedEndpointTests(MediaTransactionTestCase):
     def test_starting_while_one_is_running_is_409(self):
         mushaf = bare_mushaf()
         gate = _Gate()
-        jobs_service.start(mushaf, _params(), runner=gate, inline=False)
+        start_job_with_runner(mushaf, gate, inline=False)
         self.addCleanup(gate.release.set)
         self.assertTrue(gate.entered.wait(_TIMEOUT))
 
@@ -387,19 +420,19 @@ class ConcurrencyCapTests(MediaTransactionTestCase):
     """Detection is CPU-bound, so the number of runs at once has to be bounded."""
 
     def setUp(self):
-        jobs_service.reset()
-        self.addCleanup(jobs_service.reset)
+        delete_all_jobs()
+        self.addCleanup(delete_all_jobs)
 
     @override_settings(MAX_CONCURRENT_JOBS=1, MAX_CONCURRENT_JOBS_PER_USER=10)
     def test_the_overall_cap_is_enforced_across_mushafs(self):
         first, second = bare_mushaf("A"), bare_mushaf("B")
         gate = _Gate()
-        jobs_service.start(first, _params(), runner=gate)
+        start_job_with_runner(first, gate)
         self.addCleanup(gate.release.set)
         self.assertTrue(gate.entered.wait(_TIMEOUT))
 
         with self.assertRaises(HttpError) as caught:
-            jobs_service.start(second, _params(), runner=_Gate())
+            start_job_with_runner(second, _Gate())
         self.assertEqual(caught.exception.status_code, 429)
 
     @override_settings(MAX_CONCURRENT_JOBS=10, MAX_CONCURRENT_JOBS_PER_USER=1)
@@ -408,28 +441,28 @@ class ConcurrencyCapTests(MediaTransactionTestCase):
         bob = make_user("bob@example.com")
         first, second, third = bare_mushaf("A", owner=alice), bare_mushaf("B", owner=alice), bare_mushaf("C", owner=bob)
         gate = _Gate()
-        jobs_service.start(first, _params(), runner=gate, user=alice)
+        start_job_with_runner(first, gate, user=alice)
         self.addCleanup(gate.release.set)
         self.assertTrue(gate.entered.wait(_TIMEOUT))
 
         with self.assertRaises(HttpError) as caught:
-            jobs_service.start(second, _params(), runner=_Gate(), user=alice)
+            start_job_with_runner(second, _Gate(), user=alice)
         self.assertEqual(caught.exception.status_code, 429)
 
         # Bob is unaffected by Alice's usage.
         other_gate = _Gate()
-        jobs_service.start(third, _params(), runner=other_gate, user=bob)
+        start_job_with_runner(third, other_gate, user=bob)
         self.addCleanup(other_gate.release.set)
         self.assertTrue(other_gate.entered.wait(_TIMEOUT))
 
     @override_settings(MAX_CONCURRENT_JOBS=1, MAX_CONCURRENT_JOBS_PER_USER=10)
     def test_a_settled_job_frees_its_slot(self):
         first, second = bare_mushaf("A"), bare_mushaf("B")
-        jobs_service.start(first, _params(), runner=lambda job: jobs_service.settle(job.id, "completed"))
-        _wait_until_finished(self, jobs_service.latest_for(first.id))
+        start_job_with_runner(first, complete_job_at_once)
+        _wait_until_finished(self, find_latest_job_of_mushaf(first.id))
 
         gate = _Gate()
-        jobs_service.start(second, _params(), runner=gate)
+        start_job_with_runner(second, gate)
         self.addCleanup(gate.release.set)
         self.assertTrue(gate.entered.wait(_TIMEOUT))
 
@@ -438,8 +471,8 @@ class HeartbeatTests(MediaTestCase):
     """A job whose worker died must not block its mushaf forever."""
 
     def setUp(self):
-        jobs_service.reset()
-        self.addCleanup(jobs_service.reset)
+        delete_all_jobs()
+        self.addCleanup(delete_all_jobs)
 
     def _orphan(self, mushaf, *, age_seconds: int):
         """A 'running' row whose worker last reported `age_seconds` ago."""
@@ -457,7 +490,7 @@ class HeartbeatTests(MediaTestCase):
         mushaf = bare_mushaf()
         job = self._orphan(mushaf, age_seconds=600)
 
-        self.assertIsNone(jobs_service.active_for(mushaf.id))
+        self.assertIsNone(find_active_job_of_mushaf(mushaf.id))
 
         job.refresh_from_db()
         self.assertEqual(job.state, "interrupted")
@@ -469,7 +502,7 @@ class HeartbeatTests(MediaTestCase):
         mushaf = bare_mushaf()
         job = self._orphan(mushaf, age_seconds=5)
 
-        self.assertIsNotNone(jobs_service.active_for(mushaf.id))
+        self.assertIsNotNone(find_active_job_of_mushaf(mushaf.id))
 
         job.refresh_from_db()
         self.assertEqual(job.state, "running")
@@ -480,7 +513,7 @@ class HeartbeatTests(MediaTestCase):
         self._orphan(mushaf, age_seconds=600)
 
         # Would raise 409 if the corpse still counted as running.
-        jobs_service.ensure_idle(mushaf.id)
+        refuse_if_mushaf_has_active_job(mushaf.id)
 
 
 def _wait_until_finished(test, job, timeout: float = _TIMEOUT) -> None:
@@ -488,7 +521,7 @@ def _wait_until_finished(test, job, timeout: float = _TIMEOUT) -> None:
     deadline = threading.Event()
     for _ in range(int(timeout * 100)):
         job.refresh_from_db()
-        if jobs_service.is_finished(job) and job.ended_at is not None:
+        if is_job_finished(job) and job.ended_at is not None:
             return
         deadline.wait(0.01)
     test.fail(f"job {job.id} did not finish within {timeout}s (state={job.state})")

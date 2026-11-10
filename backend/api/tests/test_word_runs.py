@@ -22,9 +22,9 @@ from api.models import (
     ProcessJobStateChoices,
     Segment,
 )
-from api.services import jobs as jobs_service
 from api.services import mushaf as mushaf_service
 from api.services import word_runs
+from api.services.jobs.admission import refuse_if_mushaf_has_active_job
 from api.tests.helpers import ApiTestCase, default_user, make_pdf_bytes
 from quran.models import Aya, CountingSystem, Rawi, Word
 from quran.services import suras
@@ -125,7 +125,7 @@ class PreflightTests(ApiTestCase):
             heartbeat_at=None,
         )
         ProcessJob.objects.update(heartbeat_at=ProcessJob.objects.first().started_at)
-        plan = word_runs.preflight(self.mushaf, (2, 5), (2, 7))
+        # The rule every kind of job is started behind, calibration's included.
         with self.assertRaises(HttpError) as caught:
-            jobs_service.start_words(self.mushaf, plan, runner=lambda job: None, user=default_user(), inline=True)
+            refuse_if_mushaf_has_active_job(self.mushaf.id)
         self.assertEqual(caught.exception.status_code, 409)

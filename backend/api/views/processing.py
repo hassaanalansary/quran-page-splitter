@@ -1,6 +1,6 @@
 """Processing endpoints: start a detection run in the background, watch it, stop it.
 
-The run itself is owned by a job (see services/jobs.py), not by an HTTP request —
+The run itself is owned by a job (see ``api.services.jobs``), not by an HTTP request —
 ``POST /process`` returns as soon as the job is registered.
 """
 
@@ -14,9 +14,12 @@ from pydantic import Field
 from api.auth import current_user
 from api.common import RectSchema
 from api.models import ProcessJobKindChoices
-from api.services import jobs as jobs_service
 from api.services import mushaf as mushaf_service
 from api.services import processing as processing_service
+from api.services.jobs.cancellation import request_job_cancellation
+from api.services.jobs.kinds.detection import start_detection_job
+from api.services.jobs.queries import find_latest_job_of_mushaf
+from api.services.jobs.serializers import serialize_job
 
 router = Router(tags=["processing"])
 
@@ -121,14 +124,8 @@ def process(request: HttpRequest, mushaf_id: uuid.UUID, data: ProcessIn) -> tupl
     runs would fight over the same Page rows.
     """
     mushaf = mushaf_service.get_mushaf(mushaf_id, user=current_user(request))
-    params = data.model_dump()
-    # Busy first, then payload: "a run is already going" is the more useful answer
-    # even when the new request is also malformed. Both must be settled here —
-    # once the job is registered the response has gone and nothing can be rejected.
-    jobs_service.ensure_idle(mushaf.id)
-    processing_service.preflight(mushaf, params["page_range_start"], params["page_range_end"])
-    job = jobs_service.start(mushaf, params, user=current_user(request))
-    return 202, jobs_service.to_dict(job)
+    job = start_detection_job(mushaf, data.model_dump(), user=current_user(request))
+    return 202, serialize_job(job)
 
 
 @router.get("/{mushaf_id}/process/job", response=JobStatusOut)
@@ -138,8 +135,8 @@ def process_job(request: HttpRequest, mushaf_id: uuid.UUID) -> dict:
     Answers after a page reload too: the job is keyed by mushaf, not by a handle
     the browser had to keep.
     """
-    job = jobs_service.latest_for(mushaf_id, kind=ProcessJobKindChoices.DETECTION)
-    return {"job": jobs_service.to_dict(job) if job else None}
+    job = find_latest_job_of_mushaf(mushaf_id, kind=ProcessJobKindChoices.DETECTION)
+    return {"job": serialize_job(job) if job else None}
 
 
 @router.post("/{mushaf_id}/process/cancel", response=JobOut)
@@ -149,8 +146,8 @@ def cancel_process(request: HttpRequest, mushaf_id: uuid.UUID) -> dict:
     Returns immediately — the run stops at the next page boundary, so poll
     ``/process/job`` for the settled outcome. Pages already written stay written.
     """
-    job = jobs_service.request_cancel(mushaf_id, kind=ProcessJobKindChoices.DETECTION)
-    return jobs_service.to_dict(job)
+    job = request_job_cancellation(mushaf_id, kind=ProcessJobKindChoices.DETECTION)
+    return serialize_job(job)
 
 
 @router.get("/{mushaf_id}/runs", response=list[RunOut])

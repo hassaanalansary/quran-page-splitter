@@ -17,10 +17,13 @@ or a request in the way::
 
 ``service``     call ``processing.process()`` directly. Single-threaded, so the
                 debugger steps cleanly through the whole pipeline. Start here.
-``job-inline``  go through ``jobs.start()`` but run on this thread — shows the job
-                bookkeeping without threads.
+``job-inline``  go through ``start_detection_job()`` but run on this thread — shows the
+                job bookkeeping without threads.
 ``job-thread``  the real thing: a worker thread runs it while this thread polls and
                 cancels, exactly like the browser does.
+
+The two job paths follow the app's own rules: a mushaf that already has a job that is
+not finished is refused, as it would be from the browser.
 
 Settings come from the mushaf's most recent run (that is where ``bounds`` lives), so
 process something from the UI once before using this.
@@ -36,10 +39,13 @@ from uuid import UUID
 
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
+from ninja.errors import HttpError
 
-from api.models import Mushaf, ProcessingRun
-from api.services import jobs as jobs_service
+from api.models import Mushaf, ProcessingRun, ProcessJob
 from api.services import processing as processing_service
+from api.services.jobs.cancellation import request_job_cancellation
+from api.services.jobs.kinds.detection import start_detection_job
+from api.services.jobs.states import is_job_finished
 
 #: Defaults for anything the stored run settings don't carry.
 _FALLBACK = {
@@ -131,8 +137,7 @@ class Command(BaseCommand):
         if options["via"] == "service":
             result = processing_service.process(mushaf, **params, should_cancel=should_cancel, on_progress=on_progress)
         else:  # job-inline
-            jobs_service.reset()
-            job = jobs_service.start(mushaf, params, inline=True)
+            job = start_detection_job_or_command_error(mushaf, params, inline=True)
             result = {
                 "status": job.state,
                 "pages_saved": job.pages_saved,
@@ -144,12 +149,11 @@ class Command(BaseCommand):
 
     def _run_threaded(self, mushaf: Mushaf, params: dict, cancel_after: int | None) -> None:
         """The real path: a worker thread runs it, this thread polls and cancels."""
-        jobs_service.reset()
-        job = jobs_service.start(mushaf, params)
+        job = start_detection_job_or_command_error(mushaf, params, inline=False)
         self.stdout.write(f"  job {job.id} started on a worker thread")
 
         cancelled = False
-        while not jobs_service.is_finished(job):
+        while not is_job_finished(job):
             # The job is a database row now, so a poll has to re-read it — the
             # worker mutates the row, not this object.
             job.refresh_from_db()
@@ -158,7 +162,7 @@ class Command(BaseCommand):
                 f"  poll  state={job.state:<10} phase={job.phase:<10} page={job.current_page} saved={job.pages_saved}"
             )
             if cancel_after is not None and not cancelled and job.pages_saved >= cancel_after:
-                jobs_service.request_cancel(mushaf.id)
+                request_job_cancellation(mushaf.id)
                 cancelled = True
                 self.stdout.write(self.style.WARNING("  cancel requested"))
             time.sleep(0.25)
@@ -183,6 +187,14 @@ class Command(BaseCommand):
         self.stdout.write(f"  log             {result.get('log_url')}\n")
         if result.get("error"):
             self.stdout.write(self.style.ERROR(f"  error           {result['error']}"))
+
+
+def start_detection_job_or_command_error(mushaf: Mushaf, params: dict, *, inline: bool) -> ProcessJob:
+    """The view's own call, minus HTTP. A refusal becomes a command error with its message."""
+    try:
+        return start_detection_job(mushaf, params, inline=inline)
+    except HttpError as refused:
+        raise CommandError(f"The job was refused ({refused.status_code}): {refused}") from None
 
 
 def _resolve_mushaf(ref: str | None) -> Mushaf:

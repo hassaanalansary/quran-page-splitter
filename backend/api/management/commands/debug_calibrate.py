@@ -8,17 +8,17 @@ main thread, so a breakpoint anywhere in it stops cleanly::
     # the default: process_page() called directly, everything rolled back
     uv run python manage.py debug_calibrate --page 15 --rollback
 
-    # through start_page() and the job bookkeeping, still on this thread
+    # through start_calibration_page_job() and the job bookkeeping, still on this thread
     uv run python manage.py debug_calibrate --page 179 --via job-inline --rollback
 
 ``--via`` picks how much of the stack is involved:
 
 ``service``     call ``calibration.process_page()`` directly. Works on any reviewed,
-                numbered page, processed or not — ``start_page``'s "already processed"
+                numbered page, processed or not — the job's "already processed"
                 refusal is not on this path. Start here.
-``job-inline``  go through ``calibration.start_page()`` and ``jobs.start_words()``, as
-                the view does, but run the job on this thread. Refused, as in the app,
-                for a page whose draft is still current.
+``job-inline``  go through ``start_calibration_page_job()``, as the view does, but run
+                the job on this thread. Refused, as in the app, for a page whose draft
+                is still current.
 
 ``--rollback`` wraps everything in a transaction that is rolled back at the end: you
 can watch the draft and its revision being written and keep nothing. Without it, THIS
@@ -44,6 +44,7 @@ from django.db import transaction
 
 from api.models import CalibrationReview, CalibrationRevision, Mushaf
 from api.services import calibration as calibration_service
+from api.services.jobs.kinds.calibration_page import start_calibration_page_job
 
 
 class Command(BaseCommand):
@@ -104,7 +105,7 @@ class Command(BaseCommand):
             self.stdout.write(f"  process_page returned {done}")
         else:
             # The view's own call, minus HTTP. inline=True: the job's runner runs here.
-            job = calibration_service.start_page(mushaf, page, user=mushaf.owner, inline=True)
+            job = start_calibration_page_job(mushaf, page, user=mushaf.owner, inline=True)
             self.stdout.write(f"  job {job.id}  state={job.state}  error={job.error or '-'}")
         self._report(mushaf, page)
 

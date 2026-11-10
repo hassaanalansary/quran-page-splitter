@@ -1,6 +1,6 @@
 """Settle a span of ayat before calibration processes it.
 
-A page is calibrated as the span of ayat it holds — ``calibration._span_for_page``
+A page is calibrated as the span of ayat it holds — ``calibration.find_aya_span_of_page``
 works that span out — and the engine walks one cursor through that span's words, so
 the span has to resolve to real lines of this mushaf before a job is registered for
 it. That is all this module does now: the run itself is ``calibration.process_page``.

@@ -129,7 +129,7 @@ def library_document(mushaf: Mushaf, page: int, *, limit: float | None = None) -
     settings = calibration.settings_document(mushaf)
     approved = calibration._approved(mushaf, page)
     library = _library(mushaf, page, limit)
-    review = calibration._review(mushaf, page)
+    review = calibration.find_review_of_page(mushaf, page)
     profile = (review.payload.get("profile") or {}) if review and review.payload.get("lines") else {}
     shapes = _Shapes(
         mushaf,
@@ -216,7 +216,7 @@ def compare(mushaf: Mushaf, page: int, data: Doc) -> Doc:
     (``own`` counts them). A typed one is asked of the other pages only — the question
     its doubt asks.
     """
-    review = calibration._review(mushaf, page)
+    review = calibration.find_review_of_page(mushaf, page)
     if review is None or not review.payload.get("lines"):
         calibration._refuse("not_processed", 422, page=page)
     rows = calibration._apply_edits(mushaf, review, data)["lines"]

@@ -308,9 +308,10 @@ class ProcessJob(BaseModel):
     **Both kinds of run share this table on purpose.** Word detection could have had
     its own, and then two things would break: the concurrency caps count CPU-bound
     work, and two tables would let a box run twice what it was configured for; and
-    ``ensure_idle`` would stop guarding the case that matters most — a *detection*
-    run overlapping a *word* run on one mushaf, where ``write_coords_to_page`` deletes
-    the page's ``Line`` rows and takes every ``LineWord`` with them by cascade.
+    ``refuse_if_mushaf_has_active_job`` would stop guarding the case that matters most —
+    a *detection* run overlapping a *word* run on one mushaf, where
+    ``write_coords_to_page`` deletes the page's ``Line`` rows and takes every
+    ``LineWord`` with them by cascade.
     """
 
     kind = models.CharField(

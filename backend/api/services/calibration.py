@@ -74,12 +74,9 @@ from api.models import (
     LineTypeChoices,
     Mushaf,
     Page,
-    ProcessJob,
-    ProcessJobKindChoices,
-    ProcessJobStateChoices,
     Segment,
 )
-from api.services import activity, jobs, line_images, word_coordinates, word_inputs, word_runs
+from api.services import activity, line_images, word_coordinates, word_inputs
 from api.services import calibration_marks as text_marks
 from api.services import calibration_snapshots as snapshots
 from core.text import line_marks, paws
@@ -162,7 +159,7 @@ def _refuse(key: str, status: int = 409, **kwargs: object) -> NoReturn:
     raise HttpError(status, i18n.t(f"calibration_{key}", **kwargs))
 
 
-def _review(mushaf: Mushaf, page: int) -> CalibrationReview | None:
+def find_review_of_page(mushaf: Mushaf, page: int) -> CalibrationReview | None:
     return CalibrationReview.objects.filter(mushaf=mushaf, page_number=page).first()
 
 
@@ -466,7 +463,7 @@ def _short_weights(stream: list[Doc], table: FusionTable) -> dict[int, int]:
 # ---------------------------------------------------------------------------
 # Reading a page
 # ---------------------------------------------------------------------------
-def _sources_current(mushaf: Mushaf, rows: list[Doc]) -> bool:
+def are_line_snapshots_current(mushaf: Mushaf, rows: list[Doc]) -> bool:
     """Whether every row's snapshot still describes the line it was taken from.
 
     False once the page is re-processed (new ``Line`` rows), a segment is moved in
@@ -505,8 +502,8 @@ def _attach_urls(mushaf: Mushaf, document: Doc) -> None:
             row["labels_url"] = snapshot.labels.url
 
 
-def _context_current(mushaf: Mushaf, rows: list[Doc]) -> bool:
-    if not _sources_current(mushaf, rows):
+def are_context_lines_current(mushaf: Mushaf, rows: list[Doc]) -> bool:
+    if not are_line_snapshots_current(mushaf, rows):
         return False
     approved = _approved_rows(mushaf, {row["page_number"] for row in rows})
     return all(
@@ -517,7 +514,7 @@ def _context_current(mushaf: Mushaf, rows: list[Doc]) -> bool:
 
 def page_document(mushaf: Mushaf, page: int) -> Doc:
     """The page's draft as the editor reads it — or an empty document if never processed."""
-    review = _review(mushaf, page)
+    review = find_review_of_page(mushaf, page)
     document = copy.deepcopy(review.payload) if review else {}
     document.pop("request", None)
     document.update(
@@ -533,11 +530,11 @@ def page_document(mushaf: Mushaf, page: int) -> Doc:
     _attach_urls(mushaf, document)
     # Stale snapshots stay readable — the reviewer can see what they had — but no
     # longer accept edits: labels only mean something against the current pixels.
-    document["stale"] = bool(document["lines"]) and not _sources_current(mushaf, document["lines"])
+    document["stale"] = bool(document["lines"]) and not are_line_snapshots_current(mushaf, document["lines"])
     # A neighbouring line changed: the page can still be edited, saved and confirmed,
     # but not read again until it is processed again — which keeps its decisions.
     document["context_stale"] = (
-        bool(document["lines"]) and not document["stale"] and not _context_current(mushaf, document["context"])
+        bool(document["lines"]) and not document["stale"] and not are_context_lines_current(mushaf, document["context"])
     )
     return document
 
@@ -558,7 +555,7 @@ def page_states(mushaf: Mushaf) -> list[Doc]:
 # ---------------------------------------------------------------------------
 # Processing a page
 # ---------------------------------------------------------------------------
-def _span_for_page(mushaf: Mushaf, page_number: int) -> tuple[tuple[int, int], tuple[int, int]]:
+def find_aya_span_of_page(mushaf: Mushaf, page_number: int) -> tuple[tuple[int, int], tuple[int, int]]:
     """The first and last aya printed on the page — the span that covers it.
 
     Those ayat may start on the page before and end on the page after; the lines
@@ -597,53 +594,6 @@ def _span_lines(mushaf: Mushaf, start: tuple[int, int], end: tuple[int, int]) ->
     )
     low, high = (first.page.page_number, first.line_number), (last.page.page_number, last.line_number)
     return [line for line in candidates if low <= (line.page.page_number, line.line_number) <= high]
-
-
-def start_page(mushaf: Mushaf, page: int, *, user: User | None, inline: bool | None = None) -> ProcessJob:
-    """Process one page for review, as a background job. Refuses what it can up front.
-
-    A page already processed from the sources it still has is refused: there is
-    nothing new to read. A page whose sources changed since — its own lines or the
-    neighbouring ones its ayat cross onto: re-processed, re-reviewed, erased — may be
-    processed again. Every decision on a line that did not change is kept (see
-    :func:`_carry_decisions`), and the old revisions stay in the history.
-    """
-    start, end = _span_for_page(mushaf, page)
-    plan = word_runs.preflight(mushaf, start, end)
-    review = _review(mushaf, page)
-    if (
-        review is not None
-        and review.payload.get("lines")
-        and _sources_current(mushaf, review.payload["lines"])
-        and _context_current(mushaf, review.payload.get("context", []))
-    ):
-        _refuse("already_processed", page=page)
-    expected = review.revision if review else 0
-
-    def run(job: ProcessJob) -> None:
-        done = process_page(
-            mushaf,
-            page,
-            expected_revision=expected,
-            user=user,
-            progress=lambda count: jobs._touch(job.id, phase="detecting", lines_done=count),
-            cancelled=lambda: jobs.cancel_requested(job.id),
-        )
-        jobs.settle(
-            job.id,
-            ProcessJobStateChoices.COMPLETED if done else ProcessJobStateChoices.CANCELLED,
-            pages_saved=1 if done else 0,
-        )
-
-    return jobs.start_words(
-        mushaf,
-        plan,
-        user=user,
-        runner=run,
-        inline=inline,
-        kind=ProcessJobKindChoices.CALIBRATION,
-        current_page=page,
-    )
 
 
 def _text_role(raw: Doc) -> str:
@@ -763,14 +713,14 @@ def process_page(
     goes the draft as its reviewer first sees it (:func:`_shown`), so a report can say
     what they corrected.
     """
-    start, end = _span_for_page(mushaf, page)
+    start, end = find_aya_span_of_page(mushaf, page)
     system = word_inputs.counting_system_for(mushaf)
     stream = words_service.word_stream(system, start=start, end=end)
     lines = _span_lines(mushaf, start, end)
     profile, library = profile_for(mushaf, page)
     templates = snapshots.Templates.of(mushaf)
     approved = _approved_rows(mushaf, {line.page.page_number for line in lines} - {page})
-    earlier = _review(mushaf, page)
+    earlier = find_review_of_page(mushaf, page)
     before = {row["snapshot_id"]: row for row in (earlier.payload.get("lines", []) if earlier else [])}
 
     rendered: dict[Any, Any] = {}
@@ -1796,7 +1746,7 @@ def _apply_edits(mushaf: Mushaf, review: CalibrationReview, data: Doc) -> Doc:
     if data["revision"] != review.revision:
         _refuse("stale_revision")
     document: Doc = copy.deepcopy(review.payload)
-    if not _sources_current(mushaf, document.get("lines", [])):
+    if not are_line_snapshots_current(mushaf, document.get("lines", [])):
         _refuse("stale_source")
     incoming = {line["snapshot_id"]: line for line in data["lines"]}
     if len(incoming) != len(data["lines"]) or set(incoming) != {row["snapshot_id"] for row in document["lines"]}:
@@ -1898,7 +1848,7 @@ def _require_context(mushaf: Mushaf, document: Doc) -> None:
     reading would place words against ink that is no longer there. Saving and
     confirming read nothing, so only a preview and an accepted one need this.
     """
-    if not _context_current(mushaf, document.get("context", [])):
+    if not are_context_lines_current(mushaf, document.get("context", [])):
         _refuse("stale_context")
 
 
@@ -1909,7 +1859,7 @@ def preview(mushaf: Mushaf, page: int, data: Doc) -> Doc:
     ordinary draft save, which is what makes accepting one undoable action and
     discarding it no action at all.
     """
-    review = _review(mushaf, page)
+    review = find_review_of_page(mushaf, page)
     if review is None or not review.payload.get("lines"):
         _refuse("not_processed", 422, page=page)
     edited = _apply_edits(mushaf, review, data)
@@ -2143,7 +2093,7 @@ def type_suggestions(mushaf: Mushaf, page: int, data: Doc) -> Doc:
     The marks that may be noise come back too (``noise``, :func:`_noise`): a person
     erases them or not.
     """
-    review = _review(mushaf, page)
+    review = find_review_of_page(mushaf, page)
     if review is None or not review.payload.get("lines"):
         _refuse("not_processed", 422, page=page)
     edited = _apply_edits(mushaf, review, data)
@@ -2349,7 +2299,7 @@ def erased_ink(mushaf: Mushaf, page: int, lines: list[Line]) -> dict[str, tuple[
     whose snapshot still describes it: an erase names blobs of the pixels it was made
     on, and a line measured again has other pixels and other ids.
     """
-    review = _review(mushaf, page)
+    review = find_review_of_page(mushaf, page)
     rows = {row["line_id"]: row for row in (review.payload.get("lines") or [])} if review else {}
     erasing = {
         key: (line, ids)
@@ -2390,7 +2340,7 @@ def erased_mask(raster: np.ndarray, erased: set[int]) -> np.ndarray:
 # ---------------------------------------------------------------------------
 def evaluation_page(mushaf: Mushaf, page: int) -> Doc:
     """Render-ready historical readings; never use the current draft as truth."""
-    review = _review(mushaf, page)
+    review = find_review_of_page(mushaf, page)
     confirmed = _approval(review) if review is not None else None
     processed = (
         CalibrationRevision.objects.filter(
