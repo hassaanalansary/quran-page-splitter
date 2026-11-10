@@ -56,12 +56,12 @@ def start_calibration_batch_job(
 ) -> ProcessJob:
     """Start processing pages ``first``..``last`` as one job and return it. Refuses a
     range in which there is nothing it could process."""
+    refuse_if_mushaf_has_active_job(mushaf.id)
+    refuse_if_user_has_too_many_jobs(user)
+    refuse_if_queue_is_full(job_runner)
     planned = calibration_batch.plan(mushaf, first, last, refresh=refresh)
     if not planned["process"] and not planned["drafted"]:
         raise HttpError(422, i18n.t("calibration_batch_nothing", first=first, last=last))
-    refuse_if_mushaf_has_active_job(mushaf.id)
-    refuse_if_queue_is_full()
-    refuse_if_user_has_too_many_jobs(user)
     job = create_queued_job(
         kind=ProcessJobKindChoices.CALIBRATION_BATCH,
         mushaf=mushaf,

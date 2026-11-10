@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from api.models import ProcessJob
+from api.services.jobs.queue import count_jobs_ahead_in_queue
 
 
 def serialize_job(job: ProcessJob) -> dict:
@@ -11,6 +12,7 @@ def serialize_job(job: ProcessJob) -> dict:
         "id": job.id,
         "mushaf_id": job.mushaf_id,
         "state": job.state,
+        "queue_position": count_jobs_ahead_in_queue(job),
         "phase": job.phase,
         "page_range_start": job.page_range_start,
         "page_range_end": job.page_range_end,

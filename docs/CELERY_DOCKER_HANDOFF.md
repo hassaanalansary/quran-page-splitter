@@ -12,7 +12,7 @@ Last updated: 2026-11-10.
 | 1 | Reorganize the job system (no behaviour change) | done | ruff, mypy, backend tests |
 | 2 | Jobs described by their row | done | ruff, mypy, backend tests, the migration forward and back on a row of data |
 | 3 | Celery | done | ruff, mypy, backend tests, and a real worker against a real Redis (see below) |
-| 4 | The real queue | not started | |
+| 4 | The real queue | done | ruff, mypy, backend tests |
 | 5 | Frontend | not started | |
 | 6 | Docker | not started | |
 | 7 | Docs | not started | |
@@ -36,7 +36,7 @@ In the cloud, on Linux, against a local PostgreSQL 16 with `DATABASE_URL` set in
 |---|---|---|
 | `uv run ruff check .` | 1 error, in `core/word_boundary/separators.py` (RUF002) | no error besides that one |
 | `uv run python -m mypy .` | 21 errors in 10 files | the same 21 errors, none new |
-| `uv run python manage.py test --parallel 4` | 718 tests: 5 failures, 10 errors | the same 15 tests fail, none new (735 tests after phase 2, 749 after phase 3) |
+| `uv run python manage.py test --parallel 4` | 718 tests: 5 failures, 10 errors | the same 15 tests fail, none new (735 tests after phase 2, 749 after phase 3, 763 after phase 4) |
 
 The 15 tests that already fail on the base commit, none of them in the job system:
 
@@ -115,11 +115,29 @@ Choices made where the plan left a detail open:
 - **The signal receivers close the database connection of the worker's main process** when they are done, so that worker children forked later never inherit one.
 - **`CELERY_BROKER_TRANSPORT_OPTIONS = {"socket_connect_timeout": 5}`** and **`CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True`** are not in the plan's table. The first bounds how long a request waits for an unreachable Redis. The second makes a worker that starts before Redis keep trying.
 
+### Phase 4: the real queue
+
+Behind a Celery worker, a job that finds every slot busy now waits its turn. On threads nothing can wait, so such a job is still refused with 429, as before.
+
+- The settings were renamed, with no fallback to the old names: `MAX_CONCURRENT_JOBS` → `JOB_WORKER_SLOTS`, `MAX_CONCURRENT_JOBS_PER_USER` → `MAX_ACTIVE_JOBS_PER_USER`. `MAX_QUEUED_JOBS` (default 20) is new. **If an `.env` of yours sets the old names, rename them there.** The committed `backend/.env` sets neither.
+- `admission.py` holds the three rules of the plan's §5.2. Every `start_…_job` now calls them first, in the order of §4.5: the mushaf, the user, the queue, and then the kind's own checks.
+- `queue.py`: `count_jobs_ahead_in_queue` and `count_queued_jobs`. The job object of the API gains `queue_position`: the number of queued jobs requested earlier, or null for a job that is not queued.
+- New message `job_queue_full`, and `too_many_jobs_for_user` now says "running or waiting". Both in English and Arabic.
+
+Choices made where the plan left a detail open:
+
+- **Thread and inline mode keep the old 429.** `refuse_if_queue_is_full` reads the runner: with Celery it counts the waiting jobs against `MAX_QUEUED_JOBS`, and without a queue it counts the active jobs against `JOB_WORKER_SLOTS`.
+- **A limit of 0 is switched off**, as the two old limits already were. That holds for `MAX_QUEUED_JOBS` too: 0 means no limit, not "nothing may wait".
+- **Running jobs are not "ahead" in the queue.** `queue_position` counts queued jobs only, as §5.2 words it. A job with position 0 is next, but it still waits while every slot is busy.
+- **The refusals changed order for the calibration jobs.** A page or a batch on a mushaf that already has a job now answers 409 before it looks at the page or the range.
+- **The thread tests pin `JOB_RUNNER="thread"`.** `just test` runs inside a container whose environment says `celery`, and those tests would otherwise publish to the real Redis.
+
 ## Not verified
 
 - The Docker files will be written without being run. Their first real run is on the owner's machine (plan §9).
 - A long job across a worker stop. The stop hook was seen to flag the right row, and every runner is tested to stop on the flag. A real multi-page run that is cancelled by `docker compose restart celeryworker` and settles `cancelled` with a resume page was not run: the cloud has no real mushaf (plan §9, step 7).
 - Two jobs at once in two worker children, each with its own run log (plan §9, step 10).
+- The queue against a real worker with every slot busy: a third job shows "1 ahead of you" and starts when a slot frees (plan §9, step 5). The rules and `queue_position` are tested on the rows, with the publish to Redis replaced.
 
 ## For whoever continues
 

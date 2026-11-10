@@ -30,8 +30,12 @@ MESSAGES: dict[str, dict[str, str]] = {
         "ar": "الخادم يشغّل بالفعل أقصى عدد ممكن من عمليات المعالجة. حاول بعد قليل.",
     },
     "too_many_jobs_for_user": {
-        "en": "You already have {count} processing job(s) running. Wait for one to finish, or cancel it.",
-        "ar": "لديك بالفعل {count} عملية معالجة قيد التشغيل. انتظر انتهاء إحداها أو ألغِها.",
+        "en": "You already have {count} processing job(s) running or waiting. Wait for one to finish, or cancel it.",
+        "ar": "لديك بالفعل {count} عملية معالجة قيد التشغيل أو الانتظار. انتظر انتهاء إحداها أو ألغِها.",
+    },
+    "job_queue_full": {
+        "en": "The queue is full: too many jobs are already waiting. Try again shortly.",
+        "ar": "قائمة الانتظار ممتلئة: هناك عمليات كثيرة تنتظر دورها بالفعل. حاول بعد قليل.",
     },
     "job_queue_unavailable": {
         "en": "The job queue cannot be reached, so the job was not started. Try again shortly.",

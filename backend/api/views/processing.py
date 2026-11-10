@@ -49,6 +49,9 @@ class JobOut(Schema):
     #: ``completed`` / ``aborted_line_detection`` / ``cancelled`` / ``error`` /
     #: ``interrupted``.
     state: str
+    #: A queued job's place in the queue: how many queued jobs were requested
+    #: before it. Null once the job is no longer queued.
+    queue_position: int | None = None
     #: ``starting`` / ``rendering`` / ``detecting`` / ``saving`` / ``finished``.
     phase: str
     page_range_start: int
@@ -125,8 +128,9 @@ class RunOut(Schema):
 def process(request: HttpRequest, mushaf_id: uuid.UUID, data: ProcessIn) -> tuple[int, dict]:
     """Start detection over a logical page range; returns at once with the job.
 
-    409 if this mushaf already has a run in flight — one at a time, since two
-    runs would fight over the same Page rows.
+    409 if this mushaf already has a job queued or running — one at a time, since
+    two runs would fight over the same Page rows. 429 if the user already has as
+    many jobs as one user may have, or the queue is full.
     """
     mushaf = mushaf_service.get_mushaf(mushaf_id, user=current_user(request))
     job = start_detection_job(mushaf, data.model_dump(), user=current_user(request))

@@ -39,7 +39,7 @@ def mark_silent_jobs_interrupted() -> int:
     (``progress.record_job_progress``), so silence past the timeout means the worker
     is gone. A queued job has no worker yet and is not this rule's business.
     """
-    timeout_seconds = getattr(settings, "JOB_HEARTBEAT_TIMEOUT_SECONDS", 300)
+    timeout_seconds = settings.JOB_HEARTBEAT_TIMEOUT_SECONDS
     last_allowed_heartbeat = timezone.now() - timedelta(seconds=timeout_seconds)
     silent_jobs = ProcessJob.objects.filter(
         state=ProcessJobStateChoices.RUNNING, heartbeat_at__lt=last_allowed_heartbeat
@@ -69,8 +69,8 @@ def mark_unclaimed_jobs_interrupted() -> int:
     That is a safe reading. Several short jobs in a row may hide a free slot, and then
     the queued job only waits a little longer before it is marked.
     """
-    timeout_seconds = getattr(settings, "JOB_QUEUE_TIMEOUT_SECONDS", 600)
-    worker_slots = getattr(settings, "MAX_CONCURRENT_JOBS", 2)
+    timeout_seconds = settings.JOB_QUEUE_TIMEOUT_SECONDS
+    worker_slots = settings.JOB_WORKER_SLOTS
     now = timezone.now()
     window_start = now - timedelta(seconds=timeout_seconds)
     jobs_that_ran_in_the_window = ProcessJob.objects.filter(run_started_at__isnull=False).filter(

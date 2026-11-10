@@ -236,7 +236,7 @@ class FakeJobRunners:
         rules, the row, the dispatch. It leaves out only a kind's own preflight."""
         self.runner_of_mushaf[mushaf.id] = runner
         refuse_if_mushaf_has_active_job(mushaf.id)
-        refuse_if_queue_is_full()
         refuse_if_user_has_too_many_jobs(user)
+        refuse_if_queue_is_full(job_runner)
         job = create_job_row(mushaf, first_page=first_page, last_page=last_page, user=user)
         return dispatch_job(job, job_runner=job_runner)

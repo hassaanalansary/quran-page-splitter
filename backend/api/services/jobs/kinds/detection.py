@@ -42,8 +42,8 @@ def start_detection_job(
 
     ``detection_settings`` is the request body of ``POST /process``: the page range
     and the engine's settings. Everything that can be refused is refused here, while
-    the caller can still be told. "A job is already running" comes before a bad
-    payload, because it is the more useful answer when both are true.
+    the caller can still be told. The admission rules come before a bad payload:
+    "a job is already running" is the more useful answer when both are true.
 
     ``job_runner`` overrides the ``JOB_RUNNER`` setting for this one job. The debug
     commands pass it.
@@ -51,9 +51,9 @@ def start_detection_job(
     first_page = int(detection_settings["page_range_start"])
     last_page = int(detection_settings["page_range_end"])
     refuse_if_mushaf_has_active_job(mushaf.id)
-    processing.preflight(mushaf, first_page, last_page)
-    refuse_if_queue_is_full()
     refuse_if_user_has_too_many_jobs(user)
+    refuse_if_queue_is_full(job_runner)
+    processing.preflight(mushaf, first_page, last_page)
     job = create_queued_job(
         kind=ProcessJobKindChoices.DETECTION,
         mushaf=mushaf,

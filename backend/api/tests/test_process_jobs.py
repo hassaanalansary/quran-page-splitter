@@ -95,12 +95,12 @@ def _params(start: int = 1, end: int = 1) -> dict:
     return {"page_range_start": start, "page_range_end": end, **_SETTINGS}
 
 
-@override_settings(MAX_CONCURRENT_JOBS=10, MAX_CONCURRENT_JOBS_PER_USER=10)
+@override_settings(JOB_RUNNER="thread", JOB_WORKER_SLOTS=10, MAX_ACTIVE_JOBS_PER_USER=10)
 class JobSystemTests(FakeJobRunners, MediaTransactionTestCase):
     """The job system, exercised across a real worker thread.
 
-    The caps are lifted here so these tests are about the job system rather than
-    about throttling; ConcurrencyCapTests covers the caps themselves.
+    The limits are lifted here so these tests are about the job system rather than
+    about throttling; ThreadModeLimitTests covers the limits themselves.
     """
 
     def test_start_returns_a_running_job_and_is_findable_by_mushaf(self):
@@ -332,7 +332,7 @@ class ProcessEndpointTests(ApiTestCase):
         self.assertEqual(resp.status_code, 404)
 
 
-@override_settings(MAX_CONCURRENT_JOBS=10, MAX_CONCURRENT_JOBS_PER_USER=10)
+@override_settings(JOB_RUNNER="thread", JOB_WORKER_SLOTS=10, MAX_ACTIVE_JOBS_PER_USER=10)
 class ThreadedEndpointTests(FakeJobRunners, MediaTransactionTestCase):
     """HTTP against a job on a real worker thread.
 
@@ -375,11 +375,16 @@ class ThreadedEndpointTests(FakeJobRunners, MediaTransactionTestCase):
         self.assertEqual(resp.status_code, 409)
 
 
-class ConcurrencyCapTests(FakeJobRunners, MediaTransactionTestCase):
-    """Detection is CPU-bound, so the number of runs at once has to be bounded."""
+@override_settings(JOB_RUNNER="thread")
+class ThreadModeLimitTests(FakeJobRunners, MediaTransactionTestCase):
+    """The engines are CPU-bound, so the number of runs at once has to be bounded.
 
-    @override_settings(MAX_CONCURRENT_JOBS=1, MAX_CONCURRENT_JOBS_PER_USER=10)
-    def test_the_overall_cap_is_enforced_across_mushafs(self):
+    On threads nothing can wait: a job that finds every slot taken is refused. What
+    a Celery worker does with it instead is in ``test_job_queue``.
+    """
+
+    @override_settings(JOB_WORKER_SLOTS=1, MAX_ACTIVE_JOBS_PER_USER=10)
+    def test_a_job_over_the_slots_is_refused_across_mushafs(self):
         first, second = bare_mushaf("A"), bare_mushaf("B")
         gate = GatedRunner()
         self.start_job_with_runner(first, gate)
@@ -390,8 +395,8 @@ class ConcurrencyCapTests(FakeJobRunners, MediaTransactionTestCase):
             self.start_job_with_runner(second, GatedRunner())
         self.assertEqual(caught.exception.status_code, 429)
 
-    @override_settings(MAX_CONCURRENT_JOBS=10, MAX_CONCURRENT_JOBS_PER_USER=1)
-    def test_the_per_user_cap_only_blocks_that_user(self):
+    @override_settings(JOB_WORKER_SLOTS=10, MAX_ACTIVE_JOBS_PER_USER=1)
+    def test_the_per_user_limit_only_blocks_that_user(self):
         alice = default_user()
         bob = make_user("bob@example.com")
         first, second, third = bare_mushaf("A", owner=alice), bare_mushaf("B", owner=alice), bare_mushaf("C", owner=bob)
@@ -410,7 +415,7 @@ class ConcurrencyCapTests(FakeJobRunners, MediaTransactionTestCase):
         self.addCleanup(other_gate.release.set)
         self.assertTrue(other_gate.entered.wait(JOB_TIMEOUT))
 
-    @override_settings(MAX_CONCURRENT_JOBS=1, MAX_CONCURRENT_JOBS_PER_USER=10)
+    @override_settings(JOB_WORKER_SLOTS=1, MAX_ACTIVE_JOBS_PER_USER=10)
     def test_a_settled_job_frees_its_slot(self):
         first, second = bare_mushaf("A"), bare_mushaf("B")
         self.start_job_with_runner(first, complete_job_at_once)
@@ -484,7 +489,7 @@ class HeartbeatTests(MediaTestCase):
         self.assertEqual(job.state, "queued")
 
 
-@override_settings(JOB_QUEUE_TIMEOUT_SECONDS=600, MAX_CONCURRENT_JOBS=1)
+@override_settings(JOB_QUEUE_TIMEOUT_SECONDS=600, JOB_WORKER_SLOTS=1)
 class UnclaimedJobTests(MediaTestCase):
     """A queued job that no worker picks up must not hold its mushaf for ever. A
     job that only waits its turn must be left alone."""

@@ -50,6 +50,9 @@ def start_calibration_page_job(
     decision on a line that did not change is kept (``calibration._carry_decisions``),
     and the old revisions stay in the history.
     """
+    refuse_if_mushaf_has_active_job(mushaf.id)
+    refuse_if_user_has_too_many_jobs(user)
+    refuse_if_queue_is_full(job_runner)
     span_start, span_end = find_aya_span_of_page(mushaf, page)
     plan = word_runs.preflight(mushaf, span_start, span_end)
     review = find_review_of_page(mushaf, page)
@@ -60,9 +63,6 @@ def start_calibration_page_job(
         and are_context_lines_current(mushaf, review.payload.get("context", []))
     ):
         raise HttpError(409, i18n.t("calibration_already_processed", page=page))
-    refuse_if_mushaf_has_active_job(mushaf.id)
-    refuse_if_queue_is_full()
-    refuse_if_user_has_too_many_jobs(user)
     job = create_queued_job(
         kind=ProcessJobKindChoices.CALIBRATION,
         mushaf=mushaf,

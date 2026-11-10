@@ -1,8 +1,10 @@
 """Hands a queued job to whatever runs it. ``JOB_RUNNER`` picks one of three:
 
 ``celery``   a Celery worker, in its own process. The job's id goes to the queue in
-             Redis. The run survives a restart of the web process.
-``thread``   a thread of this web process. No extra service, and no queue.
+             Redis, and the job waits there while every worker slot is busy. The run
+             survives a restart of the web process.
+``thread``   a thread of this web process. No extra service, and no queue: a job
+             that finds every slot busy is refused (``admission``).
 ``inline``   the request itself. For the tests and the debug commands: the job has
              settled by the time the call returns.
 
@@ -66,9 +68,9 @@ def dispatch_job(job: ProcessJob, *, job_runner: str | None = None) -> ProcessJo
 def choose_job_runner() -> str:
     """The job runner the settings ask for. ``PROCESS_JOBS_INLINE`` wins over
     ``JOB_RUNNER``: it is how a test makes every job settle inside its request."""
-    if getattr(settings, "PROCESS_JOBS_INLINE", False):
+    if settings.PROCESS_JOBS_INLINE:
         return INLINE
-    return str(getattr(settings, "JOB_RUNNER", THREAD))
+    return str(settings.JOB_RUNNER)
 
 
 def send_new_job_to_celery(job_id: uuid.UUID) -> None:

@@ -265,11 +265,19 @@ JOB_RUNNER = env("JOB_RUNNER", default="thread")
 # the first one's rows.
 PROCESS_JOBS_INLINE = False
 
-# Detection is CPU-bound OpenCV work, so these are about protecting the box
-# rather than the database. Without them ten people pressing Process at once
-# means ten heavy runs competing, and everyone's run crawls.
-MAX_CONCURRENT_JOBS = env.int("MAX_CONCURRENT_JOBS", default=2)
-MAX_CONCURRENT_JOBS_PER_USER = env.int("MAX_CONCURRENT_JOBS_PER_USER", default=1)
+# The engines are CPU-bound OpenCV work, so these three are about protecting the
+# box rather than the database. Without them ten people pressing Process at once
+# means ten heavy runs competing, and everyone's run crawls. See
+# api/services/jobs/admission.py. A limit set to 0 is switched off.
+
+#: Jobs running at once. It is also the Celery worker's --concurrency (the start
+#: scripts under compose/ read it), so a job over this number waits in the queue.
+#: Where nothing can wait (JOB_RUNNER thread or inline) such a job is refused, 429.
+JOB_WORKER_SLOTS = env.int("JOB_WORKER_SLOTS", default=2)
+#: Jobs one user may have queued or running. One more is refused, 429.
+MAX_ACTIVE_JOBS_PER_USER = env.int("MAX_ACTIVE_JOBS_PER_USER", default=1)
+#: Jobs that may wait in the queue. One more is refused, 429 "the queue is full".
+MAX_QUEUED_JOBS = env.int("MAX_QUEUED_JOBS", default=20)
 
 #: How long a running job may go without a heartbeat before another process may
 #: declare its worker dead. Must comfortably exceed the slowest single page, since
