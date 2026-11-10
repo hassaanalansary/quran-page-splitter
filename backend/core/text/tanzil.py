@@ -68,6 +68,43 @@ def load_ayat(path: Path, *, strip_basmala: bool = True) -> list[Aya]:
     return ayat
 
 
+#: Signs a Tanzil text with "pause marks" writes as a token of their own after a word:
+#: the six pause signs and the sakta. The rub' el hizb ۞ and the sajda ۩ are tokens too
+#: (``_SYMBOLS``), but mark the aya rather than a word.
+_PAUSE_TOKENS = frozenset("\u06d6\u06d7\u06d8\u06d9\u06da\u06db\u06dc")
+_SYMBOLS = frozenset("\u06de\u06e9")
+
+
+def load_pauses(path: Path) -> list[tuple[str, str]]:
+    """Every word of a Tanzil text written *with* pause signs, and the signs after it.
+
+    One ``(word, signs)`` per word, in the order :func:`load_ayat` gives a plain text's
+    words — the order ``Word.id`` counts in — so the two line up one for one: the
+    pause signs and the ۞ / ۩ tokens are set aside before the basmala is dropped, and
+    what is left is the plain text's words. ``signs`` is ``""`` after most words. The
+    caller checks the words against its own before trusting the numbering.
+    """
+    found: list[tuple[str, str]] = []
+    for aya in load_ayat(path, strip_basmala=False):
+        words: list[str] = []
+        signs: list[str] = []
+        for token in aya.words:
+            if set(token) <= _SYMBOLS:
+                continue
+            if set(token) <= _PAUSE_TOKENS:
+                if signs:
+                    signs[-1] += token
+                continue
+            words.append(token)
+            signs.append("")
+        if aya.number == 1 and aya.sura not in (1, 9):
+            kept = drop_leading_basmala(words)
+            signs = signs[len(words) - len(kept) :]
+            words = kept
+        found.extend(zip(words, signs, strict=True))
+    return found
+
+
 def drop_leading_basmala(words: list[str]) -> list[str]:
     """Remove a basmala sitting at the *start* of an aya's word list.
 

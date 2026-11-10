@@ -1,8 +1,8 @@
-import { ChevronLeft, ChevronRight } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { CroppableImage } from "@/components/canvas/CroppableImage";
+import { PagePill } from "@/components/canvas/PagePill";
 import { pageImageUrl } from "@/lib/api";
 import type { Rect } from "@/lib/api/types";
 
@@ -15,8 +15,21 @@ type Props = {
   onPageChange: (n: number) => void;
   /** Cache-bust token for rendered pages (e.g. mushaf.updated_at). */
   version?: string | number;
-  /** Secondary label for the footer, e.g. the physical PDF page. */
+  /** Secondary label for the page pill, e.g. the physical PDF page. */
   renderLabel?: (logical: number) => string;
+  /** A short note at the start of the toolbar. */
+  hint?: string;
+  /** A badge over the current page ("First Quran page"), or null for none. */
+  badge?: (logical: number) => string | null;
+  /** The strip under the stage: the pages marked as the range so far (logical,
+   * inclusive), and the labels at its ends and middle. */
+  scrub?: {
+    range: [number, number] | null;
+    marks: number[];
+    startLabel: string;
+    endLabel: string;
+    summary: string;
+  };
   /** Enables a draggable crop rectangle on the current (centred) page. */
   crop?: {
     label: string;
@@ -34,24 +47,15 @@ function clamp(n: number, lo: number, hi: number) {
   return Math.max(lo, Math.min(hi, n));
 }
 
-/** Page numbers to show in the compact pager rail (first, …, current±3, …, last). */
-function pagerItems(current: number, total: number): (number | "gap")[] {
-  const wanted = new Set<number>([1, total]);
-  for (let i = current - 3; i <= current + 3; i++) if (i >= 1 && i <= total) wanted.add(i);
-  const sorted = [...wanted].sort((a, b) => a - b);
-  const out: (number | "gap")[] = [];
-  sorted.forEach((n, i) => {
-    if (i > 0 && n - sorted[i - 1] > 1) out.push("gap");
-    out.push(n);
-  });
-  return out;
-}
+/** How many cells the scrubber draws at most; past that, a cell is a run of pages. */
+const SCRUB_CELLS = 120;
 
 /**
  * Desktop-style page browser. Layout is pure CSS (slots centred via translateX
  * percentages — no measurement), so only a small window of slots renders.
  * Adjacent moves slide the surviving slots; far jumps "whoosh" the new window in
- * from the travel direction. The rail is a compact pager, not 600 chips.
+ * from the travel direction. The toolbar above holds the page pill; the scrubber
+ * below is the whole book in at most 120 cells, the range marked so far shaded.
  */
 export function FilmstripViewer({
   mushafId,
@@ -60,16 +64,15 @@ export function FilmstripViewer({
   onPageChange,
   version,
   renderLabel,
+  hint,
+  badge,
+  scrub,
   crop,
 }: Props) {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const prevPageRef = useRef(page);
   const [aspect, setAspect] = useState(DEFAULT_ASPECT);
-  const [jumping, setJumping] = useState(false);
-  const [jumpValue, setJumpValue] = useState("");
   const [whoosh, setWhoosh] = useState({ pct: 0, anim: false });
-
-  const isRTL = i18n.dir() === "rtl";
 
   // Whoosh the new window in when jumping past the rendered window.
   useLayoutEffect(() => {
@@ -85,7 +88,6 @@ export function FilmstripViewer({
   }, [page]);
 
   function onKeyDown(e: React.KeyboardEvent) {
-    if (jumping) return;
     if (e.key === "ArrowLeft") onPageChange(clamp(page - 1, 1, pageCount));
     else if (e.key === "ArrowRight") onPageChange(clamp(page + 1, 1, pageCount));
     else if (e.key === "Home") onPageChange(1);
@@ -99,20 +101,31 @@ export function FilmstripViewer({
   const slots: number[] = [];
   for (let p = lo; p <= hi; p++) slots.push(p);
 
-  function commitJump() {
-    const n = clamp(Math.round(Number(jumpValue) || page), 1, pageCount);
-    onPageChange(n);
-    setJumping(false);
-    setJumpValue("");
-  }
+  const currentBadge = badge?.(page) ?? null;
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden">
+    <div className="flex flex-1 flex-col overflow-hidden bg-well">
+      <div className="flex flex-shrink-0 flex-wrap items-center justify-between gap-2.5 px-4 py-3">
+        {hint ? (
+          <span className="rounded-lg border border-rule bg-sheet px-3 py-1.5 text-[13px] text-ink-2">
+            {hint}
+          </span>
+        ) : (
+          <span />
+        )}
+        <PagePill
+          page={page}
+          pageCount={pageCount}
+          onPageChange={onPageChange}
+          label={renderLabel?.(page)}
+        />
+      </div>
+
       {/* Stage */}
       <div
         tabIndex={0}
         onKeyDown={onKeyDown}
-        className="raqam-canvas-grid relative flex-1 overflow-hidden outline-none"
+        className="canvas-well relative flex-1 overflow-hidden outline-none"
       >
         <div
           className="absolute inset-0"
@@ -132,8 +145,8 @@ export function FilmstripViewer({
               // RTL like a mushaf/Arabic book: higher page numbers sit to the LEFT.
               transform: `translateX(calc(-50% + ${-dp * 100}% + ${-dp * GAP}px))`,
               transition: "transform 440ms cubic-bezier(0.22,0.61,0.36,1)",
-              borderColor: isCurrent ? "var(--orange)" : "var(--border)",
-              boxShadow: isCurrent ? "var(--shadow-page)" : "var(--shadow-sm)",
+              borderColor: isCurrent ? "var(--lapis)" : "var(--rule)",
+              boxShadow: isCurrent ? "var(--shadow-lift)" : "var(--shadow-card)",
               opacity: isCurrent ? 1 : 0.5,
               zIndex: isCurrent ? 2 : 1,
             };
@@ -165,6 +178,7 @@ export function FilmstripViewer({
                 key={p}
                 type="button"
                 onClick={() => p !== page && onPageChange(p)}
+                aria-current={isCurrent ? "page" : undefined}
                 tabIndex={-1}
                 className="absolute left-1/2 overflow-hidden rounded-[4px] border bg-white"
                 style={{ ...slotStyle, cursor: isCurrent ? "default" : "pointer" }}
@@ -172,7 +186,7 @@ export function FilmstripViewer({
                 {withImage ? (
                   <img
                     src={pageImageUrl(mushafId, p, version)}
-                    alt={`Page ${p}`}
+                    alt={t("canvas.pageAlt", { page: p })}
                     draggable={false}
                     onLoad={(e) => {
                       const el = e.currentTarget;
@@ -184,131 +198,75 @@ export function FilmstripViewer({
                     className="h-full w-full object-contain"
                   />
                 ) : (
-                  <div className="flex h-full w-full items-center justify-center bg-bg-surface">
-                    <span className="font-display text-3xl font-bold text-text-muted/60">{p}</span>
+                  <div className="flex h-full w-full items-center justify-center bg-sheet">
+                    <span className="font-display text-3xl font-bold text-ink-3/60">{p}</span>
                   </div>
                 )}
               </button>
             );
           })}
         </div>
-
-        {/* RTL: the left arrow advances (next page is to the left), the right goes back. */}
-        <ChevronButton
-          side="left"
-          disabled={page >= pageCount}
-          onClick={() => onPageChange(clamp(page + 1, 1, pageCount))}
-        />
-        <ChevronButton
-          side="right"
-          disabled={page <= 1}
-          onClick={() => onPageChange(clamp(page - 1, 1, pageCount))}
-        />
-
-        {/* Footer overlay: page indicator + jump */}
-        <div className="absolute bottom-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-3 rounded-pill border border-border bg-white/90 px-3 py-1.5 shadow-[var(--shadow-sm)] backdrop-blur">
-          {jumping ? (
-            <input
-              autoFocus
-              type="number"
-              min={1}
-              max={pageCount}
-              value={jumpValue}
-              placeholder={String(page)}
-              onChange={(e) => setJumpValue(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") commitJump();
-                else if (e.key === "Escape") {
-                  setJumping(false);
-                  setJumpValue("");
-                }
-              }}
-              onBlur={commitJump}
-              className="h-6 w-16 rounded border border-border-strong px-2 text-center text-[13px] tabular-nums outline-none focus:border-orange"
-            />
-          ) : (
-            <button
-              type="button"
-              onClick={() => {
-                setJumpValue("");
-                setJumping(true);
-              }}
-              className="text-[13px] font-semibold tabular-nums text-text-primary hover:text-orange"
-              title={t("canvas.jumpTitle")}
-            >
-              {t("canvas.pageJump", { page })}
-            </button>
-          )}
-          <span className="text-[12px] text-text-muted">/ {pageCount}</span>
-          {renderLabel && (
-            <span className="border-s border-border ps-3 text-[12px] text-text-secondary">
-              {renderLabel(page)}
-            </span>
-          )}
-        </div>
-      </div>
-
-      {/* Compact pager rail */}
-      <div
-        className={`flex h-11 flex-shrink-0 items-center justify-center gap-1 border-t border-border bg-white px-3 ${isRTL ? "flex-row" : "flex-row-reverse"}`}
-      >
-        {pagerItems(page, pageCount).map((item, i) =>
-          item === "gap" ? (
-            <button
-              key={`gap-${i}`}
-              type="button"
-              onClick={() => {
-                setJumpValue("");
-                setJumping(true);
-              }}
-              title={t("canvas.jumpToPage")}
-              className="px-1 text-[12px] text-text-muted hover:text-orange"
-            >
-              …
-            </button>
-          ) : (
-            <button
-              key={item}
-              type="button"
-              onClick={() => onPageChange(item)}
-              className={[
-                "h-7 min-w-7 rounded px-2 text-[12px] font-medium tabular-nums transition-colors",
-                item === page
-                  ? "bg-orange text-white"
-                  : "bg-bg-surface text-text-secondary hover:bg-bg-muted hover:text-text-primary",
-              ].join(" ")}
-            >
-              {item}
-            </button>
-          ),
+        {currentBadge && (
+          <span className="pointer-events-none absolute left-1/2 top-3.5 z-[3] -translate-x-1/2 whitespace-nowrap rounded-pill bg-gold px-3 py-[5px] text-[12.5px] font-bold text-on-gold shadow-[0_4px_10px_rgba(0,0,0,0.18)]">
+            {currentBadge}
+          </span>
         )}
       </div>
+
+      {scrub && (
+        <Scrubber page={page} pageCount={pageCount} onPageChange={onPageChange} scrub={scrub} />
+      )}
     </div>
   );
 }
 
-function ChevronButton({
-  side,
-  onClick,
-  disabled,
+/** The whole book as a strip of cells in mushaf order (first page on the right):
+ * the range marked so far shaded, its ends ringed, the current page gold. A cell
+ * opens the first page it covers. */
+function Scrubber({
+  page,
+  pageCount,
+  onPageChange,
+  scrub,
 }: {
-  side: "left" | "right";
-  onClick: () => void;
-  disabled?: boolean;
+  page: number;
+  pageCount: number;
+  onPageChange: (n: number) => void;
+  scrub: NonNullable<Props["scrub"]>;
 }) {
-  const { t } = useTranslation();
+  const cells = Math.min(pageCount, SCRUB_CELLS);
+  const startOf = (i: number) => Math.floor((i * pageCount) / cells) + 1;
+  const endOf = (i: number) => Math.floor(((i + 1) * pageCount) / cells);
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      aria-label={side === "left" ? t("canvas.prevPage") : t("canvas.nextPage")}
-      className={[
-        "absolute top-1/2 z-10 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-white/90 text-text-secondary shadow-[var(--shadow-md)] backdrop-blur transition hover:text-orange disabled:cursor-not-allowed disabled:opacity-30",
-        side === "left" ? "left-3" : "right-3",
-      ].join(" ")}
-    >
-      {side === "left" ? <ChevronLeft size={20} /> : <ChevronRight size={20} />}
-    </button>
+    <div className="flex flex-shrink-0 flex-col gap-2 border-t border-rule bg-sheet px-5 pb-3.5 pt-3">
+      <div dir="rtl" className="flex justify-between gap-3 font-mono text-[12px] text-ink-3">
+        <span>{scrub.startLabel}</span>
+        <span className="font-sans text-ink-2" dir="auto">
+          {scrub.summary}
+        </span>
+        <span>{scrub.endLabel}</span>
+      </div>
+      <div dir="rtl" className="flex h-7 gap-[2px]">
+        {Array.from({ length: cells }, (_, i) => {
+          const from = startOf(i);
+          const to = endOf(i);
+          const current = page >= from && page <= to;
+          const marked = scrub.marks.some((m) => m >= from && m <= to);
+          const inRange = !!scrub.range && to >= scrub.range[0] && from <= scrub.range[1];
+          return (
+            <button
+              key={i}
+              type="button"
+              tabIndex={-1}
+              onClick={() => onPageChange(from)}
+              title={from === to ? String(from) : `${from}–${to}`}
+              className={`min-w-0 flex-1 cursor-pointer rounded-[2px] ${
+                current ? "bg-gold" : inRange ? "bg-lapis-wash" : "bg-sunk"
+              } ${marked ? "shadow-[inset_0_0_0_2px_var(--lapis)]" : ""} hover:opacity-80`}
+            />
+          );
+        })}
+      </div>
+    </div>
   );
 }

@@ -1,18 +1,15 @@
-"""Calibration history survives regeneration, copying, and legacy editing."""
+"""Calibration history survives regeneration and copying."""
 
 import io
 import json
 import uuid
 import zipfile
 from copy import deepcopy
-from importlib import import_module
-from types import SimpleNamespace
 
 from django.core.exceptions import ValidationError
 from django.core.files.base import ContentFile
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.db import IntegrityError, connection, transaction
-from django.db.migrations.executor import MigrationExecutor
+from django.db import IntegrityError, transaction
 from ninja.errors import HttpError
 
 from api.models import (
@@ -22,10 +19,9 @@ from api.models import (
     CalibrationSnapshot,
     Line,
     LineWord,
-    LineWordStatus,
     Page,
 )
-from api.services import bundle, cloning, word_coordinates
+from api.services import bundle, cloning
 from api.tests.helpers import MediaTestCase, bare_mushaf, make_png_bytes
 
 
@@ -35,15 +31,6 @@ class CalibrationPersistenceTests(MediaTestCase):
         self.page = Page.objects.create(mushaf=self.mushaf, page_number=7)
         self.line = Line.objects.create(page=self.page, line_number=2, bbox_x=0, bbox_y=0, bbox_w=500, bbox_h=50)
         self.word = LineWord.objects.create(line=self.line, position=0, start_x=200, end_x=150)
-        self.status = LineWordStatus.objects.create(line=self.line, status="scored", edited=True)
-
-    def _save(self, *, preserve_legacy=True, end_x=100):
-        return word_coordinates.replace_page_words(
-            self.page,
-            [{"line_id": str(self.line.pk), "words": [{"word_id": None, "start_x": 200, "end_x": end_x}]}],
-            counting_system=None,
-            preserve_legacy=preserve_legacy,
-        )
 
     def _snapshot(self):
         snapshot = CalibrationSnapshot(
@@ -86,85 +73,15 @@ class CalibrationPersistenceTests(MediaTestCase):
         )
         return snapshot, review
 
-    def _run(self, lines):
-        return word_coordinates.save_word_coordinates(
-            SimpleNamespace(
-                lines=[
-                    SimpleNamespace(
-                        words=[], status="unresolved", reason="retry", deviations=3, end_sequences=2, label=str(line.pk)
-                    )
-                    for line in lines
-                ]
-            ),
-            [SimpleNamespace(line=line, origin_x=0) for line in lines],
-            word_range=(1, 100),
-        )
-
-    def test_edited_line_is_excluded_from_all_writer_mutations(self):
-        before = list(self.line.words.values())
-        report = self._run([self.line])
-        self.assertEqual(list(self.line.words.values()), before)
-        self.status.refresh_from_db()
-        self.assertEqual(self.status.status, "scored")
-        self.assertTrue(self.status.edited)
-        self.assertEqual(report.protected_line_ids, {self.line.pk})
-        self.assertEqual((report.words_written, report.lines_written, report.lines_cleared), (0, 0, 0))
-        self.assertEqual(report.unresolved, [])
-
-    def test_confirmed_page_protects_fresh_lines_but_not_other_pages(self):
-        self.status.edited = False
-        self.status.save()
-        CalibrationReview.objects.create(mushaf=self.mushaf, page_number=7, confirmed_revision=1)
-        page = Page.objects.create(mushaf=self.mushaf, page_number=8)
-        other = Line.objects.create(page=page, line_number=1, bbox_x=0, bbox_y=0, bbox_w=10, bbox_h=10)
-        report = self._run([self.line, other])
-        self.assertEqual(report.protected_line_ids, {self.line.pk})
-        self.assertEqual(report.unresolved, [str(other.pk)])
-        self.status.refresh_from_db()
-        self.assertEqual(self.status.status, "scored")
-        self.assertEqual(other.word_status.status, "unresolved")
-
-    def test_manual_replace_archives_before_and_after_without_inventing_labels(self):
-        self._save()
-        review = CalibrationReview.objects.get(mushaf=self.mushaf, page_number=7)
-        self.assertEqual(review.revision, 2)
-        self.assertIsNone(review.confirmed_revision)
-        self.assertEqual(review.payload["legacy_lines"][0]["words"][0]["end_x"], 100)
-        self.assertEqual(review.revisions.get(number=1).payload["legacy_lines"][0]["words"][0]["end_x"], 150)
-        self.assertFalse(CalibrationSnapshot.objects.exists())
-        self.assertFalse(review.revisions.exclude(kind="legacy").exists())
-        self._save()
-        review.refresh_from_db()
-        self.assertEqual(review.revision, 2)
-
-    def test_parent_can_manage_revision_without_legacy_increment(self):
-        review = CalibrationReview.objects.create(mushaf=self.mushaf, page_number=7, revision=9)
-        self._save(preserve_legacy=False)
-        review.refresh_from_db()
-        self.assertEqual(review.revision, 9)
-        self.assertFalse(review.revisions.exists())
-        self.assertEqual(self.line.words.get().end_x, 100)
-
-    def test_hand_made_words_on_a_line_with_no_status_are_protected_without_a_fake_verdict(self):
-        """The engine writes a status wherever it writes words, so words without one
-        are a person's — and inventing an "unresolved" verdict for them would count the
-        line in every needs-review total."""
-        self.status.delete()
-        self._save()
-        self.assertFalse(LineWordStatus.objects.filter(line=self.line).exists())
-        self.assertEqual(self._run([self.line]).protected_line_ids, {self.line.pk})
-        self.assertEqual(self.line.words.get().end_x, 100)
-
-    def test_bulk_line_deletion_archives_edits_and_keeps_snapshots(self):
+    def test_bulk_line_deletion_keeps_snapshots(self):
         snapshot = self._snapshot()
         line_id = self.line.pk
         self.page.lines.all().delete()
         snapshot.refresh_from_db()
         self.assertEqual(snapshot.source_line_id, line_id)
-        review = CalibrationReview.objects.get(mushaf=self.mushaf, page_number=7)
-        self.assertEqual(review.payload["legacy_lines"][0]["line_id"], str(line_id))
-        self.assertEqual(review.payload["legacy_lines"][0]["words"][0]["word_id"], None)
-        self.assertEqual(review.revisions.count(), 1)
+        # Words go with their lines; nothing is archived, since none were cut by hand.
+        self.assertFalse(LineWord.objects.exists())
+        self.assertFalse(CalibrationReview.objects.exists())
 
     def test_page_deletion_keeps_numeric_review_identity(self):
         self.page.delete()
@@ -188,29 +105,6 @@ class CalibrationPersistenceTests(MediaTestCase):
             )
         with self.assertRaises(IntegrityError), transaction.atomic():
             CalibrationRevision.objects.create(review=review, number=1, kind="processed")
-
-    def test_data_migration_captures_existing_edited_boundaries(self):
-        executor = MigrationExecutor(connection)
-        historical = executor.loader.project_state([("api", "0026_calibration_persistence")]).apps
-        migration = import_module("api.migrations.0026_calibration_persistence")
-        migration.preserve_legacy_boundaries(historical, SimpleNamespace(connection=connection))
-        review = CalibrationReview.objects.get(mushaf=self.mushaf, page_number=7)
-        self.assertEqual(review.revision, 1)
-        self.assertEqual(
-            review.payload,
-            {
-                "legacy_lines": [
-                    {
-                        "line_number": 2,
-                        "line_id": str(self.line.pk),
-                        "words": [{"word_id": None, "position": 0, "start_x": 200, "end_x": 150}],
-                    }
-                ]
-            },
-        )
-        self.assertEqual(review.revisions.get().payload, review.payload)
-        self.assertEqual(review.revisions.get().kind, "legacy")
-        self.assertIsNone(review.confirmed_revision)
 
     def _assert_copied(self, target, source_snapshot):
         snapshot = target.calibration_snapshots.get()
@@ -236,7 +130,6 @@ class CalibrationPersistenceTests(MediaTestCase):
         profile = target.calibration_profiles.get()
         self.assertEqual(profile.mode, "shadow")
         self.assertEqual(profile.payload, {"sample_refs": [str(snapshot.pk)], "config": {"k": 3}})
-        self.assertTrue(copied_line.word_status.edited)
         self.assertEqual(copied_line.words.get().end_x, 150)
 
     def test_clone_copies_history_and_independent_files_with_shadow_profile(self):

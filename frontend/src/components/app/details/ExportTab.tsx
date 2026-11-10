@@ -1,22 +1,88 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
 import { BundlePanel } from "@/components/app/details/BundlePanel";
+import { PublishPanel } from "@/components/app/details/PublishPanel";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import {
   ApiError,
   coordinatesUrl,
   exportLines,
+  exportUrl,
   linesZipUrl,
   queryKeys,
   updateMushaf,
+  useCalibrationPages,
   type MushafDetail,
   type MushafStats,
   type PageSummary,
 } from "@/lib/api";
+
+const PRIMARY =
+  "inline-flex h-10 cursor-pointer items-center justify-center rounded-control bg-lapis px-4 text-[13.5px] font-semibold text-on-lapis no-underline transition-colors hover:bg-lapis/90 disabled:cursor-not-allowed disabled:opacity-50";
+const SECONDARY =
+  "inline-flex h-10 cursor-pointer items-center justify-center rounded-control border border-rule-2 bg-card px-4 text-[13.5px] font-semibold text-ink no-underline transition-colors hover:bg-sheet disabled:cursor-not-allowed disabled:opacity-50";
+
+/** One export: its title and state, the headline number, then the rest. */
+function ExportSection({
+  title,
+  pill,
+  children,
+}: {
+  title: string;
+  pill: { label: string; tone: "done" | "warn" | "plain" };
+  children: ReactNode;
+}) {
+  const tone =
+    pill.tone === "done"
+      ? "bg-done-wash text-done-text"
+      : pill.tone === "warn"
+        ? "bg-warn-wash text-warn-text"
+        : "bg-sunk text-ink-2";
+  const dot = pill.tone === "done" ? "bg-done" : pill.tone === "warn" ? "bg-warn" : "bg-ink-4";
+  return (
+    <section className="flex flex-col gap-3.5 rounded-panel border border-rule bg-card p-[22px]">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="m-0 font-display text-[22px] font-semibold">{title}</h2>
+        <span
+          className={`inline-flex items-center gap-1.5 rounded-pill px-2.5 py-[3px] text-[12px] font-semibold ${tone}`}
+        >
+          <span className={`h-1.5 w-1.5 rounded-full ${dot}`} />
+          {pill.label}
+        </span>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function Headline({ value, label }: { value: number; label: string }) {
+  return (
+    <div className="flex flex-wrap items-baseline gap-2">
+      <span className="font-display text-[32px] font-semibold leading-none">
+        {value.toLocaleString()}
+      </span>
+      <span className="text-[13.5px] text-ink-3">{label}</span>
+    </div>
+  );
+}
+
+function KvList({ rows }: { rows: [string, string][] }) {
+  return (
+    <dl className="m-0 grid grid-cols-[repeat(auto-fit,minmax(180px,1fr))] gap-x-6 gap-y-1.5">
+      {rows.map(([k, v]) => (
+        <div key={k} className="flex justify-between gap-2 border-b border-rule-soft py-1">
+          <dt className="font-mono text-[12px] text-ink-3">{k}</dt>
+          <dd className="m-0 truncate font-mono text-[12px] font-semibold">{v}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
 
 export function ExportTab({
   mushaf,
@@ -42,7 +108,7 @@ export function ExportTab({
   const linesCut = stats?.lines_cut ?? 0;
   const exported = stats?.exported_pngs ?? 0;
   const ayat = stats?.ayat_found ?? 0;
-  const pngPct = linesCut > 0 ? Math.round((exported / linesCut) * 100) : 0;
+  const pngShare = linesCut > 0 ? Math.min(1, exported / linesCut) : 0;
 
   async function exportAll(onlyReviewed: boolean) {
     const targets = (onlyReviewed ? reviewedPages : processed).map((s) => s.page_number);
@@ -67,185 +133,196 @@ export function ExportTab({
   }
 
   return (
-    <div>
-      <div className="grid grid-cols-2 gap-3.5">
-        {/* Line images · PNG */}
-        <div className="rounded-[11px] border border-border bg-white p-4">
-          <div className="flex items-center gap-2">
-            <span className="flex h-[26px] w-[26px] items-center justify-center rounded-[7px] bg-orange-tint text-[14px] text-orange">
-              ⤓
-            </span>
-            <span className="text-[12.5px] font-bold text-text-primary">
-              {t("details.ex_pngTitle")}
-            </span>
-            <span
-              className={`ms-auto rounded-pill px-2 py-0.5 text-[10px] font-semibold ${
-                exported === 0
-                  ? "bg-bg-muted text-text-secondary"
-                  : exported >= linesCut
-                    ? "bg-success-bg text-success"
-                    : "bg-warning-bg text-[#8a4b0d]"
-              }`}
-            >
-              {exported === 0
-                ? t("details.ex_notStarted")
-                : exported >= linesCut
-                  ? t("details.ex_complete")
-                  : t("details.ex_partial")}
-            </span>
+    <div className="flex flex-wrap items-start gap-6">
+      <div className="flex min-w-0 flex-[999_1_560px] flex-col gap-6">
+        <ExportSection
+          title={t("details.ex_pngTitle")}
+          pill={
+            exported === 0
+              ? { label: t("details.ex_notStarted"), tone: "plain" }
+              : exported >= linesCut
+                ? { label: t("details.ex_complete"), tone: "done" }
+                : { label: t("details.ex_partial"), tone: "warn" }
+          }
+        >
+          <Headline value={exported} label={t("details.ex_ofLines", { count: linesCut })} />
+          <div className="h-1.5 rounded-[3px] bg-sunk">
+            <div className="h-1.5 rounded-[3px] bg-done" style={{ width: `${pngShare * 100}%` }} />
           </div>
-          <div className="mt-[15px] flex items-baseline gap-2">
-            <span className="text-[27px] font-extrabold text-navy">{exported}</span>
-            <span className="text-[12px] font-medium text-text-muted">
-              {t("details.ex_ofLines", { count: linesCut })}
-            </span>
-          </div>
-          <div className="mt-2.5 h-1.5 overflow-hidden rounded-[3px] bg-bg-muted">
-            <div className="h-full bg-success" style={{ width: `${pngPct}%` }} />
-          </div>
-          <div className="mt-3.5 flex flex-col gap-1.5">
-            <KvRow k={t("details.kv_format")} v="transparent PNG" />
-            <KvRow k={t("details.kv_path")} v="media/mushafs/{id}/lines/…" />
-            <KvRow k={t("details.kv_naming")} v="page-{page}/line-{line}.png" />
-          </div>
+          <KvList
+            rows={[
+              [t("details.kv_format"), "transparent PNG"],
+              [t("details.kv_path"), "media/mushafs/{id}/lines/…"],
+              [t("details.kv_naming"), "page-{page}/line-{line}.png"],
+            ]}
+          />
 
           {/* Uniform size. Persisted on the mushaf rather than asked per export,
               so a mushaf cannot end up half padded and half not. */}
-          <label className="mt-3.5 flex cursor-pointer items-start gap-2.5 rounded-lg border border-border bg-bg-surface p-2.5">
+          <label className="flex cursor-pointer items-start gap-3 rounded-card border border-rule bg-sheet p-3.5">
             <Switch
               checked={mushaf.export_uniform_size}
               disabled={uniformSize.isPending}
               onCheckedChange={(value) => uniformSize.mutate(value)}
               className="mt-0.5"
             />
-            <span className="min-w-0">
-              <span className="block text-[12px] font-semibold text-text-primary">
-                {t("details.ex_uniformLabel")}
-              </span>
-              <span className="mt-0.5 block text-[11px] leading-snug text-text-muted">
+            <span className="flex min-w-0 flex-col gap-0.5">
+              <span className="text-[14px] font-semibold">{t("details.ex_uniformLabel")}</span>
+              <span className="text-[12.5px] leading-snug text-ink-3">
                 {t("details.ex_uniformHelp")}
               </span>
+              {exported > 0 && (
+                <span className="text-[12.5px] leading-snug text-ink-3">
+                  {t("details.ex_uniformReexport")}
+                </span>
+              )}
             </span>
           </label>
-          {exported > 0 && (
-            <p className="mt-1.5 text-[11px] leading-snug text-text-muted">
-              {t("details.ex_uniformReexport")}
-            </p>
+
+          {processed.length > 0 && reviewedPages.length < processed.length && (
+            <div className="flex items-start gap-2.5 rounded-lg bg-warn-wash px-3.5 py-[11px] text-[13.5px] leading-[1.45] text-warn-text">
+              <span aria-hidden="true">⚠</span>
+              <span>
+                <strong>
+                  {t("details.ex_onlyReviewed", {
+                    reviewed: reviewedPages.length,
+                    total: processed.length,
+                  })}
+                </strong>{" "}
+                {t("details.ex_reviewWarn")}{" "}
+                <Link
+                  to="/mushafs/$mushafId/review"
+                  params={{ mushafId: mushaf.id }}
+                  search={{ page: processed.find((s) => !s.reviewed)?.page_number ?? 1 }}
+                  className="font-semibold text-warn-text underline"
+                >
+                  {t("details.ex_goReview")}
+                </Link>
+              </span>
+            </div>
           )}
-          <div className="mt-[15px] flex gap-2">
+
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={!!progress || reviewedPages.length === 0}
+              onClick={() => exportAll(true)}
+              className={PRIMARY}
+            >
+              {t("details.ex_reviewedBtn", { count: reviewedPages.length })}
+            </button>
             <button
               type="button"
               disabled={!!progress || processed.length === 0}
               onClick={() => exportAll(false)}
-              className="h-[34px] flex-1 cursor-pointer rounded-lg bg-navy text-[12px] font-bold text-white transition-colors hover:bg-navy-hover disabled:cursor-not-allowed disabled:opacity-50"
+              className={SECONDARY}
             >
               {progress
                 ? t("details.ex_exporting", { done: progress.done, total: progress.total })
                 : t("details.ex_exportAll")}
             </button>
-            <button
-              type="button"
-              disabled={!!progress || reviewedPages.length === 0}
-              onClick={() => exportAll(true)}
-              className="h-[34px] cursor-pointer rounded-lg border border-border-strong bg-white px-3 text-[12px] font-semibold text-text-primary transition-colors hover:bg-bg-surface disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {t("details.ex_reviewedBtn", { count: reviewedPages.length })}
-            </button>
+            {/* Pull the PNGs out of media/ in one go, saved wherever the browser asks. */}
+            {exported > 0 && (
+              <a href={linesZipUrl(mushaf.id)} download className={SECONDARY}>
+                {t("details.ex_downloadZip")}
+              </a>
+            )}
           </div>
-          {/* Pull the PNGs out of media/ in one go, saved wherever the browser asks. */}
-          {exported > 0 && (
-            <a
-              href={linesZipUrl(mushaf.id)}
-              download
-              className="mt-2 block h-[34px] rounded-lg border border-border-strong bg-white text-center text-[12px] font-semibold leading-[32px] text-text-primary transition-colors hover:bg-bg-surface"
-            >
-              {t("details.ex_downloadZip")}
-            </a>
-          )}
-        </div>
+        </ExportSection>
 
-        {/* Aya coordinates · JSON */}
-        <div className="rounded-[11px] border border-border bg-white p-4">
-          <div className="flex items-center gap-2">
-            <span className="flex h-[26px] w-[26px] items-center justify-center rounded-[7px] bg-orange-tint font-mono text-[11px] font-semibold text-orange">
-              {"{ }"}
-            </span>
-            <span className="text-[12.5px] font-bold text-text-primary">
-              {t("details.ex_jsonTitle")}
-            </span>
-            <span
-              className={`ms-auto rounded-pill px-2 py-0.5 text-[10px] font-semibold ${
-                ayat > 0 ? "bg-success-bg text-success" : "bg-bg-muted text-text-secondary"
-              }`}
-            >
-              {ayat > 0 ? t("details.ex_ready") : t("details.ex_noData")}
-            </span>
-          </div>
-          <div className="mt-[15px] flex items-baseline gap-2">
-            <span className="text-[27px] font-extrabold text-navy">{ayat}</span>
-            <span className="text-[12px] font-medium text-text-muted">
-              {t("details.ex_ayatAcross", { count: processed.length })}
-            </span>
-          </div>
-          <div className="mt-2.5 h-1.5 overflow-hidden rounded-[3px] bg-bg-muted">
-            <div className="h-full bg-success" style={{ width: ayat > 0 ? "100%" : "0%" }} />
-          </div>
-          <div className="mt-3.5 flex flex-col gap-1.5">
-            <KvRow k={t("details.kv_schema")} v="aya-bbox/v1" />
-            <KvRow k={t("details.kv_perAya")} v="{ sura, aya, rects[] }" />
-            <KvRow k={t("details.kv_rect")} v="{ x, y, w, h }" />
-          </div>
-          <div className="mt-[15px] flex gap-2">
-            <a
-              href={coordinatesUrl(mushaf.id)}
-              download
-              className="h-[34px] flex-1 rounded-lg border border-border-strong bg-white text-center text-[12px] font-bold leading-[34px] text-text-primary transition-colors hover:bg-bg-surface"
-            >
+        <ExportSection
+          title={t("details.ex_jsonTitle")}
+          pill={
+            ayat > 0
+              ? { label: t("details.ex_ready"), tone: "done" }
+              : { label: t("details.ex_noData"), tone: "plain" }
+          }
+        >
+          <Headline value={ayat} label={t("details.ex_ayatAcross", { count: processed.length })} />
+          <KvList
+            rows={[
+              [t("details.kv_schema"), "aya-bbox/v1"],
+              [t("details.kv_perAya"), "{ sura, aya, rects[] }"],
+              [t("details.kv_rect"), "{ x, y, w, h }"],
+            ]}
+          />
+          <div>
+            <a href={coordinatesUrl(mushaf.id)} download className={PRIMARY}>
               {t("details.ex_downloadJson")}
             </a>
           </div>
-        </div>
+        </ExportSection>
+
+        <FullExport mushafId={mushaf.id} />
       </div>
 
-      {/* review warning */}
-      {processed.length > 0 && reviewedPages.length < processed.length && (
-        <div className="mt-3.5 flex items-center gap-3 rounded-[11px] border border-border bg-white px-4 py-[13px]">
-          <span className="flex h-[26px] w-[26px] flex-none items-center justify-center rounded-full bg-warning-bg text-[13px] text-[#8a4b0d]">
-            !
-          </span>
-          <div className="min-w-0">
-            <div className="text-[12px] font-semibold text-text-primary">
-              {t("details.ex_onlyReviewed", {
-                reviewed: reviewedPages.length,
-                total: processed.length,
-              })}
-            </div>
-            <div className="mt-px text-[11px] text-text-secondary">
-              {t("details.ex_reviewWarn")}
-            </div>
-          </div>
-          <Link
-            to="/mushafs/$mushafId/review"
-            params={{ mushafId: mushaf.id }}
-            search={{ page: processed.find((s) => !s.reviewed)?.page_number ?? 1 }}
-            className="ms-auto flex-none text-[11.5px] font-bold text-orange hover:text-orange-hover"
-          >
-            {t("details.ex_goReview")}
-          </Link>
-        </div>
-      )}
-
-      {/* The work itself, portable — as opposed to the rendered artifacts above. */}
-      <BundlePanel mushaf={mushaf} summaries={summaries} />
+      <aside className="flex min-w-0 flex-[1_1_320px] flex-col gap-5">
+        <PublishPanel mushaf={mushaf} />
+        {/* The work itself, portable, as opposed to the rendered artifacts. */}
+        <BundlePanel mushaf={mushaf} summaries={summaries} />
+      </aside>
     </div>
   );
 }
 
-function KvRow({ k, v }: { k: string; v: string }) {
+/**
+ * The full data export (schema mushaf-export/v2): every line, aya, word and blob — each
+ * blob with its class and, for a mark, its type — in page pixels and in each line PNG's
+ * own, with every line's word map and blob map. Calibrated pages carry the blobs; the
+ * rest carry their word boxes. See backend/api/services/data_export.py.
+ */
+function FullExport({ mushafId }: { mushafId: string }) {
+  const { t } = useTranslation();
+  const { data: states } = useCalibrationPages(mushafId);
+  const [images, setImages] = useState(true);
+  const [maps, setMaps] = useState(true);
+  const confirmed = (states ?? []).filter((row) => row.confirmed_revision !== null).length;
+  const drafts = (states ?? []).filter(
+    (row) => row.processed && row.confirmed_revision === null,
+  ).length;
+
   return (
-    <div className="flex justify-between">
-      <span className="font-mono text-[10.5px] font-medium text-text-secondary">{k}</span>
-      <span className="font-mono text-[10.5px] font-bold text-text-primary">{v}</span>
-    </div>
+    <ExportSection
+      title={t("details.ex_fullTitle")}
+      pill={
+        confirmed + drafts > 0
+          ? { label: t("details.ex_fullPill", { count: confirmed + drafts }), tone: "done" }
+          : { label: t("details.ex_fullWordsOnly"), tone: "plain" }
+      }
+    >
+      <Headline value={confirmed} label={t("details.ex_fullConfirmed")} />
+      <p className="m-0 text-[13.5px] leading-normal text-ink-2">
+        {drafts > 0
+          ? t("details.ex_fullDrafts", { count: drafts })
+          : confirmed > 0
+            ? t("details.ex_fullAllConfirmed")
+            : t("details.ex_fullNone")}
+      </p>
+      <KvList
+        rows={[
+          [t("details.kv_schema"), "mushaf-export/v2"],
+          [t("details.kv_spaces"), "page px + line-PNG px"],
+          [t("details.kv_perWord"), "{ id, ref, text, box, ink }"],
+          [t("details.kv_perBlob"), "{ class, type, words, box }"],
+          [t("details.kv_maps"), "words + blobs PNG"],
+        ]}
+      />
+      <div className="flex flex-col gap-2">
+        <label className="flex cursor-pointer items-center gap-2.5 text-[14px]">
+          <Checkbox checked={images} onCheckedChange={(value) => setImages(value === true)} />
+          {t("details.ex_fullImages")}
+        </label>
+        <label className="flex cursor-pointer items-center gap-2.5 text-[14px]">
+          <Checkbox checked={maps} onCheckedChange={(value) => setMaps(value === true)} />
+          {t("details.ex_fullMaps")}
+        </label>
+      </div>
+      <div className="flex flex-col items-start gap-1.5">
+        <a href={exportUrl(mushafId, { images, maps })} download className={PRIMARY}>
+          {t("details.ex_fullDownload")}
+        </a>
+        <p className="m-0 text-[12.5px] leading-snug text-ink-3">{t("details.ex_fullHelp")}</p>
+      </div>
+    </ExportSection>
   );
 }

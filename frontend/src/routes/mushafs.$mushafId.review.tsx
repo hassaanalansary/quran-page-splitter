@@ -1,19 +1,21 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute, Link, useBlocker, useNavigate, useParams } from "@tanstack/react-router";
-import { Play, Plus, Trash2 } from "lucide-react";
+import { createFileRoute, Link, useNavigate, useParams } from "@tanstack/react-router";
+import { Play, Plus, Redo2, Trash2, Undo2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
-import { Aside, Field, Hint, StatusLine } from "@/components/app/Panel";
+import { Aside, Field, StatusLine, StepBody } from "@/components/app/Panel";
 import { AyaPreviewDialog } from "@/components/app/AyaPreviewDialog";
 import { CanvasHelp } from "@/components/app/CanvasHelp";
+import { useLeaveGuard } from "@/components/app/LeaveGuard";
 import { LineNavigator } from "@/components/app/LineNavigator";
+import { BusyLabel, LoadingState } from "@/components/app/SatrLoader";
 import { TourOverlay } from "@/components/app/tour/TourOverlay";
 import { useStepTour, type TourStep } from "@/components/app/tour/useStepTour";
 import { ReviewEditCanvas } from "@/components/canvas/ReviewEditCanvas";
 import { RectInputs } from "@/components/canvas/RectInputs";
-import { Button } from "@/components/ui/button";
+import { ToolButton } from "@/components/canvas/ToolToggle";
 import {
   ApiError,
   bulkSavePages,
@@ -75,7 +77,7 @@ function ReviewPage() {
   const { page } = Route.useSearch();
   const navigate = useNavigate({ from: "/mushafs/$mushafId/review" });
   const queryClient = useQueryClient();
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
 
   const { data: mushaf } = useMushaf(mushafId);
   const { data: suras } = useSuras(mushaf?.qiraa);
@@ -274,13 +276,9 @@ function ReviewPage() {
   }
 
   // ── leave guard (free within the route; confirm on real navigation) ─────────
-  useBlocker({
-    enableBeforeUnload: () => unsavedCount > 0,
-    shouldBlockFn: ({ current, next }) => {
-      if (current.pathname === next.pathname) return false;
-      if (unsavedCount === 0) return false;
-      return !window.confirm(t("review.leaveConfirm"));
-    },
+  const leaveDialog = useLeaveGuard({
+    dirty: () => unsavedCount > 0,
+    body: t("review.leaveBody", { count: unsavedCount }),
   });
 
   // ── mutation helpers (keyed by line uid; every edit lands in history) ───────
@@ -516,7 +514,7 @@ function ReviewPage() {
     t("guide.review.s5"),
   ];
   const status = !store ? undefined : unsavedCount > 0 ? (
-    <StatusLine>{t("stepStatus.reviewUnsaved", { count: unsavedCount })}</StatusLine>
+    <StatusLine tone="warning">{t("stepStatus.reviewUnsaved", { count: unsavedCount })}</StatusLine>
   ) : derived && derived.totalWarnings > 0 ? (
     <StatusLine tone="warning">
       {t("stepStatus.reviewWarnings", { count: derived.totalWarnings })}
@@ -525,50 +523,31 @@ function ReviewPage() {
     <StatusLine tone="success">{t("stepStatus.reviewClean")}</StatusLine>
   );
 
-  const statusSlot = (
-    <div className="flex items-center gap-2 text-[11.5px]">
-      {unsavedCount > 0 && (
-        <span className="font-medium text-orange">
-          {t("review.unsaved", { count: unsavedCount })}
+  const warnings = derived?.totalWarnings ?? 0;
+  const pdf = mushaf.first_quran_pdf_page + page - 1;
+  const entryLine = currentDerived ? (
+    <>
+      {t("review.entersShort")}{" "}
+      <span dir="ltr" className="font-mono">
+        {currentDerived.entry.sura}:{currentDerived.entry.aya}
+      </span>{" "}
+      · {t("review.exitsShort")}{" "}
+      <span dir="ltr" className="font-mono">
+        {currentDerived.exit.sura}:{Math.max(1, currentDerived.exit.aya - 1)}
+      </span>
+      {currentEdit?.reviewed && (
+        <span className="ms-1 font-semibold text-done-text">{t("review.reviewedTag")}</span>
+      )}
+      {currentDerived.warnings > 0 && (
+        <span className="ms-1 font-semibold text-warn-text">
+          {t("review.warnTag", { count: currentDerived.warnings })}
         </span>
       )}
-      {derived && derived.totalWarnings > 0 && (
-        <button
-          type="button"
-          onClick={nextWarningPage}
-          title={t("review.warningTitle")}
-          className="cursor-pointer rounded-sm border border-[color:var(--warning-border)] bg-warning-bg px-1.5 py-0.5 font-medium text-[#8a4b0d]"
-        >
-          ⚠ {derived.totalWarnings}
-        </button>
-      )}
-      <div className="flex h-[26px] overflow-hidden rounded-sm border-[1.5px] border-border-strong">
-        <button
-          type="button"
-          onClick={undo}
-          disabled={!canUndo}
-          title={t("review.undoTitle")}
-          className="cursor-pointer border-r border-border bg-white px-2 text-text-secondary hover:bg-bg-surface disabled:opacity-40"
-        >
-          ↶
-        </button>
-        <button
-          type="button"
-          onClick={redo}
-          disabled={!canRedo}
-          title={t("review.redoTitle")}
-          className="cursor-pointer bg-white px-2 text-text-secondary hover:bg-bg-surface disabled:opacity-40"
-        >
-          ↷
-        </button>
-      </div>
-    </div>
-  );
+    </>
+  ) : undefined;
 
   return (
-    <div
-      className={`flex ${i18n.language === "ar" ? "flex-row-reverse" : "flex-row"} flex-1 overflow-hidden`}
-    >
+    <StepBody>
       <div data-tour="review-canvas" className="relative flex flex-1 overflow-hidden">
         <ReviewEditCanvas
           imageUrl={pageImageUrl(mushafId, page)}
@@ -588,7 +567,41 @@ function ReviewPage() {
           processed={railProcessed}
           reviewed={railReviewed}
           onNatural={setNatural}
-          statusSlot={statusSlot}
+          label={t("canvas.pdfShort", { page: pdf })}
+          pageExtra={
+            <button
+              type="button"
+              onClick={nextWarningPage}
+              disabled={warnings === 0}
+              title={t("review.warningTitle")}
+              aria-label={t("review.warningTitle")}
+              className={`h-[30px] cursor-pointer rounded-[6px] px-[9px] text-[12.5px] font-medium transition-colors hover:bg-sunk disabled:cursor-default disabled:hover:bg-transparent ${
+                warnings > 0 ? "text-warn-text" : "text-ink-3"
+              }`}
+            >
+              ⚠ {warnings}
+            </button>
+          }
+          zoomExtra={
+            <>
+              <ToolButton
+                onClick={undo}
+                disabled={!canUndo}
+                title={t("review.undoTitle")}
+                aria-label={t("review.undoTitle")}
+              >
+                <Undo2 size={16} aria-hidden="true" />
+              </ToolButton>
+              <ToolButton
+                onClick={redo}
+                disabled={!canRedo}
+                title={t("review.redoTitle")}
+                aria-label={t("review.redoTitle")}
+              >
+                <Redo2 size={16} aria-hidden="true" />
+              </ToolButton>
+            </>
+          }
         />
         <CanvasHelp
           guideItems={guideItems}
@@ -598,66 +611,47 @@ function ReviewPage() {
       </div>
 
       <Aside
+        title={t("review.pageTitle", { page })}
+        meta={t("canvas.pdfShort", { page: pdf })}
+        intro={entryLine}
         status={status}
         footer={
-          <div data-tour="review-save" className="flex flex-col gap-2">
-            <Button onClick={markReviewedAndNext} disabled={!store}>
+          <div data-tour="review-save" className="flex flex-col gap-3">
+            <button
+              type="button"
+              onClick={saveChanges}
+              disabled={unsavedCount === 0 || saving}
+              className="inline-flex h-11 cursor-pointer items-center justify-center rounded-control bg-lapis text-[14px] font-semibold text-on-lapis transition-colors hover:bg-lapis/90 disabled:cursor-default disabled:opacity-50"
+            >
+              {saving ? <BusyLabel>{t("common.saving")}</BusyLabel> : t("review.saveChanges")}
+            </button>
+            <button
+              type="button"
+              onClick={markReviewedAndNext}
+              disabled={!store}
+              className="inline-flex h-11 cursor-pointer items-center justify-center rounded-control border border-ink bg-transparent text-[14px] font-semibold text-ink transition-colors hover:bg-sunk disabled:cursor-default disabled:opacity-50"
+            >
               {t("review.markReviewedNext")}
-            </Button>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                className="flex-1"
-                onClick={saveChanges}
-                disabled={unsavedCount === 0 || saving}
-              >
-                {saving ? t("common.saving") : t("review.saveChanges")}
-              </Button>
-              <Button asChild variant="outline" className="flex-1">
-                <Link to="/mushafs/$mushafId/finalize" params={{ mushafId }} search={{ page }}>
-                  {t("review.finalize")}
-                </Link>
-              </Button>
-            </div>
+            </button>
+            <Link
+              to="/mushafs/$mushafId/finalize"
+              params={{ mushafId }}
+              search={{ page }}
+              className="text-center text-[13px] font-semibold text-lapis-text no-underline hover:underline"
+            >
+              {t("review.finalize")}
+            </Link>
           </div>
         }
       >
         {!store ? (
-          <Hint>{t("review.loadingData")}</Hint>
+          <LoadingState className="py-6 text-[13px] text-ink-3">
+            {t("review.loadingData")}
+          </LoadingState>
         ) : (
           <>
-            {currentDerived && (
-              <div className="rounded-md border border-border bg-white px-2.5 py-1.5 text-[11.5px] text-text-secondary">
-                {t("review.enters", {
-                  fromSura: suraName(currentDerived.entry.sura),
-                  fromAya: currentDerived.entry.aya,
-                  toSura: suraName(currentDerived.exit.sura),
-                  toAya: Math.max(1, currentDerived.exit.aya - 1),
-                })}
-                {currentEdit?.reviewed && (
-                  <span className="ms-1 font-semibold text-success">{t("review.reviewedTag")}</span>
-                )}
-                {currentDerived.warnings > 0 && (
-                  <span className="ms-1 font-semibold text-[#8a4b0d]">
-                    {t("review.warnTag", { count: currentDerived.warnings })}
-                  </span>
-                )}
-              </div>
-            )}
-
-            <Button
-              variant="outline"
-              className="w-full"
-              onClick={() => setPreviewOpen(true)}
-              disabled={previewAyat.length === 0}
-              title={t("review.previewHint")}
-            >
-              <Play size={13} /> {t("review.previewButton", { count: previewAyat.length })}
-            </Button>
-
-            <div data-tour="review-lines" className="flex flex-col gap-3">
+            <div data-tour="review-lines" className="flex flex-col gap-4">
               <LineNavigator
-                title={t("review.linesTitle")}
                 lines={(currentDerived?.lines ?? []).map((l) => ({
                   key: l.uid,
                   line_number: l.line_number,
@@ -666,9 +660,29 @@ function ReviewPage() {
                 }))}
                 selectedKey={selectedUid}
                 onSelect={selectLine}
-                onAdd={() => addLineAfter(selectedUid, "text")}
-                addLabel={t("review.addLine")}
                 emptyText={t("review.noLines")}
+                actions={
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => addLineAfter(selectedUid, "text")}
+                      title={t("review.addLine")}
+                      aria-label={t("review.addLine")}
+                      className={LINE_ACTION}
+                    >
+                      <Plus size={14} aria-hidden="true" />
+                    </button>
+                    {selectedEdit && (
+                      <button
+                        type="button"
+                        onClick={() => deleteLine(selectedEdit.uid)}
+                        className={`${LINE_ACTION} px-2.5`}
+                      >
+                        {t("review.deleteLine")}
+                      </button>
+                    )}
+                  </>
+                }
               />
 
               {selectedEdit && selectedDerived ? (
@@ -682,7 +696,6 @@ function ReviewPage() {
                   onSetType={(t) => setLineType(selectedEdit.uid, t)}
                   onSetSura={(n) => setSura(selectedEdit.uid, n)}
                   onUpdateBbox={(b) => updateLineBbox(selectedEdit.uid, b)}
-                  onDelete={() => deleteLine(selectedEdit.uid)}
                   onSelectCut={(i) => selectCut(selectedEdit.uid, i)}
                   onRemoveCut={(i) => removeCut(selectedEdit.uid, i)}
                   onAddCut={() =>
@@ -690,13 +703,24 @@ function ReviewPage() {
                   }
                 />
               ) : (
-                <p className="py-4 text-center text-[12px] text-text-muted">
+                <p className="m-0 py-2 text-center text-[12.5px] text-ink-3">
                   {currentEdit && currentEdit.lines.length === 0
                     ? t("review.blankPage")
                     : t("review.selectLine")}
                 </p>
               )}
             </div>
+
+            <button
+              type="button"
+              onClick={() => setPreviewOpen(true)}
+              disabled={previewAyat.length === 0}
+              title={t("review.previewHint")}
+              className="inline-flex h-[42px] cursor-pointer items-center justify-center gap-2 rounded-lg bg-deep text-[14px] font-semibold text-on-deep transition-colors hover:bg-deep/90 disabled:cursor-default disabled:opacity-50"
+            >
+              <Play size={14} aria-hidden="true" />
+              {t("review.previewButton", { count: previewAyat.length })}
+            </button>
           </>
         )}
       </Aside>
@@ -711,8 +735,22 @@ function ReviewPage() {
         suraName={suraName}
       />
 
+      {leaveDialog}
       <TourOverlay tour={tour} />
-    </div>
+    </StepBody>
+  );
+}
+
+/** A small button in the line card (add, delete). */
+const LINE_ACTION =
+  "inline-flex h-8 min-w-8 cursor-pointer items-center justify-center rounded-control border border-rule bg-sheet text-[12.5px] font-medium text-ink transition-colors hover:bg-sunk";
+
+/** A section label in the inspector: small, uppercase, ink-3. */
+function Label({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="text-[11.5px] font-semibold uppercase tracking-[0.08em] text-ink-3">
+      {children}
+    </span>
   );
 }
 
@@ -739,7 +777,6 @@ function SelectedLineEditor({
   onSetType,
   onSetSura,
   onUpdateBbox,
-  onDelete,
   onSelectCut,
   onRemoveCut,
   onAddCut,
@@ -752,47 +789,53 @@ function SelectedLineEditor({
   onSetType: (t: EditLineType) => void;
   onSetSura: (n: number) => void;
   onUpdateBbox: (b: Rect) => void;
-  onDelete: () => void;
   onSelectCut: (i: number) => void;
   onRemoveCut: (i: number) => void;
   onAddCut: () => void;
 }) {
   const { t } = useTranslation();
-  return (
-    <div className="flex flex-col gap-3 rounded-md border border-border bg-white p-3">
-      <div className="flex items-center justify-between">
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-text-muted">
-          {t("review.lineN", { n: derived.line_number })}
-        </span>
-        <button
-          type="button"
-          onClick={onDelete}
-          className="cursor-pointer rounded-sm border border-error-border bg-error-bg px-2 py-[3px] text-[11px] font-medium text-error hover:brightness-95"
-        >
-          {t("review.deleteLine")}
-        </button>
-      </div>
+  // The aya a cut ends: the segment that starts at it (segments run right to
+  // left, each from the cut on its left). A cut too close to its neighbour cuts
+  // no segment, and ends nothing.
+  const endsAya = (i: number) =>
+    derived.segments.find((seg) => seg.has_separator && seg.bbox.x === derived.cuts[i])?.aya;
 
-      <Field label={t("review.typeLabel")}>
-        <select
-          value={edit.type}
-          onChange={(e) => onSetType(e.target.value as EditLineType)}
-          className="h-8 w-full cursor-pointer rounded-sm border-[1.5px] border-border-strong bg-white px-2 text-[12.5px]"
+  return (
+    <>
+      <div className="flex flex-col gap-2">
+        <Label>{t("review.typeLabel")}</Label>
+        <div
+          role="group"
+          aria-label={t("review.typeLabel")}
+          className="flex rounded-lg bg-sunk p-[3px]"
         >
-          {LINE_TYPE_VALUES.map((value) => (
-            <option key={value} value={value}>
-              {t(`review.type_${value}`)}
-            </option>
-          ))}
-        </select>
-      </Field>
+          {LINE_TYPE_VALUES.map((value) => {
+            const on = edit.type === value;
+            return (
+              <button
+                key={value}
+                type="button"
+                aria-pressed={on}
+                onClick={() => !on && onSetType(value)}
+                className={`h-8 flex-1 cursor-pointer rounded-control text-[13px] transition-colors ${
+                  on
+                    ? "bg-card font-semibold text-ink shadow-[0_1px_2px_rgba(0,0,0,0.08)]"
+                    : "font-medium text-ink-2 hover:text-ink"
+                }`}
+              >
+                {t(`review.type_${value}`)}
+              </button>
+            );
+          })}
+        </div>
+      </div>
 
       {edit.type === "sura_header" && (
         <Field label={t("review.suraAnchorLabel")}>
           <select
             value={edit.sura ?? derived.sura}
             onChange={(e) => onSetSura(Number(e.target.value))}
-            className="h-8 w-full cursor-pointer rounded-sm border-[1.5px] border-border-strong bg-white px-2 text-[12.5px]"
+            className="h-9 w-full cursor-pointer rounded-control border border-rule-2 bg-card px-2 text-[13.5px] text-ink outline-none focus:border-lapis"
           >
             {suras.map((s) => (
               <option key={s.number} value={s.number}>
@@ -804,105 +847,87 @@ function SelectedLineEditor({
       )}
 
       {edit.type === "besmella" && (
-        <div className="rounded-sm border border-border bg-bg-surface px-2.5 py-1.5 text-[11.5px] text-text-secondary">
+        <p className="m-0 rounded-lg border border-rule-soft bg-card px-3 py-2 text-[12.5px] text-ink-2">
           {t("review.besmellaNote", { sura: derived.sura })}
-        </div>
+        </p>
       )}
 
-      <div>
-        <div className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-text-muted">
-          {t("review.bbox")}
-        </div>
+      <div className="flex flex-col gap-2">
+        <Label>{t("review.bbox")}</Label>
         <RectInputs rect={edit.bbox} onChange={onUpdateBbox} />
       </div>
 
       {edit.type === "text" && (
-        <ListCard
-          title={t("review.separatorsTitle")}
-          count={edit.cuts.length}
-          empty={t("review.separatorsEmpty")}
-          footer={
+        <div className="flex flex-col overflow-hidden rounded-card border border-rule bg-card">
+          <div className="flex items-center justify-between gap-2 border-b border-rule-soft px-3.5 py-2.5">
+            <Label>{t("review.separatorsCount", { count: edit.cuts.length })}</Label>
             <button
               type="button"
               onClick={onAddCut}
-              className="mt-1.5 flex w-full cursor-pointer items-center justify-center gap-1 rounded-sm border-[1.5px] border-dashed border-border-strong px-2 py-[4px] text-[11px] font-medium text-text-secondary transition-colors hover:border-orange hover:bg-orange-tint hover:text-orange"
+              className="flex h-7 cursor-pointer items-center gap-1 px-1 text-[13px] font-semibold text-lapis-text hover:underline"
             >
-              <Plus size={12} /> {t("review.addSeparator")}
+              <Plus size={13} aria-hidden="true" /> {t("review.addSeparator")}
             </button>
-          }
-        >
-          {edit.cuts.map((cx, i) => {
-            const sel = i === selectedCutIndex;
-            return (
-              <li key={i} className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => onSelectCut(i)}
-                  className={[
-                    "flex flex-1 items-center gap-2 rounded-sm px-1.5 py-[3px] text-start text-[11.5px]",
-                    sel ? "bg-orange-tint text-orange" : "hover:bg-bg-surface",
-                  ].join(" ")}
-                >
-                  <span className="w-4 text-text-muted">{i + 1}.</span>
-                  <span className="font-mono">{t("review.separatorX", { x: Math.round(cx) })}</span>
-                </button>
-                <IconX title={t("review.removeSeparator")} onClick={() => onRemoveCut(i)} />
-              </li>
-            );
-          })}
-        </ListCard>
+          </div>
+          {edit.cuts.length === 0 ? (
+            <p className="m-0 px-3.5 py-2.5 text-[12.5px] text-ink-3">
+              {t("review.separatorsEmpty")}
+            </p>
+          ) : (
+            <ul className="m-0 flex list-none flex-col p-0">
+              {edit.cuts.map((cx, i) => {
+                const sel = i === selectedCutIndex;
+                const aya = endsAya(i);
+                return (
+                  <li
+                    key={i}
+                    className={`flex items-center gap-2.5 border-b border-rule-soft px-3.5 last:border-b-0 ${
+                      sel ? "bg-gold-wash" : ""
+                    }`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => onSelectCut(i)}
+                      aria-pressed={sel}
+                      className="flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 py-2.5 text-start"
+                    >
+                      <span
+                        className="h-[18px] w-1 flex-none rounded-[2px]"
+                        style={{ background: "var(--ov-aya-cut)" }}
+                        aria-hidden="true"
+                      />
+                      <span
+                        className={`font-mono text-[13px] ${sel ? "font-semibold" : ""}`}
+                        dir="ltr"
+                      >
+                        {t("review.separatorX", { x: Math.round(cx) })}
+                      </span>
+                      {aya != null && (
+                        <span
+                          className={`text-[12.5px] ${sel ? "font-semibold text-gold-text" : "text-ink-3"}`}
+                        >
+                          {t("review.separatorEnds", { n: aya })}
+                        </span>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      title={t("review.removeSeparator")}
+                      aria-label={t("review.removeSeparator")}
+                      onClick={() => onRemoveCut(i)}
+                      className={`flex h-7 w-7 flex-none cursor-pointer items-center justify-center rounded-control transition-colors hover:bg-stop-wash hover:text-stop-text ${
+                        sel ? "text-stop-text" : "text-ink-3"
+                      }`}
+                    >
+                      <Trash2 size={14} aria-hidden="true" />
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
       )}
-    </div>
-  );
-}
-
-function ListCard({
-  title,
-  count,
-  empty,
-  children,
-  footer,
-}: {
-  title: string;
-  count: number;
-  empty: string;
-  children: React.ReactNode;
-  /** Rendered at the very bottom of the card, regardless of count. */
-  footer?: React.ReactNode;
-}) {
-  return (
-    <div className="rounded-md border border-border bg-white p-2">
-      <div className="mb-1 flex items-center justify-between text-[11px] font-semibold uppercase tracking-wider text-text-muted">
-        <span>{title}</span>
-        <span className="font-normal normal-case">{count}</span>
-      </div>
-      {count === 0 ? (
-        <p className="py-1 text-[11.5px] text-text-muted">{empty}</p>
-      ) : (
-        <ul className="flex flex-col gap-1">{children}</ul>
-      )}
-      {footer}
-    </div>
-  );
-}
-
-function IconX({
-  title,
-  onClick,
-  className,
-}: {
-  title: string;
-  onClick: () => void;
-  className?: string;
-}) {
-  return (
-    <button
-      type="button"
-      title={title}
-      onClick={onClick}
-      className={`cursor-pointer rounded-sm border bg-white p-[5px] text-[10.5px] text-error hover:bg-error-bg hover:brightness-95 ${className ?? ""}`}
-    >
-      <Trash2 size={14} />
-    </button>
+    </>
   );
 }

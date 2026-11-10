@@ -120,10 +120,6 @@ MESSAGES: dict[str, dict[str, str]] = {
         "en": "The span {from_sura}:{from_aya}..{to_sura}:{to_aya} runs backwards through this mushaf.",
         "ar": "النطاق {from_sura}:{from_aya}..{to_sura}:{to_aya} يسير عكسيًا في هذا المصحف.",
     },
-    "no_active_word_run": {
-        "en": "No word detection run is in progress for this mushaf.",
-        "ar": "لا توجد عملية كشف كلمات جارية لهذا المصحف.",
-    },
     "calibration_not_found": {
         "en": "Page {page} has nothing to calibrate — it is not processed in this mushaf.",
         "ar": "لا يوجد في الصفحة {page} ما يُعاير — فهي غير معالَجة في هذا المصحف.",
@@ -183,6 +179,20 @@ MESSAGES: dict[str, dict[str, str]] = {
     "calibration_no_active_job": {
         "en": "No calibration page is being processed for this mushaf.",
         "ar": "لا تجري معالجة أي صفحة معايرة لهذا المصحف.",
+    },
+    "calibration_batch_nothing": {
+        "en": (
+            "Pages {first} to {last} have nothing to process: every page there is confirmed, being worked on, "
+            "or not yet reviewed and numbered in Review."
+        ),
+        "ar": (
+            "لا يوجد ما يُعالَج في الصفحات من {first} إلى {last}: فكل صفحة فيها مؤكَّدة، أو يُعمل عليها، "
+            "أو لم تُراجَع وتُرقَّم آياتها في المراجعة بعد."
+        ),
+    },
+    "export_nothing": {
+        "en": "This mushaf has no processed pages yet, so there is nothing to export.",
+        "ar": "لا توجد في هذا المصحف صفحات معالَجة بعد، فلا يوجد ما يُصدَّر.",
     },
     "page_not_found": {
         "en": "Page {page} is not in this mushaf.",

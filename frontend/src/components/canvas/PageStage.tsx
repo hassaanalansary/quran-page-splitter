@@ -1,9 +1,8 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
-import { ChevronNav } from "@/components/canvas/ChevronNav";
 import { PageCanvas } from "@/components/canvas/PageCanvas";
-import { PageJump } from "@/components/canvas/PageJump";
+import { PagePill } from "@/components/canvas/PagePill";
 import { PageRail } from "@/components/canvas/PageRail";
 import { ToolToggle } from "@/components/canvas/ToolToggle";
 import { ZoomControl, type Zoom } from "@/components/canvas/ZoomControl";
@@ -29,23 +28,25 @@ type Props = {
     mirrored?: boolean;
     /** Freeze the rect — visible, but not draggable or resizable. */
     locked?: boolean;
-    /** When given, the rect's badge carries a lock toggle. */
-    onLockToggle?: () => void;
+    /** Draw it as the text-area bounds (see PageCanvas). */
+    tone?: "bounds";
   };
   /** Reports the page image's natural size once loaded. */
   onNatural?: (n: { w: number; h: number }) => void;
-  /** Extra toolbar controls (e.g. Capture / Clear). */
+  /** Extra toolbar controls, after the tools (Process's bounds lock). */
   toolbarExtras?: ReactNode;
+  /** Laid over the bottom of the canvas (Process's live log). */
+  overlay?: ReactNode;
   /** Page-rail indicators (processed / reviewed logical pages). */
   processed?: Set<number>;
   reviewed?: Set<number>;
 };
 
 /**
- * A single zoomable/pannable page with select & hand tools, chevron prev/next,
- * a click-to-jump page indicator, and an optional crop rectangle. The building
- * blocks (ChevronNav, PageJump, ZoomControl, ToolToggle, PageCanvas) are all
- * standalone and reused elsewhere.
+ * A single zoomable/pannable page with an optional crop rectangle. The toolbar
+ * sits on the well above it: select & hand tools, the page pill (next, a
+ * click-to-jump page indicator, previous) and zoom. The building blocks (PagePill,
+ * ZoomControl, ToolToggle, PageCanvas) are standalone and reused elsewhere.
  */
 export function PageStage({
   imageUrl,
@@ -56,6 +57,7 @@ export function PageStage({
   crop,
   onNatural,
   toolbarExtras,
+  overlay,
   processed,
   reviewed,
 }: Props) {
@@ -92,24 +94,24 @@ export function PageStage({
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      {/* Toolbar */}
+      {/* Toolbar, on the well */}
       <div
         data-tour="canvas-toolbar"
-        className="flex h-9 flex-shrink-0 items-center gap-2 border-b border-border bg-white px-3"
+        className="flex flex-shrink-0 flex-wrap items-center justify-between gap-2.5 bg-well px-4 py-3"
       >
-        <ToolToggle value={effectiveTool} onChange={setTool} />
-        {toolbarExtras && (
-          <>
-            <div className="mx-1 h-5 w-px bg-border" />
-            {toolbarExtras}
-          </>
-        )}
-        <div className="ms-auto">
-          <ZoomControl value={zoom} onChange={setZoom} />
+        <div className="flex items-center gap-2.5">
+          <ToolToggle value={effectiveTool} onChange={setTool} />
+          {toolbarExtras}
         </div>
+        <PagePill
+          page={page}
+          pageCount={pageCount}
+          onPageChange={onPageChange}
+          label={renderLabel?.(page)}
+        />
+        <ZoomControl value={zoom} onChange={setZoom} />
       </div>
 
-      {/* Canvas + chevrons + floating page indicator */}
       <div className="relative flex flex-1 overflow-hidden">
         <PageCanvas
           imageUrl={imageUrl}
@@ -124,28 +126,20 @@ export function PageStage({
           tool={tool}
           mirrored={cropping ? !!crop.mirrored : false}
           locked={cropping ? !!crop.locked : false}
-          onToggleLock={cropping ? crop.onLockToggle : undefined}
+          tone={crop?.tone}
         />
-        <ChevronNav page={page} pageCount={pageCount} onPageChange={onPageChange} />
-        <div className="absolute bottom-3 left-1/2 z-10 -translate-x-1/2 rounded-pill border border-border bg-white/90 px-3 py-1.5 shadow-[var(--shadow-sm)] backdrop-blur">
-          <PageJump
-            page={page}
-            pageCount={pageCount}
-            onPageChange={onPageChange}
-            label={renderLabel?.(page)}
-          />
-        </div>
+        {overlay}
       </div>
 
       {/* Status bar: live cursor + crop dimensions */}
-      <div className="flex h-7 flex-shrink-0 items-center gap-4 border-t border-border bg-white px-3 text-[12px] text-text-muted">
+      <div className="flex h-7 flex-shrink-0 items-center gap-4 border-t border-rule bg-sheet px-4 text-[12px] text-ink-3">
         <span className="font-mono">
           {cursor ? `x: ${cursor.x}  y: ${cursor.y}` : "x: —  y: —"}
         </span>
         {cropping && (
           <span
             className="ml-auto font-medium"
-            style={{ color: crop.mirrored ? "var(--navy)" : "var(--orange)" }}
+            style={{ color: crop.mirrored ? "var(--gold-text)" : "var(--lapis-text)" }}
           >
             ●{" "}
             {crop.rect

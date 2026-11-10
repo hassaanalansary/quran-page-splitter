@@ -1,6 +1,6 @@
 """Calibration endpoints: process a page, correct it, preview, confirm, evaluate.
 
-Page-at-a-time like review and the word cuts, because that is how a person works:
+Page-at-a-time like review, because that is how a person works:
 one page processed, reviewed and confirmed before the next is read from it. See
 ``api.services.calibration`` for the loop and what each step stores.
 
@@ -19,11 +19,18 @@ from pydantic import Field
 from api.auth import current_user
 from api.models import ProcessJobKindChoices
 from api.services import calibration as calibration_service
+from api.services import calibration_batch as batch_service
+from api.services import calibration_library as library_service
+from api.services import calibration_progress as progress_service
 from api.services import jobs as jobs_service
 from api.services import mushaf as mushaf_service
 from api.views.processing import JobOut, JobStatusOut
 
 router = Router(tags=["calibration"])
+
+#: Calibration's two kinds of job, polled and cancelled from the one screen: a page
+#: processed on its own, and a batch of pages. One runs at a time, as for every kind.
+CALIBRATION_JOBS = (ProcessJobKindChoices.CALIBRATION, ProcessJobKindChoices.CALIBRATION_BATCH)
 
 
 class AllocationIn(Schema):
@@ -50,22 +57,14 @@ class BlobEditIn(Schema):
     #: "" | mixed | broken | fused | uncertain.
     exception: str = ""
     allocations: list[AllocationIn] = Field(default_factory=list)
-
-
-class WordEditIn(Schema):
-    word_id: int | None = None
-    #: The word's RIGHT edge, and the larger number — Arabic runs right to left.
-    start_x: int = Field(ge=0)
-    end_x: int = Field(ge=0)
-    #: The edges were dragged by hand; the next alignment keeps them.
-    override: bool = False
-    shared: bool = False
+    #: Not ink of the text — noise the line's cutting left. Text blobs only; read
+    #: around, taught nothing, and cut out of the exported line image.
+    erased: bool = False
 
 
 class LineEditIn(Schema):
     snapshot_id: str
     blobs: list[BlobEditIn]
-    words: list[WordEditIn]
 
 
 class DraftIn(Schema):
@@ -95,8 +94,10 @@ class ProcessOut(Schema):
 
 class SettingsIn(Schema):
     revision: int = Field(ge=0)
-    experimental: bool
-    acknowledge_unvalidated: bool = False
+    #: The library's comparison; omitted keeps the current one.
+    comparison: str | None = None
+    #: The library's LIMIT; null is the comparison's default.
+    limit: float | None = None
 
 
 @router.put("/{mushaf_id}/calibration/settings")
@@ -118,19 +119,54 @@ def calibration_pages(request: HttpRequest, mushaf_id: uuid.UUID) -> dict:
 
 @router.get("/{mushaf_id}/calibration/job", response=JobStatusOut)
 def calibration_job(request: HttpRequest, mushaf_id: uuid.UUID) -> dict:
-    """The mushaf's current or latest calibration processing — the polling endpoint."""
+    """The mushaf's current or latest calibration processing — one page or a batch.
+    The polling endpoint; ``kind`` says which."""
     mushaf_service.get_mushaf(mushaf_id, user=current_user(request), write=False)
-    job = jobs_service.latest_for(mushaf_id, kind=ProcessJobKindChoices.CALIBRATION)
+    job = jobs_service.latest_for(mushaf_id, kind=CALIBRATION_JOBS)
     return {"job": jobs_service.to_dict(job) if job else None}
 
 
 @router.post("/{mushaf_id}/calibration/cancel", response=JobOut)
 def cancel_calibration(request: HttpRequest, mushaf_id: uuid.UUID) -> dict:
+    """Stop the page or the batch being processed. A batch stops between pages, and
+    every page it finished stays processed."""
     mushaf_service.get_mushaf(mushaf_id, user=current_user(request))
-    job = jobs_service.request_cancel(
-        mushaf_id, kind=ProcessJobKindChoices.CALIBRATION, message="calibration_no_active_job"
-    )
+    job = jobs_service.request_cancel(mushaf_id, kind=CALIBRATION_JOBS, message="calibration_no_active_job")
     return jobs_service.to_dict(job)
+
+
+class BatchIn(Schema):
+    """A range of pages to process for calibration review, one after another."""
+
+    first: int = Field(ge=1)
+    last: int = Field(ge=1)
+    #: Also process again the drafts nobody has touched, so they read with the
+    #: learning as it is now. Drafts somebody worked on are never processed over.
+    refresh: bool = False
+    #: Say what the batch would do, page by page, and start nothing.
+    dry_run: bool = False
+
+
+@router.post("/{mushaf_id}/calibration/batch", response={200: dict, 202: ProcessOut})
+def calibration_batch(request: HttpRequest, mushaf_id: uuid.UUID, data: BatchIn) -> tuple[int, dict]:
+    """Process pages ``first``..``last`` for review as one background job.
+
+    With ``dry_run``, the plan instead: each page's fate and why — see
+    ``api.services.calibration_batch`` — and what a page has taken to process here.
+    """
+    mushaf = mushaf_service.get_mushaf(mushaf_id, user=current_user(request))
+    if data.dry_run:
+        return 200, batch_service.plan(mushaf, data.first, data.last, refresh=data.refresh)
+    job = batch_service.start(mushaf, data.first, data.last, refresh=data.refresh, user=current_user(request))
+    return 202, {"job": jobs_service.to_dict(job)}
+
+
+@router.get("/{mushaf_id}/calibration/readiness")
+def calibration_readiness(request: HttpRequest, mushaf_id: uuid.UUID) -> JsonResponse:
+    """The readiness meter: whether calibration has learned enough that processing the
+    rest in bulk loses little. An estimate from the confirmed pages, never a verdict."""
+    mushaf = mushaf_service.get_mushaf(mushaf_id, user=current_user(request), write=False)
+    return _json(progress_service.readiness(mushaf))
 
 
 @router.get("/{mushaf_id}/calibration/evaluation")
@@ -160,8 +196,9 @@ def page_calibration(request: HttpRequest, mushaf_id: uuid.UUID, page_number: in
 @router.post("/{mushaf_id}/pages/{page_number}/calibration/process", response={202: ProcessOut})
 def process_calibration(request: HttpRequest, mushaf_id: uuid.UUID, page_number: int) -> tuple[int, dict]:
     """Process one page for review; returns at once with the job to poll."""
-    mushaf = mushaf_service.get_mushaf(mushaf_id, user=current_user(request))
-    job = calibration_service.start_page(mushaf, page_number, user=current_user(request))
+    user = current_user(request)
+    mushaf = mushaf_service.get_mushaf(mushaf_id, user=user)
+    job = calibration_service.start_page(mushaf, page_number, user=user)
     return 202, {"job": jobs_service.to_dict(job)}
 
 
@@ -200,27 +237,69 @@ def calibration_types(request: HttpRequest, mushaf_id: uuid.UUID, page_number: i
     return _json(calibration_service.type_suggestions(mushaf, page_number, data.model_dump(mode="json")))
 
 
-class TypeEvidenceIn(DraftIn):
-    """The draft as the editor holds it, and the one mark to explain."""
+# ---------------------------------------------------------------------------
+# The library, as Ink's Library mode shows it
+# ---------------------------------------------------------------------------
+@router.get("/{mushaf_id}/pages/{page_number}/calibration/library")
+def calibration_library(
+    request: HttpRequest, mushaf_id: uuid.UUID, page_number: int, limit: float | None = None
+) -> JsonResponse:
+    """The fingerprint library that answers for the page, kind by kind — or, with
+    ``limit``, the one it would be at that LIMIT. Stores nothing."""
+    mushaf = mushaf_service.get_mushaf(mushaf_id, user=current_user(request), write=False)
+    return _json(library_service.library_document(mushaf, page_number, limit=limit))
+
+
+@router.get("/{mushaf_id}/pages/{page_number}/calibration/library/members")
+def calibration_library_members(
+    request: HttpRequest,
+    mushaf_id: uuid.UUID,
+    page_number: int,
+    group: str,
+    offset: int = 0,
+    count: int = library_service.MEMBERS_PAGE,
+    limit: float | None = None,
+) -> JsonResponse:
+    """Every member of one fingerprint's group, the farthest first, a page at a time."""
+    mushaf = mushaf_service.get_mushaf(mushaf_id, user=current_user(request), write=False)
+    return _json(library_service.library_members(mushaf, page_number, group, offset=offset, count=count, limit=limit))
+
+
+class CompareIn(DraftIn):
+    """The draft as the editor holds it, and the one blob to compare."""
 
     snapshot_id: str
     blob_id: int
+    #: Against the library previewed at this LIMIT; omitted, the one in force.
+    limit: float | None = None
 
 
-@router.post("/{mushaf_id}/pages/{page_number}/calibration/types/evidence")
-def calibration_type_evidence(
-    request: HttpRequest, mushaf_id: uuid.UUID, page_number: int, data: TypeEvidenceIn
+@router.post("/{mushaf_id}/pages/{page_number}/calibration/library/compare")
+def calibration_library_compare(
+    request: HttpRequest, mushaf_id: uuid.UUID, page_number: int, data: CompareIn
 ) -> JsonResponse:
-    """The typed examples nearest one mark, type by type — why it is expected to be
-    what it is. Stores nothing."""
+    """One blob against the library: what it answers, and how far the blob is from
+    every kept shape. Stores nothing."""
     mushaf = mushaf_service.get_mushaf(mushaf_id, user=current_user(request), write=False)
-    return _json(calibration_service.type_evidence(mushaf, page_number, data.model_dump(mode="json")))
+    return _json(library_service.compare(mushaf, page_number, data.model_dump(mode="json")))
 
 
-@router.get("/{mushaf_id}/pages/{page_number}/calibration/examples")
-def calibration_examples(
-    request: HttpRequest, mushaf_id: uuid.UUID, page_number: int, snapshot: uuid.UUID, blob: int
-) -> dict:
-    """The confirmed examples nearest one blob — what the inspector shows."""
-    mushaf = mushaf_service.get_mushaf(mushaf_id, user=current_user(request), write=False)
-    return calibration_service.examples(mushaf, page_number, str(snapshot), blob)
+class LibraryCheckIn(Schema):
+    """An example blob a person found right, as the label it is confirmed as now."""
+
+    snapshot_id: uuid.UUID
+    blob_id: int = Field(ge=0)
+    role: str
+    subtype: str = Field(default="", max_length=32)
+
+
+@router.put("/{mushaf_id}/calibration/library/checks")
+def put_library_check(request: HttpRequest, mushaf_id: uuid.UUID, data: LibraryCheckIn) -> JsonResponse:
+    mushaf = mushaf_service.get_mushaf(mushaf_id, user=current_user(request))
+    return _json(library_service.set_check(mushaf, data.model_dump(mode="json")))
+
+
+@router.delete("/{mushaf_id}/calibration/library/checks")
+def delete_library_check(request: HttpRequest, mushaf_id: uuid.UUID, snapshot: uuid.UUID, blob: int) -> JsonResponse:
+    mushaf = mushaf_service.get_mushaf(mushaf_id, user=current_user(request))
+    return _json(library_service.clear_check(mushaf, str(snapshot), blob))

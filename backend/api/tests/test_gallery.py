@@ -8,14 +8,17 @@ The two properties that matter here:
 """
 
 import uuid
+from datetime import timedelta
 
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.utils import timezone
 from ninja.errors import HttpError
 
 from api.models import EraseStroke, Line, Mushaf, Page, Segment, VisibilityChoices
 from api.services import cloning, gallery
 from api.services import mushaf as mushaf_service
 from api.tests.helpers import ApiTestCase, MediaTestCase, default_user, make_pdf_bytes, make_user
+from quran.models import Rawi
 
 
 def _create(owner, name="Owned", pages=3):
@@ -129,6 +132,97 @@ class PublishTests(MediaTestCase):
         gallery.publish(mushaf.id, user=self.alice)
 
         self.assertNotIn("owner_id", gallery.list_published(user=self.alice)["items"][0])
+
+
+def _listed(owner, name, *, rawi=None, processed=0, reviewed=0):
+    """A published three-page mushaf with ``processed`` pages, the first ``reviewed`` of them reviewed."""
+    mushaf = Mushaf.objects.get(id=_create(owner, name)["id"])
+    if rawi is not None:
+        mushaf.rawi = rawi
+        mushaf.save(update_fields=["rawi"])
+    for page_number in range(1, processed + 1):
+        Page.objects.create(
+            mushaf=mushaf,
+            page_number=page_number,
+            bbox_x=0,
+            bbox_y=0,
+            bbox_w=10,
+            bbox_h=10,
+            reviewed=page_number <= reviewed,
+        )
+    gallery.publish(mushaf.id, user=owner)
+    return mushaf
+
+
+def _rawi(name, arabic):
+    return Rawi.objects.get_or_create(name=name, defaults={"name_arabic": arabic})[0]
+
+
+class GalleryFilterTests(MediaTestCase):
+    """Search, the completed filter, the sort orders and the qiraa chips' counts."""
+
+    def setUp(self):
+        self.salma = make_user("salma@example.com", display_name="Salma R.")
+        self.plain = make_user("omar.h@mail.example")
+        self.hafs = _rawi("Hafs", "حفص")
+        self.warsh = _rawi("Warsh", "ورش")
+        _listed(self.salma, "Madinah 1405", rawi=self.hafs, processed=3, reviewed=3)
+        _listed(self.salma, "Maghribi", rawi=self.warsh, processed=3, reviewed=1)
+        _listed(self.plain, "Shamarli", rawi=self.hafs, processed=2)
+        # One hour apart, oldest first, so "newest first" does not hang on clock resolution.
+        start = timezone.now()
+        for hours, name in enumerate(["Madinah 1405", "Maghribi", "Shamarli"]):
+            Mushaf.objects.filter(name=name).update(published_at=start + timedelta(hours=hours))
+
+    def names(self, **filters):
+        return [item["name"] for item in gallery.list_published(**filters)["items"]]
+
+    def test_search_matches_the_name_the_qiraa_and_the_author(self):
+        self.assertEqual(self.names(search="madinah"), ["Madinah 1405"])
+        self.assertEqual(sorted(self.names(search="hafs")), ["Madinah 1405", "Shamarli"])
+        self.assertEqual(sorted(self.names(search="salma")), ["Madinah 1405", "Maghribi"])
+
+    def test_an_author_without_a_display_name_is_found_by_the_name_the_card_shows(self):
+        self.assertEqual(self.names(search="omar.h"), ["Shamarli"])
+        # The address's domain is never shown, so it is never searched.
+        self.assertEqual(self.names(search="mail.example"), [])
+
+    def test_completed_keeps_the_fully_reviewed_only(self):
+        listing = gallery.list_published(completed=True)
+        self.assertEqual([item["name"] for item in listing["items"]], ["Madinah 1405"])
+        self.assertEqual(listing["total"], 1)
+
+    def test_sort_by_name_and_by_how_complete(self):
+        self.assertEqual(self.names(sort="name"), ["Madinah 1405", "Maghribi", "Shamarli"])
+        # All reviewed, then a third reviewed, then processed but none reviewed.
+        self.assertEqual(self.names(sort="complete"), ["Madinah 1405", "Maghribi", "Shamarli"])
+        self.assertEqual(self.names(sort="published"), ["Shamarli", "Maghribi", "Madinah 1405"])
+
+    def test_the_facets_count_every_qiraa_whatever_qiraa_is_chosen(self):
+        listing = gallery.list_published(qiraa="warsh")
+        self.assertEqual(listing["total"], 1)
+        self.assertEqual(listing["facets"]["all"], 3)
+        self.assertEqual(
+            [(row["name"], row["count"]) for row in listing["facets"]["qiraat"]],
+            [("Hafs", 2), ("Warsh", 1)],
+        )
+
+    def test_the_facets_follow_the_search_and_the_completed_filter(self):
+        facets = gallery.list_published(completed=True)["facets"]
+        self.assertEqual((facets["all"], [(row["name"], row["count"]) for row in facets["qiraat"]]), (1, [("Hafs", 1)]))
+        self.assertEqual(gallery.list_published(search="maghribi")["facets"]["all"], 1)
+
+
+class GalleryFilterApiTests(ApiTestCase):
+    def test_anonymous_may_search_and_sort(self):
+        _listed(default_user(), "Madinah 1405", processed=1)
+        self.client.logout()
+        response = self.client.get("/api/gallery?q=madinah&completed=false&sort=name")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()["facets"]["all"], 1)
+
+    def test_an_unknown_sort_is_refused(self):
+        self.assertEqual(self.client.get("/api/gallery?sort=random").status_code, 422)
 
 
 class GalleryDetailTests(ApiTestCase):

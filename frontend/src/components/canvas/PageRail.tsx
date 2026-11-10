@@ -1,3 +1,6 @@
+import type { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
+
 type Props = {
   page: number;
   pageCount: number;
@@ -8,6 +11,8 @@ type Props = {
   reviewed?: Set<number>;
   /** Whether the page numbers should be shown in right-to-left order. */
   isRTL?: boolean;
+  /** At the end of the rail (Ink's legend and page jump). */
+  end?: ReactNode;
 };
 
 /** Page numbers to show: first, …, current±3, …, last. */
@@ -28,14 +33,22 @@ function pagerItems(current: number, total: number): (number | "gap")[] {
  * When `processed`/`reviewed` sets are given, each page number carries a small
  * indicator bar (navy = processed, green = reviewed).
  */
-export function PageRail({ page, pageCount, onPageChange, processed, reviewed, isRTL }: Props) {
-  return (
+export function PageRail({
+  page,
+  pageCount,
+  onPageChange,
+  processed,
+  reviewed,
+  isRTL,
+  end,
+}: Props) {
+  const chips = (
     <div
-      className={`flex h-11 flex-shrink-0 items-center justify-center gap-1 overflow-x-auto border-t border-border bg-white px-3 ${!isRTL ? "flex-row-reverse" : "flex-row"}`}
+      className={`flex min-w-0 flex-1 items-center justify-center gap-1 overflow-x-auto ${!isRTL ? "flex-row-reverse" : "flex-row"}`}
     >
       {pagerItems(page, pageCount).map((item, i) =>
         item === "gap" ? (
-          <span key={`gap-${i}`} className="px-1 text-[12px] text-text-muted">
+          <span key={`gap-${i}`} className="px-1 text-[12px] text-ink-3">
             …
           </span>
         ) : (
@@ -48,6 +61,12 @@ export function PageRail({ page, pageCount, onPageChange, processed, reviewed, i
           />
         ),
       )}
+    </div>
+  );
+  return (
+    <div className="flex h-11 flex-shrink-0 items-center gap-3 border-t border-rule bg-card px-3">
+      {chips}
+      {end && <div className="flex flex-none items-center gap-3">{end}</div>}
     </div>
   );
 }
@@ -63,18 +82,19 @@ function Chip({
   onClick: () => void;
   state: "reviewed" | "processed" | "none";
 }) {
+  const { t } = useTranslation();
   const color =
-    state === "reviewed" ? "var(--success)" : state === "processed" ? "var(--navy-light)" : null;
+    state === "reviewed" ? "var(--done)" : state === "processed" ? "var(--lapis)" : null;
   return (
     <button
       type="button"
       onClick={onClick}
-      title={state === "none" ? `Page ${n}` : `Page ${n} · ${state}`}
+      title={
+        state === "none" ? t("canvas.pageAlt", { page: n }) : t(`canvas.rail_${state}`, { page: n })
+      }
       className={[
         "relative h-7 min-w-7 flex-shrink-0 rounded px-2 text-[12px] font-medium tabular-nums transition-colors",
-        active
-          ? "bg-orange text-white"
-          : "bg-bg-surface text-text-secondary hover:bg-bg-muted hover:text-text-primary",
+        active ? "bg-lapis text-on-lapis" : "bg-sheet text-ink-2 hover:bg-sunk hover:text-ink",
       ].join(" ")}
     >
       {n}

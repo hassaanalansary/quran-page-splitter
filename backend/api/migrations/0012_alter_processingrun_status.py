@@ -4,15 +4,25 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('api', '0011_processingrun_log_path'),
+        ("api", "0011_processingrun_log_path"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='processingrun',
-            name='status',
-            field=models.CharField(choices=[('running', 'Running'), ('completed', 'Completed'), ('aborted_line_detection', 'Aborted Line Detection'), ('cancelled', 'Cancelled'), ('error', 'Error'), ('interrupted', 'Interrupted')], default='completed', max_length=32),
+            model_name="processingrun",
+            name="status",
+            field=models.CharField(
+                choices=[
+                    ("running", "Running"),
+                    ("completed", "Completed"),
+                    ("aborted_line_detection", "Aborted Line Detection"),
+                    ("cancelled", "Cancelled"),
+                    ("error", "Error"),
+                    ("interrupted", "Interrupted"),
+                ],
+                default="completed",
+                max_length=32,
+            ),
         ),
     ]

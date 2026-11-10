@@ -288,6 +288,9 @@ class ProcessJobKindChoices(models.TextChoices):
     #: One page processed for calibration review. Its own kind so the word-run
     #: screen, which polls the latest ``words`` job, never mistakes it for a run.
     CALIBRATION = "calibration", "Calibration page"
+    #: Many pages processed for calibration review, one after another. It counts
+    #: pages, where a one-page job counts that page's lines — hence a kind of its own.
+    CALIBRATION_BATCH = "calibration_batch", "Calibration pages"
 
 
 class ProcessJob(BaseModel):
@@ -311,7 +314,7 @@ class ProcessJob(BaseModel):
     """
 
     kind = models.CharField(
-        max_length=16,
+        max_length=32,
         choices=ProcessJobKindChoices.choices,
         default=ProcessJobKindChoices.DETECTION,
         help_text="Which engine this run drives. Detection walks pages; words walks lines.",
@@ -372,15 +375,13 @@ class ProcessJob(BaseModel):
         null=True, blank=True, help_text="Word runs only: lines written so far. Detection counts pages instead."
     )
     log_url = models.CharField(max_length=255, blank=True, default="")
-    #: Word runs only. Detection hangs its log off the ``ProcessingRun`` it
-    #: creates; a word run creates no such row — it writes ``LineWord`` rows
-    #: directly — so the job itself is what points at the file. Same directory,
-    #: same format, same viewer; see ``services.run_logs``.
-    log_path = models.CharField(
-        max_length=255,
+    report = models.JSONField(
+        null=True,
         blank=True,
-        default="",
-        help_text="Path (relative to settings.LOG_DIR) of this run's detailed log file.",
+        help_text=(
+            "Calibration batches only: what happened to each page of the range — processed, "
+            "skipped and why, or failed. Written as the run goes, so a poll can show it."
+        ),
     )
 
     class Meta:
@@ -522,8 +523,9 @@ class LineWord(BaseModel):
     label. That argument only holds while the engine's x is right, and the engine is
     predicted to be wrong — a badly read line comes back with its words out of
     order along the page, and sorting by geometry then reports the mushaf as reading
-    in an order it does not. So ``position`` carries the sequence, the engine's x is
-    a suggestion about placement, and a human's correction is the final word on both.
+    in an order it does not. So ``position`` carries the sequence, and the edges are
+    the extent of the ink a reviewer confirmed for the word — rows are written only
+    when a page is confirmed in calibration.
     """
 
     line = models.ForeignKey(Line, on_delete=models.CASCADE, related_name="words")
@@ -574,46 +576,6 @@ class LineWord(BaseModel):
 
     def __str__(self) -> str:
         return f"word {self.word_id or '?'} ends at x={self.end_x}"
-
-
-class LineWordStatusChoices(models.TextChoices):
-    EXACT = "exact", "Exact"
-    SCORED = "scored", "Scored"
-    PARTIAL = "partial", "Partial"
-    UNRESOLVED = "unresolved", "Unresolved"
-
-
-class LineWordStatus(BaseModel):
-    """How much the boundary engine trusted its own reading of one line.
-
-    Its own table rather than columns on :class:`Line`, because ``Line`` belongs to
-    the detection pipeline and this is a different engine's opinion of it.
-
-    The point is triage. A sura-7 run comes back with 136 of 388 lines ``scored``, so
-    a reviewer who can see this checks 136 lines instead of eyeballing 3,320 words.
-    """
-
-    line = models.OneToOneField(Line, on_delete=models.CASCADE, related_name="word_status")
-    status = models.CharField(max_length=16, choices=LineWordStatusChoices.choices)
-    reason = models.TextField(
-        blank=True, default="", help_text="Why it is not exact, e.g. '2 word(s) off-count; 3 equal-cost readings'."
-    )
-    deviations = models.PositiveSmallIntegerField(
-        default=0, help_text="Words that closed on more or fewer ink blobs than their spelling demands."
-    )
-    ties = models.PositiveSmallIntegerField(default=0, help_text="Equal-cost readings the parser could not separate.")
-    edited = models.BooleanField(
-        default=False,
-        help_text="A human has corrected this line since; the engine's verdict is no longer the truth about it.",
-    )
-
-    class Meta:
-        db_table = "line_word_status"
-        verbose_name = "Line Word Status"
-        verbose_name_plural = "Line Word Statuses"
-
-    def __str__(self) -> str:
-        return f"line {self.line_id}: {self.status}"
 
 
 class CalibrationSnapshot(BaseModel):
@@ -729,11 +691,15 @@ class CalibrationRevision(BaseModel):
 
 
 class CalibrationSettings(BaseModel):
-    """Local opt-in, deliberately absent from copied/imported calibration data."""
+    """How the mushaf's fingerprint library compares shapes: local, never carried by a
+    copy or an import."""
 
     mushaf = models.OneToOneField(Mushaf, on_delete=models.CASCADE, related_name="calibration_settings")
     revision = models.PositiveIntegerField(default=0)
-    experimental = models.BooleanField(default=False)
+    #: How the fingerprint library compares two blobs (``core.word_boundary.library.COMPARISONS``).
+    comparison = models.CharField(max_length=32, default="descriptor32")
+    #: The library's LIMIT, in the comparison's own units; null means its default.
+    library_limit = models.FloatField(null=True, blank=True)
 
     class Meta:
         db_table = "calibration_settings"
@@ -764,6 +730,34 @@ class CalibrationProfile(BaseModel):
 
     def __str__(self) -> str:
         return f"{self.mode} profile {self.signature[:8]} of {self.mushaf_id}"
+
+
+class LibraryCheck(BaseModel):
+    """A person looked at one example of the fingerprint library and found it right.
+
+    Kept on the *example blob* — a confirmed page's snapshot and blob id — with the
+    role and type it was confirmed as when it was looked at, never on a fingerprint:
+    the library is regrouped from the confirmed pages whenever they change, and only
+    the blob stays put. It counts while that blob is still confirmed as that role and
+    type; once its label changes it is ignored, not deleted.
+    """
+
+    mushaf = models.ForeignKey(Mushaf, on_delete=models.CASCADE, related_name="library_checks")
+    snapshot = models.ForeignKey(CalibrationSnapshot, on_delete=models.CASCADE, related_name="library_checks")
+    blob_id = models.PositiveIntegerField()
+    #: body | mark.
+    role = models.CharField(max_length=8)
+    #: A mark's type; "" for a body and an untyped mark.
+    subtype = models.CharField(max_length=32, blank=True, default="")
+
+    class Meta:
+        db_table = "library_check"
+        verbose_name = "Library Check"
+        verbose_name_plural = "Library Checks"
+        constraints = (models.UniqueConstraint(fields=["mushaf", "snapshot", "blob_id"], name="unique_library_check"),)
+
+    def __str__(self) -> str:
+        return f"looks right: {self.role} {self.subtype} blob {self.blob_id} of {self.snapshot_id}"
 
 
 class ActivityEvent(BaseModel):

@@ -299,9 +299,7 @@ class MultipleLineTests(SimpleTestCase):
         one's cuts go backwards, so that is a rank tier rather than a preference.
         """
         forward = ParseRecord(cost=250, ends=(1163, 1011), groups=(), current_group=(), body_mask=0)
-        backward = ParseRecord(
-            cost=250, ends=(1163, 1288), groups=(), current_group=(), body_mask=0, inversions=1
-        )
+        backward = ParseRecord(cost=250, ends=(1163, 1288), groups=(), current_group=(), body_mask=0, inversions=1)
         self.assertLess(forward.rank, backward.rank)
         # It settles a tie and nothing more: a cheaper reading still wins outright,
         # because an inverted cut is impossible while a dearer one is merely dearer.

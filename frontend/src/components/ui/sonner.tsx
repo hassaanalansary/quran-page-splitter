@@ -1,3 +1,5 @@
+import { CircleAlert } from "lucide-react";
+import type { CSSProperties } from "react";
 import { Toaster as Sonner } from "sonner";
 
 type ToasterProps = React.ComponentProps<typeof Sonner>;
@@ -22,20 +24,64 @@ function dismissOnClick(e: React.MouseEvent<HTMLDivElement>) {
 
 const CLASS_NAMES: NonNullable<NonNullable<ToasterProps["toastOptions"]>["classNames"]> = {
   toast:
-    "group toast cursor-pointer group-[.toaster]:bg-background group-[.toaster]:text-foreground group-[.toaster]:border-border group-[.toaster]:shadow-lg",
-  description: "group-[.toast]:text-muted-foreground",
-  actionButton: "group-[.toast]:bg-primary group-[.toast]:text-primary-foreground",
-  cancelButton: "group-[.toast]:bg-muted group-[.toast]:text-muted-foreground",
+    "group toast cursor-pointer !gap-3 !rounded-[10px] !px-3.5 !py-3 !text-[13.5px] !shadow-[var(--shadow-card)]",
+  error: "!font-medium",
+  description: "!text-current opacity-80",
+  actionButton: "!bg-transparent !font-bold !text-current underline-offset-2 hover:underline",
+  cancelButton: "!bg-transparent !text-current opacity-80",
   closeButton: "cursor-pointer",
 };
 
-const Toaster = ({ toastOptions, ...props }: ToasterProps) => {
+/** The toasts as the board draws them: the inverse colours with a dot in the
+ * colour of what happened, and a failure on the stop wash. Sonner reads its
+ * colours from these variables, set on the toaster itself so they win over its
+ * own. */
+const COLOURS = {
+  "--border-radius": "10px",
+  "--normal-bg": "var(--toast)",
+  "--normal-text": "var(--on-toast)",
+  "--normal-border": "transparent",
+  "--success-bg": "var(--toast)",
+  "--success-text": "var(--on-toast)",
+  "--success-border": "transparent",
+  "--info-bg": "var(--toast)",
+  "--info-text": "var(--on-toast)",
+  "--info-border": "transparent",
+  "--warning-bg": "var(--toast)",
+  "--warning-text": "var(--on-toast)",
+  "--warning-border": "transparent",
+  "--error-bg": "var(--stop-wash)",
+  "--error-text": "var(--stop-text)",
+  "--error-border": "transparent",
+} as CSSProperties;
+
+function Dot({ colour }: { colour: string }) {
+  return (
+    <span
+      aria-hidden="true"
+      className="block h-[9px] w-[9px] rounded-full"
+      style={{ background: colour }}
+    />
+  );
+}
+
+const ICONS: ToasterProps["icons"] = {
+  success: <Dot colour="var(--on-toast-done)" />,
+  info: <Dot colour="var(--on-toast-info)" />,
+  warning: <Dot colour="var(--on-toast-warn)" />,
+  error: <CircleAlert size={17} aria-hidden="true" />,
+};
+
+const Toaster = ({ toastOptions, style, ...props }: ToasterProps) => {
   return (
     <div style={{ display: "contents" }} onClick={dismissOnClick}>
       <Sonner
         className="toaster group"
         closeButton
+        richColors
+        icons={ICONS}
         {...props}
+        style={{ ...COLOURS, ...style }}
         toastOptions={{
           ...toastOptions,
           classNames: { ...CLASS_NAMES, ...toastOptions?.classNames },

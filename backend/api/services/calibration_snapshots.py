@@ -39,7 +39,8 @@ from core.word_boundary.ink import Blob, LineInk, analyse_line
 from core.word_boundary.separators import prepare_template, split_separators, split_symbols
 
 #: Bump when measurement changes in a way that should make new snapshots.
-EXTRACTION_VERSION = "full-line-v1"
+#: v2 (2026-10-27): an ornament keeps only the ink within its ring's width.
+EXTRACTION_VERSION = "full-line-v2"
 
 #: Templates whose pictures change what a line measures as. The aya ornament sets
 #: each supplied span's width; the symbols are matched and removed. A sura-header
@@ -187,7 +188,7 @@ def extract_line(line: Line, rendered_page: Image.Image, templates: Templates) -
         spans,
         ayat,
     )
-    ink = analyse_line(source)
+    ink = analyse_line(source)  # This is the core engine
     # Every blob, taken before the partition: ornaments and symbols keep their ids
     # and their geometry, so the reviewer can see them on the raster.
     all_blobs = list(ink.components)

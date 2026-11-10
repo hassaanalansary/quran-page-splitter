@@ -18,12 +18,11 @@ import { Route as AuthSignupRouteImport } from './routes/auth.signup'
 import { Route as AuthLoginRouteImport } from './routes/auth.login'
 import { Route as AuthForgotRouteImport } from './routes/auth.forgot'
 import { Route as MushafsMushafIdIndexRouteImport } from './routes/mushafs.$mushafId.index'
-import { Route as MushafsMushafIdWordRunRouteImport } from './routes/mushafs.$mushafId.word-run'
-import { Route as MushafsMushafIdWordCutsRouteImport } from './routes/mushafs.$mushafId.word-cuts'
 import { Route as MushafsMushafIdTemplatesRouteImport } from './routes/mushafs.$mushafId.templates'
 import { Route as MushafsMushafIdSetupRouteImport } from './routes/mushafs.$mushafId.setup'
 import { Route as MushafsMushafIdReviewRouteImport } from './routes/mushafs.$mushafId.review'
 import { Route as MushafsMushafIdProcessRouteImport } from './routes/mushafs.$mushafId.process'
+import { Route as MushafsMushafIdInkRouteImport } from './routes/mushafs.$mushafId.ink'
 import { Route as MushafsMushafIdFinalizeRouteImport } from './routes/mushafs.$mushafId.finalize'
 import { Route as AuthVerifyEmailKeyRouteImport } from './routes/auth.verify-email.$key'
 import { Route as AuthResetKeyRouteImport } from './routes/auth.reset.$key'
@@ -73,16 +72,6 @@ const MushafsMushafIdIndexRoute = MushafsMushafIdIndexRouteImport.update({
   path: '/',
   getParentRoute: () => MushafsMushafIdRoute,
 } as any)
-const MushafsMushafIdWordRunRoute = MushafsMushafIdWordRunRouteImport.update({
-  id: '/word-run',
-  path: '/word-run',
-  getParentRoute: () => MushafsMushafIdRoute,
-} as any)
-const MushafsMushafIdWordCutsRoute = MushafsMushafIdWordCutsRouteImport.update({
-  id: '/word-cuts',
-  path: '/word-cuts',
-  getParentRoute: () => MushafsMushafIdRoute,
-} as any)
 const MushafsMushafIdTemplatesRoute =
   MushafsMushafIdTemplatesRouteImport.update({
     id: '/templates',
@@ -102,6 +91,11 @@ const MushafsMushafIdReviewRoute = MushafsMushafIdReviewRouteImport.update({
 const MushafsMushafIdProcessRoute = MushafsMushafIdProcessRouteImport.update({
   id: '/process',
   path: '/process',
+  getParentRoute: () => MushafsMushafIdRoute,
+} as any)
+const MushafsMushafIdInkRoute = MushafsMushafIdInkRouteImport.update({
+  id: '/ink',
+  path: '/ink',
   getParentRoute: () => MushafsMushafIdRoute,
 } as any)
 const MushafsMushafIdFinalizeRoute = MushafsMushafIdFinalizeRouteImport.update({
@@ -132,12 +126,11 @@ export interface FileRoutesByFullPath {
   '/auth/reset/$key': typeof AuthResetKeyRoute
   '/auth/verify-email/$key': typeof AuthVerifyEmailKeyRoute
   '/mushafs/$mushafId/finalize': typeof MushafsMushafIdFinalizeRoute
+  '/mushafs/$mushafId/ink': typeof MushafsMushafIdInkRoute
   '/mushafs/$mushafId/process': typeof MushafsMushafIdProcessRoute
   '/mushafs/$mushafId/review': typeof MushafsMushafIdReviewRoute
   '/mushafs/$mushafId/setup': typeof MushafsMushafIdSetupRoute
   '/mushafs/$mushafId/templates': typeof MushafsMushafIdTemplatesRoute
-  '/mushafs/$mushafId/word-cuts': typeof MushafsMushafIdWordCutsRoute
-  '/mushafs/$mushafId/word-run': typeof MushafsMushafIdWordRunRoute
   '/mushafs/$mushafId/': typeof MushafsMushafIdIndexRoute
 }
 export interface FileRoutesByTo {
@@ -150,12 +143,11 @@ export interface FileRoutesByTo {
   '/auth/reset/$key': typeof AuthResetKeyRoute
   '/auth/verify-email/$key': typeof AuthVerifyEmailKeyRoute
   '/mushafs/$mushafId/finalize': typeof MushafsMushafIdFinalizeRoute
+  '/mushafs/$mushafId/ink': typeof MushafsMushafIdInkRoute
   '/mushafs/$mushafId/process': typeof MushafsMushafIdProcessRoute
   '/mushafs/$mushafId/review': typeof MushafsMushafIdReviewRoute
   '/mushafs/$mushafId/setup': typeof MushafsMushafIdSetupRoute
   '/mushafs/$mushafId/templates': typeof MushafsMushafIdTemplatesRoute
-  '/mushafs/$mushafId/word-cuts': typeof MushafsMushafIdWordCutsRoute
-  '/mushafs/$mushafId/word-run': typeof MushafsMushafIdWordRunRoute
   '/mushafs/$mushafId': typeof MushafsMushafIdIndexRoute
 }
 export interface FileRoutesById {
@@ -171,12 +163,11 @@ export interface FileRoutesById {
   '/auth/reset/$key': typeof AuthResetKeyRoute
   '/auth/verify-email/$key': typeof AuthVerifyEmailKeyRoute
   '/mushafs/$mushafId/finalize': typeof MushafsMushafIdFinalizeRoute
+  '/mushafs/$mushafId/ink': typeof MushafsMushafIdInkRoute
   '/mushafs/$mushafId/process': typeof MushafsMushafIdProcessRoute
   '/mushafs/$mushafId/review': typeof MushafsMushafIdReviewRoute
   '/mushafs/$mushafId/setup': typeof MushafsMushafIdSetupRoute
   '/mushafs/$mushafId/templates': typeof MushafsMushafIdTemplatesRoute
-  '/mushafs/$mushafId/word-cuts': typeof MushafsMushafIdWordCutsRoute
-  '/mushafs/$mushafId/word-run': typeof MushafsMushafIdWordRunRoute
   '/mushafs/$mushafId/': typeof MushafsMushafIdIndexRoute
 }
 export interface FileRouteTypes {
@@ -193,12 +184,11 @@ export interface FileRouteTypes {
     | '/auth/reset/$key'
     | '/auth/verify-email/$key'
     | '/mushafs/$mushafId/finalize'
+    | '/mushafs/$mushafId/ink'
     | '/mushafs/$mushafId/process'
     | '/mushafs/$mushafId/review'
     | '/mushafs/$mushafId/setup'
     | '/mushafs/$mushafId/templates'
-    | '/mushafs/$mushafId/word-cuts'
-    | '/mushafs/$mushafId/word-run'
     | '/mushafs/$mushafId/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -211,12 +201,11 @@ export interface FileRouteTypes {
     | '/auth/reset/$key'
     | '/auth/verify-email/$key'
     | '/mushafs/$mushafId/finalize'
+    | '/mushafs/$mushafId/ink'
     | '/mushafs/$mushafId/process'
     | '/mushafs/$mushafId/review'
     | '/mushafs/$mushafId/setup'
     | '/mushafs/$mushafId/templates'
-    | '/mushafs/$mushafId/word-cuts'
-    | '/mushafs/$mushafId/word-run'
     | '/mushafs/$mushafId'
   id:
     | '__root__'
@@ -231,12 +220,11 @@ export interface FileRouteTypes {
     | '/auth/reset/$key'
     | '/auth/verify-email/$key'
     | '/mushafs/$mushafId/finalize'
+    | '/mushafs/$mushafId/ink'
     | '/mushafs/$mushafId/process'
     | '/mushafs/$mushafId/review'
     | '/mushafs/$mushafId/setup'
     | '/mushafs/$mushafId/templates'
-    | '/mushafs/$mushafId/word-cuts'
-    | '/mushafs/$mushafId/word-run'
     | '/mushafs/$mushafId/'
   fileRoutesById: FileRoutesById
 }
@@ -316,20 +304,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MushafsMushafIdIndexRouteImport
       parentRoute: typeof MushafsMushafIdRoute
     }
-    '/mushafs/$mushafId/word-run': {
-      id: '/mushafs/$mushafId/word-run'
-      path: '/word-run'
-      fullPath: '/mushafs/$mushafId/word-run'
-      preLoaderRoute: typeof MushafsMushafIdWordRunRouteImport
-      parentRoute: typeof MushafsMushafIdRoute
-    }
-    '/mushafs/$mushafId/word-cuts': {
-      id: '/mushafs/$mushafId/word-cuts'
-      path: '/word-cuts'
-      fullPath: '/mushafs/$mushafId/word-cuts'
-      preLoaderRoute: typeof MushafsMushafIdWordCutsRouteImport
-      parentRoute: typeof MushafsMushafIdRoute
-    }
     '/mushafs/$mushafId/templates': {
       id: '/mushafs/$mushafId/templates'
       path: '/templates'
@@ -356,6 +330,13 @@ declare module '@tanstack/react-router' {
       path: '/process'
       fullPath: '/mushafs/$mushafId/process'
       preLoaderRoute: typeof MushafsMushafIdProcessRouteImport
+      parentRoute: typeof MushafsMushafIdRoute
+    }
+    '/mushafs/$mushafId/ink': {
+      id: '/mushafs/$mushafId/ink'
+      path: '/ink'
+      fullPath: '/mushafs/$mushafId/ink'
+      preLoaderRoute: typeof MushafsMushafIdInkRouteImport
       parentRoute: typeof MushafsMushafIdRoute
     }
     '/mushafs/$mushafId/finalize': {
@@ -397,23 +378,21 @@ const GalleryRouteWithChildren =
 
 interface MushafsMushafIdRouteChildren {
   MushafsMushafIdFinalizeRoute: typeof MushafsMushafIdFinalizeRoute
+  MushafsMushafIdInkRoute: typeof MushafsMushafIdInkRoute
   MushafsMushafIdProcessRoute: typeof MushafsMushafIdProcessRoute
   MushafsMushafIdReviewRoute: typeof MushafsMushafIdReviewRoute
   MushafsMushafIdSetupRoute: typeof MushafsMushafIdSetupRoute
   MushafsMushafIdTemplatesRoute: typeof MushafsMushafIdTemplatesRoute
-  MushafsMushafIdWordCutsRoute: typeof MushafsMushafIdWordCutsRoute
-  MushafsMushafIdWordRunRoute: typeof MushafsMushafIdWordRunRoute
   MushafsMushafIdIndexRoute: typeof MushafsMushafIdIndexRoute
 }
 
 const MushafsMushafIdRouteChildren: MushafsMushafIdRouteChildren = {
   MushafsMushafIdFinalizeRoute: MushafsMushafIdFinalizeRoute,
+  MushafsMushafIdInkRoute: MushafsMushafIdInkRoute,
   MushafsMushafIdProcessRoute: MushafsMushafIdProcessRoute,
   MushafsMushafIdReviewRoute: MushafsMushafIdReviewRoute,
   MushafsMushafIdSetupRoute: MushafsMushafIdSetupRoute,
   MushafsMushafIdTemplatesRoute: MushafsMushafIdTemplatesRoute,
-  MushafsMushafIdWordCutsRoute: MushafsMushafIdWordCutsRoute,
-  MushafsMushafIdWordRunRoute: MushafsMushafIdWordRunRoute,
   MushafsMushafIdIndexRoute: MushafsMushafIdIndexRoute,
 }
 

@@ -77,6 +77,9 @@ class JobOut(Schema):
     #: at zero. It is what the word run's progress bar and its cancel dialog read,
     #: and on a whole-mushaf run it is the only sign of life for twenty minutes.
     lines_done: int = 0
+    #: Calibration batches only: each page's outcome so far — processed, skipped and
+    #: why, or failed. See ``api.services.calibration_batch``.
+    report: dict | None = None
 
 
 class JobStatusOut(Schema):

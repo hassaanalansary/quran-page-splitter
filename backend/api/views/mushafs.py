@@ -8,12 +8,14 @@ import json
 import uuid
 from datetime import datetime
 
-from django.http import HttpRequest, HttpResponse
+from django.http import HttpRequest, HttpResponse, StreamingHttpResponse
+from django.utils.http import content_disposition_header
 from ninja import File, Form, Router, Schema
 from ninja.files import UploadedFile
 
 from api.auth import current_user
 from api.services import activity as activity_service
+from api.services import data_export as data_export_service
 from api.services import export as export_service
 from api.services import gallery as gallery_service
 from api.services import mushaf as mushaf_service
@@ -163,6 +165,24 @@ def download_coordinates(request: HttpRequest, mushaf_id: uuid.UUID) -> HttpResp
         content_type="application/json; charset=utf-8",
     )
     response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response
+
+
+@router.get("/{mushaf_id}/export.zip")
+def download_export(
+    request: HttpRequest, mushaf_id: uuid.UUID, page: int | None = None, images: bool = True, maps: bool = True
+) -> StreamingHttpResponse:
+    """The full data export (schema mushaf-export/v2): every line, aya, word and blob,
+    in page and line-PNG pixels, with each line's word and blob maps — the whole mushaf,
+    or one page. Streamed as it is made. See ``api.services.data_export``.
+    """
+    filename, chunks = data_export_service.archive(
+        mushaf_id, user=current_user(request), page_number=page, images=images, maps=maps
+    )
+    response = StreamingHttpResponse(chunks, content_type="application/zip")
+    # Through Django's helper: a mushaf's name is often Arabic, which a plain
+    # ``filename="…"`` cannot carry in a header.
+    response["Content-Disposition"] = content_disposition_header(as_attachment=True, filename=filename)
     return response
 
 

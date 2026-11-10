@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { Eraser, Redo2, Undo2 } from "lucide-react";
+import { Redo2, Undo2 } from "lucide-react";
 
-import { ChevronNav } from "@/components/canvas/ChevronNav";
-import { PageJump } from "@/components/canvas/PageJump";
+import { LoadingState } from "@/components/app/SatrLoader";
+import { PagePill } from "@/components/canvas/PagePill";
 import { PageRail } from "@/components/canvas/PageRail";
-import { CursorIcon, HandIcon, ToolButton } from "@/components/canvas/ToolToggle";
+import { ToolButton } from "@/components/canvas/ToolToggle";
 import { ZoomControl, type Zoom } from "@/components/canvas/ZoomControl";
 import type { EraseStroke, LineType, Rect } from "@/lib/api/types";
 
@@ -55,7 +55,17 @@ const GAP = 48; // screen px between stacked line crops
 /** `Zoom` value for "none of the presets" — set once the wheel takes over. */
 const CUSTOM_ZOOM: Zoom = 0;
 const EDGE_TOL = 8; // screen px for grabbing a line's top/bottom edge
-const ORANGE = "rgb(255,141,106)"; // canvas can't resolve the --orange CSS var
+/** The selection's lapis, as the backdrop needs it: the dark theme's lapis on
+ * the black backdrop, the light theme's on white and the grid. A canvas can't
+ * read CSS variables, and the backdrops are fixed whatever the theme. */
+function accent(bg: FinalizeBg, alpha = 1): string {
+  return bg === "dark" ? `rgba(110,155,219,${alpha})` : `rgba(30,78,140,${alpha})`;
+}
+/** Gold marks a line edited since it was saved, as everywhere. */
+const EDITED = "#c9962e";
+/** The eraser's ring, in --stop for the backdrop. */
+const ERASER = { dark: "#e8735c", light: "#a8321f" } as const;
+const MONO = '"IBM Plex Mono", ui-monospace, monospace';
 
 type LineRect = {
   line_number: number;
@@ -257,13 +267,12 @@ export function FinalizeCanvas({
     const srcLayer = bg === "dark" ? whiteInkRef.current : transparentRef.current;
     rectsRef.current = [];
     if (!ready || !srcLayer || lines.length === 0) {
-      ctx.fillStyle = bg === "dark" ? "#9a9a9a" : "#6b6860";
-      ctx.font = "13px ui-monospace, monospace";
-      ctx.fillText(
-        !imageUrl || lines.length === 0 ? t("canvas.fin_noLines") : t("canvas.fin_rendering"),
-        16,
-        28,
-      );
+      // Still rendering: the writing loader over the canvas says so.
+      if (!imageUrl || lines.length === 0) {
+        ctx.fillStyle = bg === "dark" ? "#9a9a9a" : "#6b6860";
+        ctx.font = "13px ui-monospace, monospace";
+        ctx.fillText(t("canvas.fin_noLines"), 16, 28);
+      }
       return;
     }
 
@@ -305,7 +314,7 @@ export function FinalizeCanvas({
       // Hover tint goes UNDER the crop: the line is transparent where the paper
       // was, so the whole band lights up without washing out the ink.
       if (isHover) {
-        ctx.fillStyle = "rgba(255,141,106,0.14)";
+        ctx.fillStyle = accent(bg, 0.08);
         ctx.fillRect(dx, dy, dispW, dispH);
       }
 
@@ -329,29 +338,51 @@ export function FinalizeCanvas({
 
       const isSel = line.line_number === selected;
       // number label in the left gutter
-      ctx.font = `${isSel ? "bold " : ""}11px ui-sans-serif, system-ui`;
-      ctx.fillStyle = isSel ? ORANGE : bg === "dark" ? "#8a8a8a" : "#9a9a9a";
+      ctx.font = `600 11.5px ${MONO}`;
+      ctx.fillStyle = isSel ? accent(bg) : bg === "dark" ? "#8a8a8a" : "#9a9a9a";
       ctx.textBaseline = "middle";
       ctx.fillText(String(line.line_number), Math.max(6, dx - 26), dy + dispH / 2);
       if (line.edited) {
-        ctx.fillStyle = ORANGE;
+        ctx.fillStyle = EDITED;
         ctx.beginPath();
         ctx.arc(Math.max(6, dx - 26) + 18, dy + dispH / 2, 2.5, 0, Math.PI * 2);
         ctx.fill();
       }
 
       if (isSel || isHover) {
-        ctx.strokeStyle = isSel ? "rgba(255,141,106,0.9)" : "rgba(255,141,106,0.5)";
-        ctx.lineWidth = isSel ? 1.5 : 1;
-        ctx.strokeRect(dx - 0.5, dy - 0.5, dispW + 1, dispH + 1);
+        ctx.strokeStyle = isSel ? accent(bg) : accent(bg, 0.5);
+        ctx.lineWidth = isSel ? 2 : 1;
+        ctx.strokeRect(dx - 1, dy - 1, dispW + 2, dispH + 2);
       }
       const hov = hoverEdge?.lineNumber === line.line_number ? hoverEdge.edge : null;
       if (isSel || hov) {
         for (const edge of ["top", "bottom"] as const) {
           const ey = edge === "top" ? dy : dy + dispH;
-          ctx.fillStyle = hov === edge ? "rgba(255,141,106,0.95)" : "rgba(255,141,106,0.45)";
+          ctx.fillStyle = accent(bg, hov === edge ? 0.95 : 0.35);
           ctx.fillRect(dx, ey - 1.5, dispW, 3);
+          // The grip in the middle of the edge says it can be dragged.
+          if (isSel) {
+            ctx.fillStyle = accent(bg);
+            roundRect(ctx, dx + dispW / 2 - 23, ey - 4, 46, 8, 4);
+            ctx.fill();
+          }
         }
+      }
+      // The selected line's height and strokes, tagged above its end.
+      if (isSel) {
+        const tag = t("finalize.lineSummary", {
+          h: Math.round(line.bbox.h),
+          count: line.strokes.length,
+        });
+        ctx.font = `600 11px ${MONO}`;
+        const tw = ctx.measureText(tag).width + 16;
+        const tx = dx + dispW - tw + 2;
+        const ty = dy - 26;
+        ctx.fillStyle = accent(bg);
+        roundRect(ctx, tx, ty, tw, 19, 4);
+        ctx.fill();
+        ctx.fillStyle = bg === "dark" ? "#0d1626" : "#ffffff";
+        ctx.fillText(tag, tx + 8, ty + 10);
       }
       cursorY = (topAnchor !== null ? topAnchor : dy + dispH) + GAP;
     }
@@ -367,8 +398,8 @@ export function FinalizeCanvas({
       ctx.stroke();
       ctx.beginPath();
       ctx.arc(x, y, Math.max(1, r - 1.5), 0, Math.PI * 2);
-      ctx.strokeStyle = "rgba(0,0,0,0.6)";
-      ctx.lineWidth = 1;
+      ctx.strokeStyle = bg === "dark" ? ERASER.dark : ERASER.light;
+      ctx.lineWidth = 2;
       ctx.stroke();
     }
 
@@ -611,84 +642,101 @@ export function FinalizeCanvas({
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      {/* Same shape as every other canvas toolbar: icon tools on the start side,
-          presets on the end, page navigation floating over the page itself. */}
+      {/* Toolbar, on the well: the tools and the backdrop, the page pill, then
+          undo, redo and zoom. */}
       <div
         data-tour="canvas-toolbar"
-        className="flex h-9 flex-shrink-0 items-center gap-2 border-b border-border bg-white px-3"
+        className="flex flex-shrink-0 flex-wrap items-center justify-between gap-2.5 bg-well px-4 py-3"
       >
-        <div className="flex items-center gap-1">
-          <ToolButton
-            active={effectiveTool === "select"}
-            onClick={() => setTool("select")}
-            title={t("canvas.tool_selectTip")}
-            aria-label={t("canvas.tool_select")}
-          >
-            <CursorIcon />
-          </ToolButton>
-          <ToolButton
-            active={effectiveTool === "erase"}
-            onClick={() => setTool("erase")}
-            title={t("canvas.tool_eraseTip")}
-            aria-label={t("canvas.tool_erase")}
-          >
-            <Eraser size={16} />
-          </ToolButton>
-          <ToolButton
-            active={effectiveTool === "hand"}
-            onClick={() => setTool("hand")}
-            title={t("canvas.tool_handTip")}
-            aria-label={t("canvas.tool_hand")}
-          >
-            <HandIcon />
-          </ToolButton>
-        </div>
-
-        <div className="mx-1 h-5 w-px bg-border" />
-
-        <Segmented<FinalizeBg>
-          value={bg}
-          onChange={setBg}
-          title={t("canvas.bgTitle")}
-          options={[
-            { v: "white", label: t("canvas.bg_white") },
-            { v: "dark", label: t("canvas.bg_dark") },
-            { v: "checker", label: t("canvas.bg_grid") },
-          ]}
-        />
-
-        <div className="ms-auto flex items-center gap-2">
-          <div className="flex items-center gap-1">
-            <ToolButton onClick={onUndo} disabled={!canUndo} title={t("canvas.undoTitle")}>
-              <Undo2 size={16} />
-            </ToolButton>
-            <ToolButton onClick={onRedo} disabled={!canRedo} title={t("canvas.redoTitle")}>
-              <Redo2 size={16} />
-            </ToolButton>
+        <div className="flex flex-wrap items-center gap-2.5">
+          <div role="group" aria-label={t("canvas.toolGroup")} className={GROUP}>
+            {(
+              [
+                ["select", t("canvas.tool_select"), "V", t("canvas.tool_selectTip")],
+                ["erase", t("canvas.tool_erase"), "E", t("canvas.tool_eraseTip")],
+                ["hand", t("canvas.tool_hand"), "H", t("canvas.tool_handTip")],
+              ] as const
+            ).map(([value, name, key, tip]) => (
+              <Toggle
+                key={value}
+                pressed={effectiveTool === value}
+                tone={value === "erase" ? "stop" : "ink"}
+                onClick={() => setTool(value)}
+                title={tip}
+              >
+                {name} <kbd className="font-mono text-[10.5px] opacity-70">{key}</kbd>
+              </Toggle>
+            ))}
           </div>
-          <ZoomControl value={zoomPreset} onChange={applyZoomPreset} />
+          <div
+            role="group"
+            aria-label={t("canvas.bgTitle")}
+            title={t("canvas.bgTitle")}
+            className={GROUP}
+          >
+            {(
+              [
+                ["white", t("canvas.bg_white")],
+                ["dark", t("canvas.bg_dark")],
+                ["checker", t("canvas.bg_grid")],
+              ] as const
+            ).map(([value, name]) => (
+              <Toggle key={value} pressed={bg === value} onClick={() => setBg(value)}>
+                {name}
+              </Toggle>
+            ))}
+          </div>
         </div>
+        <PagePill page={page} pageCount={pageCount} onPageChange={onPageChange} label={label} />
+        <ZoomControl
+          value={zoomPreset}
+          onChange={applyZoomPreset}
+          before={
+            <>
+              <ToolButton
+                onClick={onUndo}
+                disabled={!canUndo}
+                title={t("canvas.undoTitle")}
+                aria-label={t("canvas.undoTitle")}
+              >
+                <Undo2 size={16} aria-hidden="true" />
+              </ToolButton>
+              <ToolButton
+                onClick={onRedo}
+                disabled={!canRedo}
+                title={t("canvas.redoTitle")}
+                aria-label={t("canvas.redoTitle")}
+              >
+                <Redo2 size={16} aria-hidden="true" />
+              </ToolButton>
+            </>
+          }
+        />
       </div>
 
-      <div className="raqam-canvas-grid relative flex-1 overflow-hidden">
-        <ChevronNav page={page} pageCount={pageCount} onPageChange={onPageChange} />
-        <canvas
-          ref={canvasRef}
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={onPointerUp}
-          onPointerCancel={onPointerUp}
-          onPointerLeave={() => {
-            mouseRef.current = null;
-            setHoverEdge(null);
-            setHoverLine(null);
-            render();
-          }}
-          className="h-full w-full"
-          style={{ display: "block", cursor, touchAction: "none" }}
-        />
-        <div className="absolute bottom-3 left-1/2 z-10 -translate-x-1/2 rounded-pill border border-border bg-white/90 px-3 py-1.5 shadow-[var(--shadow-sm)] backdrop-blur">
-          <PageJump page={page} pageCount={pageCount} onPageChange={onPageChange} label={label} />
+      {/* The strips, on a card set into the well; the canvas paints the backdrop. */}
+      <div className="flex flex-1 overflow-hidden bg-well px-4 pb-4">
+        <div className="relative flex-1 overflow-hidden rounded-card border border-rule">
+          <canvas
+            ref={canvasRef}
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp}
+            onPointerCancel={onPointerUp}
+            onPointerLeave={() => {
+              mouseRef.current = null;
+              setHoverEdge(null);
+              setHoverLine(null);
+              render();
+            }}
+            className="h-full w-full"
+            style={{ display: "block", cursor, touchAction: "none" }}
+          />
+          {imageUrl && lines.length > 0 && !ready && (
+            <LoadingState className="pointer-events-none absolute inset-0 justify-center text-[12.5px] text-ink-3">
+              {t("canvas.fin_rendering")}
+            </LoadingState>
+          )}
         </div>
       </div>
 
@@ -762,7 +810,7 @@ function drawLens(
   ctx.arc(lx, ly, rDev, 0, Math.PI * 2);
   ctx.save();
   ctx.clip();
-  ctx.fillStyle = bg === "dark" ? "#0b0b0b" : bg === "white" ? "#ffffff" : "#f4f4f4";
+  ctx.fillStyle = bg === "dark" ? "#0b0b0b" : "#ffffff";
   ctx.fillRect(lx - rDev, ly - rDev, rDev * 2, rDev * 2);
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(
@@ -787,7 +835,7 @@ function drawLens(
   ctx.beginPath();
   ctx.arc(lx, ly, rDev, 0, Math.PI * 2);
   ctx.stroke();
-  ctx.strokeStyle = "rgba(255,141,106,0.95)";
+  ctx.strokeStyle = accent(bg, 0.95);
   ctx.lineWidth = 1 * dpr;
   ctx.beginPath();
   ctx.moveTo(lx - 7 * dpr, ly);
@@ -806,51 +854,65 @@ function paintBackground(ctx: CanvasRenderingContext2D, w: number, h: number, bg
     ctx.fillStyle = "#0b0b0b";
     ctx.fillRect(0, 0, w, h);
   } else {
-    ctx.fillStyle = "#f4f4f4";
+    // The grid: a dot every 16 px on white, fixed like the other two.
+    ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, w, h);
-    const sq = 12;
-    ctx.fillStyle = "#dcdcdc";
-    for (let y = 0; y < h; y += sq) {
-      for (let x = 0; x < w; x += sq) {
-        if (((x / sq + y / sq) | 0) % 2 === 0) ctx.fillRect(x, y, sq, sq);
-      }
+    ctx.fillStyle = "#cfc3ae";
+    for (let y = 8; y < h; y += 16) {
+      for (let x = 8; x < w; x += 16) ctx.fillRect(x - 0.5, y - 0.5, 1.2, 1.2);
     }
   }
 }
 
-/** Preset switch built like {@link ZoomControl}, so the two sit side by side. */
-function Segmented<T extends string>({
-  value,
-  onChange,
-  options,
+function roundRect(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number,
+) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+/** A toolbar group: the pill every canvas toolbar control sits in. */
+const GROUP = "inline-flex items-center gap-1 rounded-lg border border-rule bg-sheet p-[3px]";
+
+/** A text button in a toolbar group; pressed is ink, or --stop for the eraser. */
+function Toggle({
+  pressed,
+  tone = "ink",
+  onClick,
   title,
+  children,
 }: {
-  value: T;
-  onChange: (v: T) => void;
-  options: { v: T; label: string }[];
+  pressed: boolean;
+  tone?: "ink" | "stop";
+  onClick: () => void;
   title?: string;
+  children: React.ReactNode;
 }) {
   return (
-    <div
+    <button
+      type="button"
+      aria-pressed={pressed}
+      onClick={onClick}
       title={title}
-      className="flex h-[30px] overflow-hidden rounded-sm border-[1.5px] border-border-strong"
+      className={`h-[30px] cursor-pointer rounded-[6px] px-2.5 text-[13px] transition-colors ${
+        pressed
+          ? tone === "stop"
+            ? "bg-stop font-semibold text-on-stop"
+            : "bg-ink font-semibold text-paper"
+          : "font-medium text-ink-2 hover:bg-sunk hover:text-ink"
+      }`}
     >
-      {options.map((o, i) => (
-        <button
-          key={o.v}
-          type="button"
-          onClick={() => onChange(o.v)}
-          className={[
-            "px-[9px] text-[11.5px] font-medium transition-colors cursor-pointer",
-            i < options.length - 1 ? "border-e border-border" : "",
-            value === o.v
-              ? "bg-bg-muted text-text-primary"
-              : "bg-white text-text-secondary hover:bg-bg-surface",
-          ].join(" ")}
-        >
-          {o.label}
-        </button>
-      ))}
-    </div>
+      {children}
+    </button>
   );
 }

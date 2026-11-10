@@ -7,16 +7,22 @@
 import { useQuery } from "@tanstack/react-query";
 
 import type {
+  BatchPlan,
   CalibrationComparison,
   CalibrationDocument,
   CalibrationDraft,
   CalibrationEvaluation,
-  CalibrationExamples,
+  CalibrationLibrary,
   CalibrationPageState,
+  CalibrationReadiness,
+  CalibrationSettings,
   CalibrationTypes,
-  TypeEvidence,
+  LibraryCompare,
+  LibraryMembers,
+  LibraryShape,
+  TextRole,
 } from "../calibration/types";
-import { apiGet, apiJson } from "./http";
+import { apiDelete, apiGet, apiJson } from "./http";
 import { isJobRunning, type ProcessJob } from "./types";
 
 export const calibrationKeys = {
@@ -24,8 +30,13 @@ export const calibrationKeys = {
   pages: (id: string) => ["mushaf", id, "calibration-pages"] as const,
   job: (id: string) => ["mushaf", id, "calibration-job"] as const,
   evaluation: (id: string) => ["mushaf", id, "calibration-evaluation"] as const,
-  examples: (id: string, page: number, snapshot: string, blob: number) =>
-    ["mushaf", id, "page", page, "calibration-examples", snapshot, blob] as const,
+  readiness: (id: string) => ["mushaf", id, "calibration-readiness"] as const,
+  /** Every library a page is shown — the one in force, and any LIMIT previewed. */
+  libraries: (id: string) => ["mushaf", id, "calibration-library"] as const,
+  library: (id: string, page: number, limit: number | null) =>
+    ["mushaf", id, "calibration-library", page, limit] as const,
+  members: (id: string, page: number, group: string, limit: number | null) =>
+    ["mushaf", id, "calibration-library", page, limit, "members", group] as const,
 };
 
 const pagePath = (id: string, page: number) => `/api/mushafs/${id}/pages/${page}/calibration`;
@@ -61,21 +72,39 @@ export function suggestTypes(
   return apiJson<CalibrationTypes>("POST", `${pagePath(id, page)}/types`, draft, signal);
 }
 
-/** The typed examples nearest one mark, type by type: why it is expected to be what
- * it is. Asked with the draft, so marks typed here and not yet saved count. */
-export function explainType(
+/** One blob against the library that answers for the page: body or mark, a mark's
+ * type, and the blob's distance to every kept shape. Asked with the draft, so marks
+ * typed here and not yet saved count. `limit` asks a previewed library. */
+export function compareWithLibrary(
   id: string,
   page: number,
   draft: CalibrationDraft,
-  mark: { snapshot_id: string; blob_id: number },
+  blob: { snapshot_id: string; blob_id: number },
+  limit: number | null,
   signal?: AbortSignal,
 ) {
-  return apiJson<TypeEvidence>(
+  return apiJson<LibraryCompare>(
     "POST",
-    `${pagePath(id, page)}/types/evidence`,
-    { ...draft, ...mark },
+    `${pagePath(id, page)}/library/compare`,
+    { ...draft, ...blob, limit },
     signal,
   );
+}
+
+/** Say an example looks right — as the label it is confirmed as now — or take it back. */
+export function setLibraryCheck(
+  id: string,
+  shape: Pick<LibraryShape, "snapshot_id" | "blob_id">,
+  label: { role: TextRole; subtype: string } | null,
+) {
+  const path = `/api/mushafs/${id}/calibration/library/checks`;
+  return label
+    ? apiJson<unknown>("PUT", path, {
+        snapshot_id: shape.snapshot_id,
+        blob_id: shape.blob_id,
+        ...label,
+      })
+    : apiDelete(`${path}?snapshot=${encodeURIComponent(shape.snapshot_id)}&blob=${shape.blob_id}`);
 }
 
 /** Process one page for review; the job is polled with `useCalibrationJob`. */
@@ -83,16 +112,35 @@ export function processCalibration(id: string, page: number) {
   return apiJson<{ job: ProcessJob }>("POST", `${pagePath(id, page)}/process`);
 }
 
+/** Stop the page or the batch being processed; a batch stops between pages. */
 export function cancelCalibration(id: string) {
   return apiJson<ProcessJob>("POST", `/api/mushafs/${id}/calibration/cancel`);
 }
 
-export function setCalibrationSettings(id: string, revision: number, experimental: boolean) {
-  return apiJson<{ revision: number; experimental: boolean }>(
-    "PUT",
-    `/api/mushafs/${id}/calibration/settings`,
-    { revision, experimental, acknowledge_unvalidated: experimental },
+/** A range of pages for a batch; `refresh` processes untouched drafts again too. */
+export type BatchRange = { first: number; last: number; refresh: boolean };
+
+/** What a batch over the range would do, page by page. Starts nothing. */
+export function planCalibrationBatch(id: string, range: BatchRange, signal?: AbortSignal) {
+  return apiJson<BatchPlan>(
+    "POST",
+    `/api/mushafs/${id}/calibration/batch`,
+    { ...range, dry_run: true },
+    signal,
   );
+}
+
+/** Process the range as one background job, polled with `useCalibrationJob`. */
+export function startCalibrationBatch(id: string, range: BatchRange) {
+  return apiJson<{ job: ProcessJob }>("POST", `/api/mushafs/${id}/calibration/batch`, range);
+}
+
+/** Save the whole setting: `limit` null is the comparison's default LIMIT. */
+export function setCalibrationSettings(id: string, revision: number, limit: number | null) {
+  return apiJson<CalibrationSettings>("PUT", `/api/mushafs/${id}/calibration/settings`, {
+    revision,
+    limit,
+  });
 }
 
 export function useCalibration(id: string, page: number, enabled = true) {
@@ -128,22 +176,45 @@ export function useCalibrationJob(id: string, intervalMs = 1000) {
   });
 }
 
-/** One blob's nearest confirmed examples — asked for when the inspector opens it. */
-export function useCalibrationExamples(
+/** The library that answers for the page, kind by kind; with `limit`, the one it
+ * would be at that LIMIT (a preview: nothing saved). Seconds to build, so kept until a
+ * confirmation or a setting changes it. */
+export function useCalibrationLibrary(
   id: string,
   page: number,
-  snapshot: string | null,
-  blob: number | null,
+  limit: number | null,
+  enabled: boolean,
 ) {
   return useQuery({
-    queryKey: calibrationKeys.examples(id, page, snapshot ?? "", blob ?? 0),
+    queryKey: calibrationKeys.library(id, page, limit),
     queryFn: ({ signal }) =>
-      apiGet<CalibrationExamples>(
-        `${pagePath(id, page)}/examples?snapshot=${encodeURIComponent(snapshot ?? "")}&blob=${blob ?? 0}`,
+      apiGet<CalibrationLibrary>(
+        `${pagePath(id, page)}/library${limit === null ? "" : `?limit=${limit}`}`,
         signal,
       ),
-    enabled: snapshot !== null && blob !== null,
-    staleTime: 60_000,
+    enabled,
+    staleTime: 5 * 60_000,
+  });
+}
+
+/** Every member of one group, the farthest first — asked for when a person wants all. */
+export function useLibraryMembers(
+  id: string,
+  page: number,
+  group: string | null,
+  limit: number | null,
+) {
+  return useQuery({
+    queryKey: calibrationKeys.members(id, page, group ?? "", limit),
+    queryFn: ({ signal }) =>
+      apiGet<LibraryMembers>(
+        `${pagePath(id, page)}/library/members?group=${encodeURIComponent(group ?? "")}${
+          limit === null ? "" : `&limit=${limit}`
+        }`,
+        signal,
+      ),
+    enabled: group !== null,
+    staleTime: 5 * 60_000,
   });
 }
 
@@ -155,6 +226,17 @@ export function useCalibrationEvaluation(id: string, enabled: boolean) {
     queryFn: ({ signal }) =>
       apiGet<CalibrationEvaluation>(`/api/mushafs/${id}/calibration/evaluation`, signal),
     enabled,
+    staleTime: 5 * 60_000,
+  });
+}
+
+/** The readiness meter. Cheap to answer, but it reads every confirmed page, so it is
+ * kept until a confirmation or a finished batch invalidates it. */
+export function useCalibrationReadiness(id: string) {
+  return useQuery({
+    queryKey: calibrationKeys.readiness(id),
+    queryFn: ({ signal }) =>
+      apiGet<CalibrationReadiness>(`/api/mushafs/${id}/calibration/readiness`, signal),
     staleTime: 5 * 60_000,
   });
 }

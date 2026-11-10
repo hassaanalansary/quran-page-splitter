@@ -129,9 +129,7 @@ class Command(BaseCommand):
             return cancel_after is not None and saved_so_far >= cancel_after
 
         if options["via"] == "service":
-            result = processing_service.process(
-                mushaf, **params, should_cancel=should_cancel, on_progress=on_progress
-            )
+            result = processing_service.process(mushaf, **params, should_cancel=should_cancel, on_progress=on_progress)
         else:  # job-inline
             jobs_service.reset()
             job = jobs_service.start(mushaf, params, inline=True)
@@ -157,8 +155,7 @@ class Command(BaseCommand):
             job.refresh_from_db()
             # ⬅ BREAKPOINT HERE is the browser's poll, in a loop you control.
             self.stdout.write(
-                f"  poll  state={job.state:<10} phase={job.phase:<10} "
-                f"page={job.current_page} saved={job.pages_saved}"
+                f"  poll  state={job.state:<10} phase={job.phase:<10} page={job.current_page} saved={job.pages_saved}"
             )
             if cancel_after is not None and not cancelled and job.pages_saved >= cancel_after:
                 jobs_service.request_cancel(mushaf.id)

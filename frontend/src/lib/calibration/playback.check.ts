@@ -1,15 +1,13 @@
 // Run with node --experimental-strip-types src/lib/calibration/playback.check.ts.
 import assert from "node:assert/strict";
 import {
-  BODY_INK,
   MARK_INK,
-  TYPE_INK,
   belongsAt,
-  containedPoint,
+  bodyPieces,
   inkColor,
-  paintPlaybackInk,
+  piecesOf,
   playbackWords,
-  wordAtPixel,
+  wordAtPoint,
   wordBlobs,
   wordCrop,
 } from "./playback.ts";
@@ -44,7 +42,6 @@ const word: CalibrationWord = {
   expected_paws: 1,
   start_x: 120,
   end_x: 110,
-  override: false,
   shared: false,
 };
 const second: CalibrationWord = { ...word, word_id: 2, text: "second", start_x: 110, end_x: 100 };
@@ -97,9 +94,6 @@ assert.equal(
   false,
   "overlapping boxes do not create ownership",
 );
-assert.equal(wordAtPixel(entries, line, 3, 115), -1, "unassigned ink cannot select a false owner");
-assert.equal(wordAtPixel(entries, line, 2, 126), 0);
-assert.equal(wordAtPixel(entries, line, 0, 105), 1, "background navigation follows saved cuts");
 
 const shared = {
   ...line.blobs[0],
@@ -111,42 +105,45 @@ const shared = {
 assert.equal(belongsAt(shared, word, 110), true);
 assert.equal(belongsAt(shared, second, 110), false);
 assert.equal(belongsAt(shared, second, 109), true);
-const sharedLine = { ...line, blobs: [shared] };
-const sharedPixels = paintPlaybackInk(
-  new Uint32Array(30).fill(1),
-  30,
-  sharedLine,
-  word,
-  new Map(),
-  false,
-  true,
+// A body two words share is the first word's only right of the cut between them.
+assert.equal(
+  Array.from({ length: 30 }, (_, x) => belongsAt(shared, word, line.bbox.x + x)).filter(Boolean)
+    .length,
+  10,
 );
-assert.equal(Array.from(sharedPixels).filter((n, i) => i % 4 === 3 && n === 255).length, 10);
-
-const pixels = paintPlaybackInk(
-  new Uint32Array([0, 1, 2, 3, 4, 999]),
-  6,
-  line,
-  word,
-  new Map([[2, "madda"]]),
-  true,
-  true,
-);
-assert.deepEqual(Array.from(pixels.slice(0, 4)), [0, 0, 0, 0]);
-assert.deepEqual(Array.from(pixels.slice(4, 8)), [...BODY_INK, 255]);
-assert.deepEqual(Array.from(pixels.slice(8, 12)), [...TYPE_INK.madda, 255]);
-assert.equal(pixels[15], 70, "unassigned ink stays subdued");
-assert.equal(pixels[19], 70, "other words stay subdued");
-assert.deepEqual(Array.from(pixels.slice(20)), [0, 0, 0, 0]);
 assert.deepEqual(inkColor(line.blobs[1], "madda", false), MARK_INK);
 assert.notDeepEqual(inkColor(line.blobs[1], "madda", true), inkColor(line.blobs[1], "fatha", true));
 assert.deepEqual(inkColor(line.blobs[1], "unknown-type", true), MARK_INK);
 const crop = wordCrop(entries[0]);
 assert.ok(crop.x + line.bbox.x <= 110 && crop.x + crop.w + line.bbox.x >= 127);
 assert.ok(crop.y === 0 && crop.y + crop.h <= line.bbox.h);
+// The word under the pointer: its line's height, its box's x span.
+assert.equal(wordAtPoint(entries, 115, 30), 0);
+assert.equal(wordAtPoint(entries, 105, 30), 1);
+assert.equal(wordAtPoint(entries, 125, 30), -1, "past the first word's right edge");
+assert.equal(wordAtPoint(entries, 115, 45), -1, "below every line");
+
+// A word's text in the pieces its ink prints, each letter with its marks.
+assert.deepEqual(piecesOf("بِسْمِ"), ["بِسْمِ"]);
+assert.deepEqual(piecesOf("ٱلرَّحْمَٰنِ"), ["ٱ", "لرَّ", "حْمَٰنِ"]);
+assert.deepEqual(piecesOf("شَىْءٍ"), ["شَىْ", "ءٍ"]);
+assert.deepEqual(piecesOf("وَعَمِلُوا۟"), ["وَ", "عَمِلُو", "ا۟"]);
+// Each body takes as many pieces as its PAWs, right to left; a fragment none.
+const pieces = bodyPieces({
+  line: {
+    ...line,
+    blobs: [
+      { ...blob(1, "body", 1), x: 116 },
+      { ...blob(5, "body", 1), x: 113, allocations: [{ word_id: 1, paws: 0 }] },
+      { ...blob(4, "body", 1), x: 110 },
+    ],
+  },
+  word: { ...word, text: "وَعَمِلُوا۟", expected_paws: 3 },
+  wordIndex: 0,
+});
+assert.deepEqual(pieces.get(1), { pieces: ["وَ"], first: 1, share: 1, total: 3 });
+assert.deepEqual(pieces.get(5), { pieces: [], first: 2, share: 0, total: 3 });
+assert.deepEqual(pieces.get(4), { pieces: ["عَمِلُو"], first: 2, share: 1, total: 3 });
+
 assert.equal(JSON.stringify(line), before, "playback must never mutate annotations");
-assert.deepEqual(containedPoint(60, 50, 120, 100, 80, 100), { x: 40, y: 50 });
-assert.equal(containedPoint(10, 50, 120, 100, 80, 100), null);
-assert.deepEqual(containedPoint(40, 50, 80, 100, 80, 80), { x: 40, y: 40 });
-assert.equal(containedPoint(40, 5, 80, 100, 80, 80), null);
 console.log("Word playback checks passed.");

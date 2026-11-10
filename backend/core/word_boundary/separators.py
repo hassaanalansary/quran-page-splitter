@@ -90,11 +90,12 @@ def split_separators(
     if not spans:
         return
 
-    # The ring, its digits, and any attached marks share a span, so the parser
-    # sees one explicit ornament event rather than several text components.
+    # The ring and its digits share a span, so the parser sees one explicit
+    # ornament event rather than several text components. Ink that reaches past the
+    # ring — the last word's fatha over its shoulder — is the text's.
     ink.separator_spans = spans
     ink.separator_ayat = _label_spans(ink, spans)
-    kept, groups, befores = _partition(ink.components, spans)
+    kept, groups, befores = _partition(ink.components, spans, within_ring=True)
     ink.separators = groups
     ink.separator_after = befores
     ink.components = kept
@@ -142,17 +143,38 @@ def _merge_spans(spans: list[tuple[int, int]]) -> list[tuple[int, int]]:
 def _partition(
     components: list[Blob],
     spans: list[tuple[int, int]],
+    *,
+    within_ring: bool = False,
 ) -> tuple[list[Blob], list[list[Blob]], list[int]]:
     """Split components into those outside every span and those grouped by span.
 
     Membership is by **centre**, not overlap: a letter whose tail reaches under an
     ornament still belongs to the text, and a dot sitting inside one does not.
 
+    ``within_ring`` (ornaments): the span is the template's width, and can reach
+    well past the ring it found — 128 px against a 95 px ring on the first
+    mushaf's opening pages. So a piece also has to start and end inside the
+    ring's own x-range, the ring being the span's largest piece; the digits do,
+    and a mark of the last word that reaches over the ring's shoulder or sits
+    beside it does not, and stays text::
+
+        span     ├──────────────────────────────┤
+        ring       ╭──────────╮
+        digit         [٧]                         inside: the ornament's
+        fatha                   ╲                 past the ring: the text's
+
     The third return is, for each group, how many text bodies precede it — which
     only the ornament caller needs, since that is what turns a span into a cut
     point once every line's bodies are concatenated. A symbol is not a cut point
     and throws it away.
     """
+    rings: dict[tuple[int, int], Blob] = {}
+    if within_ring:
+        for blob in components:
+            centre = blob.x + blob.w / 2
+            span = next((tuple(s) for s in spans if s[0] <= centre <= s[1]), None)
+            if span is not None and (span not in rings or blob.area > rings[span].area):
+                rings[span] = blob
     kept: list[Blob] = []
     groups: list[list[Blob]] = []
     befores: list[int] = []
@@ -161,6 +183,14 @@ def _partition(
     for blob in components:
         centre = blob.x + blob.w / 2
         span = next((s for s in spans if s[0] <= centre <= s[1]), None)
+        ring = rings.get(tuple(span)) if span is not None else None
+        if ring is not None and blob is not ring and (blob.x < ring.x or blob.right > ring.right):
+            # In the span but past the ring: ink of the text beside the ornament.
+            # The group it interrupts goes on.
+            kept.append(blob)
+            if blob.preferred == "body":
+                bodies_before += 1
+            continue
         if span is None:
             kept.append(blob)
             if blob.preferred == "body":

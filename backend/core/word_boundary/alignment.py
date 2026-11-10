@@ -241,6 +241,15 @@ def _with_mark(record: ParseRecord, blob: Blob) -> ParseRecord:
     )
 
 
+def _off_count(done: int, want: int, short_weight: int) -> int:
+    """What a word closing on ``done`` PAWs of the ``want`` its spelling demands pays:
+    COUNT_WEIGHT for each one too many, the word's own ``short_weight`` for each one
+    missing — cheaper where its letters are likely to be printed touching."""
+    if done >= want:
+        return COUNT_WEIGHT * (done - want)
+    return short_weight * (want - done)
+
+
 def _with_body(
     record: ParseRecord,
     blob: Blob,
@@ -282,7 +291,7 @@ def _with_body(
             (
                 (word_index + 1, 0),
                 ParseRecord(
-                    cost=cost + COUNT_WEIGHT * abs(done - want),
+                    cost=cost + _off_count(done, want, words[word_index].short_weight),
                     ends=(*record.ends, left),
                     groups=(*record.groups, group),
                     current_group=(),
@@ -388,6 +397,13 @@ def apply_parse_roles(ink: LineInk, parsed: LineParse) -> None:
         elif blob.label in parsed.committed_labels:
             blob.role = "body" if blob.label in parsed.body_labels else "mark"
             blob.role_ambiguous = blob.label in parsed.role_ambiguous_labels
+        elif blob.library_role == "mark":
+            # No word took it as a letter, and the library says mark: a mark — not
+            # the preferred role a sukun or a small waw on the writing line falls back
+            # to, which reported every such mark the reading rightly left out as an
+            # orphan letter for the reviewer to undo.
+            blob.role = "mark"
+            blob.role_ambiguous = False
         else:
             blob.role = "body" if blob.preferred == "body" else "mark"
             blob.role_ambiguous = blob.preferred != "mark-only" and not blob.small_for_body

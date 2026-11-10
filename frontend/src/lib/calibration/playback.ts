@@ -3,43 +3,33 @@ import type { CalibrationBlob, CalibrationLine, CalibrationWord } from "./types.
 export type PlaybackWord = { line: CalibrationLine; word: CalibrationWord; wordIndex: number };
 export type RGB = readonly [number, number, number];
 
-/** Canvas object-fit can letterbox the image; clicks must exclude that padding. */
-export function containedPoint(
-  x: number,
-  y: number,
-  boxW: number,
-  boxH: number,
-  imageW: number,
-  imageH: number,
-) {
-  const scale = Math.min(boxW / imageW, boxH / imageH);
-  if (!(scale > 0)) return null;
-  const px = (x - (boxW - imageW * scale) / 2) / scale;
-  const py = (y - (boxH - imageH * scale) / 2) / scale;
-  return px >= 0 && py >= 0 && px < imageW && py < imageH ? { x: px, y: py } : null;
-}
-
-export const BODY_INK: RGB = [0, 76, 160];
-export const MARK_INK: RGB = [174, 24, 82];
+export const BODY_INK: RGB = [0, 0, 0];
+// Mark inks sit mid-tone (relative luminance ~0.14–0.25): about 3.4–5:1
+// against both the black body ink and the white background.
+export const MARK_INK: RGB = [222, 40, 110];
 export const TYPE_INK: Record<string, RGB> = {
-  fatha: [160, 56, 0],
-  damma: [158, 20, 96],
-  kasra: [0, 105, 75],
-  sukun: [105, 50, 155],
-  shadda: [125, 85, 0],
-  tanween: [181, 28, 28],
-  madda: [124, 32, 111],
-  daggerAlif: [77, 105, 0],
-  smallLetter: [143, 60, 76],
-  ijamDot: [77, 77, 77],
-  hamza: [140, 66, 0],
-  wasla: [0, 112, 101],
-  waqfSili: [146, 28, 28],
-  waqfQili: [120, 48, 91],
-  waqfJim: [65, 110, 23],
-  waqfMim: [116, 61, 137],
-  waqfLa: [133, 91, 20],
-  other: [115, 66, 66],
+  fatha: [214, 90, 0],
+  damma: [205, 40, 130],
+  kasra: [0, 150, 105],
+  sukun: [140, 80, 210],
+  shadda: [170, 118, 0],
+  tanween: [225, 50, 50],
+  madda: [170, 55, 155],
+  daggerAlif: [105, 145, 0],
+  smallWaw: [190, 85, 105],
+  smallYa: [150, 90, 190],
+  smallMeem: [120, 125, 30],
+  smallLetter: [190, 85, 105],
+  ijamDot: [40, 120, 220],
+  hamza: [190, 95, 0],
+  kafCurl: [150, 110, 60],
+  wasla: [0, 150, 135],
+  waqfSili: [195, 45, 45],
+  waqfQili: [165, 70, 130],
+  waqfJim: [90, 150, 35],
+  waqfMim: [155, 90, 185],
+  waqfLa: [180, 125, 30],
+  other: [160, 95, 95],
 };
 
 /** The stored word order is authoritative, including unlabelled manual words. */
@@ -77,33 +67,8 @@ export function belongsAt(blob: CalibrationBlob, word: CalibrationWord, pageX: n
   return blob.allocations.length <= 1 || (pageX >= word.end_x && pageX < word.start_x);
 }
 
-export function paintPlaybackInk(
-  ids: Uint32Array,
-  width: number,
-  line: CalibrationLine,
-  word: CalibrationWord | null,
-  types: ReadonlyMap<number, string>,
-  distinguishTypes: boolean,
-  dimOthers: boolean,
-): Uint8ClampedArray {
-  const pixels = new Uint8ClampedArray(ids.length * 4);
-  const blobs = new Map(line.blobs.map((blob) => [blob.id, blob]));
-  for (let i = 0; i < ids.length; i++) {
-    const blob = blobs.get(ids[i]);
-    if (!blob) continue;
-    const active = word && belongsAt(blob, word, line.bbox.x + (i % width));
-    const color = active
-      ? inkColor(blob, types.get(blob.id) ?? "", distinguishTypes)
-      : [110, 110, 110];
-    pixels[i * 4] = color[0];
-    pixels[i * 4 + 1] = color[1];
-    pixels[i * 4 + 2] = color[2];
-    pixels[i * 4 + 3] = active ? 255 : dimOthers ? 70 : 230;
-  }
-  return pixels;
-}
-
-/** Crop includes owned marks and fragments even when a dragged edge excludes them. */
+/** Crop includes owned marks and fragments even where the box stops short of them —
+ * at the middle of a body two words share. */
 export function wordCrop(entry: PlaybackWord) {
   const { line, word } = entry;
   const blobs = wordBlobs(entry);
@@ -123,20 +88,83 @@ export function wordCrop(entry: PlaybackWord) {
   };
 }
 
-/** Pixel-based navigation when boxes overlap. Fall back to the saved word box
- * only on background; an unassigned blob must not pretend to belong to a word. */
-export function wordAtPixel(
-  entries: PlaybackWord[],
-  line: CalibrationLine,
-  blobId: number,
-  pageX: number,
-): number {
-  const blob = line.blobs.find((candidate) => candidate.id === blobId);
+/** The word under a point of the page (page px): its line's height, its box's x span.
+ * The index into `entries`, or -1. */
+export function wordAtPoint(entries: PlaybackWord[], x: number, y: number): number {
   return entries.findIndex(
-    (entry) =>
-      entry.line.snapshot_id === line.snapshot_id &&
-      (blob
-        ? belongsAt(blob, entry.word, pageX)
-        : pageX >= entry.word.end_x && pageX < entry.word.start_x),
+    ({ line, word }) =>
+      word.word_id !== null &&
+      y >= line.bbox.y &&
+      y < line.bbox.y + line.bbox.h &&
+      x >= word.end_x &&
+      x < word.start_x,
   );
+}
+
+// The joining rules of the server's core/text/arabic.py — the one source; keep these
+// equal to its NON_JOINERS, NON_RECEIVERS and MARKS.
+const NON_JOINERS = new Set("اأإآٱدذرزوؤةءٲٳٵٶٷٮۃ");
+const NON_RECEIVERS = new Set("ءٴ");
+function isMarkChar(ch: string): boolean {
+  const c = ch.codePointAt(0) ?? 0;
+  return (
+    (c >= 0x0610 && c <= 0x061a) ||
+    (c >= 0x064b && c <= 0x065f) ||
+    c === 0x0670 ||
+    (c >= 0x06d6 && c <= 0x06ed) ||
+    c === 0x0640
+  );
+}
+
+/** A word's text cut into the pieces its ink prints (PAWs), right to left, each letter
+ * keeping the marks written on it: بِسْمِ is one piece, ٱلرَّحْمَٰنِ three. */
+export function piecesOf(text: string): string[] {
+  const letters: string[] = [];
+  for (const ch of text) {
+    if (isMarkChar(ch) && letters.length) letters[letters.length - 1] += ch;
+    else letters.push(ch);
+  }
+  const pieces: string[] = [];
+  let current = "";
+  for (const letter of letters) {
+    const base = [...letter][0];
+    if (NON_RECEIVERS.has(base) && current) {
+      pieces.push(current);
+      current = "";
+    }
+    current += letter;
+    if (NON_JOINERS.has(base)) {
+      pieces.push(current);
+      current = "";
+    }
+  }
+  if (current) pieces.push(current);
+  return pieces;
+}
+
+/** Which pieces of its word's text each body prints: the bodies right to left, each
+ * taking as many pieces as the PAWs it is given for this word — none for a broken
+ * fragment, two for two printed touching. `first` is the first piece's number from 1. */
+export function bodyPieces(
+  entry: PlaybackWord,
+): Map<number, { pieces: string[]; first: number; share: number; total: number }> {
+  const pieces = piecesOf(entry.word.text);
+  const found = new Map<
+    number,
+    { pieces: string[]; first: number; share: number; total: number }
+  >();
+  let at = 0;
+  for (const blob of wordBlobs(entry)) {
+    if (blob.role !== "body") continue;
+    const share =
+      blob.allocations.find((allocation) => allocation.word_id === entry.word.word_id)?.paws ?? 0;
+    found.set(blob.id, {
+      pieces: pieces.slice(at, at + share),
+      first: at + 1,
+      share,
+      total: pieces.length,
+    });
+    at += share;
+  }
+  return found;
 }
