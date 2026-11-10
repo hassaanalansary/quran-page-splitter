@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from django.utils import timezone
+from typing import Any
 
 from accounts.models import User
 from api.models import Mushaf, ProcessJob
@@ -16,6 +16,7 @@ def create_queued_job(
     kind: str,
     mushaf: Mushaf,
     requested_by: User | None,
+    params: dict[str, Any],
     first_page: int,
     last_page: int,
     total: int,
@@ -24,7 +25,11 @@ def create_queued_job(
     aya_span: AyaSpan | None = None,
     report: dict | None = None,
 ) -> ProcessJob:
-    """Create the row of one job, ready to be dispatched.
+    """Create the row of one job in the ``queued`` state, ready to be dispatched.
+
+    The row is all a worker gets, so it has to describe the whole job: ``kind`` picks
+    the runner (``runner_registry``), and ``params`` holds the runner's inputs. They
+    are stored as JSON, so they hold plain values only.
 
     ``total`` is what the job counts towards: pages for detection and for a
     calibration batch, lines for one calibration page. ``lines_done`` starts at 0 for
@@ -36,7 +41,8 @@ def create_queued_job(
     return ProcessJob.objects.create(
         kind=kind,
         mushaf=mushaf,
-        started_by=requested_by,
+        requested_by=requested_by,
+        params=params,
         page_range_start=first_page,
         page_range_end=last_page,
         total=total,
@@ -47,7 +53,4 @@ def create_queued_job(
         end_sura=span_end[0],
         end_aya=span_end[1],
         report=report,
-        # Alive from the moment it exists. A job that dies before its first progress
-        # tick then still ages out, and does not block its mushaf for good.
-        heartbeat_at=timezone.now(),
     )

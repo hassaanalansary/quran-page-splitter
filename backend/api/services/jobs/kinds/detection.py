@@ -5,14 +5,16 @@
     POST /process ─▶ start_detection_job ─▶ dispatch ─▶ run_detection_job ─▶ processing.process
 
 The engine work itself is ``api.services.processing``, which knows nothing about jobs.
-This module binds it to a job row: progress and the outcome go to the row, and the
-cancel flag comes from it.
+This module binds it to a job row: the inputs come from the row, progress and the
+outcome go to the row, and the cancel flag is read from it.
+
+The row's ``params`` is the request body of ``POST /process``, whole: the page range
+and the engine's settings.
 """
 
 from __future__ import annotations
 
 import uuid
-from functools import partial
 from typing import Any
 
 from accounts.models import User
@@ -53,16 +55,17 @@ def start_detection_job(
         kind=ProcessJobKindChoices.DETECTION,
         mushaf=mushaf,
         requested_by=user,
+        params=detection_settings,
         first_page=first_page,
         last_page=last_page,
         total=max(0, last_page - first_page + 1),
     )
-    run_the_job = partial(run_detection_job, mushaf=mushaf, detection_settings=detection_settings)
-    return dispatch_job(job, run_the_job, inline=inline)
+    return dispatch_job(job, inline=inline)
 
 
-def run_detection_job(job: ProcessJob, mushaf: Mushaf, detection_settings: dict[str, Any]) -> None:
-    """Run the line engine for the job and settle the job with the run's outcome."""
+def run_detection_job(job: ProcessJob) -> None:
+    """Run the line engine over the job's mushaf with the job's ``params``, and settle
+    the job with the run's outcome."""
 
     def record_detection_progress(phase: str, current_page: int | None, pages_saved: int) -> None:
         record_job_progress(job.id, phase=phase, current_page=current_page, pages_saved=pages_saved)
@@ -73,8 +76,8 @@ def run_detection_job(job: ProcessJob, mushaf: Mushaf, detection_settings: dict[
         record_job_progress(job.id, run_id=run_id, log_url=log_url or "")
 
     result = processing.process(
-        mushaf,
-        **detection_settings,
+        job.mushaf,
+        **job.params,
         should_cancel=lambda: is_job_cancellation_requested(job.id),
         on_progress=record_detection_progress,
         on_run_started=record_run_started,

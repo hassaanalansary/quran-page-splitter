@@ -1,27 +1,37 @@
-"""Runs one job and makes sure it settles, whatever the runner does.
+"""Runs one job from its row and makes sure it settles, whatever the runner does.
 
-``dispatch.dispatch_job`` calls this, on the request's own thread or on a worker thread.
+``dispatch.dispatch_job`` gets this called with the job's id: on the request's own
+thread, or on a worker thread. Nothing but the id is handed over. Everything else is
+read from the row.
 """
 
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
+import uuid
 
-from api.models import ProcessJob, ProcessJobStateChoices
+from api.models import ProcessJobStateChoices
+from api.services.jobs.claiming import claim_queued_job
 from api.services.jobs.progress import record_job_outcome
 from api.services.jobs.queries import is_job_settled
+from api.services.jobs.runner_registry import load_job_runner
 
 logger = logging.getLogger(__name__)
 
-#: The worker half of one kind of job: a ``run_…_job`` from ``kinds/``, bound to its inputs.
-JobRunner = Callable[[ProcessJob], None]
 
+def execute_job(job_id: uuid.UUID, worker_name: str) -> None:
+    """Claim the job and run it.
 
-def execute_job(job: ProcessJob, run_the_job: JobRunner) -> None:
-    """Run the job. A runner that raises settles it as ``error``, and so does a runner
-    that returns without settling it: a poller must never wait for ever."""
+    Does nothing when the claim fails: the job was cancelled while it waited, or it
+    was dispatched twice and another worker has it. A runner that raises settles the
+    job as ``error``, and so does a runner that returns without settling it: a poller
+    must never wait for ever.
+    """
+    job = claim_queued_job(job_id, worker_name)
+    if job is None:
+        return
     try:
+        run_the_job = load_job_runner(job.kind)
         run_the_job(job)
     except Exception as error:  # a job must never take its worker down
         logger.exception("Job %s failed", job.id)

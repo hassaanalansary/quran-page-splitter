@@ -7,11 +7,12 @@
 
 The work itself is ``api.services.calibration.process_page``, which knows nothing
 about jobs. The job counts the lines of the aya span that covers the page.
+
+The row's ``params``: ``page``, the page to process, and ``expected_revision``, the
+draft revision the request saw. ``process_page`` refuses to store over a newer one.
 """
 
 from __future__ import annotations
-
-from functools import partial
 
 from ninja.errors import HttpError
 
@@ -66,6 +67,7 @@ def start_calibration_page_job(
         kind=ProcessJobKindChoices.CALIBRATION,
         mushaf=mushaf,
         requested_by=user,
+        params={"page": page, "expected_revision": review.revision if review else 0},
         first_page=plan.first_page,
         last_page=plan.last_page,
         total=plan.total_lines,
@@ -73,26 +75,18 @@ def start_calibration_page_job(
         lines_done=0,
         aya_span=(plan.start, plan.end),
     )
-    run_the_job = partial(
-        run_calibration_page_job,
-        mushaf=mushaf,
-        page=page,
-        expected_revision=review.revision if review else 0,
-        user=user,
-    )
-    return dispatch_job(job, run_the_job, inline=inline)
+    return dispatch_job(job, inline=inline)
 
 
-def run_calibration_page_job(
-    job: ProcessJob, mushaf: Mushaf, page: int, expected_revision: int, user: User | None
-) -> None:
-    """Process the page and settle the job: ``completed`` when the draft was stored,
-    ``cancelled`` when a cancel arrived before anything was."""
+def run_calibration_page_job(job: ProcessJob) -> None:
+    """Process the page named in the job's ``params``, as the user who asked for it,
+    and settle the job: ``completed`` when the draft was stored, ``cancelled`` when a
+    cancel arrived before anything was."""
     stored = process_page(
-        mushaf,
-        page,
-        expected_revision=expected_revision,
-        user=user,
+        job.mushaf,
+        int(job.params["page"]),
+        expected_revision=int(job.params["expected_revision"]),
+        user=job.requested_by,
         progress=lambda lines_done: record_job_progress(job.id, phase="detecting", lines_done=lines_done),
         cancelled=lambda: is_job_cancellation_requested(job.id),
     )

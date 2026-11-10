@@ -124,7 +124,7 @@ class PreflightTests(ApiTestCase):
             state=ProcessJobStateChoices.RUNNING,
             heartbeat_at=None,
         )
-        ProcessJob.objects.update(heartbeat_at=ProcessJob.objects.first().started_at)
+        ProcessJob.objects.update(heartbeat_at=ProcessJob.objects.first().requested_at)
         # The rule every kind of job is started behind, calibration's included.
         with self.assertRaises(HttpError) as caught:
             refuse_if_mushaf_has_active_job(self.mushaf.id)

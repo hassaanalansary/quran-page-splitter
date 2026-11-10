@@ -10,7 +10,7 @@ Last updated: 2026-11-10.
 |---|---|---|---|
 | 0 | Plan, this doc, the code style rules in `PROJECT_HANDOFF.md` §4 | done | none needed |
 | 1 | Reorganize the job system (no behaviour change) | done | ruff, mypy, backend tests |
-| 2 | Jobs described by their row | not started | |
+| 2 | Jobs described by their row | done | ruff, mypy, backend tests, the migration forward and back on a row of data |
 | 3 | Celery | not started | |
 | 4 | The real queue | not started | |
 | 5 | Frontend | not started | |
@@ -36,7 +36,7 @@ In the cloud, on Linux, against a local PostgreSQL 16 with `DATABASE_URL` set in
 |---|---|---|
 | `uv run ruff check .` | 1 error, in `core/word_boundary/separators.py` (RUF002) | no error besides that one |
 | `uv run python -m mypy .` | 21 errors in 10 files | the same 21 errors, none new |
-| `uv run python manage.py test --parallel 4` | 718 tests: 5 failures, 10 errors | the same 15 tests fail, none new |
+| `uv run python manage.py test --parallel 4` | 718 tests: 5 failures, 10 errors | the same 15 tests fail, none new (735 tests after phase 2) |
 
 The 15 tests that already fail on the base commit, none of them in the job system:
 
@@ -66,6 +66,25 @@ Choices made where the plan left a detail open:
 - **The debug commands no longer delete job rows.** `debug_process` used to call `jobs.reset()`, which deleted every job in the database, before it started one. The plan moves that function to `api/tests/helpers.py` as `delete_all_jobs`, so the commands now follow the app's rules: a mushaf with an unfinished job is refused, and the command prints the refusal.
 - **Runner inputs are still bound in phase 1.** `run_…_job` takes its inputs as arguments, bound with `functools.partial` in `start_…_job`. The job row has no `params` column until phase 2, where the runners start reading their inputs from the row.
 - **The order of the refusals is unchanged in phase 1**, so that the phase changes no behaviour. Phase 4 moves the three admission rules to the front, as in the plan's §4.5.
+
+### Phase 2: jobs described by their row
+
+A job now starts `queued`, carries its runner's inputs in `params`, and a worker is handed its id and nothing else. Jobs still run on threads, so a job is `queued` only for the moment before its thread claims it.
+
+- Migration `0033_job_described_by_its_row`: `started_at` → `requested_at` and `started_by` → `requested_by` (renames, the values are kept), plus `params`, `run_started_at`, `claimed_by_worker` and the `queued` state. Existing rows get `run_started_at = requested_at`. It was run forward, back and forward again on a row of data.
+- New modules: `claiming.py` (`claim_queued_job`) and `runner_registry.py` (`JOB_RUNNER_PATHS`, `load_job_runner`). `execute_job(job_id, worker_name)` is now the plan's §4.5.
+- `cancellation.cancel_job_before_it_starts` cancels a queued job at once. It uses the same condition as the claim, so a job is never both cancelled and started.
+- `dead_jobs.py` has the two rules. `mark_silent_jobs_interrupted` now looks at running jobs only. `mark_unclaimed_jobs_interrupted` is new, with the setting `JOB_QUEUE_TIMEOUT_SECONDS` (default 600).
+- The API's job object: `started_at` is replaced by `requested_at` and `run_started_at`. **The frontend source reads the new names from phase 5 on. The committed `frontend/dist` is older than that and needs `npm run build`.**
+
+Choices made where the plan left a detail open:
+
+- **How "a slot has been free for `JOB_QUEUE_TIMEOUT_SECONDS`" is decided.** It is read from the rows: fewer jobs than there are slots ran at any moment of that window. It can only err towards waiting longer.
+- **What `params` holds.** Detection: the whole request body of `POST /process`. Calibration page: `page` and `expected_revision`. Calibration batch: `refresh`. The user comes from `requested_by`, and the page range from the row's own columns.
+- **`phase` is untouched.** A queued job keeps the default `phase = "starting"`. The plan names no phase for the queue, and the state already says it.
+- **`calibration_progress.cost`** now measures a page from `run_started_at`, so a wait in the queue is not counted as processing time.
+- **`retype_from_text` and `restart_calibration`** refused to run beside a `running` job. They now refuse beside a queued one too.
+- **Test tools moved to `api/tests/helpers.py`**: `FakeJobRunners`, `GatedRunner`, `create_job_row`, `wait_until_job_finished`. The later phases' tests share them.
 
 ## Not verified
 

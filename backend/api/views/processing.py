@@ -45,8 +45,9 @@ class JobOut(Schema):
 
     id: uuid.UUID
     mushaf_id: uuid.UUID
-    #: ``running`` while working; then ``completed`` / ``aborted_line_detection``
-    #: / ``cancelled`` / ``error``.
+    #: ``queued`` until a worker claims it, ``running`` while it works; then
+    #: ``completed`` / ``aborted_line_detection`` / ``cancelled`` / ``error`` /
+    #: ``interrupted``.
     state: str
     #: ``starting`` / ``rendering`` / ``detecting`` / ``saving`` / ``finished``.
     phase: str
@@ -57,7 +58,11 @@ class JobOut(Schema):
     pages_saved: int
     current_page: int | None = None
     cancel_requested: bool = False
-    started_at: datetime
+    #: When the job was asked for.
+    requested_at: datetime
+    #: When a worker began it: null while the job is queued. An elapsed timer
+    #: counts from here, so the wait in the queue is not shown as work.
+    run_started_at: datetime | None = None
     ended_at: datetime | None = None
     run_id: uuid.UUID | None = None
     log_url: str | None = None

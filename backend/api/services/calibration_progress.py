@@ -319,15 +319,18 @@ def cost(mushaf: Mushaf, rows: list[Doc] | None = None) -> Doc:
             mushaf=mushaf,
             kind=ProcessJobKindChoices.CALIBRATION,
             state=ProcessJobStateChoices.COMPLETED,
+            run_started_at__isnull=False,
             ended_at__isnull=False,
         )
-        .order_by("-started_at")
-        .values_list("started_at", "ended_at")[:20]
-        if ended is not None
+        .order_by("-requested_at")
+        # From when a worker began, not from the request: the wait in the queue is
+        # not what a page costs to process.
+        .values_list("run_started_at", "ended_at")[:20]
+        if started is not None and ended is not None
     ]
     for report in (
         ProcessJob.objects.filter(mushaf=mushaf, kind=ProcessJobKindChoices.CALIBRATION_BATCH, report__isnull=False)
-        .order_by("-started_at")
+        .order_by("-requested_at")
         .values_list("report", flat=True)[:5]
     ):
         processed = len((report or {}).get("processed", []))

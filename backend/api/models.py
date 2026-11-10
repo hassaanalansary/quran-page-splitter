@@ -272,6 +272,9 @@ class ProcessingRun(BaseModel):
 
 
 class ProcessJobStateChoices(models.TextChoices):
+    #: Requested, and waiting for a worker to claim it. Not final: a queued job
+    #: holds its mushaf exactly as a running one does.
+    QUEUED = "queued", "Queued"
     RUNNING = "running", "Running"
     COMPLETED = "completed", "Completed"
     ABORTED_LINE_DETECTION = "aborted_line_detection", "Aborted (line detection)"
@@ -305,6 +308,11 @@ class ProcessJob(BaseModel):
     The row is written by the worker and read by pollers, so it is deliberately
     small and its updates are single-column where possible.
 
+    **The row describes the whole job.** ``kind`` says which runner does the work
+    and ``params`` holds that runner's inputs, so a worker needs nothing but the
+    job's id to run it. A job starts ``queued`` and becomes ``running`` when a
+    worker claims it (``api.services.jobs.claiming``).
+
     **Both kinds of run share this table on purpose.** Word detection could have had
     its own, and then two things would break: the concurrency caps count CPU-bound
     work, and two tables would let a box run twice what it was configured for; and
@@ -322,13 +330,18 @@ class ProcessJob(BaseModel):
     )
     mushaf = models.ForeignKey(Mushaf, on_delete=models.CASCADE, related_name="process_jobs")
     run = models.ForeignKey(ProcessingRun, null=True, blank=True, on_delete=models.SET_NULL, related_name="jobs")
-    started_by = models.ForeignKey(
+    requested_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         null=True,
         blank=True,
         on_delete=models.SET_NULL,
         related_name="process_jobs",
-        help_text="Who asked for this run; used for the per-user concurrency cap.",
+        help_text="Who asked for this job. The per-user limit counts by it, and the runner acts as this user.",
+    )
+    params = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="The runner's inputs, as the request gave them. What they are depends on the kind.",
     )
 
     page_range_start = models.PositiveSmallIntegerField()
@@ -336,7 +349,7 @@ class ProcessJob(BaseModel):
     total = models.PositiveSmallIntegerField(default=0, help_text="Pages in the requested range.")
 
     state = models.CharField(
-        max_length=32, choices=ProcessJobStateChoices.choices, default=ProcessJobStateChoices.RUNNING
+        max_length=32, choices=ProcessJobStateChoices.choices, default=ProcessJobStateChoices.QUEUED
     )
     phase = models.CharField(
         max_length=16, default="starting", help_text="starting/rendering/detecting/saving/finished."
@@ -358,7 +371,18 @@ class ProcessJob(BaseModel):
             "long page apart from a worker that died."
         ),
     )
-    started_at = models.DateTimeField(default=timezone.now)
+    requested_at = models.DateTimeField(
+        default=timezone.now, help_text="When the job was asked for. A queued job has been requested, not started."
+    )
+    run_started_at = models.DateTimeField(
+        null=True, blank=True, help_text="When a worker claimed the job and began. Null while it is queued."
+    )
+    claimed_by_worker = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text="The name of the worker that claimed the job. A stopping worker flags its own jobs by it.",
+    )
     ended_at = models.DateTimeField(null=True, blank=True)
 
     stopped_on_page = models.PositiveSmallIntegerField(
@@ -389,7 +413,7 @@ class ProcessJob(BaseModel):
         db_table = "process_job"
         verbose_name = "Process Job"
         verbose_name_plural = "Process Jobs"
-        indexes = (models.Index(fields=["mushaf", "-started_at"], name="process_job_mushaf_recent"),)
+        indexes = (models.Index(fields=["mushaf", "-requested_at"], name="process_job_mushaf_recent"),)
 
     def __str__(self) -> str:
         return f"{self.state} job for {self.mushaf_id} ({self.page_range_start}-{self.page_range_end})"

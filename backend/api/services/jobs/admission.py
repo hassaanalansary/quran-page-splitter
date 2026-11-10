@@ -38,7 +38,7 @@ def refuse_if_user_has_too_many_jobs(user: User | None) -> None:
     limit = getattr(settings, "MAX_CONCURRENT_JOBS_PER_USER", 1)
     if user is None or not limit:
         return
-    if ProcessJob.objects.exclude(state__in=TERMINAL_STATES).filter(started_by=user).count() >= limit:
+    if ProcessJob.objects.exclude(state__in=TERMINAL_STATES).filter(requested_by=user).count() >= limit:
         raise HttpError(429, i18n.t("too_many_jobs_for_user", count=limit))
 
 

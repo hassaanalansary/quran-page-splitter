@@ -10,13 +10,15 @@
 What a batch does to each page, and why, is decided in ``api.services.calibration_batch``,
 which knows nothing about jobs. The job counts pages. Its ``report`` column says what
 happened to every page so far, so a poll can show it while the batch works.
+
+The row's ``params``: ``refresh``, whether drafts that are still current are processed
+again. The range is the row's own page range.
 """
 
 from __future__ import annotations
 
 import logging
 import time
-from functools import partial
 from typing import Any
 
 from ninja.errors import HttpError
@@ -64,6 +66,7 @@ def start_calibration_batch_job(
         kind=ProcessJobKindChoices.CALIBRATION_BATCH,
         mushaf=mushaf,
         requested_by=user,
+        params={"refresh": refresh},
         first_page=first,
         last_page=last,
         total=last - first + 1,
@@ -78,13 +81,15 @@ def start_calibration_batch_job(
             "busy_seconds": 0.0,
         },
     )
-    run_the_job = partial(run_calibration_batch_job, mushaf=mushaf, refresh=refresh, user=user)
-    return dispatch_job(job, run_the_job, inline=inline)
+    return dispatch_job(job, inline=inline)
 
 
-def run_calibration_batch_job(job: ProcessJob, mushaf: Mushaf, refresh: bool, user: User | None) -> None:
-    """Walk the job's page range and settle the job: ``completed`` at the end of the
-    range, ``cancelled`` at the page where a cancel reached it."""
+def run_calibration_batch_job(job: ProcessJob) -> None:
+    """Walk the job's page range, as the user who asked for it, and settle the job:
+    ``completed`` at the end of the range, ``cancelled`` at the page where a cancel
+    reached it."""
+    mushaf = job.mushaf
+    refresh = bool(job.params["refresh"])
     report: Doc = dict(job.report or {})
     cancelled = False
     for page_number in range(job.page_range_start, job.page_range_end + 1):
@@ -99,7 +104,7 @@ def run_calibration_batch_job(job: ProcessJob, mushaf: Mushaf, refresh: bool, us
             report["skipped"].setdefault(reason, []).append(page_number)
             record_job_progress(job.id, current_page=page_number, report=report)
             continue
-        if not process_batch_page(job, mushaf, page_number, revision, reason, user, report):
+        if not process_batch_page(job, page_number, revision, reason, report):
             cancelled = True
             break
     record_job_outcome(
@@ -110,15 +115,7 @@ def run_calibration_batch_job(job: ProcessJob, mushaf: Mushaf, refresh: bool, us
     )
 
 
-def process_batch_page(
-    job: ProcessJob,
-    mushaf: Mushaf,
-    page_number: int,
-    expected_revision: int,
-    reason: str,
-    user: User | None,
-    report: Doc,
-) -> bool:
+def process_batch_page(job: ProcessJob, page_number: int, expected_revision: int, reason: str, report: Doc) -> bool:
     """Process one page of the batch and write what happened into ``report``.
 
     Returns False only when a cancel stopped the page before it was stored. A page
@@ -129,10 +126,10 @@ def process_batch_page(
     began = time.monotonic()
     try:
         stored = process_page(
-            mushaf,
+            job.mushaf,
             page_number,
             expected_revision=expected_revision,
-            user=user,
+            user=job.requested_by,
             progress=lambda lines_done: record_job_progress(job.id, lines_done=lines_done),
             cancelled=lambda: is_job_cancellation_requested(job.id),
         )
