@@ -116,6 +116,18 @@ npm run build          # → frontend/dist
 - **Routes**: `routeTree.gen.ts` is generated; a `foo.index.tsx` needs a `foo.tsx`
   layout, or every `/foo` URL 404s.
 - **Secrets** are in `backend/.env`, which is committed; `.env.dist` lists the keys with placeholders.
+- **Code style** applies to new and touched code. Older modules are converted when a
+  task reaches them.
+  - A function name says what it does to what: verb + object + qualifier
+    (`mark_silent_jobs_interrupted`, `record_job_progress`).
+  - No generic names: `run`, `start`, `get`, `process`, `to_dict`, `helpers`, `utils`.
+  - No leading-underscore functions. A helper that only makes sense inside one function
+    is inlined; any other gets a real name and a home module.
+  - One module, one job. Its docstring says where it sits in the flow, and its entry
+    points come first, in call order.
+  - A use case is one function whose body is the list of steps.
+  - No closures that hide inputs: a job runner reads its inputs from the job row.
+  - Import the function you call, not a module alias.
 
 ---
 
