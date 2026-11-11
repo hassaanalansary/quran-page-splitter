@@ -27,22 +27,36 @@ In the interface the tool is called **SATR** (سَطْر).
   `django-allauth` (headless) for accounts. Managed with **uv**.
 - **Frontend**: React 19 + Vite 7, **TanStack Router** (file-based) + **React Query**,
   Tailwind 4, Radix / shadcn UI, sonner toasts. Managed with **npm**.
-- **Serving**: one origin in production. Django serves the built SPA
-  (`frontend/dist`, `config/spa.py`), `/api`, `/media` and allauth's `/_allauth`. In
-  development Vite (`:5173`) proxies `/api`, `/media`, `/_allauth` and `/accounts` to
-  Django (`:8000`).
+- **Serving**: one origin. In development Vite (`:5173`) proxies `/api`, `/media`,
+  `/_allauth` and `/accounts` to Django (`:8000`); the target is `VITE_API_PROXY`,
+  `http://localhost:8000` by default. In production (Docker, [DEPLOY.md](../DEPLOY.md))
+  Traefik terminates HTTPS, nginx serves the React build and `/media` and passes the
+  rest to Django under gunicorn, and WhiteNoise serves the admin's static files.
+  Without Docker, Django serves the built SPA itself (`frontend/dist`, `config/spa.py`).
 - **Layering**: view (Ninja schemas) → service (ORM and orchestration) → `core` (the
   engines). Views never touch the ORM; `core` never imports Django.
 - **Auth**: session cookie (`django_auth`) on every router by default, with CSRF on
   unsafe methods. The reference-data routers and the gallery opt out (`auth=None`).
   The SPA drives allauth over JSON at `/_allauth/browser/v1/*`; allauth renders no
   HTML of its own (`HEADLESS_ONLY`).
-- **Jobs**: long runs (line processing, word processing, batches) are `ProcessJob`
-  rows run on a daemon thread and polled by the browser every second. One job per
-  mushaf at a time (409 otherwise), a cap on concurrent jobs overall and per user
-  (`MAX_CONCURRENT_JOBS`, `MAX_CONCURRENT_JOBS_PER_USER`), a heartbeat on every
-  progress tick, and a job silent for `JOB_HEARTBEAT_TIMEOUT_SECONDS` (300) is marked
-  `interrupted`. Cancelling sets a column that the worker reads between units.
+- **Jobs**: long runs (line processing, a calibration page, a calibration batch) are
+  `ProcessJob` rows, polled by the browser every second. The row describes the whole
+  job (`kind` names the runner, `params` holds its inputs), so a worker is handed the
+  job's id and nothing else. `JOB_RUNNER` picks who runs it: `celery` (a Celery worker,
+  Redis as the queue; Docker sets this), `thread` (a thread of the web process; the
+  default without Docker) or `inline` (the request itself; tests and debug commands).
+  A job starts `queued` and becomes `running` when a worker claims it, with one
+  conditional `UPDATE`, so a job delivered twice runs once. The rules
+  (`services/jobs/admission.py`): one queued or running job per mushaf (409);
+  `MAX_ACTIVE_JOBS_PER_USER` (429); `MAX_QUEUED_JOBS` waiting (429). Over
+  `JOB_WORKER_SLOTS` a job waits in the queue, and the API returns its
+  `queue_position`; on threads, where nothing can wait, it is refused (429). A queued
+  job is cancelled at once; a running one through a column it reads between pages or
+  lines. A running job silent for `JOB_HEARTBEAT_TIMEOUT_SECONDS` (300), and a queued
+  job nothing claimed while a slot stood free for `JOB_QUEUE_TIMEOUT_SECONDS` (600),
+  are marked `interrupted`. A worker that is told to stop flags its own running jobs,
+  so they stop at their next page; one that starts sends long-waiting jobs again. The
+  flow is drawn in `services/jobs/__init__.py`.
 - **Pages are rendered on demand** from the stored PDF and never stored; only a
   cover thumbnail is cached. Every meaningful change writes an `ActivityEvent`.
 
@@ -52,7 +66,7 @@ In the interface the tool is called **SATR** (سَطْر).
 
 ```
 backend/
-  config/      settings.py (.env via django-environ), urls.py, spa.py, logging
+  config/      settings.py (.env via django-environ), urls.py, spa.py, logging, celery.py (the Celery app)
   accounts/    the User model (email is the identifier, no username)
   quran/       the Quran text and reference data: models, seed data, read-only views
   api/
@@ -60,6 +74,9 @@ backend/
     models.py  mushafs, pages, lines, jobs, calibration, activity
     views/     mushafs, pages, processing, finalize, calibration, gallery, bundles (thin)
     services/  the only layer that touches the ORM (see below)
+      jobs/    the job system: admission, creation, dispatch, claiming, execution, progress,
+               cancellation, the queue, dead jobs, worker events; kinds/ holds each kind of job
+    tasks.py   the one Celery task, run_job_task: it calls jobs.execution.execute_job
     management/commands/   see §10
     tests/
   core/        the engines, no Django
@@ -72,7 +89,10 @@ frontend/
   src/components/    app/ (shell, details hub, dialogs, auth), canvas/, calibration/, ui/
   src/lib/           api/ (fetchers + React Query hooks), calibration/, review/, auth/, theme, prefs
   src/i18n/locales/  en.ts and ar.ts (every string in both)
-docs/          ENGINES_FLOW.md, EXPORT_FORMAT.md, this page
+docs/          ENGINES_FLOW.md, EXPORT_FORMAT.md, this page, plans/, CELERY_DOCKER_HANDOFF.md
+compose/       the Docker images and their start scripts, local/ and production/
+.envs/         the env files of the Docker stacks: .local/ (tracked), .production.example/ (templates)
+docker-compose.local.yml, docker-compose.production.yml, justfile, DEPLOY.md
 ```
 
 The services, grouped:
@@ -80,13 +100,28 @@ The services, grouped:
 | area | modules |
 | --- | --- |
 | mushafs and pages | `mushaf`, `pdf`, `editing`, `coordinates`, `line_images`, `activity` |
-| line engine | `processing`, `run_logs`, `jobs` |
+| line engine | `processing`, `run_logs` |
+| jobs | `jobs/` (a package: one module per step of a job, see its `__init__.py`), `jobs/kinds/` (`detection`, `calibration_page`, `calibration_batch`: each kind's `start_…_job` and `run_…_job`) |
 | word engine | `calibration` (process / save / confirm / preview), `calibration_snapshots`, `calibration_marks`, `calibration_library`, `calibration_batch`, `calibration_progress`, `word_inputs`, `word_runs` (preflight), `word_coordinates` (writes `LineWord`) |
 | exports and sharing | `export` (line PNGs), `data_export` (`mushaf-export/v2`), `bundle` (`mushaf-work/v2`), `cloning`, `gallery` |
 
 ---
 
 ## 4. Dev commands and conventions
+
+With Docker (Linux; from the repository root, see the README):
+
+```bash
+just build && just up                      # Django, the Celery worker, Postgres 18, Redis
+just manage seed_quran                     # once
+just test                                  # the backend tests, in the container
+just check                                 # ruff and mypy, in the container
+just psql                                  # psql on the database; it also answers on localhost:5433
+just redis-cli                             # Redis also answers on localhost:6380
+just logs celeryworker                     # the worker's log
+```
+
+Without Docker:
 
 ```bash
 # backend (from backend/)
@@ -95,10 +130,11 @@ cp .env.dist .env                          # SECRET_KEY is required: there is no
 uv run python manage.py migrate
 uv run python manage.py seed_quran         # reference data, the word list, the aya maps
 uv run python manage.py runserver 8000     # API at /api, docs at /api/docs
+uv run celery -A config worker             # only with JOB_RUNNER=celery and Redis
 
 uv run ruff check .
 uv run python -m mypy .                    # through python -m (mypy.EXE fails on the space in the path)
-uv run python manage.py test --parallel 4  # ~700 tests, on the Postgres test database
+uv run python manage.py test --parallel 4  # ~760 tests, on the Postgres test database
 
 # frontend (from frontend/)
 npm install
@@ -109,13 +145,19 @@ npm run build          # → frontend/dist
 ```
 
 - **Tests** use the Postgres test database: never two runs at once, and a run that
-  was killed leaves the database behind, so the next one needs `--noinput`.
+  was killed leaves the database behind, so the next one needs `--noinput`. They run
+  jobs inline (`PROCESS_JOBS_INLINE`) or on threads, never through a real Redis.
+  `tblib` (in the dev group) lets `--parallel` report a failing test instead of crashing.
 - **Strings**: every UI string goes in both `en.ts` and `ar.ts`. `t()` is type-checked
   against `en` only, so a key missing from `ar.ts` falls back to English silently.
-- **Line endings**: the working tree is CRLF (`core.autocrlf=true`).
+- **Line endings**: the repository stores LF. `.gitattributes` keeps the files that
+  containers read (start scripts, env files, compose files, the `justfile`) LF on any
+  checkout, even with `core.autocrlf=true`.
 - **Routes**: `routeTree.gen.ts` is generated; a `foo.index.tsx` needs a `foo.tsx`
   layout, or every `/foo` URL 404s.
 - **Secrets** are in `backend/.env`, which is committed; `.env.dist` lists the keys with placeholders.
+  Inside Docker, the values of `.envs/.local/` win over `backend/.env`. Production
+  values live in `.envs/.production/`, on the server only.
 - **Code style** applies to new and touched code. Older modules are converted when a
   task reaches them.
   - A function name says what it does to what: verb + object + qualifier
@@ -155,7 +197,7 @@ npm run build          # → frontend/dist
 | `Mushaf` | `owner`, `rawi`, `name` (unique per owner), the PDF (stored once as `pdfs/<sha>.pdf`), the Quran's first and last PDF page, `thumbnail`, `visibility` (`private` / `published`) and `published_at`, `ijam_mode`, `export_uniform_size`, `description`, `duplicated_from` |
 | `Template` | one per mushaf and type: `sura_header`, `aya_separator`, `sajda`, `rub_hizb`; an image and optional ignore rectangles |
 | `ProcessingRun` | one line-engine run: settings, page range, status, abort detail, log |
-| `ProcessJob` | the live state of a background job: `kind` (`detection`, `calibration`, `calibration_batch`; `words` only for history), `state`, `phase`, progress, heartbeat, cancel flag |
+| `ProcessJob` | one background job, and all a worker needs to run it: `kind` (`detection`, `calibration`, `calibration_batch`; `words` only for history), `params` (the runner's inputs), `state` (`queued`, `running`, then a final state), `requested_by` and `requested_at`, `run_started_at` and `claimed_by_worker`, `phase`, progress, heartbeat, cancel flag |
 | `Page` | a logical page with data: its crop box, `reviewed`, the run that made it |
 | `Line` | `line_number`, `type` (`text` / `sura_header` / `besmella`), `sura`, its box, its exported PNG |
 | `Segment` | a stretch of a line up to an aya ornament: `bbox_x`, `bbox_w`, `has_separator`, the derived `aya_number` |
@@ -204,7 +246,7 @@ logical page number.
 
 | method | path | what it does |
 | --- | --- | --- |
-| POST | `/mushafs/{id}/process` | start the line engine over a page range (202, a job) |
+| POST | `/mushafs/{id}/process` | start the line engine over a page range (202, a job; 409 if the mushaf has one, 429 over a limit, 503 if the queue is down) |
 | GET / POST | `/mushafs/{id}/process/job`, `/process/cancel` | poll / stop it |
 | GET | `/mushafs/{id}/runs`, `/runs/{run}/log`, `/runs/{run}/log/tail` | past runs and their logs |
 | GET | `/mushafs/{id}/pages`, `/review-data` | page summaries, the whole-mushaf review payload |
@@ -270,7 +312,7 @@ React Query (`lib/api/*`).
 ## 8. The two engines
 
 **Line engine** (`core/page_detection`, run by `services/processing` as a `detection`
-job): crop each page to its bounds, find the sura headers by template matching, split
+job, `services/jobs/kinds/detection.py`): crop each page to its bounds, find the sura headers by template matching, split
 the rest into the expected number of lines at the valleys of the row sums, find the
 aya ornaments in each line, split it into segments, and number every sura and aya
 with a forward walk. A line-count mismatch aborts the run at that page. The pages are
@@ -278,7 +320,7 @@ then corrected in Review, where the client owns the numbering.
 
 **Word engine** (`core/word_boundary`, run by `services/calibration`):
 
-1. **Process a page** (`calibration` job): snapshot every line of the page's ayat
+1. **Process a page** (`calibration` job, `services/jobs/kinds/calibration_page.py`): snapshot every line of the page's ayat
    (`CalibrationSnapshot`), give each blob a first-guess role, read the page once with
    no help (stored as the `processed` revision, the prediction record), add the
    text's locks (small waw and ya) and the library's prices and read it again, let the
@@ -291,7 +333,8 @@ then corrected in Review, where the client owns the numbering.
    (never its own), recorded by a `CalibrationProfile`. It proposes body or mark for
    every blob with a confidence, prices the reading accordingly, and guesses the mark
    types the text leaves open.
-5. **Batch** (`calibration_batch` job): process a range of pages once the readiness
+5. **Batch** (`calibration_batch` job, `services/jobs/kinds/calibration_batch.py`; what
+   it does to each page is decided in `services/calibration_batch`): process a range of pages once the readiness
    meter says the learning has settled; the pages are then reviewed in any order.
 
 [ENGINES_FLOW.md](ENGINES_FLOW.md) walks both engines on page 1 of a real mushaf, then
@@ -318,7 +361,7 @@ page 2 with page 1 as the library.
 | `seed_suras` | the reference data alone (counting systems, qiraat, suras, aya counts) |
 | `export_reference_data` | write `reference_data.json` from a filled database |
 | `build_aya_boundaries` | rebuild the aya-map seed from the vendored dataset (developer tool) |
-| `debug_process`, `debug_calibrate` | run the line engine / process one page in the foreground, for a debugger |
+| `debug_process`, `debug_calibrate` | run the line engine / process one page in the foreground, for a debugger. They follow the app's rules: a mushaf with an unfinished job is refused |
 | `calibration_report` | how each confirmed page went (read-only) |
 | `restart_calibration` | start a mushaf's word-engine work again, after backing it up |
 | `retype_from_text` | retype marks typed by an old name (dry run unless `--apply`) |

@@ -4,7 +4,7 @@ The plan is [plans/celery-and-docker.md](plans/celery-and-docker.md). This file 
 
 ## Status
 
-Last updated: 2026-11-10.
+Last updated: 2026-11-11. **All seven phases are done.** Start with [On your Ubuntu machine](#on-your-ubuntu-machine).
 
 | # | Phase | State | Checks run |
 |---|---|---|---|
@@ -15,7 +15,18 @@ Last updated: 2026-11-10.
 | 4 | The real queue | done | ruff, mypy, backend tests |
 | 5 | Frontend | done | `npx tsc --noEmit`, `npm run lint`, and the process screen in a real browser (see below) |
 | 6 | Docker | done | every image built, and both stacks started and used, in the cloud (see below). ruff, mypy, backend tests, `tsc`, lint |
-| 7 | Docs | not started | |
+| 7 | Docs | done | the links and commands in the docs were checked against the files |
+
+## On your Ubuntu machine
+
+In this order:
+
+1. **Bring `feature/celery-and-docker` up to date** with the commands under [Where the work is](#where-the-work-is).
+2. **Rebuild the frontend bundle.** `frontend/dist` is committed and older than this work: it still reads `started_at` and knows no `queued` state. Run `npm run build` in `frontend/` before Django serves it. Vite in development and the production nginx image both build from source and are not affected.
+3. **Rename two settings** if your `backend/.env` or any other env file sets them: `MAX_CONCURRENT_JOBS` → `JOB_WORKER_SLOTS`, `MAX_CONCURRENT_JOBS_PER_USER` → `MAX_ACTIVE_JOBS_PER_USER`. The old names are no longer read. The committed `backend/.env` sets neither.
+4. **Install Docker Engine with the Compose plugin, and `just`.** Then follow the README's *Run it with Docker* section: `just build`, `just up`, `just manage seed_quran` or your own data with `just restore-db`.
+5. **Run the plan's §9 checks**, steps 1 to 11. Most of them already passed in the cloud (see phase 6), but not on your machine, your user and your data. The [Not verified](#not-verified) list says what was never run anywhere.
+6. **For production**, follow [DEPLOY.md](../DEPLOY.md). It is §9 step 12.
 
 ## Where the work is
 
@@ -47,7 +58,7 @@ The 15 tests that already fail on the base commit, none of them in the job syste
 
 Two things to know when you run the tests yourself:
 
-- With `--parallel`, one failing test crashes the whole run with `cannot pickle 'traceback' object`, unless `tblib` is installed. It is not in `pyproject.toml`. `uv pip install tblib` fixes it for one environment.
+- With `--parallel`, one failing test crashes the whole run with `cannot pickle 'traceback' object`, unless `tblib` is installed. It was added to the dev group in phase 6, so `uv sync` installs it.
 - One run here hung for five minutes on a query in the `quran` seeding tests. Autovacuum had analyzed a table while the test's rows were still uncommitted, so the planner expected 0 rows and chose a nested loop. `ALTER SYSTEM SET autovacuum = off` on the test server avoided it. It has nothing to do with this branch.
 
 ## What each phase did
@@ -230,6 +241,15 @@ Choices made where the plan left a detail open, or where its draft could not sta
 
 The cloud session intercepts HTTPS with its own certificate authority, which containers do not trust, and Docker Hub rate-limited it. The builds there used a registry mirror and local copies of the Python and Node base images that trust that authority. Nothing of that is in the repo: the committed Dockerfiles are the ones that were built.
 
+### Phase 7: the docs
+
+- `README.md`: the jobs and serving paragraphs, a *Run it with Docker* section (the usual way now, with the `just` recipes), *Run it without Docker* (with how to start a worker beside `runserver`), and a link to `DEPLOY.md`.
+- `docs/PROJECT_HANDOFF.md`: the jobs and serving paragraphs of §2, the repo layout and the services table of §3, the Docker commands and the line-endings note of §4, the `ProcessJob` row of §5, the status codes of `POST /process` in §6, and where each kind of job lives in §8.
+- `backend/.env.dist`: `JOB_RUNNER`, `CELERY_BROKER_URL`, the three renamed and new limits, `JOB_QUEUE_TIMEOUT_SECONDS`, `TRUST_PROXY_SSL_HEADER` and `LOG_FILE`.
+- This file.
+
+`docs/ENGINES_FLOW.md` was not touched (plan §8). It still quotes the old names in its walk-through of a calibration page: `calibration_service.start_page`, `jobs.start_words`, `jobs._touch`, `jobs.settle` and `_execute`. They are now `start_calibration_page_job`, `create_queued_job`, `record_job_progress`, `record_job_outcome` and `execute_job` (plan §4.4). The engine steps it describes are unchanged.
+
 ## Not verified
 
 - **Docker on your Ubuntu machine.** Both stacks ran in the cloud, as root and as uid 1000, but not on your machine with your user, your Docker version and your data. Plan §9 steps 1 to 11 are still yours to run.
@@ -240,10 +260,20 @@ The cloud session intercepts HTTPS with its own certificate authority, which con
 - A queued job on the calibration screens. The page job and the batch got the same label as the process screen, and `tsc` and the linter pass, but only the process screen was opened in a browser.
 - "N ahead of you" **in the browser against a real worker**. The queue itself was run against a real worker (phase 6), and the label was seen in a browser with queued rows (phase 5), but not the two together.
 
+## Found on the way, not fixed
+
+Out of this branch's scope, and each worth its own change:
+
+- **The full data export is broken on the base commit.** `data_export.py` calls `calibration._fit_words`, which no longer exists. 10 of the 15 failing tests are this.
+- `PricingTests.test_a_page_with_a_library_is_read_with_its_answers_priced_in` and `CalibrationPersistenceTests.test_page_deletion_keeps_numeric_review_identity` fail on the base commit.
+- The 3 `BlockedRolloverTests` fail on Linux. They test a Windows file lock: they need a skip on other systems.
+- ruff's one error (RUF002, an Arabic digit in a docstring of `core/word_boundary/separators.py`) and mypy's 21 errors are all on the base commit. `core/` is frozen (plan §8).
+- `docs/ENGINES_FLOW.md` quotes the old job names (see phase 7).
+
 ## For whoever continues
 
 1. Read the plan, then this file.
-2. Work on `feature/celery-and-docker` after the fast-forward above. One commit per phase. Push the branch; do not open a pull request.
-3. Follow the plan's §8 (rules for the builder) and §4.1 (code style).
+2. Work on `feature/celery-and-docker` after the fast-forward above. Push the branch; do not open a pull request until the owner asks.
+3. Follow `docs/PROJECT_HANDOFF.md` §4 (code style).
 4. `backend/.env` is committed and may point `DATABASE_URL` at a Postgres on localhost. Set `DATABASE_URL` in the environment to use another one.
-5. At the end of each phase, update the table above and the "Not verified" list.
+5. The next steps belong to the owner: the list under [On your Ubuntu machine](#on-your-ubuntu-machine).
