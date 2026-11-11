@@ -1,0 +1,13 @@
+# Files that Linux reads inside a container must keep LF line endings, whatever
+# core.autocrlf says on the machine that checked them out. A CRLF in a start script
+# is "bad interpreter", and a CRLF in an env file ends every value with \r.
+*.sh                              text eol=lf
+justfile                          text eol=lf
+Dockerfile                        text eol=lf
+compose/**/start                  text eol=lf
+compose/**/entrypoint             text eol=lf
+compose/**/maintenance/*          text eol=lf
+compose/**/*.conf                 text eol=lf
+compose/**/*.yml                  text eol=lf
+docker-compose.*.yml              text eol=lf
+.envs/**                          text eol=lf

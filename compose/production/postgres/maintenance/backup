@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Dump the database to /backups, in pg_dump's custom format.
+#
+#   docker compose exec postgres backup               -> /backups/backup_<date>.dump
+#   docker compose exec postgres backup quran.dump    -> /backups/quran.dump
+
+set -o errexit
+set -o pipefail
+set -o nounset
+
+backup_name="${1:-backup_$(date +'%Y_%m_%dT%H_%M_%S').dump}"
+backup_path="/backups/${backup_name}"
+
+export PGPASSWORD="${POSTGRES_PASSWORD}"
+pg_dump --format=custom --username="${POSTGRES_USER}" --dbname="${POSTGRES_DB}" --file="${backup_path}"
+
+echo "Backed up '${POSTGRES_DB}' to ${backup_path}"

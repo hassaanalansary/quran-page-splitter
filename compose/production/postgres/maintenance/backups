@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# List the dumps in /backups, newest first.
+#
+#   docker compose exec postgres backups
+
+set -o errexit
+set -o pipefail
+set -o nounset
+
+ls -lht /backups

@@ -1,0 +1,21 @@
+#!/bin/bash
+# Starts the Celery worker of the local image, and starts it again whenever a
+# Python file of the mounted checkout changes.
+
+set -o errexit
+set -o pipefail
+set -o nounset
+
+# On a change, watchfiles sends the worker SIGINT. Celery takes the first SIGINT
+# as a warm shutdown: it stops taking jobs, and the app asks the running jobs to
+# stop at their next page (api/services/jobs/worker_events.py). They settle as
+# `cancelled` with a page to resume from, and the worker starts again.
+#
+# --sigint-timeout is how long that may take before watchfiles kills the worker.
+# 120 seconds covers the slowest single page. A job that is killed instead ends as
+# `interrupted`. docker-compose.local.yml gives the container a longer
+# stop_grace_period than this, so `docker compose restart` behaves the same way.
+exec watchfiles \
+  --filter python \
+  --sigint-timeout 120 \
+  "celery -A config worker --loglevel info --concurrency ${JOB_WORKER_SLOTS:-2}"

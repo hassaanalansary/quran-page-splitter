@@ -14,7 +14,7 @@ Last updated: 2026-11-10.
 | 3 | Celery | done | ruff, mypy, backend tests, and a real worker against a real Redis (see below) |
 | 4 | The real queue | done | ruff, mypy, backend tests |
 | 5 | Frontend | done | `npx tsc --noEmit`, `npm run lint`, and the process screen in a real browser (see below) |
-| 6 | Docker | not started | |
+| 6 | Docker | done | every image built, and both stacks started and used, in the cloud (see below). ruff, mypy, backend tests, `tsc`, lint |
 | 7 | Docs | not started | |
 
 ## Where the work is
@@ -160,13 +160,85 @@ Choices made where the plan left a detail open:
 - **No elapsed timer exists in the frontend**, so nothing reads `run_started_at` for one. The field is in the type, and `didJobNeverStart` reads it.
 - **The strings carry no plural forms**, like the rest of both locale files: "Queued, 1 ahead of you" is the same sentence as for 2.
 
+### Phase 6: Docker
+
+The plan expected the Docker files to be written without being run. They were run: a Docker daemon works in the cloud session, so every image was built and both stacks were started and used. Two real bugs came out of that, and both are fixed.
+
+Files, as in the plan's §6.1: `docker-compose.local.yml`, `docker-compose.production.yml`, `justfile`, `DEPLOY.md`, `.dockerignore`, `.gitattributes`, `.envs/.local/`, `.envs/.production.example/`, and `compose/`. Code changes: `VITE_API_PROXY` in `frontend/vite.config.ts`, WhiteNoise and `STATIC_ROOT` when `DEBUG` is off, the `TRUST_PROXY_SSL_HEADER` switch, and `gunicorn`, `whitenoise`, `flower` and `tblib` in `backend/pyproject.toml`.
+
+**The local stack** (`just build`, `just up`):
+
+| What | Result |
+|---|---|
+| The four services | Up. Django migrated and answered. The worker connected to Redis and registered `api.run_job` |
+| `just psql`, `just redis-cli`, `just shell`, `just manage check` | Each worked. `localhost:5433` and `localhost:6380` answered from the host |
+| A detection job through the containers | `queued` → `running` → settled, claimed by `celery@<container>` |
+| `docker compose restart django` during a run | The run continued: page 5 before, page 10 after |
+| `docker compose restart celeryworker` during a run | The job settled `cancelled`, 15 pages saved, `stopped_on_page = 16`, in under 4 seconds. The worker came back |
+| A `.py` file saved during a run | The same: `cancelled` with a page to resume from, and the worker restarted |
+| Both slots busy, then two more jobs | `queue_position` 0 and 1. Both started when the slots came free |
+| Cancel a running job, then a queued one | The running one stopped at its next page. The queued one was `cancelled` at once and never claimed |
+| The worker stopped, then a job, polled past the queue timeout | `interrupted`, "No worker picked this job up." |
+| `just test` | 763 tests, the same 15 failures as on the base commit |
+| `just check` | Both tools ran: ruff's 1 known error, mypy's 21 known errors |
+| `just dump-db`, then rows deleted, then `just restore-db` | The rows came back, with the stack running |
+| A dump from **Postgres 16 at migration 0032**, through `just restore-db` | Restored into Postgres 18 and migrated. The old job row kept its values under the new column names |
+| The containers as uid 1000 | Both ran, a job ran, and the files it wrote belong to uid 1000 |
+| `just flower`, and `--profile frontend` | Flower answered on 5555. Vite in the container answered on 5173 and proxied `/api` to `django` |
+
+The runs that lasted a while used a stand-in for the line engine, mounted from outside the repo: one "page" every two seconds, with the real runner's contract (progress per page, the cancel flag read between pages). The cloud has no real mushaf.
+
+**The production stack** (example values, the made-up domain `satr.test`, requests sent to Traefik on 127.0.0.1):
+
+| What | Result |
+|---|---|
+| The images | All built, the React build inside the nginx image included |
+| `manage.py check --deploy` | One warning, W008 (`SECURE_SSL_REDIRECT`). It is expected: Traefik does the redirect |
+| `http://` | 301 to `https://` |
+| `/`, and a page of the app such as `/mushafs/x` | 200, the React app |
+| `/api/suras` | 200 |
+| `/admin/login/`, and `/static/admin/css/base.css` | 200 and 200: the admin has its CSS |
+| `/_allauth/browser/v1/auth/session` | The `csrftoken` cookie, marked `Secure`, and an HSTS header: Django knows the request was HTTPS |
+| A hashed asset | 200, `immutable`, gzip |
+| Sign in, then upload a PDF | 200, then 201. nginx served the new thumbnail from the media volume |
+| A job on the production worker | Ran. The web container served the run log that the worker wrote |
+| `docker compose stop celeryworker` | A warm shutdown, 2.4 seconds |
+| The backup script, and the media move of `DEPLOY.md` | Both worked |
+
+**The two bugs that running it found:**
+
+1. **nginx kept the old address of the django container.** The plan's `upstream django { server django:5000; }` is resolved once, when nginx starts. After a deploy replaced the django container, every API call answered 502 until nginx was restarted. `default.conf` now puts the address in a variable and names Docker's DNS server, so nginx asks again while it runs. Checked by forcing the container onto a new address: 200 from the first request.
+2. **`docker compose exec` skips the entrypoint**, and the entrypoint is what sets `DATABASE_URL`. A shell opened with `exec` read the localhost address in `backend/.env` and found no database. `just shell` now goes through `/entrypoint`, and `DEPLOY.md` says which form to use.
+
+Choices made where the plan left a detail open, or where its draft could not stand:
+
+- **The base image is `python:3.13.13-slim-bookworm` with a pinned `uv` binary copied in** (`ghcr.io/astral-sh/uv:0.11.32`). The draft's `ghcr.io/astral-sh/uv:python3.13-bookworm-slim` is not pinned, and it is stale: that tag still holds uv 0.9.30, because the bookworm variant is no longer published.
+- **No `wait-for-it`, and no `apt-get` at all in the django images.** The entrypoint waits with a few lines of Python and `psycopg`, which is already installed. The import check `import cv2, fitz, psycopg` passes on the slim image without any system package.
+- **Pinned versions**, read from the registries on 2026-11-10: `postgres:18` (19 is at rc1, so 18 is the newest stable major), `redis:8.10.3-alpine`, `nginx:1.30.6-alpine`, `traefik:v3.7.10`, `node:24.22.2-bookworm-slim`.
+- **The Postgres volume is mounted at `/var/lib/postgresql`**, the folder above the data, as the image's documentation asks since version 18. The data is at `/var/lib/postgresql/18/docker` inside it.
+- **`client_max_body_size` is `2g`, not the draft's `500m`.** The plan says to match the app's upload limit, and the app has none. A scanned mushaf can pass 500 MB, and the cost of a limit that is too low is a failed upload.
+- **`TRUST_PROXY_SSL_HEADER`** is the name of the proxy-header switch. It is a true/false setting, so that no header name has to be typed into an env file.
+- **WhiteNoise is added only when `DEBUG` is off.** With `DEBUG` on, `runserver` serves static files itself, and WhiteNoise would warn about a missing folder on every start.
+- **`restore` drops the database and creates it again**, with `dropdb --force`, where the plan's outline said `pg_restore --clean`. A restore over existing tables leaves behind whatever the dump does not know. `just restore-db` then runs `migrate`.
+- **Production Redis keeps its data on disk** (`--appendonly yes`, its own volume), so a job that waits in the queue survives a restart of Redis.
+- **`gunicorn --no-control-socket`.** gunicorn 27 opens a control socket in the home folder of its user, and the image's `django` user has none. It logged an error on every start.
+- **`just test` gives the tests threads and an in-memory cache**, not the stack's worker and Redis.
+- **`just check` runs both tools even when ruff fails.** ruff always reports its one known error in `core/`, and mypy would never have run.
+- **`tblib` joined the dev group.** With 15 failing tests on the base commit, `--parallel` crashes without it.
+- **Flower listens on 127.0.0.1 only.** It has no login. Django's 8000 and the optional Vite's 5173 are published as the plan wrote them.
+- **The local worker's `stop_grace_period` is 3 minutes**, longer than the 120 seconds the start script gives a job to reach its next page. With Docker's default of 10 seconds, `restart celeryworker` would kill the job.
+
+The cloud session intercepts HTTPS with its own certificate authority, which containers do not trust, and Docker Hub rate-limited it. The builds there used a registry mirror and local copies of the Python and Node base images that trust that authority. Nothing of that is in the repo: the committed Dockerfiles are the ones that were built.
+
 ## Not verified
 
-- The Docker files will be written without being run. Their first real run is on the owner's machine (plan §9).
-- A long job across a worker stop. The stop hook was seen to flag the right row, and every runner is tested to stop on the flag. A real multi-page run that is cancelled by `docker compose restart celeryworker` and settles `cancelled` with a resume page was not run: the cloud has no real mushaf (plan §9, step 7).
+- **Docker on your Ubuntu machine.** Both stacks ran in the cloud, as root and as uid 1000, but not on your machine with your user, your Docker version and your data. Plan §9 steps 1 to 11 are still yours to run.
+- **The Let's Encrypt certificate.** Traefik started and routed, but it could not ask for a certificate: there is no public domain in the cloud. The HTTPS checks above used Traefik's own self-signed certificate.
+- **A real mushaf**: a PDF of real size through Traefik and nginx, real pages through the line and word engines in a worker child, and how much memory that takes.
+- A long job of the **real engine** across a worker stop. The stop, the save of a `.py` file and the cancel were all run against a real worker, but with the stand-in runner described under phase 6 (plan §9, step 7).
 - Two jobs at once in two worker children, each with its own run log (plan §9, step 10).
 - A queued job on the calibration screens. The page job and the batch got the same label as the process screen, and `tsc` and the linter pass, but only the process screen was opened in a browser.
-- The queue against a real worker with every slot busy: a third job shows "1 ahead of you" and starts when a slot frees (plan §9, step 5). The rules and `queue_position` are tested on the rows, with the publish to Redis replaced.
+- "N ahead of you" **in the browser against a real worker**. The queue itself was run against a real worker (phase 6), and the label was seen in a browser with queued rows (phase 5), but not the two together.
 
 ## For whoever continues
 

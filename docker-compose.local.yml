@@ -1,0 +1,111 @@
+# The local stack: Django, the Celery worker, Postgres and Redis.
+#
+#   just build          build the images
+#   just up             start everything in the background
+#   npm run dev         in frontend/, on the host: the app is at http://localhost:5173
+#
+# The justfile sets COMPOSE_FILE to this file, so plain `docker compose …` from the
+# repository root also means this stack once that variable is exported.
+#
+#   browser ─▶ Vite on the host :5173
+#                │ proxies /api /media /_allauth /accounts
+#                ▼
+#             django :8000 (runserver) ──▶ postgres   (localhost:5433 from the host)
+#                │
+#                └──▶ redis ──▶ celeryworker         (localhost:6380 from the host)
+
+volumes:
+  local_postgres_data: {}
+  local_postgres_data_backups: {}
+
+services:
+  django: &django
+    build:
+      context: .
+      dockerfile: ./compose/local/django/Dockerfile
+    image: quran_page_splitter_local_django
+    depends_on:
+      - postgres
+      - redis
+    volumes:
+      # The checkout itself: a change on disk is a change in the container.
+      - .:/app:z
+    working_dir: /app/backend
+    # Run as the developer, so files written to backend/media and backend/logs
+    # belong to them. The justfile exports both ids.
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    environment:
+      # That user has no home directory in the image.
+      HOME: /tmp
+    env_file:
+      - ./.envs/.local/.django
+      - ./.envs/.local/.postgres
+    ports:
+      - "8000:8000"
+    command: /start
+
+  celeryworker:
+    <<: *django
+    ports: []
+    environment:
+      HOME: /tmp
+      # Its own log file under backend/logs, beside the web process's quran.log.
+      LOG_FILE: worker.log
+    # The start script restarts the worker when a Python file changes, and gives a
+    # running job 120 seconds to stop at its next page. This must be longer, or
+    # `docker compose restart celeryworker` kills the job where a save only stops it.
+    stop_grace_period: 3m
+    command: /start-celeryworker
+
+  postgres:
+    build:
+      context: .
+      dockerfile: ./compose/production/postgres/Dockerfile
+    image: quran_page_splitter_postgres
+    volumes:
+      # Since version 18 the image keeps its data under /var/lib/postgresql/<major>/docker,
+      # and the volume belongs on the folder above it.
+      - local_postgres_data:/var/lib/postgresql
+      - local_postgres_data_backups:/backups
+    env_file:
+      - ./.envs/.local/.postgres
+    ports:
+      # One above the standard port, so it never clashes with a Postgres installed
+      # on the machine. For `psql`, a GUI or the VS Code extension.
+      - "127.0.0.1:5433:5432"
+
+  redis:
+    image: docker.io/redis:8.10.3-alpine
+    ports:
+      # One above the standard port, as for Postgres.
+      - "127.0.0.1:6380:6379"
+
+  # Vite in a container. The usual way is `npm run dev` on the host.
+  #   docker compose --profile frontend up -d frontend
+  frontend:
+    profiles: [frontend]
+    build:
+      context: .
+      dockerfile: ./compose/local/node/Dockerfile
+    image: quran_page_splitter_local_frontend
+    depends_on:
+      - django
+    volumes:
+      - ./frontend:/app/frontend:z
+      # The image's own node_modules, not the host's: they may be for another OS.
+      - /app/frontend/node_modules
+    environment:
+      VITE_API_PROXY: http://django:8000
+    ports:
+      - "5173:5173"
+    command: npm run dev -- --host 0.0.0.0
+
+  # Flower: a web page that shows the worker and its tasks.
+  #   just flower, then http://localhost:5555
+  flower:
+    <<: *django
+    profiles: [tools]
+    ports:
+      # It has no login, so it listens on this machine only.
+      - "127.0.0.1:5555:5555"
+    command: celery -A config flower --port=5555

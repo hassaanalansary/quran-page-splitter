@@ -52,6 +52,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    # WhiteNoise is inserted here when DEBUG is off: see STATIC_ROOT below.
     # Compress responses (the review-data payload is large); browsers send
     # Accept-Encoding: gzip and decompress transparently.
     "django.middleware.gzip.GZipMiddleware",
@@ -235,8 +236,15 @@ SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG
 # Separately overridable: behind a TLS-terminating proxy Django sees plain HTTP
 # and would redirect forever. Set SECURE_SSL_REDIRECT=False there and let the
-# proxy handle it (and set SECURE_PROXY_SSL_HEADER if you want Django to know).
+# proxy handle it, and set TRUST_PROXY_SSL_HEADER=True so that Django knows.
 SECURE_SSL_REDIRECT = env.bool("SECURE_SSL_REDIRECT", default=not DEBUG)
+# Behind a proxy that terminates TLS, the proxy says whether the browser's request
+# was HTTPS in X-Forwarded-Proto. Django needs to know: allauth builds the links
+# in its emails and the OAuth callback address from it. Turn this on ONLY behind a
+# proxy that sets the header itself (Traefik does), because a client that could
+# send it directly could claim HTTPS on a plain request.
+if env.bool("TRUST_PROXY_SSL_HEADER", default=False):
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 SECURE_HSTS_SECONDS = 0 if DEBUG else 31536000
 SECURE_HSTS_INCLUDE_SUBDOMAINS = not DEBUG
 SECURE_HSTS_PRELOAD = not DEBUG
@@ -332,6 +340,17 @@ USE_TZ = True
 
 
 STATIC_URL = "static/"
+# Where `collectstatic` gathers the admin's CSS and JavaScript. With DEBUG on,
+# runserver serves static files itself. With DEBUG off nothing did, and the admin
+# had no CSS: WhiteNoise now serves this folder from inside Django, compressed.
+# The production start script runs `collectstatic` (compose/production/django/start).
+STATIC_ROOT = BASE_DIR / "staticfiles"
+if not DEBUG:
+    MIDDLEWARE.insert(1, "whitenoise.middleware.WhiteNoiseMiddleware")
+    STORAGES = {
+        "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+        "staticfiles": {"BACKEND": "whitenoise.storage.CompressedStaticFilesStorage"},
+    }
 
 MEDIA_URL = "media/"
 MEDIA_ROOT = BASE_DIR / "media"

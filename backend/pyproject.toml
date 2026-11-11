@@ -16,6 +16,8 @@ dependencies = [
     "django-allauth[headless-spec,socialaccount]>=65.19.1",
     "psycopg[binary]>=3.3.4",
     "celery[redis]>=5.7.0",
+    "gunicorn>=27.0.0",
+    "whitenoise>=6.12.0",
 ]
 
 [dependency-groups]
@@ -25,6 +27,8 @@ dev = [
     "django-stubs-ext>=5.2.8",
     "django-stubs[compatible-mypy]==6.0.6",
     "django-watchfiles>=1.4.0",
+    "flower>=2.2.0",
+    "tblib>=3.2.2",
 ]
 
 [tool.ruff]

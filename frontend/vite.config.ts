@@ -4,6 +4,11 @@ import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 import tsconfigPaths from "vite-tsconfig-paths";
 
+// Where Django answers. On the host it is the default. The optional `frontend`
+// container of docker-compose.local.yml reaches Django by its service name and
+// sets VITE_API_PROXY=http://django:8000.
+const apiProxy = process.env.VITE_API_PROXY ?? "http://localhost:8000";
+
 export default defineConfig({
   plugins: [
     tanstackRouter({
@@ -26,10 +31,10 @@ export default defineConfig({
     // on :5173, so the Google round trip returns to the dev server rather than
     // dumping the user on :8000's built bundle.
     proxy: {
-      "/api": { target: "http://localhost:8000", changeOrigin: false },
-      "/media": { target: "http://localhost:8000", changeOrigin: false },
-      "/_allauth": { target: "http://localhost:8000", changeOrigin: false },
-      "/accounts": { target: "http://localhost:8000", changeOrigin: false },
+      "/api": { target: apiProxy, changeOrigin: false },
+      "/media": { target: apiProxy, changeOrigin: false },
+      "/_allauth": { target: apiProxy, changeOrigin: false },
+      "/accounts": { target: apiProxy, changeOrigin: false },
     },
   },
 });

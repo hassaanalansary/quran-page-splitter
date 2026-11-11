@@ -1,0 +1,14 @@
+#!/bin/bash
+# Starts the Celery worker of the production image.
+
+set -o errexit
+set -o pipefail
+set -o nounset
+
+# One child process per job slot: JOB_WORKER_SLOTS is also the limit the web
+# process reads (config/settings.py). A child is replaced after 10 jobs, so memory
+# that OpenCV or PyMuPDF did not give back never adds up.
+exec celery -A config worker \
+  --loglevel info \
+  --concurrency "${JOB_WORKER_SLOTS:-2}" \
+  --max-tasks-per-child 10

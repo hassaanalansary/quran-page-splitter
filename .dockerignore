@@ -1,0 +1,34 @@
+# What `docker build` must not send to the daemon or copy into an image.
+# The build context of every image is the repository root.
+
+.git
+.github
+.claude
+.vscode
+.idea
+
+# Secrets and per-machine settings. The containers get theirs from .envs/ at run
+# time, through compose, and never from the image.
+.envs
+backend/.env
+
+# Made by running the app, not part of it.
+backend/.venv
+backend/media
+backend/logs
+backend/staticfiles
+backend/db.sqlite3*
+backend/.mypy_cache
+backend/.ruff_cache
+**/__pycache__
+**/*.py[oc]
+
+# The nginx image builds the React app itself, from a clean install.
+frontend/node_modules
+frontend/dist
+frontend/.tanstack
+
+# Data and notes that no image needs.
+wl-out
+data
+docs
