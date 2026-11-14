@@ -433,6 +433,15 @@ class Page(BaseModel):
             "Reset to False whenever the page's lines are rebuilt: (re)process or a review save."
         ),
     )
+    line_padding = models.SmallIntegerField(
+        null=True,
+        help_text=(
+            "The padding the page's lines were given in Finalize, in px above and below, as "
+            "of its last save there (the value most of its lines share). Null until then, "
+            "and again whenever the lines are rebuilt. The latest checked pages' agreeing "
+            "value is applied to a page still null when it opens."
+        ),
+    )
 
     class Meta:
         db_table = "page"

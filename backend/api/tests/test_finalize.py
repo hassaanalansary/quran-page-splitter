@@ -6,6 +6,7 @@ from ninja.errors import HttpError
 
 from api.models import EraseStroke, ProcessingRun
 from api.services import coordinates, editing
+from api.services import mushaf as mushaf_service
 from api.tests.helpers import bare_mushaf, default_user
 from quran.services import suras
 
@@ -174,6 +175,57 @@ class LinesFinalizedTests(OneProcessedPageCase):
     def test_a_missing_page_is_refused(self):
         with self.assertRaises(HttpError):
             editing.mark_lines_finalized(user=default_user(), mushaf_id=self.mushaf.id, page_number=2, finalized=True)
+
+
+class LinePaddingTests(OneProcessedPageCase):
+    """The padding a page's lines carry, saved with them, and the mushaf's usual one."""
+
+    def save(self, page_number: int = 1, **page_fields) -> dict:
+        return editing.save_finalize(
+            user=default_user(), mushaf_id=self.mushaf.id, page_number=page_number, line_edits=[], **page_fields
+        )
+
+    def add_page(self, page_number: int) -> None:
+        coordinates.write_coords_to_page(
+            mushaf=self.mushaf,
+            page_number=page_number,
+            run=self.page.last_run,
+            coord_page={"crop_box": {"x": 0, "y": 0, "w": 100, "h": 100}, "lines": []},
+        )
+
+    def usual(self) -> int | None:
+        return mushaf_service.find_usual_line_padding(self.mushaf)
+
+    def test_the_padding_and_the_check_are_saved_with_the_cuts_and_left_alone_when_not_given(self):
+        page = self.save(line_padding=14, lines_finalized=True)
+        self.assertEqual((page["line_padding"], page["lines_finalized"]), (14, True))
+        page = self.save()
+        self.assertEqual((page["line_padding"], page["lines_finalized"]), (14, True))
+
+    def test_rebuilding_the_lines_forgets_the_padding(self):
+        self.save(line_padding=14)
+        self.add_page(1)  # reprocessing page 1
+        self.page.refresh_from_db()
+        self.assertIsNone(self.page.line_padding)
+
+    def test_three_checked_pages_agreeing_make_the_usual_padding(self):
+        for number in (2, 3):
+            self.add_page(number)
+        self.save(1, line_padding=14, lines_finalized=True)
+        self.save(2, line_padding=14, lines_finalized=True)
+        self.assertIsNone(self.usual())  # two are not yet a habit
+        self.save(3, line_padding=14, lines_finalized=True)
+        self.assertEqual(self.usual(), 14)
+
+    def test_the_latest_three_must_agree_and_unchecked_pages_do_not_count(self):
+        for number in (2, 3, 4, 5):
+            self.add_page(number)
+        for number in (1, 2, 3):
+            self.save(number, line_padding=14, lines_finalized=True)
+        self.save(4, line_padding=20)  # saved, never checked
+        self.assertEqual(self.usual(), 14)
+        self.save(5, line_padding=12, lines_finalized=True)
+        self.assertIsNone(self.usual())
 
     def test_missing_page_rejected(self):
         with self.assertRaises(HttpError):

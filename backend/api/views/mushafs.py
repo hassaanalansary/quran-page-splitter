@@ -64,8 +64,11 @@ class MushafDetailOut(MushafOut):
     description: str = ""
     #: "box" | "uniform" | "tight" — how tall each exported line PNG is.
     line_png_size: str = "box"
-    #: Pages whose line cuts a person marked finished in Finalize.
+    #: Pages whose line cuts a person marked checked in Finalize.
     finalized_page_count: int = 0
+    #: The padding the latest checked pages agree on (``find_usual_line_padding``),
+    #: applied to a page that opens in Finalize with none yet; null when they differ.
+    usual_line_padding: int | None = None
     #: "report" | "ignore" — whether word detection checks a word against the dots
     #: its spelling expects. A fact about the printing, not about the text.
     ijam_mode: str = "report"

@@ -1,7 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate, useParams } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
@@ -95,6 +94,26 @@ function lineSig(l: EditLine): string {
   return `${l.bbox.x},${l.bbox.y},${l.bbox.w},${l.bbox.h}|${strokes}|${l.eraseEdgeInk ? 1 : 0}`;
 }
 
+function signLines(lines: EditLine[]): Map<number, string> {
+  return new Map(lines.map((l) => [l.line_number, lineSig(l)] as const));
+}
+
+/** The padding most of a page's lines were given since it loaded: what the page
+ * as a whole got, a line or two padded apart aside. */
+function findCommonPad(lines: EditLine[]): number {
+  const counts = new Map<number, number>();
+  for (const l of lines) counts.set(l.pad, (counts.get(l.pad) ?? 0) + 1);
+  let common = 0;
+  let most = 0;
+  for (const [pad, count] of counts) {
+    if (count > most) {
+      common = pad;
+      most = count;
+    }
+  }
+  return common;
+}
+
 /** Prefix media paths (relative from the export endpoint) with a leading slash. */
 function mediaSrc(path: string): string {
   return `${API_BASE}${path.startsWith("/") ? path : `/${path}`}`;
@@ -113,6 +132,13 @@ function FinalizePage() {
 
   const [model, setModel] = useState<EditLine[]>([]);
   const [baseline, setBaseline] = useState<Map<number, string>>(new Map());
+  // What leaving the step would lose: the saved page, or — when the usual padding
+  // was put on as it opened — the page with it. Moving on unpadded is no loss.
+  const [guardBaseline, setGuardBaseline] = useState<Map<number, string>>(new Map());
+  // The padding the page's lines already had when it loaded (saved with it), and
+  // the usual padding put on as it opened, if it was.
+  const [padBase, setPadBase] = useState(0);
+  const [autoPadded, setAutoPadded] = useState<number | null>(null);
   const [selected, setSelected] = useState<number | null>(null);
   const [brushSize, setBrushSize] = useState(16);
   const [builtFor, setBuiltFor] = useState<number | null>(null);
@@ -153,22 +179,38 @@ function FinalizePage() {
     forceHist();
   }, []);
 
+  // The padding the latest checked pages agree on; null until the mushaf loads.
+  const usualPadding = mushaf ? (mushaf.usual_line_padding ?? 0) : null;
+
   // Build the model once per page (a save patches the cache in place, guarded by
   // the page number so it never clobbers in-flight edits).
   useEffect(() => {
-    if (!pageData || builtFor === page) return;
-    const next = fromPageData(pageData);
+    if (!pageData || usualPadding === null || builtFor === page) return;
+    const loaded = fromPageData(pageData);
+    // A page whose lines were never padded here, nor checked, opens with the usual
+    // padding — as an edit of its own, so it is unsaved and Ctrl+Z takes it off.
+    const autoPad =
+      pageData.line_padding == null && !pageData.lines_finalized && usualPadding !== 0
+        ? usualPadding
+        : null;
+    const next = autoPad != null ? loaded.map((l) => growLine(l, autoPad, null)) : loaded;
     setModel(next);
-    historyRef.current = { stack: [next], index: 0 };
+    historyRef.current = {
+      stack: autoPad != null ? [loaded, next] : [loaded],
+      index: autoPad != null ? 1 : 0,
+    };
     forceHist();
-    setBaseline(new Map(next.map((l) => [l.line_number, lineSig(l)] as const)));
+    setBaseline(signLines(loaded));
+    setGuardBaseline(signLines(next));
+    setPadBase(pageData.line_padding ?? 0);
+    setAutoPadded(autoPad);
     // Nothing selected: the padding field then acts on the whole page. The view
     // still opens fitted on the first line — the canvas resets it per image.
     setSelected(null);
     setPngVersion(0);
     setViewing(null);
     setBuiltFor(page);
-  }, [pageData, page, builtFor]);
+  }, [pageData, usualPadding, page, builtFor]);
 
   // The page's exported PNGs, from the server — so lines exported in an earlier
   // session show up as soon as the page opens, not only after a fresh export.
@@ -200,6 +242,15 @@ function FinalizePage() {
     () => model.some((l) => baseline.get(l.line_number) !== lineSig(l)),
     [model, baseline],
   );
+  const leavingLoses = useMemo(
+    () => model.some((l) => guardBaseline.get(l.line_number) !== lineSig(l)),
+    [model, guardBaseline],
+  );
+  // The padding the page's lines carry now, saved with them: what they had when
+  // the page loaded, plus what most of them were given since.
+  const linePadding = padBase + findCommonPad(model);
+  // Said only while the lines still carry it: Ctrl+Z takes the note off with it.
+  const usualPaddingOn = autoPadded != null && findCommonPad(model) === autoPadded;
 
   // Save the whole page so every line's x/w lands uniformly in the DB (and export).
   const buildPayload = (): FinalizeLine[] =>
@@ -212,21 +263,16 @@ function FinalizePage() {
 
   const markSaved = (fresh: PageData) => {
     queryClient.setQueryData(queryKeys.page(mushafId, page), fresh);
-    setBaseline(new Map(model.map((l) => [l.line_number, lineSig(l)] as const)));
+    const saved = signLines(model);
+    setBaseline(saved);
+    setGuardBaseline(saved);
   };
-
-  const saveMutation = useMutation({
-    mutationFn: () => finalizePage(mushafId, page, buildPayload()),
-    onSuccess: (fresh) => {
-      markSaved(fresh);
-      toast.success(t("finalize.cutsSaved"));
-    },
-    onError: (e) => toast.error(e instanceof ApiError ? e.message : t("finalize.saveFailed")),
-  });
 
   const exportMutation = useMutation({
     mutationFn: async () => {
-      const fresh = dirty ? await finalizePage(mushafId, page, buildPayload()) : null;
+      const fresh = dirty
+        ? await finalizePage(mushafId, page, buildPayload(), { line_padding: linePadding })
+        : null;
       const res = await exportLines(mushafId, page);
       return { fresh, res };
     },
@@ -254,35 +300,46 @@ function FinalizePage() {
     onError: (e) => toast.error(e instanceof ApiError ? e.message : t("finalize.exportFailed")),
   });
 
-  // The tracker: a person says the page's cuts are finished. Marking saves any
-  // unsaved cuts first, so what is marked finished is what the server holds.
-  const finalized = pageData?.lines_finalized ?? false;
-  const finalizedMutation = useMutation({
-    mutationFn: async (next: boolean) => {
-      const fresh = next && dirty ? await finalizePage(mushafId, page, buildPayload()) : null;
-      const res = await markLinesFinalized(mushafId, page, next);
-      return { fresh, res };
+  // The tracker. Marking a page's cuts checked saves them with it, in one request,
+  // and opens the next page — as Review's "Mark reviewed → next" does.
+  const checked = pageData?.lines_finalized ?? false;
+  const invalidateTracker = () => {
+    queryClient.invalidateQueries({ queryKey: queryKeys.processedPages(mushafId) });
+    // The detail carries the checked count and the usual padding.
+    queryClient.invalidateQueries({ queryKey: queryKeys.mushaf(mushafId), exact: true });
+  };
+  const checkAndNextMutation = useMutation({
+    mutationFn: () =>
+      finalizePage(mushafId, page, buildPayload(), {
+        line_padding: linePadding,
+        lines_finalized: true,
+      }),
+    onSuccess: (fresh) => {
+      markSaved(fresh);
+      invalidateTracker();
+      const last = mushaf?.logical_page_count ?? page;
+      if (page < last) navigate({ search: { page: page + 1 } });
+      else toast.success(t("finalize.checkedLast", { page }));
     },
-    onSuccess: ({ fresh, res }) => {
-      if (fresh) markSaved(fresh);
+    onError: (e) => toast.error(e instanceof ApiError ? e.message : t("finalize.checkFailed")),
+  });
+  const clearCheckMutation = useMutation({
+    mutationFn: () => markLinesFinalized(mushafId, page, false),
+    onSuccess: (res) => {
       queryClient.setQueryData<PageData>(queryKeys.page(mushafId, page), (prev) =>
         prev ? { ...prev, lines_finalized: res.lines_finalized } : prev,
       );
-      queryClient.invalidateQueries({ queryKey: queryKeys.processedPages(mushafId) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.mushaf(mushafId), exact: true });
-      toast.success(
-        res.lines_finalized
-          ? t("finalize.finalizedToast", { page })
-          : t("finalize.unfinalizedToast", { page }),
-      );
+      invalidateTracker();
+      toast.success(t("finalize.uncheckedToast", { page }));
     },
-    onError: (e) => toast.error(e instanceof ApiError ? e.message : t("finalize.finalizeFailed")),
+    onError: (e) => toast.error(e instanceof ApiError ? e.message : t("finalize.checkFailed")),
   });
 
-  const busy = saveMutation.isPending || exportMutation.isPending || finalizedMutation.isPending;
+  const busy =
+    exportMutation.isPending || checkAndNextMutation.isPending || clearCheckMutation.isPending;
 
   const leaveDialog = useLeaveGuard({
-    dirty: () => dirty,
+    dirty: () => leavingLoses,
     body: t("finalize.leaveBody", { page }),
   });
 
@@ -334,7 +391,7 @@ function FinalizePage() {
     <StatusLine>{t("finalize.unsavedStatus")}</StatusLine>
   ) : (
     <StatusLine tone="success">
-      {finalized ? t("finalize.finalizedStatus") : t("finalize.savedStatus")}
+      {checked ? t("finalize.checkedStatus") : t("finalize.savedStatus")}
     </StatusLine>
   );
 
@@ -454,56 +511,45 @@ function FinalizePage() {
         status={status}
         footer={
           <div data-tour="finalize-export" className="flex flex-col gap-2.5">
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => saveMutation.mutate()}
-                disabled={!dirty || busy}
-                className="inline-flex h-11 flex-1 cursor-pointer items-center justify-center rounded-control border border-ink bg-transparent text-[14px] font-semibold text-ink transition-colors hover:bg-sunk disabled:cursor-default disabled:opacity-50"
-              >
-                {saveMutation.isPending ? (
-                  <BusyLabel>{t("common.saving")}</BusyLabel>
-                ) : (
-                  t("finalize.saveCuts")
-                )}
-              </button>
-              <button
-                type="button"
-                onClick={() => exportMutation.mutate()}
-                disabled={!hasLines || busy}
-                className="inline-flex h-11 flex-[1.6] cursor-pointer items-center justify-center rounded-control bg-lapis text-[14px] font-semibold text-on-lapis transition-colors hover:bg-lapis/90 disabled:cursor-default disabled:opacity-50"
-              >
-                {exportMutation.isPending ? (
-                  <BusyLabel>{t("finalize.exporting")}</BusyLabel>
-                ) : (
-                  t("finalize.exportPage")
-                )}
-              </button>
-            </div>
-            {/* The tracker. Marking is a person's word that the cuts are done —
-                exporting never sets it, so an export to check a result is free. */}
+            {/* The tracker. Checking is a person's word that the cuts are right; it
+                saves them and opens the next page. Exporting never sets it, so an
+                export to look at a result is free. */}
             <button
               type="button"
-              onClick={() => finalizedMutation.mutate(!finalized)}
+              onClick={() => checkAndNextMutation.mutate()}
               disabled={!hasLines || busy}
-              aria-pressed={finalized}
-              className={`inline-flex h-10 cursor-pointer items-center justify-center gap-1.5 rounded-control border text-[13.5px] font-semibold transition-colors disabled:cursor-default disabled:opacity-50 ${
-                finalized
-                  ? "border-gold bg-gold-wash text-ink hover:bg-gold/25"
-                  : "border-rule-2 bg-card text-ink hover:bg-sheet"
-              }`}
+              className="inline-flex h-11 cursor-pointer items-center justify-center rounded-control bg-lapis text-[14px] font-semibold text-on-lapis transition-colors hover:bg-lapis/90 disabled:cursor-default disabled:opacity-50"
             >
-              {finalizedMutation.isPending ? (
+              {checkAndNextMutation.isPending ? (
                 <BusyLabel>{t("common.saving")}</BusyLabel>
-              ) : finalized ? (
-                <>
-                  <Check size={15} aria-hidden="true" />
-                  {t("finalize.finalizedOn")}
-                </>
+              ) : checked ? (
+                t("finalize.checkedNext")
               ) : (
-                t("finalize.markFinalized")
+                t("finalize.checkNext")
               )}
             </button>
+            <button
+              type="button"
+              onClick={() => exportMutation.mutate()}
+              disabled={!hasLines || busy}
+              className="inline-flex h-11 cursor-pointer items-center justify-center rounded-control border border-ink bg-transparent text-[14px] font-semibold text-ink transition-colors hover:bg-sunk disabled:cursor-default disabled:opacity-50"
+            >
+              {exportMutation.isPending ? (
+                <BusyLabel>{t("finalize.exporting")}</BusyLabel>
+              ) : (
+                t("finalize.exportPage")
+              )}
+            </button>
+            {checked && (
+              <button
+                type="button"
+                onClick={() => clearCheckMutation.mutate()}
+                disabled={busy}
+                className="cursor-pointer border-0 bg-transparent p-0 text-center text-[13px] font-semibold text-ink-2 hover:underline disabled:cursor-default disabled:opacity-50"
+              >
+                {t("finalize.clearCheck")}
+              </button>
+            )}
             {/* The PNGs live under media/ until they're pulled out — this is how
                 they leave the tool, saved wherever the browser asks. */}
             {exported.size > 0 ? (
@@ -605,6 +651,11 @@ function FinalizePage() {
                     <InfoTip text={t("tips.linePadding")} />
                   </span>
                 </div>
+                {usualPaddingOn && (
+                  <span className="text-[12.5px] leading-normal text-ink-2">
+                    {t("finalize.usualPaddingApplied", { px: autoPadded })}
+                  </span>
+                )}
               </Card>
 
               <Card title={t("finalize.edgeInk")} end={<InfoTip text={t("tips.edgeInk")} />}>

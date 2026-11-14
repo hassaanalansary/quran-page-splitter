@@ -42,7 +42,7 @@ def write_coords_to_page(*, mushaf: Mushaf, page_number: int, run: ProcessingRun
     crop = coord_page.get("crop_box")
     # Machine output is unreviewed; (re)processing clears any prior review flag, and
     # the finalized one with it: the lines it was given for are rebuilt below.
-    defaults: dict = {"last_run": run, "reviewed": False, "lines_finalized": False}
+    defaults: dict = {"last_run": run, "reviewed": False, "lines_finalized": False, "line_padding": None}
     if crop:
         defaults |= {
             "bbox_x": crop["x"],
@@ -107,6 +107,7 @@ def page_to_dict(page: Page) -> dict:
         "page_number": page.page_number,
         "bbox": page_column(page),
         "lines_finalized": page.lines_finalized,
+        "line_padding": page.line_padding,
         "lines": [_line_to_dict(line) for line in _ordered_lines(page)],
     }
 

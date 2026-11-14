@@ -36,6 +36,9 @@ logger = logging.getLogger(__name__)
 
 # Low-DPI render of the cover page used for list thumbnails.
 THUMBNAIL_DPI = 50
+#: How many of the latest checked pages must share a padding before it becomes the
+#: mushaf's usual one, applied to each page that opens in Finalize with none yet.
+USUAL_PADDING_STREAK = 3
 
 
 def _media_url(name: str | None) -> str | None:
@@ -196,8 +199,26 @@ def get_mushaf_detail(mushaf_id: uuid.UUID, *, user: User) -> dict:
     data["description"] = mushaf.description
     data["line_png_size"] = mushaf.line_png_size
     data["finalized_page_count"] = mushaf.pages.filter(lines_finalized=True).count()
+    data["usual_line_padding"] = find_usual_line_padding(mushaf)
     data["ijam_mode"] = mushaf.ijam_mode
     return data
+
+
+def find_usual_line_padding(mushaf: Mushaf) -> int | None:
+    """The padding the latest checked pages agree on, for a page that has none yet.
+
+    The last ``USUAL_PADDING_STREAK`` pages marked checked in Finalize, by when they
+    were last saved: when all of them were given the same padding, that is this
+    mushaf's usual one. Otherwise there is none, and a new page opens as it was cut.
+    """
+    latest = list(
+        mushaf.pages.filter(lines_finalized=True, line_padding__isnull=False)
+        .order_by("-updated_at")
+        .values_list("line_padding", flat=True)[:USUAL_PADDING_STREAK]
+    )
+    if len(latest) == USUAL_PADDING_STREAK and len(set(latest)) == 1:
+        return latest[0]
+    return None
 
 
 def regenerate_thumbnail(mushaf_id: uuid.UUID, *, user: User) -> dict:

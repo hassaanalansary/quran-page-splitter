@@ -110,6 +110,7 @@ def save_page(*, user: User, mushaf_id: uuid.UUID, page_number: int, bbox: dict,
             "reviewed": True,
             # The lines are rebuilt below, so the cuts finished on them are gone.
             "lines_finalized": False,
+            "line_padding": None,
         },
     )
     page.lines.all().delete()
@@ -153,15 +154,36 @@ def _write_edited_line(page: Page, line_data: dict) -> None:
         )
 
 
-def save_finalize(*, user: User, mushaf_id: uuid.UUID, page_number: int, line_edits: list[dict]) -> dict:
+def save_finalize(
+    *,
+    user: User,
+    mushaf_id: uuid.UUID,
+    page_number: int,
+    line_edits: list[dict],
+    line_padding: int | None = None,
+    lines_finalized: bool | None = None,
+) -> dict:
     """Apply the cut layer: optional line bbox overrides, erase strokes, and the
-    edge-ink switch (left as it is when an edit does not say).
+    edge-ink switch (left as it is when an edit does not say). With them, the
+    padding the lines now carry and the page's checked mark — each left as it is
+    when not given — so "mark checked and go on" is one request.
 
     These never affect numbering (segments are independent of line bbox), so no
     renumber is needed — only the export crop/alpha are affected.
     """
     mushaf = mushaf_service.get_mushaf(mushaf_id, user=user)
     page = mushaf_service.get_page(mushaf, page_number, message="page_no_finalize")
+    page_changed = []
+    if line_padding is not None:
+        page.line_padding = line_padding
+        page_changed.append("line_padding")
+    if lines_finalized is not None:
+        page.lines_finalized = lines_finalized
+        page_changed.append("lines_finalized")
+    if page_changed:
+        # updated_at too: the latest checked pages are found by it
+        # (mushaf.find_usual_line_padding).
+        page.save(update_fields=[*page_changed, "updated_at"])
     lines_by_number = {line.line_number: line for line in page.lines.all()}
     for edit in line_edits:
         line = lines_by_number.get(edit["line_number"])
@@ -204,7 +226,7 @@ def mark_lines_finalized(*, user: User, mushaf_id: uuid.UUID, page_number: int, 
     mushaf = mushaf_service.get_mushaf(mushaf_id, user=user)
     page = mushaf_service.get_page(mushaf, page_number, message="page_no_finalize")
     page.lines_finalized = finalized
-    page.save(update_fields=["lines_finalized"])
+    page.save(update_fields=["lines_finalized", "updated_at"])
     return {"page_number": page.page_number, "lines_finalized": page.lines_finalized}
 
 
@@ -337,6 +359,7 @@ def bulk_save(*, user: User, mushaf_id: uuid.UUID, pages: list[dict], reviewed_p
                     "bbox_h": bbox["h"],
                     # The lines are rebuilt below, so the cuts finished on them are gone.
                     "lines_finalized": False,
+                    "line_padding": None,
                 },
             )
             page.lines.all().delete()

@@ -24,12 +24,18 @@ export function savePage(id: string, pageNumber: number, data: PageSave): Promis
   return apiJson<PageData>("POST", `/api/mushafs/${id}/pages/${pageNumber}`, data);
 }
 
+/** Save a page's cuts. `page` carries what goes with them, each left as it is
+ * when not given: the padding most lines now carry, and the checked mark. */
 export function finalizePage(
   id: string,
   pageNumber: number,
   lines: FinalizeLine[],
+  page: { line_padding?: number; lines_finalized?: boolean } = {},
 ): Promise<PageData> {
-  return apiJson<PageData>("POST", `/api/mushafs/${id}/pages/${pageNumber}/finalize`, { lines });
+  return apiJson<PageData>("POST", `/api/mushafs/${id}/pages/${pageNumber}/finalize`, {
+    lines,
+    ...page,
+  });
 }
 
 /** Mark a page's line cuts finished in Finalize, or not finished again. Only this

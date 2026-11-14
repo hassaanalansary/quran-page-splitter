@@ -72,8 +72,11 @@ export type MushafDetail = Mushaf & {
   description: string;
   /** How tall each exported line PNG is — see `LinePngSize`. */
   line_png_size: LinePngSize;
-  /** Pages whose line cuts a person marked finished in Finalize. */
+  /** Pages whose line cuts a person marked checked in Finalize. */
   finalized_page_count: number;
+  /** The padding the latest checked pages agree on, put on each page that opens
+   * in Finalize with none yet; null while they differ. */
+  usual_line_padding: number | null;
   /** Whether word detection checks a word against the dots its spelling expects.
    * A fact about the printing, not about the text — see `IjamMode`. */
   ijam_mode: IjamMode;
@@ -174,8 +177,11 @@ export type Line = {
 export type PageData = {
   page_number: number;
   bbox: Rect | null;
-  /** A person marked this page's line cuts finished in Finalize. */
+  /** A person marked this page's line cuts checked in Finalize. */
   lines_finalized?: boolean;
+  /** The padding the lines were given in Finalize as of the last save there;
+   * null until then, and again once the lines are rebuilt. */
+  line_padding?: number | null;
   lines: Line[];
 };
 
