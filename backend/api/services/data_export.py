@@ -468,7 +468,7 @@ def _page(context: _Context, page: Page, *, images: bool, maps: bool) -> tuple[D
     rows = [copy.deepcopy(row) for row in (review.payload.get("lines") or [])] if review else []
     for row in rows:
         # Boxes hold their own marks — as the editor shows a draft, and a confirmation writes it.
-        calibration._fit_words(row)
+        calibration._box_words(row)
     by_line = {row["line_number"]: row for row in rows}
     stored = {
         str(snapshot.pk): snapshot
