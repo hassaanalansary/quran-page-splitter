@@ -5,45 +5,69 @@ import { useTranslation } from "react-i18next";
 
 import { EmptyState, STATE_PRIMARY } from "@/components/app/States";
 import type { PageSummary } from "@/lib/api";
+import type { CalibrationPageState } from "@/lib/calibration/types";
+
+import {
+  findDoneStages,
+  findInkProcessedPages,
+  PAGE_STAGES,
+  rankDoneStages,
+  type PageStageKey,
+} from "./pageStages";
 
 type SortKey = "page" | "lines" | "ayat" | "segments" | "status";
-type Filter = "all" | "reviewed" | "processed";
+/** The pages that have done one stage. Every listed page is processed, so
+ * "processed" is the whole list. */
+type Filter = PageStageKey;
+type StagedPage = { row: PageSummary; done: Set<PageStageKey> };
 
 export function PagesTab({
   mushafId,
   summaries,
+  calibrationPages,
   logical,
   remaining,
   abortPage,
 }: {
   mushafId: string;
   summaries: PageSummary[] | undefined;
+  calibrationPages: CalibrationPageState[] | undefined;
   logical: number;
   remaining: number;
   abortPage: number | null;
 }) {
   const { t } = useTranslation();
-  const [filter, setFilter] = useState<Filter>("all");
+  const [filter, setFilter] = useState<Filter>("processed");
   const [sortKey, setSortKey] = useState<SortKey>("page");
   const [sortDir, setSortDir] = useState<1 | -1>(1);
 
+  const staged: StagedPage[] = useMemo(() => {
+    const inkPages = findInkProcessedPages(calibrationPages);
+    return (summaries ?? []).map((row) => ({
+      row,
+      done: findDoneStages(row, inkPages.has(row.page_number)),
+    }));
+  }, [summaries, calibrationPages]);
+
   const rows = useMemo(() => {
-    const all = summaries ?? [];
-    const filtered = all.filter((s) =>
-      filter === "all" ? true : filter === "reviewed" ? s.reviewed : !s.reviewed,
-    );
-    const value = (s: PageSummary) =>
-      sortKey === "page" ? s.page_number : sortKey === "status" ? Number(s.reviewed) : s[sortKey];
-    return filtered.slice().sort((a, b) => (value(a) - value(b)) * sortDir);
-  }, [summaries, filter, sortKey, sortDir]);
+    const value = ({ row, done }: StagedPage) =>
+      sortKey === "page"
+        ? row.page_number
+        : sortKey === "status"
+          ? rankDoneStages(done)
+          : row[sortKey];
+    return staged
+      .filter(({ done }) => done.has(filter))
+      .sort((a, b) => (value(a) - value(b)) * sortDir);
+  }, [staged, filter, sortKey, sortDir]);
 
   const totals = useMemo(
     () =>
       rows.reduce(
-        (acc, r) => ({
-          lines: acc.lines + r.lines,
-          ayat: acc.ayat + r.ayat,
-          segments: acc.segments + r.segments,
+        (acc, { row }) => ({
+          lines: acc.lines + row.lines,
+          ayat: acc.ayat + row.ayat,
+          segments: acc.segments + row.segments,
         }),
         { lines: 0, ayat: 0, segments: 0 },
       ),
@@ -51,7 +75,13 @@ export function PagesTab({
   );
 
   const all = summaries ?? [];
-  const reviewedCount = all.filter((s) => s.reviewed).length;
+  // Each stage counted on its own: a reviewed page is a processed page too.
+  const counts = Object.fromEntries(
+    PAGE_STAGES.map((stage) => [
+      stage.key,
+      staged.filter(({ done }) => done.has(stage.key)).length,
+    ]),
+  ) as Record<PageStageKey, number>;
   // The page Review would open next: the first one still to review.
   const nextPage = all.find((s) => !s.reviewed)?.page_number ?? null;
 
@@ -119,30 +149,20 @@ export function PagesTab({
           </span>
         </div>
         <div role="group" aria-label={t("hub.filterPages")} className="flex flex-wrap gap-1.5">
-          <button
-            type="button"
-            aria-pressed={filter === "all"}
-            onClick={() => setFilter("all")}
-            className={chip(filter === "all")}
-          >
-            {t("details.pg_all", { count: all.length })}
-          </button>
-          <button
-            type="button"
-            aria-pressed={filter === "reviewed"}
-            onClick={() => setFilter("reviewed")}
-            className={chip(filter === "reviewed")}
-          >
-            {t("details.pg_reviewed", { count: reviewedCount })}
-          </button>
-          <button
-            type="button"
-            aria-pressed={filter === "processed"}
-            onClick={() => setFilter("processed")}
-            className={chip(filter === "processed")}
-          >
-            {t("details.pg_processed", { count: all.length - reviewedCount })}
-          </button>
+          {PAGE_STAGES.map((stage) => (
+            <button
+              key={stage.key}
+              type="button"
+              aria-pressed={filter === stage.key}
+              onClick={() => setFilter(stage.key)}
+              className={chip(filter === stage.key)}
+            >
+              <span className="inline-flex items-center gap-1.5">
+                <span className={`h-2 w-2 rounded-full ${stage.fill}`} />
+                {t(stage.label)} · {counts[stage.key].toLocaleString()}
+              </span>
+            </button>
+          ))}
         </div>
         {abortPage && (
           <Link
@@ -172,10 +192,11 @@ export function PagesTab({
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => (
+            {rows.map(({ row, done }) => (
               <PageRow
                 key={row.page_number}
                 row={row}
+                done={done}
                 mushafId={mushafId}
                 next={row.page_number === nextPage}
               />
@@ -198,18 +219,22 @@ export function PagesTab({
   );
 }
 
-function PageRow({ row, mushafId, next }: { row: PageSummary; mushafId: string; next: boolean }) {
+function PageRow({
+  row,
+  done,
+  mushafId,
+  next,
+}: {
+  row: PageSummary;
+  done: Set<PageStageKey>;
+  mushafId: string;
+  next: boolean;
+}) {
   const { t } = useTranslation();
   const firstSura = row.suras[0];
-  const status = row.reviewed
-    ? { label: t("details.status_reviewed"), chip: "bg-done-wash text-done-text", dot: "bg-done" }
-    : next
-      ? { label: t("hub.statusNext"), chip: "bg-gold-wash text-ink", dot: "bg-gold" }
-      : {
-          label: t("details.status_processed"),
-          chip: "bg-lapis-wash text-lapis-text",
-          dot: "bg-lapis",
-        };
+  const doneLabel = PAGE_STAGES.filter((stage) => done.has(stage.key))
+    .map((stage) => t(stage.label))
+    .join(" · ");
   const cell = "border-b border-rule-soft px-3.5 py-[11px]";
   return (
     <tr className={next ? "bg-gold-wash" : "transition-colors hover:bg-sheet"}>
@@ -241,11 +266,27 @@ function PageRow({ row, mushafId, next }: { row: PageSummary; mushafId: string; 
       <td className={`${cell} text-end font-mono`}>{row.ayat}</td>
       <td className={`${cell} text-end font-mono`}>{row.segments}</td>
       <td className={cell}>
-        <span
-          className={`inline-flex items-center gap-1.5 rounded-pill px-[9px] py-[3px] text-[12px] font-semibold ${status.chip}`}
-        >
-          <span className={`h-1.5 w-1.5 rounded-full ${status.dot}`} />
-          {status.label}
+        <span className="inline-flex items-center gap-2.5">
+          {/* One bar per stage, in pipeline order, as on the coverage map. */}
+          <span
+            role="img"
+            aria-label={doneLabel}
+            title={doneLabel}
+            className="inline-flex gap-[3px]"
+          >
+            {PAGE_STAGES.map((stage) => (
+              <span
+                key={stage.key}
+                className={`h-1.5 w-4 rounded-full ${done.has(stage.key) ? stage.fill : "bg-sunk"}`}
+              />
+            ))}
+          </span>
+          {next && (
+            <span className="inline-flex items-center gap-1.5 rounded-pill bg-gold-wash px-[9px] py-[3px] text-[12px] font-semibold text-ink">
+              <span className="h-1.5 w-1.5 rounded-full bg-gold" />
+              {t("hub.statusNext")}
+            </span>
+          )}
         </span>
       </td>
       <td className={`${cell} pe-[18px] text-end`}>

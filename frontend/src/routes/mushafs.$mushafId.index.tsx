@@ -131,6 +131,7 @@ function MushafDetailsPage() {
             <PagesTab
               mushafId={mushafId}
               summaries={summaries}
+              calibrationPages={calibrationPages}
               logical={mushaf.logical_page_count}
               remaining={mushaf.logical_page_count - mushaf.processed_page_count}
               abortPage={abortPage}

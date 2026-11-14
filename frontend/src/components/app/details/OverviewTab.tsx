@@ -25,6 +25,13 @@ import {
   type StepInfo,
   type StepSlug,
 } from "./helpers";
+import {
+  countDoneStages,
+  findDoneStages,
+  findInkProcessedPages,
+  PAGE_STAGES,
+  type PageStageKey,
+} from "./pageStages";
 
 /** A big card of the Overview's main column: a Reem Kufi title, a note beside it. */
 function MainCard({
@@ -106,6 +113,7 @@ export function OverviewTab({
     stats && mushaf.processed_page_count > 0
       ? (stats.lines_cut / mushaf.processed_page_count).toFixed(2)
       : "—";
+  const inkPages = findInkProcessedPages(calibrationPages);
 
   return (
     <div className="flex flex-wrap items-start gap-6">
@@ -130,12 +138,18 @@ export function OverviewTab({
 
         <MainCard
           title={t("details.rail_coverage")}
-          aside={<CoverageLegend summaries={summaries} next={nextPage !== null} />}
+          aside={
+            <CoverageLegend
+              counts={countDoneStages(summaries, inkPages)}
+              next={nextPage !== null}
+            />
+          }
         >
           <CoverageMap
             mushafId={mushaf.id}
             logical={mushaf.logical_page_count}
             summaries={summaries}
+            inkPages={inkPages}
             nextPage={nextPage}
           />
           <span className="text-[12.5px] text-ink-3">{t("hub.coverageHint")}</span>
@@ -371,65 +385,22 @@ function PipelineGrid({
   );
 }
 
-/** The steps a page can have reached, furthest first: a page shows the first one
- * it has. A further step — words processed, when it comes — is one more entry at
- * the top, read from its flag on the page summary. Lines checked is gold, as on
- * the page rail. */
-const COVERAGE_STATES = [
-  {
-    key: "linesChecked",
-    fill: "bg-gold",
-    legend: "hub.legendLinesChecked",
-    state: "details.state_linesChecked",
-    reached: (row: PageSummary) => row.lines_finalized,
-  },
-  {
-    key: "reviewed",
-    fill: "bg-done",
-    legend: "hub.legendReviewed",
-    state: "details.state_reviewed",
-    reached: (row: PageSummary) => row.reviewed,
-  },
-  {
-    key: "processed",
-    fill: "bg-lapis",
-    legend: "hub.legendProcessed",
-    state: "details.state_processed",
-    reached: () => true,
-  },
-] as const;
-
-type CoverageState = (typeof COVERAGE_STATES)[number];
-
-/** The furthest step a processed page has reached. */
-function findCoverageState(row: PageSummary): CoverageState {
-  return COVERAGE_STATES.find((state) => state.reached(row)) ?? COVERAGE_STATES[2];
-}
-
-function CoverageLegend({
-  summaries,
-  next,
-}: {
-  summaries: PageSummary[] | undefined;
-  next: boolean;
-}) {
+/** Every stage with how many pages have done it — each counted on its own, so a
+ * reviewed page counts as processed too. */
+function CoverageLegend({ counts, next }: { counts: Record<PageStageKey, number>; next: boolean }) {
   const { t } = useTranslation();
-  const counts = new Map<string, number>();
-  for (const row of summaries ?? []) {
-    const { key } = findCoverageState(row);
-    counts.set(key, (counts.get(key) ?? 0) + 1);
-  }
   return (
     <div className="flex flex-wrap gap-3.5 text-[12.5px] text-ink-2">
-      {COVERAGE_STATES.map((state) => (
-        <span key={state.key} className="inline-flex items-center gap-1.5">
-          <span className={`h-2.5 w-2.5 rounded-[2px] ${state.fill}`} />
-          {t(state.legend, { count: counts.get(state.key) ?? 0 })}
+      {PAGE_STAGES.map((stage) => (
+        <span key={stage.key} className="inline-flex items-center gap-1.5">
+          <span className={`h-2.5 w-2.5 rounded-[2px] ${stage.fill}`} />
+          {t(stage.label)}
+          <span className="font-mono text-ink">{counts[stage.key].toLocaleString()}</span>
         </span>
       ))}
       {next && (
         <span className="inline-flex items-center gap-1.5">
-          <span className="h-2.5 w-2.5 rounded-[2px] ring-2 ring-inset ring-gold" />
+          <span className="h-2.5 w-2.5 rounded-[2px] ring-2 ring-inset ring-ink" />
           {t("hub.legendNext")}
         </span>
       )}
@@ -437,34 +408,41 @@ function CoverageLegend({
   );
 }
 
-/** Every Quran page as a square, filled with the furthest step it has reached
- * (`COVERAGE_STATES`) or left empty, the next to review ringed in gold. Each opens
- * its page in Review. */
+/** Every Quran page as a square of four stripes, one per stage in pipeline order
+ * (`PAGE_STAGES`), each in its colour when the page has done it and empty when not
+ * — so a missing stage shows even under later ones. The next page to review is
+ * outlined. Each opens its page in Review. */
 function CoverageMap({
   mushafId,
   logical,
   summaries,
+  inkPages,
   nextPage,
 }: {
   mushafId: string;
   logical: number;
   summaries: PageSummary[] | undefined;
+  inkPages: Set<number>;
   nextPage: number | null;
 }) {
   const { t } = useTranslation();
   const byPage = new Map((summaries ?? []).map((s) => [s.page_number, s]));
   return (
     <div
-      className="grid grid-cols-[repeat(auto-fill,11px)] gap-[2px]"
+      className="grid grid-cols-[repeat(auto-fill,12px)] gap-[2px]"
       role="img"
       aria-label={t("details.rail_coverageAria")}
     >
       {Array.from({ length: logical }, (_, i) => {
         const n = i + 1;
-        const row = byPage.get(n);
-        const reached = row ? findCoverageState(row) : null;
-        const state = reached ? t(reached.state) : t("details.state_notProcessed");
-        const next = n === nextPage ? "outline outline-2 outline-gold" : "";
+        const done = findDoneStages(byPage.get(n), inkPages.has(n));
+        const state =
+          done.size > 0
+            ? PAGE_STAGES.filter((stage) => done.has(stage.key))
+                .map((stage) => t(stage.label))
+                .join(" · ")
+            : t("details.state_notProcessed");
+        const next = n === nextPage ? "outline outline-2 outline-ink" : "";
         return (
           <Link
             key={n}
@@ -472,8 +450,15 @@ function CoverageMap({
             params={{ mushafId }}
             search={{ page: n }}
             title={t("details.rail_pageState", { n, state })}
-            className={`block h-[11px] w-[11px] rounded-[2px] ${reached ? reached.fill : "bg-sunk"} ${next} hover:outline hover:outline-2 hover:outline-lapis`}
-          />
+            className={`flex h-[12px] w-[12px] flex-col overflow-hidden rounded-[2px] ${next} hover:outline hover:outline-2 hover:outline-lapis`}
+          >
+            {PAGE_STAGES.map((stage) => (
+              <span
+                key={stage.key}
+                className={`h-[3px] ${done.has(stage.key) ? stage.fill : "bg-sunk"}`}
+              />
+            ))}
+          </Link>
         );
       })}
     </div>
