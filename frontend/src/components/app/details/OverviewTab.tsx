@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { SatrDialog } from "@/components/app/SatrDialog";
@@ -30,6 +30,7 @@ import {
   findDoneStages,
   findInkProcessedPages,
   PAGE_STAGES,
+  type PageStage,
   type PageStageKey,
 } from "./pageStages";
 
@@ -113,7 +114,7 @@ export function OverviewTab({
     stats && mushaf.processed_page_count > 0
       ? (stats.lines_cut / mushaf.processed_page_count).toFixed(2)
       : "—";
-  const inkPages = findInkProcessedPages(calibrationPages);
+  const inkPages = useMemo(() => findInkProcessedPages(calibrationPages), [calibrationPages]);
 
   return (
     <div className="flex flex-wrap items-start gap-6">
@@ -136,15 +137,7 @@ export function OverviewTab({
           />
         </MainCard>
 
-        <MainCard
-          title={t("details.rail_coverage")}
-          aside={
-            <CoverageLegend
-              counts={countDoneStages(summaries, inkPages)}
-              next={nextPage !== null}
-            />
-          }
-        >
+        <MainCard title={t("details.rail_coverage")}>
           <CoverageMap
             mushafId={mushaf.id}
             logical={mushaf.logical_page_count}
@@ -152,7 +145,6 @@ export function OverviewTab({
             inkPages={inkPages}
             nextPage={nextPage}
           />
-          <span className="text-[12.5px] text-ink-3">{t("hub.coverageHint")}</span>
         </MainCard>
 
         <section className="flex flex-col gap-3">
@@ -385,33 +377,63 @@ function PipelineGrid({
   );
 }
 
-/** Every stage with how many pages have done it — each counted on its own, so a
- * reviewed page counts as processed too. */
-function CoverageLegend({ counts, next }: { counts: Record<PageStageKey, number>; next: boolean }) {
+/** One stage's tile: its name, how many pages have done it, and a bar. Picking it
+ * shows that stage on the page grid. */
+function StageTile({
+  stage,
+  count,
+  logical,
+  chosen,
+  onChoose,
+}: {
+  stage: PageStage;
+  count: number;
+  logical: number;
+  chosen: boolean;
+  onChoose: () => void;
+}) {
   const { t } = useTranslation();
+  const share = logical > 0 ? Math.min(1, count / logical) : 0;
   return (
-    <div className="flex flex-wrap gap-3.5 text-[12.5px] text-ink-2">
-      {PAGE_STAGES.map((stage) => (
-        <span key={stage.key} className="inline-flex items-center gap-1.5">
-          <span className={`h-2.5 w-2.5 rounded-[2px] ${stage.fill}`} />
-          {t(stage.label)}
-          <span className="font-mono text-ink">{counts[stage.key].toLocaleString()}</span>
+    <button
+      type="button"
+      role="radio"
+      aria-checked={chosen}
+      onClick={onChoose}
+      className={`flex cursor-pointer flex-col gap-2.5 rounded-card border px-3.5 py-3 text-start transition-colors ${
+        chosen
+          ? "border-ink bg-sheet shadow-[inset_0_0_0_1px_var(--ink)]"
+          : "border-rule bg-card hover:border-ink-4"
+      }`}
+    >
+      <span className="flex items-center justify-between gap-2">
+        <span className="inline-flex min-w-0 items-center gap-2 text-[13px] font-semibold text-ink">
+          <span className={`h-2 w-2 flex-none rounded-full ${stage.fill}`} />
+          <span className="truncate">{t(stage.label)}</span>
         </span>
-      ))}
-      {next && (
-        <span className="inline-flex items-center gap-1.5">
-          <span className="h-2.5 w-2.5 rounded-[2px] ring-2 ring-inset ring-ink" />
-          {t("hub.legendNext")}
+        <span className="font-mono text-[12px] text-ink-3">{Math.round(share * 100)}%</span>
+      </span>
+      <span className="flex items-baseline gap-1.5">
+        <span className="font-display text-[24px] font-semibold leading-none">
+          {count.toLocaleString()}
         </span>
-      )}
-    </div>
+        <span className="text-[12.5px] text-ink-3">/ {logical.toLocaleString()}</span>
+      </span>
+      <span className="h-1 rounded-full bg-sunk">
+        <span
+          className={`block h-1 rounded-full ${stage.fill}`}
+          style={{ width: `${share * 100}%` }}
+        />
+      </span>
+    </button>
   );
 }
 
-/** Every Quran page as a square of four stripes, one per stage in pipeline order
- * (`PAGE_STAGES`), each in its colour when the page has done it and empty when not
- * — so a missing stage shows even under later ones. The next page to review is
- * outlined. Each opens its page in Review. */
+/** Coverage, one stage at a time. A tile per stage says how many pages have done
+ * it; the chosen one fills the page grid — a square per Quran page, in the stage's
+ * colour where the page has done it, grey where not. A square's tooltip lists every
+ * stage for its page, and clicking it opens the page where that stage is worked on.
+ * It opens on the first stage not yet done everywhere: where the work is. */
 function CoverageMap({
   mushafId,
   logical,
@@ -426,41 +448,82 @@ function CoverageMap({
   nextPage: number | null;
 }) {
   const { t } = useTranslation();
-  const byPage = new Map((summaries ?? []).map((s) => [s.page_number, s]));
+  const [chosenKey, setChosenKey] = useState<PageStageKey | null>(null);
+  const pages = useMemo(() => {
+    const byPage = new Map((summaries ?? []).map((s) => [s.page_number, s]));
+    return Array.from({ length: logical }, (_, i) =>
+      findDoneStages(byPage.get(i + 1), inkPages.has(i + 1)),
+    );
+  }, [summaries, inkPages, logical]);
+  const counts = countDoneStages(summaries, inkPages);
+  const working = PAGE_STAGES.find((stage) => counts[stage.key] < logical) ?? PAGE_STAGES[3];
+  const chosen = PAGE_STAGES.find((stage) => stage.key === chosenKey) ?? working;
+  const swatch = "h-3 w-3 rounded-[3px]";
+
   return (
-    <div
-      className="grid grid-cols-[repeat(auto-fill,12px)] gap-[2px]"
-      role="img"
-      aria-label={t("details.rail_coverageAria")}
-    >
-      {Array.from({ length: logical }, (_, i) => {
-        const n = i + 1;
-        const done = findDoneStages(byPage.get(n), inkPages.has(n));
-        const state =
-          done.size > 0
-            ? PAGE_STAGES.filter((stage) => done.has(stage.key))
-                .map((stage) => t(stage.label))
-                .join(" · ")
-            : t("details.state_notProcessed");
-        const next = n === nextPage ? "outline outline-2 outline-ink" : "";
-        return (
-          <Link
-            key={n}
-            to="/mushafs/$mushafId/review"
-            params={{ mushafId }}
-            search={{ page: n }}
-            title={t("details.rail_pageState", { n, state })}
-            className={`flex h-[12px] w-[12px] flex-col overflow-hidden rounded-[2px] ${next} hover:outline hover:outline-2 hover:outline-lapis`}
-          >
-            {PAGE_STAGES.map((stage) => (
-              <span
-                key={stage.key}
-                className={`h-[3px] ${done.has(stage.key) ? stage.fill : "bg-sunk"}`}
-              />
-            ))}
-          </Link>
-        );
-      })}
+    <div className="flex flex-col gap-4">
+      <div
+        role="radiogroup"
+        aria-label={t("hub.coverageStages")}
+        className="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-2.5"
+      >
+        {PAGE_STAGES.map((stage) => (
+          <StageTile
+            key={stage.key}
+            stage={stage}
+            count={counts[stage.key]}
+            logical={logical}
+            chosen={stage.key === chosen.key}
+            onChoose={() => setChosenKey(stage.key)}
+          />
+        ))}
+      </div>
+
+      <div
+        className="grid grid-cols-[repeat(auto-fill,12px)] gap-[3px]"
+        role="img"
+        aria-label={t("details.rail_coverageAria")}
+      >
+        {pages.map((done, i) => {
+          const n = i + 1;
+          const title = [
+            t("details.rail_page", { n }),
+            ...PAGE_STAGES.map((stage) => `${done.has(stage.key) ? "✓" : "–"} ${t(stage.label)}`),
+          ].join("\n");
+          return (
+            <Link
+              key={n}
+              to={STEP_ROUTES[chosen.step]}
+              params={{ mushafId }}
+              search={{ page: n }}
+              title={title}
+              className={`block ${swatch} ${done.has(chosen.key) ? chosen.fill : "bg-sunk"} ${
+                n === nextPage ? "outline outline-2 outline-offset-1 outline-ink" : ""
+              } hover:outline hover:outline-2 hover:outline-offset-1 hover:outline-lapis`}
+            />
+          );
+        })}
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-x-5 gap-y-2 text-[12.5px] text-ink-3">
+        <span>{t("hub.coverageHint", { step: t(`header.steps.${chosen.step}`) })}</span>
+        <span className="flex flex-wrap items-center gap-3.5 text-ink-2">
+          <span className="inline-flex items-center gap-1.5">
+            <span className={`${swatch} ${chosen.fill}`} />
+            {t(chosen.label)}
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className={`${swatch} bg-sunk`} />
+            {t("hub.legendNotYet")}
+          </span>
+          {nextPage !== null && (
+            <span className="inline-flex items-center gap-1.5">
+              <span className={`${swatch} outline outline-2 outline-offset-1 outline-ink`} />
+              {t("hub.legendNext")}
+            </span>
+          )}
+        </span>
+      </div>
     </div>
   );
 }

@@ -7,12 +7,24 @@ import type { CalibrationPageState } from "@/lib/calibration/types";
  * Each is tracked on its own: a page can have a later stage done and an earlier one
  * not — cuts checked on a page never reviewed, Ink run before the cuts were checked —
  * so none is read off another, and each count is every page that has done it.
+ * `step` is where a page is worked on for it (Process has no page of its own, so a
+ * processed page opens in Review).
  */
 export const PAGE_STAGES = [
-  { key: "processed", fill: "bg-lapis", label: "details.stage_processed" },
-  { key: "reviewed", fill: "bg-done", label: "details.stage_reviewed" },
-  { key: "linesChecked", fill: "bg-gold", label: "details.stage_linesChecked" },
-  { key: "inkProcessed", fill: "bg-mark-text", label: "details.stage_inkProcessed" },
+  { key: "processed", fill: "bg-lapis", label: "details.stage_processed", step: "review" },
+  { key: "reviewed", fill: "bg-done", label: "details.stage_reviewed", step: "review" },
+  {
+    key: "linesChecked",
+    fill: "bg-gold",
+    label: "details.stage_linesChecked",
+    step: "finalize",
+  },
+  {
+    key: "inkProcessed",
+    fill: "bg-mark-text",
+    label: "details.stage_inkProcessed",
+    step: "ink",
+  },
 ] as const;
 
 export type PageStage = (typeof PAGE_STAGES)[number];
