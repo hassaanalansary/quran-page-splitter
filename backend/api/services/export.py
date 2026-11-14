@@ -2,7 +2,8 @@
 
 Each line is cropped from the freshly rendered page, its white background is
 made transparent, eraser strokes are punched out of the alpha channel — and so,
-pixel for pixel, is every blob a person erased in Calibrate — and the
+pixel for pixel, is every blob a person erased in Calibrate, and on a line with
+``erase_edge_ink`` every piece of ink reaching over its top or bottom edge — and the
 PNG is saved under ``media/mushafs/<id>/lines/`` with its path recorded on
 the line. With ``Mushaf.export_uniform_size`` on, every line of a page is then
 centred on a transparent canvas the size of that page's largest line, so the
@@ -29,7 +30,7 @@ from api import i18n
 from api.models import ActivityTypeChoices, Line, Page, Segment
 from api.services import activity, coordinates, pdf
 from api.services import mushaf as mushaf_service
-from core.imaging import apply_eraser_stroke, make_transparent
+from core.imaging import apply_eraser_stroke, find_edge_ink, find_ink, make_transparent
 
 #: Keep small archives in RAM; larger ones spill to a temp file on disk.
 _ZIP_SPOOL_BYTES = 16 * 1024 * 1024
@@ -60,6 +61,8 @@ def export_lines(*, user: User, mushaf_id: uuid.UUID, page_number: int) -> dict:
         rgba = render_line_image(image, line, column)
         if str(line.pk) in erased:
             cut_erased(rgba, _origin(line, column), erased[str(line.pk)])
+        if line.erase_edge_ink:
+            cut_edge_ink(rgba, image, line, column)
         rendered.append((line, rgba))
     canvas: tuple[int, int] | None = None
     if mushaf.export_uniform_size and rendered:
@@ -219,14 +222,7 @@ def render_line_image(image: Image.Image, line: Line, column: dict | None) -> Im
     word-boundary engine — a line whose PNG was never exported, or one that must
     line up with page coordinates, is cut here rather than read from disk.
     """
-    # The line cut spans the page's text-column bounds (coordinates.page_column);
-    # the line's own x/w track content extent (from segments) and are left
-    # untouched. Only the vertical extent (Y/H) comes from the line.
-    col_x = column["x"] if column else line.bbox_x
-    col_w = column["w"] if column else line.bbox_w
-    left, top = _origin(line, column)
-    right = min(image.width, col_x + col_w)
-    bottom = min(image.height, line.bbox_y + line.bbox_h)
+    left, top, right, bottom = line_crop_box(image, line, column)
     rgba = make_transparent(image.crop((left, top, right, bottom)))
 
     strokes = list(line.erase_strokes.all())
@@ -245,9 +241,40 @@ def render_line_image(image: Image.Image, line: Line, column: dict | None) -> Im
     return rgba
 
 
+def line_crop_box(image: Image.Image, line: Line, column: dict | None) -> tuple[int, int, int, int]:
+    """The (left, top, right, bottom) of the page a line image is cut from.
+
+    The line cut spans the page's text-column bounds (coordinates.page_column);
+    the line's own x/w track content extent (from segments) and are left
+    untouched. Only the vertical extent (Y/H) comes from the line.
+    """
+    col_x = column["x"] if column else line.bbox_x
+    col_w = column["w"] if column else line.bbox_w
+    left, top = _origin(line, column)
+    right = min(image.width, col_x + col_w)
+    bottom = min(image.height, line.bbox_y + line.bbox_h)
+    return left, top, right, bottom
+
+
 def _origin(line: Line, column: dict | None) -> tuple[int, int]:
     """The page x and y of a line image's top-left pixel, as ``render_line_image`` cuts it."""
     return max(0, column["x"] if column else line.bbox_x), max(0, line.bbox_y)
+
+
+def cut_edge_ink(rgba: Image.Image, image: Image.Image, line: Line, column: dict | None) -> None:
+    """Punch out of a line image the ink of neighbouring lines reaching over its top
+    or bottom edge (``core.imaging.edge_ink``). In place.
+
+    Found on the line's raw cut of the page, before any brush stroke, so it does not
+    depend on how a stroke is rasterised — the Finalize canvas runs the same rule on
+    the same pixels to preview it, and must find exactly what this does.
+    """
+    edge = find_edge_ink(find_ink(image.crop(line_crop_box(image, line, column))))
+    if not edge.any():
+        return
+    alpha = np.array(rgba.getchannel("A"))
+    alpha[edge] = 0
+    rgba.putalpha(Image.fromarray(alpha))
 
 
 def cut_erased(rgba: Image.Image, origin: tuple[int, int], erased: tuple[np.ndarray, int, int]) -> None:

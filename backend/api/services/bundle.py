@@ -124,6 +124,7 @@ def serialize_tree(mushaf: Mushaf) -> list[dict]:
                 "bbox_h": line.bbox_h,
                 "segments": segments_by_line.get(line.id, []),
                 "erase_strokes": strokes_by_line.get(line.id, []),
+                "erase_edge_ink": line.erase_edge_ink,
                 "words": [
                     {"word_id": word.word_id, "position": word.position, "start_x": word.start_x, "end_x": word.end_x}
                     for word in line.words.all()
@@ -190,6 +191,7 @@ def write_tree(target: Mushaf, pages: list[dict]) -> None:
                 bbox_y=line["bbox_y"],
                 bbox_w=line["bbox_w"],
                 bbox_h=line["bbox_h"],
+                erase_edge_ink=bool(line.get("erase_edge_ink")),
             )
             for page_number, line in line_rows
         ],

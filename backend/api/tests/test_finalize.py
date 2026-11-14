@@ -78,6 +78,18 @@ class SaveFinalizeTests(TestCase):
         line = coordinates.page_to_dict(self.page)["lines"][0]
         self.assertEqual(line["erase_strokes"], [{"brush_size": 8, "points": [[1, 2], [3, 4]]}])
 
+    def test_edge_ink_switch_is_saved_and_left_alone_when_an_edit_does_not_say(self):
+        def save(edit: dict) -> bool:
+            editing.save_finalize(
+                mushaf_id=self.mushaf.id, page_number=1, line_edits=[{"line_number": 1, **edit}], user=default_user()
+            )
+            return coordinates.page_to_dict(self.page)["lines"][0]["erase_edge_ink"]
+
+        self.assertIs(save({"erase_edge_ink": True}), True)
+        self.assertIs(save({"erase_edge_ink": None}), True)
+        self.assertIs(save({}), True)
+        self.assertIs(save({"erase_edge_ink": False}), False)
+
     def test_missing_page_rejected(self):
         with self.assertRaises(HttpError):
             editing.save_finalize(mushaf_id=self.mushaf.id, page_number=5, line_edits=[], user=default_user())

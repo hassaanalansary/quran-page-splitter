@@ -156,6 +156,9 @@ export type Line = {
   segments: Segment[];
   /** Cut-layer erase strokes (from GET pages/{n}); absent on the review-save path. */
   erase_strokes?: EraseStroke[];
+  /** Whether the export cuts the ink reaching over the line's top or bottom edge
+   * (from GET pages/{n}); absent on the review-save path. */
+  erase_edge_ink?: boolean;
   /** Media URL of the exported PNG, or null when this line was never exported. */
   line_png?: string | null;
 };
@@ -415,6 +418,7 @@ export type FinalizeLine = {
   line_number: number;
   bbox_override: Rect | null;
   erase_strokes: EraseStroke[];
+  erase_edge_ink: boolean;
 };
 
 export type ExportResult = {

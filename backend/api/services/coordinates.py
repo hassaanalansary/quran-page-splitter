@@ -167,6 +167,7 @@ def _line_to_dict(line: Line) -> dict:
         "erase_strokes": [
             {"brush_size": stroke.brush_size, "points": stroke.points} for stroke in line.erase_strokes.all()
         ],
+        "erase_edge_ink": line.erase_edge_ink,
         "line_png": _line_png_url(line),
     }
 

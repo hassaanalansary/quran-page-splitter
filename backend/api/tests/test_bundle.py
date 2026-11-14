@@ -60,6 +60,7 @@ def _with_work(owner, name, pdf_bytes=SHARED_PDF):
                 bbox_y=30 * line_number,
                 bbox_w=480,
                 bbox_h=42,
+                erase_edge_ink=line_number == 2,
             )
             Segment.objects.create(
                 line=line,
@@ -180,6 +181,7 @@ class RoundTripTests(MediaTestCase):
                 f"line {line_number} kept the wrong segment",
             )
             self.assertEqual(line.erase_strokes.count(), 1)
+            self.assertEqual(line.erase_edge_ink, line_number == 2)
 
     def test_templates_survive_the_round_trip(self):
         source = _with_work(self.alice, "Source")

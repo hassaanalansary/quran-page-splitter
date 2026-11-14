@@ -22,6 +22,8 @@ class LineFinalizeSchema(Schema):
     line_number: int
     bbox_override: RectSchema | None = None
     erase_strokes: list[EraseStrokeSchema] = Field(default_factory=list)
+    # None leaves the line's switch as it is.
+    erase_edge_ink: bool | None = None
 
 
 class FinalizeIn(Schema):

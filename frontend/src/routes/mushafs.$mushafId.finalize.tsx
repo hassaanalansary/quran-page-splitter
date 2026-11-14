@@ -42,6 +42,8 @@ type EditLine = {
   type: LineType;
   bbox: Rect;
   strokes: EraseStroke[];
+  /** Cut the ink reaching over the line's top or bottom edge (a neighbour's). */
+  eraseEdgeInk: boolean;
   /** Padding added to this line since the page was loaded (see `growLine`). Kept
    * on the line so undo and redo carry the number back with the box. */
   pad: number;
@@ -67,6 +69,7 @@ function fromPageData(data: PageData | undefined): EditLine[] {
       h: l.bbox_h,
     },
     strokes: (l.erase_strokes ?? []).map((s) => ({ brush_size: s.brush_size, points: s.points })),
+    eraseEdgeInk: l.erase_edge_ink ?? false,
     pad: 0,
   }));
 }
@@ -87,7 +90,7 @@ function lineSig(l: EditLine): string {
   const strokes = l.strokes
     .map((s) => `${s.brush_size}#${s.points.map((p) => `${p[0]},${p[1]}`).join(";")}`)
     .join("~");
-  return `${l.bbox.x},${l.bbox.y},${l.bbox.w},${l.bbox.h}|${strokes}`;
+  return `${l.bbox.x},${l.bbox.y},${l.bbox.w},${l.bbox.h}|${strokes}|${l.eraseEdgeInk ? 1 : 0}`;
 }
 
 /** Prefix media paths (relative from the export endpoint) with a leading slash. */
@@ -202,6 +205,7 @@ function FinalizePage() {
       line_number: l.line_number,
       bbox_override: { ...l.bbox },
       erase_strokes: l.strokes,
+      erase_edge_ink: l.eraseEdgeInk,
     }));
 
   const markSaved = (fresh: PageData) => {
@@ -357,8 +361,18 @@ function FinalizePage() {
         brush_size: s.brush_size,
         points: s.points,
       })),
+      eraseEdgeInk: src.erase_edge_ink ?? false,
       pad: 0,
     }));
+  };
+
+  // Edge ink acts on the selected line, or on every line but the sura headers —
+  // a header's frame can reach its box's edges, and would go with the rule.
+  const edgeTargets = sel ? [sel] : model.filter((l) => l.type !== "sura_header");
+  const edgeAllOn = edgeTargets.length > 0 && edgeTargets.every((l) => l.eraseEdgeInk);
+  const toggleEdgeInk = () => {
+    const targets = new Set(edgeTargets.map((l) => l.line_number));
+    commit(model.map((l) => (targets.has(l.line_number) ? { ...l, eraseEdgeInk: !edgeAllOn } : l)));
   };
 
   const canvasLines: CanvasLine[] = model.map((l) => ({
@@ -366,6 +380,7 @@ function FinalizePage() {
     type: l.type,
     bbox: l.bbox,
     strokes: l.strokes,
+    eraseEdgeInk: l.eraseEdgeInk,
     edited: baseline.get(l.line_number) !== lineSig(l),
   }));
 
@@ -473,6 +488,11 @@ function FinalizePage() {
                         {t("finalize.edited")}
                       </span>
                     )}
+                    {l.eraseEdgeInk && (
+                      <span className="rounded-pill bg-sunk px-1.5 text-[10.5px] font-semibold text-ink-2">
+                        {t("finalize.edgeInkBadge")}
+                      </span>
+                    )}
                     {exported.has(l.line_number) && (
                       <span className="rounded-pill bg-lapis-wash px-1.5 text-[10.5px] font-semibold text-lapis-text">
                         {t("finalize.png")}
@@ -531,6 +551,24 @@ function FinalizePage() {
                     <InfoTip text={t("tips.linePadding")} />
                   </span>
                 </div>
+              </Card>
+
+              <Card title={t("finalize.edgeInk")} end={<InfoTip text={t("tips.edgeInk")} />}>
+                <div className="flex">
+                  <button
+                    type="button"
+                    disabled={edgeTargets.length === 0}
+                    onClick={toggleEdgeInk}
+                    className={`${SMALL} ${edgeAllOn ? "text-ink" : "text-stop-text"}`}
+                  >
+                    {edgeAllOn ? t("finalize.edgeInkRestore") : t("finalize.edgeInkErase")}
+                  </button>
+                </div>
+                <span className="text-[12.5px] leading-normal text-ink-2">
+                  {sel
+                    ? t("finalize.edgeInkScopeLine", { n: sel.line_number })
+                    : t("finalize.edgeInkScopePage")}
+                </span>
               </Card>
 
               <Card

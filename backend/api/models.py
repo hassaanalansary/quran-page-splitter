@@ -440,6 +440,14 @@ class Line(BaseModel):
     bbox_y = models.PositiveIntegerField(help_text="The y coordinate of the bounding box.")
     bbox_w = models.PositiveIntegerField(help_text="The width of the bounding box.")
     bbox_h = models.PositiveIntegerField(help_text="The height of the bounding box.")
+    erase_edge_ink = models.BooleanField(
+        default=False,
+        help_text=(
+            "Cut from the exported PNG every piece of ink touching the line's top or "
+            "bottom edge: a neighbouring line showing through. A rule, not a mask, so "
+            "it is worked out again whenever the line's box changes."
+        ),
+    )
 
     class Meta:
         db_table = "line"

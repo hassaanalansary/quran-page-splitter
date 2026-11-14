@@ -765,7 +765,13 @@ export const en = {
     png: "png",
     paddingTitle: "Line padding · whole page",
     paddingTitleLine: "Line padding · line {{n}}",
-    noLineSelected: "No line selected — padding acts on every line.",
+    noLineSelected: "No line selected — padding and edge ink act on every line.",
+    edgeInk: "Edge ink",
+    edgeInkErase: "Erase edge ink",
+    edgeInkRestore: "Bring edge ink back",
+    edgeInkScopeLine: "Line {{n}} only.",
+    edgeInkScopePage: "Every line on the page, sura headers aside.",
+    edgeInkBadge: "edge",
     paddingLabel: "Padding · px",
     paddingLess: "Less padding",
     paddingMore: "More padding",
@@ -1783,7 +1789,7 @@ export const en = {
     finalize: {
       s1: "Step through the lines with the ▲▼ navigator, or click one on the page — each is drawn exactly as it will be exported.",
       s2: "Drag a line's top or bottom edge to trim it, or type its Y / H. The padding field gives the selected line breathing room — or, with no line selected, every line on the page in one go.",
-      s3: "Hold Shift and paint to erase ink bleeding in from a neighbouring line — erasing one line never touches another.",
+      s3: "Press Erase edge ink to take every piece of ink touching a line's top or bottom edge, then hold Shift and paint away what is left of a neighbouring line — erasing one line never touches another.",
       s4: "Save the cuts, then export the page to transparent line images.",
       s5: "Download the images as a zip once you're happy with them — ready to copy into the app.",
     },
@@ -1822,6 +1828,8 @@ export const en = {
       "Mirror the bounds on alternate pages, for mushafs whose text column shifts side to side.",
     preferAccel: "Use GPU/OpenCL acceleration for template matching when available.",
     brush: "Eraser diameter in pixels. Erasing only affects the selected line.",
+    edgeInk:
+      "Erases every piece of ink that touches a line's top or bottom edge — a neighbouring line showing through. Give the line enough padding first, so its own ink stays clear of the edges. Worked out again whenever the box changes; the export cuts exactly what you see. Dots lying wholly inside the box stay for you.",
     linePadding:
       "Breathing room kept above and below the selected line — or, with no line selected, every line of this page in one go. Click empty space on the page to clear the selection. Raise it if the cuts clip tails or dots.",
     lineBox:

@@ -150,7 +150,8 @@ def _write_edited_line(page: Page, line_data: dict) -> None:
 
 
 def save_finalize(*, user: User, mushaf_id: uuid.UUID, page_number: int, line_edits: list[dict]) -> dict:
-    """Apply the cut layer: optional line bbox overrides + erase strokes.
+    """Apply the cut layer: optional line bbox overrides, erase strokes, and the
+    edge-ink switch (left as it is when an edit does not say).
 
     These never affect numbering (segments are independent of line bbox), so no
     renumber is needed — only the export crop/alpha are affected.
@@ -162,10 +163,16 @@ def save_finalize(*, user: User, mushaf_id: uuid.UUID, page_number: int, line_ed
         line = lines_by_number.get(edit["line_number"])
         if line is None:
             continue
+        changed = []
         override = edit.get("bbox_override")
         if override:
             line.bbox_y, line.bbox_h = override["y"], override["h"]
-            line.save(update_fields=["bbox_y", "bbox_h"])
+            changed += ["bbox_y", "bbox_h"]
+        if edit.get("erase_edge_ink") is not None:
+            line.erase_edge_ink = bool(edit["erase_edge_ink"])
+            changed.append("erase_edge_ink")
+        if changed:
+            line.save(update_fields=changed)
         line.erase_strokes.all().delete()
         strokes = edit.get("erase_strokes") or []
         if strokes:

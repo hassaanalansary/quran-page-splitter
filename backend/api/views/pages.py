@@ -37,6 +37,7 @@ class LineSchema(Schema):
     # by ``page_to_dict`` so the Finalize editor can round-trip saved erases,
     # and knows which lines already have an exported PNG.
     erase_strokes: list[EraseStrokeSchema] = Field(default_factory=list)
+    erase_edge_ink: bool = False
     line_png: str | None = None
 
 

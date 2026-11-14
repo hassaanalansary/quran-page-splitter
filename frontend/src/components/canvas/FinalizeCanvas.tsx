@@ -9,6 +9,7 @@ import { PageRail } from "@/components/canvas/PageRail";
 import { ToolButton } from "@/components/canvas/ToolToggle";
 import { ZoomControl, type Zoom } from "@/components/canvas/ZoomControl";
 import type { EraseStroke, LineType, Rect } from "@/lib/api/types";
+import { drawEdgeInkMask } from "@/lib/edgeInk";
 
 export type FinalizeTool = "select" | "erase" | "hand";
 export type FinalizeBg = "white" | "dark" | "checker";
@@ -19,6 +20,8 @@ export type CanvasLine = {
   type: LineType;
   bbox: Rect;
   strokes: EraseStroke[];
+  /** Hide the ink reaching over the line's top or bottom edge, as the export cuts it. */
+  eraseEdgeInk?: boolean;
   edited?: boolean;
 };
 
@@ -108,6 +111,11 @@ export function FinalizeCanvas({
   const transparentRef = useRef<HTMLCanvasElement | null>(null); // page: white→transparent
   const whiteInkRef = useRef<HTMLCanvasElement | null>(null); // page: ink recolored white
   const scratchRef = useRef<HTMLCanvasElement | null>(null); // reused per-line offscreen
+  // Each line's edge-ink mask, kept until its box changes: finding it walks every
+  // pixel of the crop, far too slow to redo on each pan or hover.
+  const edgeMasksRef = useRef<Map<number, { box: string; mask: HTMLCanvasElement | null }>>(
+    new Map(),
+  );
   const rectsRef = useRef<LineRect[]>([]);
   const [ready, setReady] = useState(false);
   const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);
@@ -150,6 +158,7 @@ export function FinalizeCanvas({
     setReady(false);
     transparentRef.current = null;
     whiteInkRef.current = null;
+    edgeMasksRef.current.clear();
     if (!imageUrl) return;
     const img = new Image();
     img.crossOrigin = "anonymous";
@@ -330,6 +339,16 @@ export function FinalizeCanvas({
         applyStrokes(sctx, line.strokes, b.x, b.y);
         const act = activeRef.current;
         if (act && act.lineNumber === line.line_number) applyStrokes(sctx, [act.stroke], b.x, b.y);
+        const page = transparentRef.current;
+        if (line.eraseEdgeInk && page) {
+          const box = `${b.x},${b.y},${b.w},${b.h}`;
+          let cached = edgeMasksRef.current.get(line.line_number);
+          if (!cached || cached.box !== box) {
+            cached = { box, mask: drawEdgeInkMask(page, b) };
+            edgeMasksRef.current.set(line.line_number, cached);
+          }
+          if (cached.mask) sctx.drawImage(cached.mask, 0, 0);
+        }
         sctx.restore();
         ctx.imageSmoothingEnabled = false;
         ctx.drawImage(scratch, dx, dy, dispW, dispH);
