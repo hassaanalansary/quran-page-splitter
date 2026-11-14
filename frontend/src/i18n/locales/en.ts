@@ -1697,6 +1697,18 @@ export const en = {
     ex_noReviewed: "No reviewed pages to export.",
     ex_noProcessed: "No processed pages to export.",
     ex_exportFailed: "Export failed.",
+    ex_runProgress: "Exporting line images — {{done}} / {{total}} pages",
+    ex_runNote:
+      "It runs in the background: carry on anywhere in the app. Closing or reloading the browser tab stops it.",
+    ex_runStopping: "Stopping after the page in hand…",
+    ex_runStop: "Stop",
+    ex_runStopped: "Export stopped after {{done}} of {{total}} pages.",
+    ex_runSomeFailed: "Exported {{done}} of {{total}} pages. These failed: {{pages}}.",
+    ex_runFailedMore: "{{pages}} and {{count}} more",
+    ex_runGaveUp:
+      "Export stopped after {{done}} of {{total}} pages: several pages in a row failed.",
+    ex_runBusy: "A line export is already running — wait for it, or stop it from its notice.",
+    ex_runElsewhere: "Another mushaf's lines are exporting; this one can start once that ends.",
     ex_fullTitle: "Words, marks & pixel maps · ZIP",
     ex_fullPill: "{{count}} calibrated",
     ex_fullWordsOnly: "Word boxes only",

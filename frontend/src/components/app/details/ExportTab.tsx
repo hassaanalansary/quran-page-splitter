@@ -10,7 +10,6 @@ import { Checkbox } from "@/components/ui/checkbox";
 import {
   ApiError,
   coordinatesUrl,
-  exportLines,
   exportUrl,
   LINE_PNG_SIZES,
   linesZipUrl,
@@ -22,6 +21,7 @@ import {
   type MushafStats,
   type PageSummary,
 } from "@/lib/api";
+import { startLinesExport, stopLinesExport, useLinesExport } from "@/lib/linesExport";
 
 const PRIMARY =
   "inline-flex h-10 cursor-pointer items-center justify-center rounded-control bg-lapis px-4 text-[13.5px] font-semibold text-on-lapis no-underline transition-colors hover:bg-lapis/90 disabled:cursor-not-allowed disabled:opacity-50";
@@ -96,7 +96,9 @@ export function ExportTab({
 }) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
-  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  // Runs app-wide, so it is still here when the tab is opened again mid-run.
+  const run = useLinesExport();
+  const runHere = run?.mushafId === mushaf.id ? run : null;
 
   const pngSize = useMutation({
     mutationFn: (value: LinePngSize) => updateMushaf(mushaf.id, { line_png_size: value }),
@@ -111,26 +113,13 @@ export function ExportTab({
   const ayat = stats?.ayat_found ?? 0;
   const pngShare = linesCut > 0 ? Math.min(1, exported / linesCut) : 0;
 
-  async function exportAll(onlyReviewed: boolean) {
+  function exportAll(onlyReviewed: boolean) {
     const targets = (onlyReviewed ? reviewedPages : processed).map((s) => s.page_number);
     if (targets.length === 0) {
       toast.info(onlyReviewed ? t("details.ex_noReviewed") : t("details.ex_noProcessed"));
       return;
     }
-    setProgress({ done: 0, total: targets.length });
-    try {
-      for (const [index, pageNumber] of targets.entries()) {
-        await exportLines(mushaf.id, pageNumber);
-        setProgress({ done: index + 1, total: targets.length });
-      }
-      toast.success(t("details.ex_exportedToast", { count: targets.length }));
-    } catch (e) {
-      toast.error(e instanceof ApiError ? e.message : t("details.ex_exportFailed"));
-    } finally {
-      setProgress(null);
-      queryClient.invalidateQueries({ queryKey: queryKeys.stats(mushaf.id) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.activity(mushaf.id) });
-    }
+    void startLinesExport({ mushafId: mushaf.id, pages: targets, queryClient });
   }
 
   return (
@@ -226,7 +215,7 @@ export function ExportTab({
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              disabled={!!progress || reviewedPages.length === 0}
+              disabled={!!run || reviewedPages.length === 0}
               onClick={() => exportAll(true)}
               className={PRIMARY}
             >
@@ -234,21 +223,35 @@ export function ExportTab({
             </button>
             <button
               type="button"
-              disabled={!!progress || processed.length === 0}
+              disabled={!!run || processed.length === 0}
               onClick={() => exportAll(false)}
               className={SECONDARY}
             >
-              {progress
-                ? t("details.ex_exporting", { done: progress.done, total: progress.total })
+              {runHere
+                ? t("details.ex_exporting", { done: runHere.done, total: runHere.total })
                 : t("details.ex_exportAll")}
             </button>
+            {runHere && !runHere.stopping && (
+              <button type="button" onClick={stopLinesExport} className={SECONDARY}>
+                {t("details.ex_runStop")}
+              </button>
+            )}
             {/* Pull the PNGs out of media/ in one go, saved wherever the browser asks. */}
-            {exported > 0 && (
+            {exported > 0 && !runHere && (
               <a href={linesZipUrl(mushaf.id)} download className={SECONDARY}>
                 {t("details.ex_downloadZip")}
               </a>
             )}
           </div>
+          {run && (
+            <span className="text-[12.5px] leading-snug text-ink-3">
+              {runHere
+                ? runHere.stopping
+                  ? t("details.ex_runStopping")
+                  : t("details.ex_runNote")
+                : t("details.ex_runElsewhere")}
+            </span>
+          )}
         </ExportSection>
 
         <ExportSection
