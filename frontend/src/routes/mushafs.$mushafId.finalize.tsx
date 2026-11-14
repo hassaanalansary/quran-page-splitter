@@ -114,6 +114,18 @@ function findCommonPad(lines: EditLine[]): number {
   return common;
 }
 
+/** Whether the page-wide edge-ink press acts on a line: every line but the sura
+ * headers, whose frame can reach their box's edges and would go with the rule. */
+function isPageEdgeInkTarget(line: EditLine): boolean {
+  return line.type !== "sura_header";
+}
+
+/** The page with its neighbours' edge ink erased, as the press with no line
+ * selected does it. */
+function eraseEdgeInkPageWide(lines: EditLine[]): EditLine[] {
+  return lines.map((l) => (isPageEdgeInkTarget(l) ? { ...l, eraseEdgeInk: true } : l));
+}
+
 /** Prefix media paths (relative from the export endpoint) with a leading slash. */
 function mediaSrc(path: string): string {
   return `${API_BASE}${path.startsWith("/") ? path : `/${path}`}`;
@@ -139,6 +151,8 @@ function FinalizePage() {
   // the usual padding put on as it opened, if it was.
   const [padBase, setPadBase] = useState(0);
   const [autoPadded, setAutoPadded] = useState<number | null>(null);
+  // Whether the edge ink was erased page-wide as it opened, after the usual padding.
+  const [autoErased, setAutoErased] = useState(false);
   const [selected, setSelected] = useState<number | null>(null);
   const [brushSize, setBrushSize] = useState(16);
   const [builtFor, setBuiltFor] = useState<number | null>(null);
@@ -193,17 +207,19 @@ function FinalizePage() {
       pageData.line_padding == null && !pageData.lines_finalized && usualPadding !== 0
         ? usualPadding
         : null;
-    const next = autoPad != null ? loaded.map((l) => growLine(l, autoPad, null)) : loaded;
+    const padded = autoPad != null ? loaded.map((l) => growLine(l, autoPad, null)) : loaded;
+    // Then the neighbours' edge ink goes, the press that always followed the padding —
+    // an edit of its own too, so the first Ctrl+Z brings the ink back, the next the padding.
+    const stack = autoPad != null ? [loaded, padded, eraseEdgeInkPageWide(padded)] : [loaded];
+    const next = stack[stack.length - 1];
     setModel(next);
-    historyRef.current = {
-      stack: autoPad != null ? [loaded, next] : [loaded],
-      index: autoPad != null ? 1 : 0,
-    };
+    historyRef.current = { stack, index: stack.length - 1 };
     forceHist();
     setBaseline(signLines(loaded));
     setGuardBaseline(signLines(next));
     setPadBase(pageData.line_padding ?? 0);
     setAutoPadded(autoPad);
+    setAutoErased(autoPad != null);
     // Nothing selected: the padding field then acts on the whole page. The view
     // still opens fitted on the first line — the canvas resets it per image.
     setSelected(null);
@@ -452,10 +468,13 @@ function FinalizePage() {
     }));
   };
 
-  // Edge ink acts on the selected line, or on every line but the sura headers —
-  // a header's frame can reach its box's edges, and would go with the rule.
-  const edgeTargets = sel ? [sel] : model.filter((l) => l.type !== "sura_header");
+  // Edge ink acts on the selected line, or on every line but the sura headers.
+  const pageEdgeTargets = model.filter(isPageEdgeInkTarget);
+  const edgeTargets = sel ? [sel] : pageEdgeTargets;
   const edgeAllOn = edgeTargets.length > 0 && edgeTargets.every((l) => l.eraseEdgeInk);
+  // Said only while the page still has it: Ctrl+Z takes the note off with it.
+  const autoErasedOn =
+    autoErased && pageEdgeTargets.length > 0 && pageEdgeTargets.every((l) => l.eraseEdgeInk);
   const toggleEdgeInk = () => {
     const targets = new Set(edgeTargets.map((l) => l.line_number));
     commit(model.map((l) => (targets.has(l.line_number) ? { ...l, eraseEdgeInk: !edgeAllOn } : l)));
@@ -674,6 +693,11 @@ function FinalizePage() {
                     ? t("finalize.edgeInkScopeLine", { n: sel.line_number })
                     : t("finalize.edgeInkScopePage")}
                 </span>
+                {autoErasedOn && (
+                  <span className="text-[12.5px] leading-normal text-ink-2">
+                    {t("finalize.edgeInkAutoApplied")}
+                  </span>
+                )}
               </Card>
 
               <Card

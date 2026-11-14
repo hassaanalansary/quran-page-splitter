@@ -751,6 +751,8 @@ export const ar: typeof en = {
     edgeInkRestore: "أعِد مِداد الحواف",
     edgeInkScopeLine: "السطر {{n}} فقط.",
     edgeInkScopePage: "كل أسطر الصفحة، عدا عناوين السور.",
+    edgeInkAutoApplied:
+      "مُحي عند فتح الصفحة، بعد هامشك المعتاد. Ctrl+Z يعيده، واضغط مرة أخرى لتزيل الهامش أيضًا.",
     edgeInkBadge: "حواف",
     paddingLabel: "الهامش · بكسل",
     paddingLess: "تقليل الهامش",

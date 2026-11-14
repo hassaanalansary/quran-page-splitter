@@ -777,6 +777,8 @@ export const en = {
     edgeInkRestore: "Bring edge ink back",
     edgeInkScopeLine: "Line {{n}} only.",
     edgeInkScopePage: "Every line on the page, sura headers aside.",
+    edgeInkAutoApplied:
+      "Erased as the page opened, after your usual padding. Ctrl+Z brings it back; press again to take the padding off too.",
     edgeInkBadge: "edge",
     paddingLabel: "Padding · px",
     paddingLess: "Less padding",

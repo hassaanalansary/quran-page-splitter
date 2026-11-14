@@ -144,7 +144,7 @@ npm run build          # → frontend/dist
 | `Template` | one per mushaf and type: `sura_header`, `aya_separator`, `sajda`, `rub_hizb`; an image and optional ignore rectangles |
 | `ProcessingRun` | one line-engine run: settings, page range, status, abort detail, log |
 | `ProcessJob` | the live state of a background job: `kind` (`detection`, `calibration`, `calibration_batch`; `words` only for history), `state`, `phase`, progress, heartbeat, cancel flag |
-| `Page` | a logical page with data: its crop box, `reviewed`, `lines_finalized` (a person marked its cuts checked in Finalize), `line_padding` (the padding its lines got there; the latest three checked pages' agreeing value is put on each new page), the run that made it |
+| `Page` | a logical page with data: its crop box, `reviewed`, `lines_finalized` (a person marked its cuts checked in Finalize), `line_padding` (the padding its lines got there; the latest three checked pages' agreeing value is put on each new page, and the edge ink erased page-wide after it), the run that made it |
 | `Line` | `line_number`, `type` (`text` / `sura_header` / `besmella`), `sura`, its box, `erase_edge_ink`, its exported PNG and the rows a tight export cut off it |
 | `Segment` | a stretch of a line up to an aya ornament: `bbox_x`, `bbox_w`, `has_separator`, the derived `aya_number` |
 | `EraseStroke` | a brush stroke erased from a line's PNG |
