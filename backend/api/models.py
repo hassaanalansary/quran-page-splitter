@@ -35,6 +35,15 @@ class LinePngSizeChoices(models.TextChoices):
     UNIFORM = "uniform", "Same size across the page"
     #: Cut down to the line's first and last inked row, after every erase.
     TIGHT = "tight", "Tight to the ink"
+    #: Cut tight first, then centred on a canvas the size of the page's tallest
+    #: tight line: one size across the page, with no more space than the ink needs.
+    TIGHT_UNIFORM = "tight_uniform", "Tight, then same size across the page"
+
+
+#: The sizes that cut each line down to its first and last inked row.
+INK_CROPPED_PNG_SIZES = frozenset({LinePngSizeChoices.TIGHT, LinePngSizeChoices.TIGHT_UNIFORM})
+#: The sizes that centre every line of a page on one canvas, its largest line's size.
+PAGE_SIZED_PNG_SIZES = frozenset({LinePngSizeChoices.UNIFORM, LinePngSizeChoices.TIGHT_UNIFORM})
 
 
 class RunStatusChoices(models.TextChoices):
@@ -185,13 +194,14 @@ class Mushaf(BaseModel):
         ),
     )
     line_png_size = models.CharField(
-        max_length=8,
+        max_length=16,
         choices=LinePngSizeChoices.choices,
         default=LinePngSizeChoices.BOX,
         help_text=(
             "How tall each exported line PNG is: the line's own box; padded with "
-            "transparent space to the page's largest line; or cut to its first and "
-            "last inked row. Only future exports follow a change."
+            "transparent space to the page's largest line; cut to its first and "
+            "last inked row; or cut so, then padded to the page's tallest cut line. "
+            "Only future exports follow a change."
         ),
     )
     description = models.TextField(

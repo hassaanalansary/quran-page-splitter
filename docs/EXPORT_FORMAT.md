@@ -79,7 +79,9 @@ The PNG is the page cut at the text column and the line's height. The mushaf's
 *Line image size* then decides its height: the line's own box; or, for *Same size
 across the page*, centred on a canvas the size of the page's largest line; or, for
 *Tight to the ink*, cut down to the line's first and last inked row, so `crop`
-starts and ends there. Each line says how:
+starts and ends there; or, for *Tight, then same size across the page*, cut so first
+and then centred on a canvas the size of the page's tallest cut line, so `crop` is
+tight and `offset` pads it. Each line says how:
 
 ```
 "png": {
@@ -227,7 +229,7 @@ values = rgb[..., 0] + 256 * rgb[..., 1] + 65536 * rgb[..., 2]
 ## 6. What the manifest says
 
 `manifest.json` repeats these conventions in words, and adds the mushaf (`name`,
-`qiraa`, `dpi`, `png_size` — `box`, `uniform` or `tight` — and `uniform_png_size`,
+`qiraa`, `dpi`, `png_size` — `box`, `uniform`, `tight` or `tight_uniform` — and `uniform_png_size`,
 true for `uniform`, kept for readers from before `png_size`), the mark types found
 with their counts, totals
 by calibration state, and one entry per page:

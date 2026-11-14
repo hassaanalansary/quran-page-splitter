@@ -8,7 +8,8 @@ PNG is saved under ``media/mushafs/<id>/lines/`` with its path recorded on
 the line. ``Mushaf.line_png_size`` then sets its height: the line's own box; or
 centred on a transparent canvas the size of that page's largest line, so the whole
 page exports at one size; or cut down to its first and last inked row, with the
-rows cut off recorded on the line so its place on the page can still be told.
+rows cut off recorded on the line so its place on the page can still be told; or
+cut so first and then centred on a canvas the size of the page's tallest cut line.
 
 ``lines_zip`` bundles those stored PNGs into a downloadable archive — the way
 the images leave the tool and land wherever the user wants them.
@@ -28,7 +29,7 @@ from PIL import Image, ImageDraw
 
 from accounts.models import User
 from api import i18n
-from api.models import ActivityTypeChoices, Line, LinePngSizeChoices, Page, Segment
+from api.models import INK_CROPPED_PNG_SIZES, PAGE_SIZED_PNG_SIZES, ActivityTypeChoices, Line, Page, Segment
 from api.services import activity, coordinates, pdf
 from api.services import mushaf as mushaf_service
 from core.imaging import apply_eraser_stroke, find_edge_ink, find_ink, make_transparent
@@ -54,9 +55,9 @@ def export_lines(*, user: User, mushaf_id: uuid.UUID, page_number: int) -> dict:
     # Blobs a person erased in Calibrate — noise the cutting left — go too.
     erased = calibration.erased_ink(mushaf, page_number, lines)
 
-    # Rendered up front rather than streamed one at a time: a uniform canvas can
-    # only be sized once every line on the page has been cut and erased. Fifteen
-    # RGBA line crops is a manageable amount to hold.
+    # Rendered up front rather than streamed one at a time: a page-sized canvas can
+    # only be sized once every line on the page has been cut, erased and (when
+    # tight) cropped. Fifteen RGBA line crops is a manageable amount to hold.
     rendered = []
     for line in lines:
         rgba = render_line_image(image, line, column)
@@ -64,24 +65,24 @@ def export_lines(*, user: User, mushaf_id: uuid.UUID, page_number: int) -> dict:
             cut_erased(rgba, _origin(line, column), erased[str(line.pk)])
         if line.erase_edge_ink:
             cut_edge_ink(rgba, image, line, column)
-        rendered.append((line, rgba))
+        trim_top = trim_bottom = 0
+        if mushaf.line_png_size in INK_CROPPED_PNG_SIZES:
+            rgba, trim_top, trim_bottom = crop_to_ink_rows(rgba)
+        rendered.append((line, rgba, trim_top, trim_bottom))
     canvas: tuple[int, int] | None = None
-    if mushaf.line_png_size == LinePngSizeChoices.UNIFORM and rendered:
+    if mushaf.line_png_size in PAGE_SIZED_PNG_SIZES and rendered:
         canvas = (
-            max(img.width for _, img in rendered),
-            max(img.height for _, img in rendered),
+            max(img.width for _, img, _, _ in rendered),
+            max(img.height for _, img, _, _ in rendered),
         )
 
     exported: list[dict] = []
-    for line, rgba in rendered:
+    for line, rgba, trim_top, trim_bottom in rendered:
         # Priming the FK cache keeps models.line_png_path from re-querying the
         # page (and through it the mushaf) once per line.
         line.page = page
         if canvas:
             rgba = _pad_to(rgba, canvas)
-        trim_top = trim_bottom = 0
-        if mushaf.line_png_size == LinePngSizeChoices.TIGHT:
-            rgba, trim_top, trim_bottom = crop_to_ink_rows(rgba)
         # Saved with the PNG below (line_png.save saves the row).
         line.line_png_trim_top, line.line_png_trim_bottom = trim_top, trim_bottom
         png_bytes = _to_png_bytes(rgba)

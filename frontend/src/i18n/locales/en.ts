@@ -1675,6 +1675,9 @@ export const en = {
     ex_size_tight: "Tight to the ink",
     ex_size_tightHelp:
       "Cuts each line down to its first and last inked row, after every erase — the height fits the ink. The width stays the page column. A stray dot left behind keeps the line taller.",
+    ex_size_tight_uniform: "Tight, then same size across the page",
+    ex_size_tight_uniformHelp:
+      "Cuts each line tight to its ink first, then pads every line of the page out to the tallest of those with transparent space above and below — one size per page, with no more space than the ink needs.",
     ex_sizeReexport:
       "Applies to future exports — re-export a page to change images already written.",
     ex_sizeFailed: "Could not change the line image size.",

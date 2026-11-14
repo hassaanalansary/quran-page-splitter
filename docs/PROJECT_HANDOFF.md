@@ -140,7 +140,7 @@ npm run build          # → frontend/dist
 
 | model | what it is |
 | --- | --- |
-| `Mushaf` | `owner`, `rawi`, `name` (unique per owner), the PDF (stored once as `pdfs/<sha>.pdf`), the Quran's first and last PDF page, `thumbnail`, `visibility` (`private` / `published`) and `published_at`, `ijam_mode`, `line_png_size` (`box` / `uniform` / `tight`), `description`, `duplicated_from` |
+| `Mushaf` | `owner`, `rawi`, `name` (unique per owner), the PDF (stored once as `pdfs/<sha>.pdf`), the Quran's first and last PDF page, `thumbnail`, `visibility` (`private` / `published`) and `published_at`, `ijam_mode`, `line_png_size` (`box` / `uniform` / `tight` / `tight_uniform`), `description`, `duplicated_from` |
 | `Template` | one per mushaf and type: `sura_header`, `aya_separator`, `sajda`, `rub_hizb`; an image and optional ignore rectangles |
 | `ProcessingRun` | one line-engine run: settings, page range, status, abort detail, log |
 | `ProcessJob` | the live state of a background job: `kind` (`detection`, `calibration`, `calibration_batch`; `words` only for history), `state`, `phase`, progress, heartbeat, cancel flag |

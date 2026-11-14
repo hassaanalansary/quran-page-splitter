@@ -187,21 +187,28 @@ class PlacementTests(ExportTestCase):
         # The line whose box changed is no longer what the page was processed from.
         self.assertTrue(page["calibration"]["stale"])
 
-    def test_a_tight_png_is_placed_at_the_rows_its_export_kept(self):
-        self.confirm_typed()
-        Mushaf.objects.filter(pk=self.mushaf.pk).update(line_png_size=LinePngSizeChoices.TIGHT)
-        # The export renders the PDF itself, blank here: draw ink on line 1's rows 8 to 29.
+    def export_lines_inked_at(self, rows: list[tuple[int, int]]) -> None:
+        """Export page 1's line PNGs with ink drawn on each line's ``(first, last)`` rows.
+
+        The export renders the PDF itself, and the PDF is blank here.
+        """
         render_page = pdf.render_page
 
         def inked(*args, **kwargs) -> bytes:
             image = Image.open(io.BytesIO(render_page(*args, **kwargs))).convert("RGB")
-            ImageDraw.Draw(image).rectangle((150, LINE_TOPS[0] + 8, 300, LINE_TOPS[0] + 29), fill=(0, 0, 0))
+            for top, (first, last) in zip(LINE_TOPS, rows, strict=False):
+                ImageDraw.Draw(image).rectangle((150, top + first, 300, top + last), fill=(0, 0, 0))
             out = io.BytesIO()
             image.save(out, format="PNG")
             return out.getvalue()
 
         with mock.patch("api.services.export.pdf.render_page", side_effect=inked):
             export.export_lines(user=default_user(), mushaf_id=self.mushaf.id, page_number=1)
+
+    def test_a_tight_png_is_placed_at_the_rows_its_export_kept(self):
+        self.confirm_typed()
+        Mushaf.objects.filter(pk=self.mushaf.pk).update(line_png_size=LinePngSizeChoices.TIGHT)
+        self.export_lines_inked_at([(8, 29)])
         line = Line.objects.get(page__mushaf=self.mushaf, page__page_number=1, line_number=1)
         self.assertEqual((line.line_png_trim_top, line.line_png_trim_bottom), (8, 10))
 
@@ -218,6 +225,33 @@ class PlacementTests(ExportTestCase):
         Line.objects.filter(pk=line.pk).update(bbox_h=50)
         png = self.page(self.export(), 1)["lines"][0]["png"]
         self.assertTrue(png["outdated"])
+
+    def test_a_tight_uniform_png_is_cut_tight_then_centred_on_the_tallest_cut(self):
+        self.confirm_typed()
+        Mushaf.objects.filter(pk=self.mushaf.pk).update(line_png_size=LinePngSizeChoices.TIGHT_UNIFORM)
+        # Line 1 keeps 22 rows, line 2 keeps 30: the page's canvas is 30 tall.
+        self.export_lines_inked_at([(8, 29), (5, 34)])
+        trims = list(
+            Line.objects.filter(page__mushaf=self.mushaf, page__page_number=1)
+            .order_by("line_number")
+            .values_list("line_png_trim_top", "line_png_trim_bottom")
+        )
+        self.assertEqual(trims, [(8, 10), (5, 5)])
+
+        archive = self.export()
+        short, tall = (line["png"] for line in self.page(archive, 1)["lines"])
+        self.assertEqual(short["crop"], [100, LINE_TOPS[0] + 8, 600, 22])
+        self.assertEqual((short["size"], short["offset"], short["outdated"]), ([600, 30], [0, 4], False))
+        self.assertEqual(tall["crop"], [100, LINE_TOPS[1] + 5, 600, 30])
+        self.assertEqual((tall["size"], tall["offset"], tall["outdated"]), ([600, 30], [0, 0], False))
+
+        rgba = Image.open(io.BytesIO(archive.read(short["file"]))).convert("RGBA")
+        alpha = np.asarray(rgba.getchannel("A"))
+        self.assertEqual(rgba.size, (600, 30))
+        # The ink sits between 4 transparent rows above and 4 below.
+        self.assertEqual(np.flatnonzero(alpha.any(axis=1)).tolist(), list(range(4, 26)))
+        manifest = json.loads(archive.read("manifest.json"))["mushaf"]
+        self.assertEqual((manifest["png_size"], manifest["uniform_png_size"]), ("tight_uniform", False))
 
     def test_exported_line_images_travel_with_their_placement(self):
         self.confirm_typed()

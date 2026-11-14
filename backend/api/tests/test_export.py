@@ -236,6 +236,15 @@ class UniformSizeExportTests(MediaTestCase):
         trims = list(self.page.lines.values_list("line_png_trim_top", "line_png_trim_bottom"))
         self.assertEqual(trims, [(0, 0), (0, 0)])
 
+    def test_a_tight_uniform_export_without_ink_pads_every_line_to_the_tallest_box(self):
+        # The test PDF is blank, so no line can be cut: each keeps its box, and the
+        # page's one size is its tallest line's.
+        self.mushaf.line_png_size = LinePngSizeChoices.TIGHT_UNIFORM
+        self.mushaf.save(update_fields=["line_png_size"])
+        self.assertEqual([h for _, h in self._sizes()], [90, 90])
+        trims = list(self.page.lines.values_list("line_png_trim_top", "line_png_trim_bottom"))
+        self.assertEqual(trims, [(0, 0), (0, 0)])
+
     def test_on_gives_every_line_the_same_size(self):
         self._set_uniform(True)
         sizes = self._sizes()

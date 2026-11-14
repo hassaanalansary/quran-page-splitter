@@ -216,13 +216,15 @@ class UpdateMushafTests(MediaTestCase):
         # column must not start carrying it. See core.word_boundary.inputs.IjamMode.
         self.assertEqual(self._detail(created["id"])["ijam_mode"], "report")
 
-    def test_line_png_size_takes_one_of_its_three_and_ignores_anything_else(self):
+    def test_line_png_size_takes_one_of_its_four_and_ignores_anything_else(self):
         created = _create("PngSize", pages=4)
         self.assertEqual(self._detail(created["id"])["line_png_size"], "box")
         mushaf_service.update_mushaf(created["id"], {"line_png_size": "tight"}, user=default_user())
         self.assertEqual(self._detail(created["id"])["line_png_size"], "tight")
+        mushaf_service.update_mushaf(created["id"], {"line_png_size": "tight_uniform"}, user=default_user())
+        self.assertEqual(self._detail(created["id"])["line_png_size"], "tight_uniform")
         mushaf_service.update_mushaf(created["id"], {"line_png_size": "huge"}, user=default_user())
-        self.assertEqual(self._detail(created["id"])["line_png_size"], "tight")
+        self.assertEqual(self._detail(created["id"])["line_png_size"], "tight_uniform")
 
     def test_ijam_mode_is_not_locked_once_pages_exist(self):
         """Unlike the riwaya. It changes nothing already written, and the only way

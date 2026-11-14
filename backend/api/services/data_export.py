@@ -18,9 +18,10 @@ Inside the zip::
   and the one ``coordinates.json`` (aya-bbox/v1) uses;
 * ``png`` — pixels of that line's exported PNG. The PNG is the page cut at the text
   column and the line's height (``png.crop``, in page pixels), set at ``png.offset`` on
-  a canvas of ``png.size``; the offset is non-zero only when *uniform size* pads every
-  line of a page to its largest, and a *tight* PNG's crop starts and ends at the line's
-  first and last inked rows. So ``png_x = page_x - crop_x + offset_x``, and so for y.
+  a canvas of ``png.size``; the offset is non-zero only when *uniform* or *tight_uniform*
+  pads every line of a page to its largest, and a *tight* or *tight_uniform* PNG's crop
+  starts and ends at the line's first and last inked rows. So
+  ``png_x = page_x - crop_x + offset_x``, and so for y.
 
 **Where words and blobs come from.** A page calibrated in Calibrate exports its draft
 as it stands — every blob with its class, its mark type and its words, and the words'
@@ -64,6 +65,8 @@ from PIL import Image
 from accounts.models import User
 from api import i18n
 from api.models import (
+    INK_CROPPED_PNG_SIZES,
+    PAGE_SIZED_PNG_SIZES,
     CalibrationReview,
     CalibrationSnapshot,
     Line,
@@ -135,9 +138,9 @@ class _Placement:
     """Where one line's PNG was cut from the page, and where that cut sits in the PNG.
 
     The same arithmetic as ``export.export_lines``: the page cut at the text column and
-    the line's top and height, clipped to the page, then centred on the page's largest
-    line when the PNG size is *uniform*, or less the rows a *tight* export recorded
-    cutting off (``Line.line_png_trim_top`` / ``_bottom``).
+    the line's top and height, clipped to the page, less the rows a *tight* export
+    recorded cutting off (``Line.line_png_trim_top`` / ``_bottom``), then centred on the
+    page's largest such cut when the PNG size is *uniform* or *tight_uniform*.
     """
 
     left: int
@@ -172,13 +175,13 @@ def _placements(mushaf: Mushaf, page: Page, lines: list[Line], size: tuple[int, 
         right, bottom = col_x + col_w, line.bbox_y + line.bbox_h
         if size is not None:
             right, bottom = min(size[0], right), min(size[1], bottom)
-        if mushaf.line_png_size == LinePngSizeChoices.TIGHT:
+        if mushaf.line_png_size in INK_CROPPED_PNG_SIZES:
             # Rows recorded at the PNG's export. Should the box have moved since,
             # the size no longer matches the stored PNG, and png.outdated says so.
             top, bottom = top + line.line_png_trim_top, max(top, bottom - line.line_png_trim_bottom)
         cuts[line.pk] = (left, top, max(0, right - left), max(0, bottom - top))
     canvas: tuple[int, int] | None = None
-    if mushaf.line_png_size == LinePngSizeChoices.UNIFORM and cuts:
+    if mushaf.line_png_size in PAGE_SIZED_PNG_SIZES and cuts:
         canvas = (max(cut[2] for cut in cuts.values()), max(cut[3] for cut in cuts.values()))
     placed = {}
     for key, (left, top, width, height) in cuts.items():
@@ -618,8 +621,8 @@ def _manifest(context: _Context, entries: list[Doc], *, images: bool, maps: bool
             "qiraa": mushaf.rawi.name if mushaf.rawi else None,
             "pages": mushaf.last_quran_pdf_page - mushaf.first_quran_pdf_page + 1,
             "dpi": pdf.DEFAULT_DPI,
-            # "box" | "uniform" | "tight". uniform_png_size stays for readers of the
-            # format from before tight existed.
+            # "box" | "uniform" | "tight" | "tight_uniform". uniform_png_size stays for
+            # readers of the format from before tight existed: true for "uniform" only.
             "png_size": mushaf.line_png_size,
             "uniform_png_size": mushaf.line_png_size == LinePngSizeChoices.UNIFORM,
         },

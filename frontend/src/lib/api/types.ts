@@ -96,8 +96,9 @@ export type IjamMode = "report" | "ignore";
 
 /** How tall an exported line PNG is; every line keeps the page column's width.
  * `box`: the line's own box. `uniform`: padded with transparent space to the
- * page's largest line. `tight`: cut to the line's first and last inked row. */
-export const LINE_PNG_SIZES = ["box", "uniform", "tight"] as const;
+ * page's largest line. `tight`: cut to the line's first and last inked row.
+ * `tight_uniform`: cut tight, then padded to the page's tallest tight line. */
+export const LINE_PNG_SIZES = ["box", "uniform", "tight", "tight_uniform"] as const;
 export type LinePngSize = (typeof LINE_PNG_SIZES)[number];
 
 export type MushafCreateResult = {
