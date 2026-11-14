@@ -259,7 +259,8 @@ def _image_for(
 
     **Always cut fresh**, never read back from ``line.line_png``. An exported PNG is
     cut at the page column and may have been centred on a page-sized canvas
-    (``export._pad_to``, when ``export_uniform_size`` is on); either way its image x 0
+    (``export._pad_to``, when ``line_png_size`` is uniform) or cut to its ink; either
+    way its image x 0
     is not this line's left edge, so reusing one would quietly undo the crop that
     ``_origin_x`` explains. Rendering costs one page per page, not one per line — the
     caller renders once and passes it in.

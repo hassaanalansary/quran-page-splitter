@@ -5,9 +5,10 @@ made transparent, eraser strokes are punched out of the alpha channel — and so
 pixel for pixel, is every blob a person erased in Calibrate, and on a line with
 ``erase_edge_ink`` every piece of ink reaching over its top or bottom edge — and the
 PNG is saved under ``media/mushafs/<id>/lines/`` with its path recorded on
-the line. With ``Mushaf.export_uniform_size`` on, every line of a page is then
-centred on a transparent canvas the size of that page's largest line, so the
-whole page exports at one size.
+the line. ``Mushaf.line_png_size`` then sets its height: the line's own box; or
+centred on a transparent canvas the size of that page's largest line, so the whole
+page exports at one size; or cut down to its first and last inked row, with the
+rows cut off recorded on the line so its place on the page can still be told.
 
 ``lines_zip`` bundles those stored PNGs into a downloadable archive — the way
 the images leave the tool and land wherever the user wants them.
@@ -27,7 +28,7 @@ from PIL import Image, ImageDraw
 
 from accounts.models import User
 from api import i18n
-from api.models import ActivityTypeChoices, Line, Page, Segment
+from api.models import ActivityTypeChoices, Line, LinePngSizeChoices, Page, Segment
 from api.services import activity, coordinates, pdf
 from api.services import mushaf as mushaf_service
 from core.imaging import apply_eraser_stroke, find_edge_ink, find_ink, make_transparent
@@ -65,7 +66,7 @@ def export_lines(*, user: User, mushaf_id: uuid.UUID, page_number: int) -> dict:
             cut_edge_ink(rgba, image, line, column)
         rendered.append((line, rgba))
     canvas: tuple[int, int] | None = None
-    if mushaf.export_uniform_size and rendered:
+    if mushaf.line_png_size == LinePngSizeChoices.UNIFORM and rendered:
         canvas = (
             max(img.width for _, img in rendered),
             max(img.height for _, img in rendered),
@@ -76,7 +77,14 @@ def export_lines(*, user: User, mushaf_id: uuid.UUID, page_number: int) -> dict:
         # Priming the FK cache keeps models.line_png_path from re-querying the
         # page (and through it the mushaf) once per line.
         line.page = page
-        png_bytes = _to_png_bytes(_pad_to(rgba, canvas) if canvas else rgba)
+        if canvas:
+            rgba = _pad_to(rgba, canvas)
+        trim_top = trim_bottom = 0
+        if mushaf.line_png_size == LinePngSizeChoices.TIGHT:
+            rgba, trim_top, trim_bottom = crop_to_ink_rows(rgba)
+        # Saved with the PNG below (line_png.save saves the row).
+        line.line_png_trim_top, line.line_png_trim_bottom = trim_top, trim_bottom
+        png_bytes = _to_png_bytes(rgba)
         filename = f"page-{page_number:04d}/line-{line.line_number:02d}.png"
         if line.line_png:
             line.line_png.delete(save=False)
@@ -207,6 +215,20 @@ def _pad_to(rgba: Image.Image, size: tuple[int, int]) -> Image.Image:
     canvas = Image.new("RGBA", (width, height), (0, 0, 0, 0))
     canvas.paste(rgba, ((width - rgba.width) // 2, (height - rgba.height) // 2))
     return canvas
+
+
+def crop_to_ink_rows(rgba: Image.Image) -> tuple[Image.Image, int, int]:
+    """Cut a line image down to its first and last row with anything opaque left,
+    and say how many rows came off the top and the bottom. The width is kept, so
+    every line still spans the page column.
+
+    A line with no ink left at all is returned whole: a PNG has to have a row.
+    """
+    rows = np.flatnonzero(np.asarray(rgba.getchannel("A")).any(axis=1))
+    if rows.size == 0:
+        return rgba, 0, 0
+    top, last = int(rows[0]), int(rows[-1])
+    return rgba.crop((0, top, rgba.width, last + 1)), top, rgba.height - 1 - last
 
 
 def _to_png_bytes(rgba: Image.Image) -> bytes:

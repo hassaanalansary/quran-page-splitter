@@ -75,9 +75,11 @@ Every rectangle is given twice, as `[x, y, w, h]` with y running down:
          "png":  [2310,   0, 186, 116] }    pixels of this line's PNG
 ```
 
-The PNG is the page cut at the text column and the line's height, then — when
-*Same size for every line* is on — centred on a canvas the size of the page's
-largest line. Each line says how:
+The PNG is the page cut at the text column and the line's height. The mushaf's
+*Line image size* then decides its height: the line's own box; or, for *Same size
+across the page*, centred on a canvas the size of the page's largest line; or, for
+*Tight to the ink*, cut down to the line's first and last inked row, so `crop`
+starts and ends there. Each line says how:
 
 ```
 "png": {
@@ -225,7 +227,9 @@ values = rgb[..., 0] + 256 * rgb[..., 1] + 65536 * rgb[..., 2]
 ## 6. What the manifest says
 
 `manifest.json` repeats these conventions in words, and adds the mushaf (`name`,
-`qiraa`, `dpi`, `uniform_png_size`), the mark types found with their counts, totals
+`qiraa`, `dpi`, `png_size` — `box`, `uniform` or `tight` — and `uniform_png_size`,
+true for `uniform`, kept for readers from before `png_size`), the mark types found
+with their counts, totals
 by calibration state, and one entry per page:
 
 ```json

@@ -70,8 +70,8 @@ export type MushafDetail = Mushaf & {
   pdf_original_name: string;
   published_at: string | null;
   description: string;
-  /** Pad every exported line PNG on a page out to that page's tallest line. */
-  export_uniform_size: boolean;
+  /** How tall each exported line PNG is — see `LinePngSize`. */
+  line_png_size: LinePngSize;
   /** Pages whose line cuts a person marked finished in Finalize. */
   finalized_page_count: number;
   /** Whether word detection checks a word against the dots its spelling expects.
@@ -91,6 +91,12 @@ export type MushafDetail = Mushaf & {
  * candidate left. See `core/word_boundary/inputs.py`. */
 export type IjamMode = "report" | "ignore";
 
+/** How tall an exported line PNG is; every line keeps the page column's width.
+ * `box`: the line's own box. `uniform`: padded with transparent space to the
+ * page's largest line. `tight`: cut to the line's first and last inked row. */
+export const LINE_PNG_SIZES = ["box", "uniform", "tight"] as const;
+export type LinePngSize = (typeof LINE_PNG_SIZES)[number];
+
 export type MushafCreateResult = {
   mushaf: Mushaf;
   warnings: { duplicate_file: boolean };
@@ -101,7 +107,7 @@ export type MushafPatch = Partial<{
   qiraa: string | null;
   first_quran_pdf_page: number;
   last_quran_pdf_page: number;
-  export_uniform_size: boolean;
+  line_png_size: LinePngSize;
   ijam_mode: IjamMode;
 }>;
 

@@ -62,7 +62,8 @@ class MushafDetailOut(MushafOut):
     pdf_original_name: str = ""
     published_at: datetime | None = None
     description: str = ""
-    export_uniform_size: bool = False
+    #: "box" | "uniform" | "tight" — how tall each exported line PNG is.
+    line_png_size: str = "box"
     #: Pages whose line cuts a person marked finished in Finalize.
     finalized_page_count: int = 0
     #: "report" | "ignore" — whether word detection checks a word against the dots
@@ -100,7 +101,7 @@ class MushafPatchIn(Schema):
     qiraa: str | None = None
     first_quran_pdf_page: int | None = None
     last_quran_pdf_page: int | None = None
-    export_uniform_size: bool | None = None
+    line_png_size: str | None = None
     ijam_mode: str | None = None
 
 

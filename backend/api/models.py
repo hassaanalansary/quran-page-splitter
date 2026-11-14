@@ -25,6 +25,18 @@ class LineTypeChoices(models.TextChoices):
     TEXT = "text", "Text"
 
 
+class LinePngSizeChoices(models.TextChoices):
+    """How big an exported line PNG is. Height is what differs: every line keeps the
+    page column's width whichever is chosen."""
+
+    #: The line's own box, as cut in Finalize.
+    BOX = "box", "Each line's own box"
+    #: Centred on a canvas the size of the page's largest line — nothing cropped.
+    UNIFORM = "uniform", "Same size across the page"
+    #: Cut down to the line's first and last inked row, after every erase.
+    TIGHT = "tight", "Tight to the ink"
+
+
 class RunStatusChoices(models.TextChoices):
     # Set when the run row is created and kept until the run settles. A row left
     # in this state belongs to a run whose process died; the next run on the same
@@ -172,11 +184,14 @@ class Mushaf(BaseModel):
             "is not guessed."
         ),
     )
-    export_uniform_size = models.BooleanField(
-        default=False,
+    line_png_size = models.CharField(
+        max_length=8,
+        choices=LinePngSizeChoices.choices,
+        default=LinePngSizeChoices.BOX,
         help_text=(
-            "Pad every exported line PNG on a page out to the size of that page's "
-            "largest line, with transparent space. Nothing is ever cropped."
+            "How tall each exported line PNG is: the line's own box; padded with "
+            "transparent space to the page's largest line; or cut to its first and "
+            "last inked row. Only future exports follow a change."
         ),
     )
     description = models.TextField(
@@ -442,6 +457,16 @@ class Line(BaseModel):
     sura = models.ForeignKey("quran.Sura", null=True, on_delete=models.SET_NULL, related_name="lines")
     line_png = models.ImageField(
         upload_to=line_png_path, null=True, help_text="Final PNG path after coordinates + erase; set on export"
+    )
+    line_png_trim_top = models.PositiveIntegerField(
+        default=0,
+        help_text=(
+            "Rows a tight export cut off the top of the line's box, so the PNG's place "
+            "on the page can still be told (data export). 0 for any other size."
+        ),
+    )
+    line_png_trim_bottom = models.PositiveIntegerField(
+        default=0, help_text="Rows a tight export cut off the bottom of the line's box. 0 for any other size."
     )
     bbox_x = models.PositiveIntegerField(help_text="The x coordinate of the bounding box.")
     bbox_y = models.PositiveIntegerField(help_text="The y coordinate of the bounding box.")

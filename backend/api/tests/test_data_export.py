@@ -10,14 +10,15 @@ import io
 import json
 import uuid
 import zipfile
+from unittest import mock
 
 import numpy as np
 from django.test import Client
-from PIL import Image
+from PIL import Image, ImageDraw
 
-from api.models import Line, LineWord, Mushaf, VisibilityChoices
+from api.models import Line, LinePngSizeChoices, LineWord, Mushaf, VisibilityChoices
 from api.services import calibration_snapshots as snapshots
-from api.services import export
+from api.services import export, pdf
 from api.tests.helpers import default_user
 from api.tests.test_calibration_api import BODIES, DOT, FUSED, LINE_TOPS, RING, CalibrationApiTestCase, drawn_pages
 
@@ -175,7 +176,7 @@ class SourceTests(ExportTestCase):
 class PlacementTests(ExportTestCase):
     def test_uniform_size_moves_every_png_rectangle_by_its_padding(self):
         self.confirm_typed()
-        Mushaf.objects.filter(pk=self.mushaf.pk).update(export_uniform_size=True)
+        Mushaf.objects.filter(pk=self.mushaf.pk).update(line_png_size=LinePngSizeChoices.UNIFORM)
         Line.objects.filter(page__mushaf=self.mushaf, page__page_number=1, line_number=2).update(bbox_h=60)
         archive = self.export()
         page = self.page(archive, 1)
@@ -185,6 +186,38 @@ class PlacementTests(ExportTestCase):
         self.assertEqual(self.pixels(archive, line["maps"]["words"])[30, (BODIES[0][0] + BODIES[0][1]) // 2 - 100], 1)
         # The line whose box changed is no longer what the page was processed from.
         self.assertTrue(page["calibration"]["stale"])
+
+    def test_a_tight_png_is_placed_at_the_rows_its_export_kept(self):
+        self.confirm_typed()
+        Mushaf.objects.filter(pk=self.mushaf.pk).update(line_png_size=LinePngSizeChoices.TIGHT)
+        # The export renders the PDF itself, blank here: draw ink on line 1's rows 8 to 29.
+        render_page = pdf.render_page
+
+        def inked(*args, **kwargs) -> bytes:
+            image = Image.open(io.BytesIO(render_page(*args, **kwargs))).convert("RGB")
+            ImageDraw.Draw(image).rectangle((150, LINE_TOPS[0] + 8, 300, LINE_TOPS[0] + 29), fill=(0, 0, 0))
+            out = io.BytesIO()
+            image.save(out, format="PNG")
+            return out.getvalue()
+
+        with mock.patch("api.services.export.pdf.render_page", side_effect=inked):
+            export.export_lines(user=default_user(), mushaf_id=self.mushaf.id, page_number=1)
+        line = Line.objects.get(page__mushaf=self.mushaf, page__page_number=1, line_number=1)
+        self.assertEqual((line.line_png_trim_top, line.line_png_trim_bottom), (8, 10))
+
+        archive = self.export()
+        png = self.page(archive, 1)["lines"][0]["png"]
+        kept = 22
+        self.assertEqual(png["crop"], [100, LINE_TOPS[0] + 8, 600, kept])
+        self.assertEqual((png["size"], png["offset"], png["outdated"]), ([600, kept], [0, 0], False))
+        self.assertEqual(Image.open(io.BytesIO(archive.read(png["file"]))).size, (600, kept))
+        manifest = json.loads(archive.read("manifest.json"))["mushaf"]
+        self.assertEqual((manifest["png_size"], manifest["uniform_png_size"]), ("tight", False))
+
+        # The box moves after the export: the stored PNG no longer fits its place.
+        Line.objects.filter(pk=line.pk).update(bbox_h=50)
+        png = self.page(self.export(), 1)["lines"][0]["png"]
+        self.assertTrue(png["outdated"])
 
     def test_exported_line_images_travel_with_their_placement(self):
         self.confirm_typed()

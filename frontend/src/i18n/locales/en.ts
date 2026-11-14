@@ -1665,12 +1665,19 @@ export const en = {
     kv_rect: "rect",
     ex_downloadJson: "Download JSON ↓",
     ex_downloadZip: "Download all PNGs ↓ zip",
-    ex_uniformLabel: "Same size for every line",
-    ex_uniformHelp:
+    ex_sizeLabel: "Line image size",
+    ex_size_box: "Each line's own box",
+    ex_size_boxHelp:
+      "Exactly the box you cut in Lines, so lines of different heights come out at different heights.",
+    ex_size_uniform: "Same size across the page",
+    ex_size_uniformHelp:
       "Pads each line out to the tallest line on its page with transparent space, so a page's images all share one width and height. Nothing is ever cropped.",
-    ex_uniformReexport:
+    ex_size_tight: "Tight to the ink",
+    ex_size_tightHelp:
+      "Cuts each line down to its first and last inked row, after every erase — the height fits the ink. The width stays the page column. A stray dot left behind keeps the line taller.",
+    ex_sizeReexport:
       "Applies to future exports — re-export a page to change images already written.",
-    ex_uniformFailed: "Could not change the export size setting.",
+    ex_sizeFailed: "Could not change the line image size.",
     ex_onlyReviewed: "Only {{reviewed}} of {{total}} pages reviewed",
     ex_reviewWarn:
       "Final line-PNG export is best run after review is complete, so erase strokes and box fixes are baked in.",

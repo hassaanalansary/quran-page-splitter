@@ -3,11 +3,11 @@
 import zipfile
 
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from ninja.errors import HttpError
 from PIL import Image
 
-from api.models import ActivityEvent, ActivityTypeChoices, ProcessingRun
+from api.models import ActivityEvent, ActivityTypeChoices, LinePngSizeChoices, ProcessingRun
 from api.services import coordinates, export
 from api.services import mushaf as mushaf_service
 from api.tests.helpers import (
@@ -166,7 +166,7 @@ class CoordinatesJsonTests(TestCase):
 
 
 class UniformSizeExportTests(MediaTestCase):
-    """`Mushaf.export_uniform_size`: every line of a page exported at one size.
+    """`Mushaf.line_png_size` "uniform": every line of a page exported at one size.
 
     The rule that matters is that padding only ever *adds* transparent space —
     a short line must come out with its pixels intact, never cropped to fit.
@@ -221,13 +221,20 @@ class UniformSizeExportTests(MediaTestCase):
         return sizes
 
     def _set_uniform(self, value: bool) -> None:
-        self.mushaf.export_uniform_size = value
-        self.mushaf.save(update_fields=["export_uniform_size"])
+        self.mushaf.line_png_size = LinePngSizeChoices.UNIFORM if value else LinePngSizeChoices.BOX
+        self.mushaf.save(update_fields=["line_png_size"])
 
     def test_off_by_default_and_heights_differ(self):
-        self.assertFalse(self.mushaf.export_uniform_size)
+        self.assertEqual(self.mushaf.line_png_size, LinePngSizeChoices.BOX)
         heights = [h for _, h in self._sizes()]
         self.assertNotEqual(heights[0], heights[1])
+
+    def test_a_tight_export_of_a_line_with_no_ink_keeps_its_box_and_records_no_trim(self):
+        self.mushaf.line_png_size = LinePngSizeChoices.TIGHT
+        self.mushaf.save(update_fields=["line_png_size"])
+        self.assertEqual([h for _, h in self._sizes()], [40, 90])  # the test PDF is blank
+        trims = list(self.page.lines.values_list("line_png_trim_top", "line_png_trim_bottom"))
+        self.assertEqual(trims, [(0, 0), (0, 0)])
 
     def test_on_gives_every_line_the_same_size(self):
         self._set_uniform(True)
@@ -256,6 +263,24 @@ class UniformSizeExportTests(MediaTestCase):
         bottom_band = alpha.crop((0, rgba.height - pad, rgba.width, rgba.height))
         self.assertEqual(top_band.getextrema(), (0, 0), "top padding is not fully transparent")
         self.assertEqual(bottom_band.getextrema(), (0, 0), "bottom padding is not fully transparent")
+
+
+class CropToInkRowsTests(SimpleTestCase):
+    """`line_png_size` "tight": a line image cut to its first and last inked row."""
+
+    def test_empty_rows_come_off_top_and_bottom_and_the_width_stays(self):
+        rgba = Image.new("RGBA", (30, 20), (0, 0, 0, 0))
+        rgba.putpixel((3, 5), (0, 0, 0, 255))
+        rgba.putpixel((25, 14), (0, 0, 0, 255))
+        cut, top, bottom = export.crop_to_ink_rows(rgba)
+        self.assertEqual((cut.size, top, bottom), ((30, 10), 5, 5))
+        self.assertEqual(cut.getpixel((3, 0))[3], 255)
+        self.assertEqual(cut.getpixel((25, 9))[3], 255)
+
+    def test_a_line_with_no_ink_left_comes_back_whole(self):
+        rgba = Image.new("RGBA", (30, 20), (0, 0, 0, 0))
+        cut, top, bottom = export.crop_to_ink_rows(rgba)
+        self.assertEqual((cut.size, top, bottom), ((30, 20), 0, 0))
 
 
 class MediaLayoutTests(MediaTestCase):

@@ -20,6 +20,7 @@ from api.models import (
     ActivityTypeChoices,
     IjamModeChoices,
     Line,
+    LinePngSizeChoices,
     LineTypeChoices,
     Mushaf,
     Page,
@@ -193,7 +194,7 @@ def get_mushaf_detail(mushaf_id: uuid.UUID, *, user: User) -> dict:
     data["visibility"] = mushaf.visibility
     data["published_at"] = mushaf.published_at
     data["description"] = mushaf.description
-    data["export_uniform_size"] = mushaf.export_uniform_size
+    data["line_png_size"] = mushaf.line_png_size
     data["finalized_page_count"] = mushaf.pages.filter(lines_finalized=True).count()
     data["ijam_mode"] = mushaf.ijam_mode
     return data
@@ -366,10 +367,10 @@ def update_mushaf(mushaf_id: uuid.UUID, fields: dict, *, user: User) -> dict:
         # a page — and you want to set it *after* seeing how often a run reports a
         # word short, which is the whole way of telling whether it fits this script.
         mushaf.ijam_mode = fields["ijam_mode"]
-    if "export_uniform_size" in fields:
+    if "line_png_size" in fields and fields["line_png_size"] in LinePngSizeChoices.values:
         # Affects future exports only — pages already exported keep the size
         # they were written at until they are exported again.
-        mushaf.export_uniform_size = bool(fields["export_uniform_size"])
+        mushaf.line_png_size = fields["line_png_size"]
 
     bounds_changed = False
     if "first_quran_pdf_page" in fields or "last_quran_pdf_page" in fields:

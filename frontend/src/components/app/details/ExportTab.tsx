@@ -7,16 +7,17 @@ import { toast } from "sonner";
 import { BundlePanel } from "@/components/app/details/BundlePanel";
 import { PublishPanel } from "@/components/app/details/PublishPanel";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Switch } from "@/components/ui/switch";
 import {
   ApiError,
   coordinatesUrl,
   exportLines,
   exportUrl,
+  LINE_PNG_SIZES,
   linesZipUrl,
   queryKeys,
   updateMushaf,
   useCalibrationPages,
+  type LinePngSize,
   type MushafDetail,
   type MushafStats,
   type PageSummary,
@@ -97,10 +98,10 @@ export function ExportTab({
   const queryClient = useQueryClient();
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
 
-  const uniformSize = useMutation({
-    mutationFn: (value: boolean) => updateMushaf(mushaf.id, { export_uniform_size: value }),
+  const pngSize = useMutation({
+    mutationFn: (value: LinePngSize) => updateMushaf(mushaf.id, { line_png_size: value }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.mushaf(mushaf.id) }),
-    onError: (e) => toast.error(e instanceof ApiError ? e.message : t("details.ex_uniformFailed")),
+    onError: (e) => toast.error(e instanceof ApiError ? e.message : t("details.ex_sizeFailed")),
   });
 
   const processed = summaries ?? [];
@@ -157,27 +158,47 @@ export function ExportTab({
             ]}
           />
 
-          {/* Uniform size. Persisted on the mushaf rather than asked per export,
-              so a mushaf cannot end up half padded and half not. */}
-          <label className="flex cursor-pointer items-start gap-3 rounded-card border border-rule bg-sheet p-3.5">
-            <Switch
-              checked={mushaf.export_uniform_size}
-              disabled={uniformSize.isPending}
-              onCheckedChange={(value) => uniformSize.mutate(value)}
-              className="mt-0.5"
-            />
-            <span className="flex min-w-0 flex-col gap-0.5">
-              <span className="text-[14px] font-semibold">{t("details.ex_uniformLabel")}</span>
+          {/* Line PNG size. Persisted on the mushaf rather than asked per export,
+              so a mushaf cannot end up half one size and half another. */}
+          <fieldset className="m-0 flex flex-col gap-2 rounded-card border border-rule bg-sheet p-3.5">
+            <legend className="float-left mb-1.5 w-full text-[14px] font-semibold">
+              {t("details.ex_sizeLabel")}
+            </legend>
+            <div role="radiogroup" className="flex flex-col gap-1.5">
+              {LINE_PNG_SIZES.map((size) => (
+                <label
+                  key={size}
+                  className={`flex cursor-pointer items-start gap-2.5 rounded-control border px-3 py-2.5 ${
+                    mushaf.line_png_size === size
+                      ? "border-lapis bg-lapis-wash"
+                      : "border-rule-2 bg-card"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="line-png-size"
+                    checked={mushaf.line_png_size === size}
+                    disabled={pngSize.isPending}
+                    onChange={() => pngSize.mutate(size)}
+                    className="mt-0.5 h-4 w-4 flex-none cursor-pointer accent-lapis"
+                  />
+                  <span className="flex min-w-0 flex-col gap-0.5">
+                    <span className="text-[13.5px] font-semibold">
+                      {t(`details.ex_size_${size}`)}
+                    </span>
+                    <span className="text-[12.5px] leading-snug text-ink-3">
+                      {t(`details.ex_size_${size}Help`)}
+                    </span>
+                  </span>
+                </label>
+              ))}
+            </div>
+            {exported > 0 && (
               <span className="text-[12.5px] leading-snug text-ink-3">
-                {t("details.ex_uniformHelp")}
+                {t("details.ex_sizeReexport")}
               </span>
-              {exported > 0 && (
-                <span className="text-[12.5px] leading-snug text-ink-3">
-                  {t("details.ex_uniformReexport")}
-                </span>
-              )}
-            </span>
-          </label>
+            )}
+          </fieldset>
 
           {processed.length > 0 && reviewedPages.length < processed.length && (
             <div className="flex items-start gap-2.5 rounded-lg bg-warn-wash px-3.5 py-[11px] text-[13.5px] leading-[1.45] text-warn-text">

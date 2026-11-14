@@ -204,7 +204,7 @@ class UpdateMushafTests(MediaTestCase):
         created = _create("Ijam", pages=4)
         # Read off the detail serializer, which is where the per-mushaf settings
         # live — `update_mushaf` answers with the lighter list shape, as it does
-        # for `export_uniform_size`.
+        # for `line_png_size`.
         self.assertEqual(self._detail(created["id"])["ijam_mode"], "report")
         mushaf_service.update_mushaf(created["id"], {"ijam_mode": "ignore"}, user=default_user())
         self.assertEqual(self._detail(created["id"])["ijam_mode"], "ignore")
@@ -215,6 +215,14 @@ class UpdateMushafTests(MediaTestCase):
         # "enforce" was built and removed — the engine cannot honour it, so the
         # column must not start carrying it. See core.word_boundary.inputs.IjamMode.
         self.assertEqual(self._detail(created["id"])["ijam_mode"], "report")
+
+    def test_line_png_size_takes_one_of_its_three_and_ignores_anything_else(self):
+        created = _create("PngSize", pages=4)
+        self.assertEqual(self._detail(created["id"])["line_png_size"], "box")
+        mushaf_service.update_mushaf(created["id"], {"line_png_size": "tight"}, user=default_user())
+        self.assertEqual(self._detail(created["id"])["line_png_size"], "tight")
+        mushaf_service.update_mushaf(created["id"], {"line_png_size": "huge"}, user=default_user())
+        self.assertEqual(self._detail(created["id"])["line_png_size"], "tight")
 
     def test_ijam_mode_is_not_locked_once_pages_exist(self):
         """Unlike the riwaya. It changes nothing already written, and the only way

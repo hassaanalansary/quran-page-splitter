@@ -140,12 +140,12 @@ npm run build          # → frontend/dist
 
 | model | what it is |
 | --- | --- |
-| `Mushaf` | `owner`, `rawi`, `name` (unique per owner), the PDF (stored once as `pdfs/<sha>.pdf`), the Quran's first and last PDF page, `thumbnail`, `visibility` (`private` / `published`) and `published_at`, `ijam_mode`, `export_uniform_size`, `description`, `duplicated_from` |
+| `Mushaf` | `owner`, `rawi`, `name` (unique per owner), the PDF (stored once as `pdfs/<sha>.pdf`), the Quran's first and last PDF page, `thumbnail`, `visibility` (`private` / `published`) and `published_at`, `ijam_mode`, `line_png_size` (`box` / `uniform` / `tight`), `description`, `duplicated_from` |
 | `Template` | one per mushaf and type: `sura_header`, `aya_separator`, `sajda`, `rub_hizb`; an image and optional ignore rectangles |
 | `ProcessingRun` | one line-engine run: settings, page range, status, abort detail, log |
 | `ProcessJob` | the live state of a background job: `kind` (`detection`, `calibration`, `calibration_batch`; `words` only for history), `state`, `phase`, progress, heartbeat, cancel flag |
-| `Page` | a logical page with data: its crop box, `reviewed`, the run that made it |
-| `Line` | `line_number`, `type` (`text` / `sura_header` / `besmella`), `sura`, its box, its exported PNG |
+| `Page` | a logical page with data: its crop box, `reviewed`, `lines_finalized` (a person marked its cuts finished in Finalize), the run that made it |
+| `Line` | `line_number`, `type` (`text` / `sura_header` / `besmella`), `sura`, its box, `erase_edge_ink`, its exported PNG and the rows a tight export cut off it |
 | `Segment` | a stretch of a line up to an aya ornament: `bbox_x`, `bbox_w`, `has_separator`, the derived `aya_number` |
 | `EraseStroke` | a brush stroke erased from a line's PNG |
 | `LineWord` | a confirmed word box on a line: `word_id`, `position` (reading order), `start_x` (right edge), `end_x` (left edge). Written when a page is confirmed (and by a bundle import); this is the product the exports read |
