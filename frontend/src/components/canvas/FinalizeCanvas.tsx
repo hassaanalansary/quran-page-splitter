@@ -341,12 +341,12 @@ export function FinalizeCanvas({
         applyStrokes(sctx, line.strokes, b.x, b.y);
         const act = activeRef.current;
         if (act && act.lineNumber === line.line_number) applyStrokes(sctx, [act.stroke], b.x, b.y);
-        const page = transparentRef.current;
-        if (line.eraseEdgeInk && page) {
+        const transparentPage = transparentRef.current;
+        if (line.eraseEdgeInk && transparentPage) {
           const box = `${b.x},${b.y},${b.w},${b.h}`;
           let cached = edgeMasksRef.current.get(line.line_number);
           if (!cached || cached.box !== box) {
-            cached = { box, mask: drawEdgeInkMask(page, b) };
+            cached = { box, mask: drawEdgeInkMask(transparentPage, b) };
             edgeMasksRef.current.set(line.line_number, cached);
           }
           if (cached.mask) sctx.drawImage(cached.mask, 0, 0);
