@@ -130,13 +130,7 @@ export function OverviewTab({
 
         <MainCard
           title={t("details.rail_coverage")}
-          aside={
-            <CoverageLegend
-              reviewed={mushaf.reviewed_page_count}
-              processed={mushaf.processed_page_count - mushaf.reviewed_page_count}
-              next={nextPage !== null}
-            />
-          }
+          aside={<CoverageLegend summaries={summaries} next={nextPage !== null} />}
         >
           <CoverageMap
             mushafId={mushaf.id}
@@ -377,33 +371,75 @@ function PipelineGrid({
   );
 }
 
+/** The steps a page can have reached, furthest first: a page shows the first one
+ * it has. A further step — words processed, when it comes — is one more entry at
+ * the top, read from its flag on the page summary. Lines checked is gold, as on
+ * the page rail. */
+const COVERAGE_STATES = [
+  {
+    key: "linesChecked",
+    fill: "bg-gold",
+    legend: "hub.legendLinesChecked",
+    state: "details.state_linesChecked",
+    reached: (row: PageSummary) => row.lines_finalized,
+  },
+  {
+    key: "reviewed",
+    fill: "bg-done",
+    legend: "hub.legendReviewed",
+    state: "details.state_reviewed",
+    reached: (row: PageSummary) => row.reviewed,
+  },
+  {
+    key: "processed",
+    fill: "bg-lapis",
+    legend: "hub.legendProcessed",
+    state: "details.state_processed",
+    reached: () => true,
+  },
+] as const;
+
+type CoverageState = (typeof COVERAGE_STATES)[number];
+
+/** The furthest step a processed page has reached. */
+function findCoverageState(row: PageSummary): CoverageState {
+  return COVERAGE_STATES.find((state) => state.reached(row)) ?? COVERAGE_STATES[2];
+}
+
 function CoverageLegend({
-  reviewed,
-  processed,
+  summaries,
   next,
 }: {
-  reviewed: number;
-  processed: number;
+  summaries: PageSummary[] | undefined;
   next: boolean;
 }) {
   const { t } = useTranslation();
-  const item = (color: string, label: string) => (
-    <span className="inline-flex items-center gap-1.5">
-      <span className={`h-2.5 w-2.5 rounded-[2px] ${color}`} />
-      {label}
-    </span>
-  );
+  const counts = new Map<string, number>();
+  for (const row of summaries ?? []) {
+    const { key } = findCoverageState(row);
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
   return (
     <div className="flex flex-wrap gap-3.5 text-[12.5px] text-ink-2">
-      {item("bg-done", t("hub.legendReviewed", { count: reviewed }))}
-      {item("bg-lapis", t("hub.legendProcessed", { count: processed }))}
-      {next && item("bg-gold", t("hub.legendNext"))}
+      {COVERAGE_STATES.map((state) => (
+        <span key={state.key} className="inline-flex items-center gap-1.5">
+          <span className={`h-2.5 w-2.5 rounded-[2px] ${state.fill}`} />
+          {t(state.legend, { count: counts.get(state.key) ?? 0 })}
+        </span>
+      ))}
+      {next && (
+        <span className="inline-flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 rounded-[2px] ring-2 ring-inset ring-gold" />
+          {t("hub.legendNext")}
+        </span>
+      )}
     </div>
   );
 }
 
-/** Every Quran page as a square: reviewed, processed, the next to review, or not
- * reached yet. Each opens its page in Review. */
+/** Every Quran page as a square, filled with the furthest step it has reached
+ * (`COVERAGE_STATES`) or left empty, the next to review ringed in gold. Each opens
+ * its page in Review. */
 function CoverageMap({
   mushafId,
   logical,
@@ -426,13 +462,9 @@ function CoverageMap({
       {Array.from({ length: logical }, (_, i) => {
         const n = i + 1;
         const row = byPage.get(n);
-        const color =
-          n === nextPage ? "bg-gold" : row ? (row.reviewed ? "bg-done" : "bg-lapis") : "bg-sunk";
-        const state = row
-          ? row.reviewed
-            ? t("details.state_reviewed")
-            : t("details.state_processed")
-          : t("details.state_notProcessed");
+        const reached = row ? findCoverageState(row) : null;
+        const state = reached ? t(reached.state) : t("details.state_notProcessed");
+        const next = n === nextPage ? "outline outline-2 outline-gold" : "";
         return (
           <Link
             key={n}
@@ -440,7 +472,7 @@ function CoverageMap({
             params={{ mushafId }}
             search={{ page: n }}
             title={t("details.rail_pageState", { n, state })}
-            className={`block h-[11px] w-[11px] rounded-[2px] ${color} hover:outline hover:outline-2 hover:outline-lapis`}
+            className={`block h-[11px] w-[11px] rounded-[2px] ${reached ? reached.fill : "bg-sunk"} ${next} hover:outline hover:outline-2 hover:outline-lapis`}
           />
         );
       })}
