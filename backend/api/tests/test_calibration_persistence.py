@@ -84,8 +84,11 @@ class CalibrationPersistenceTests(MediaTestCase):
         self.assertFalse(CalibrationReview.objects.exists())
 
     def test_page_deletion_keeps_numeric_review_identity(self):
+        _, review = self._calibration()
         self.page.delete()
-        self.assertTrue(CalibrationReview.objects.filter(mushaf=self.mushaf, page_number=7).exists())
+        kept = CalibrationReview.objects.get(mushaf=self.mushaf, page_number=7)
+        self.assertEqual((kept.pk, kept.revision, kept.confirmed_revision), (review.pk, 2, 1))
+        self.assertEqual(kept.revisions.count(), 2)
 
     def test_mushaf_deletion_does_not_resurrect_reviews(self):
         self._calibration()
