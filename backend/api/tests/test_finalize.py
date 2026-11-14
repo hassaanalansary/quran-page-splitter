@@ -232,6 +232,90 @@ class LinePaddingTests(OneProcessedPageCase):
             editing.save_finalize(mushaf_id=self.mushaf.id, page_number=5, line_edits=[], user=default_user())
 
 
+class SuraHeaderPaddingTests(OneProcessedPageCase):
+    """The padding a page's sura headers carry, and how the latest checked pages
+    finished theirs: the padding and the edge-ink erase a new page's headers get."""
+
+    def add_page_with_header(self, page_number: int) -> None:
+        coordinates.write_coords_to_page(
+            mushaf=self.mushaf,
+            page_number=page_number,
+            run=self.page.last_run,
+            coord_page={
+                "crop_box": {"x": 0, "y": 0, "w": 100, "h": 100},
+                "lines": [
+                    {
+                        "line_number": 1,
+                        "type": "sura_header",
+                        "sura_number": 1,
+                        "line_bbox": {"x": 10, "y": 10, "w": 80, "h": 30},
+                    }
+                ],
+            },
+        )
+
+    def check(self, page_number: int, *, padding: int, erase: bool) -> dict:
+        return editing.save_finalize(
+            user=default_user(),
+            mushaf_id=self.mushaf.id,
+            page_number=page_number,
+            line_edits=[{"line_number": 1, "erase_edge_ink": erase}],
+            sura_header_padding=padding,
+            lines_finalized=True,
+        )
+
+    def usual(self) -> dict | None:
+        return mushaf_service.find_usual_sura_header_edits(self.mushaf)
+
+    def test_the_header_padding_is_saved_left_alone_when_not_given_and_forgotten_on_rebuild(self):
+        page = self.check(1, padding=-6, erase=True)
+        self.assertEqual(page["sura_header_padding"], -6)
+        page = editing.save_finalize(user=default_user(), mushaf_id=self.mushaf.id, page_number=1, line_edits=[])
+        self.assertEqual(page["sura_header_padding"], -6)
+        self.add_page_with_header(1)  # reprocessing page 1
+        self.page.refresh_from_db()
+        self.assertIsNone(self.page.sura_header_padding)
+
+    def test_three_checked_pages_agreeing_make_the_usual_header_edits(self):
+        for number in (2, 3):
+            self.add_page_with_header(number)
+        self.check(1, padding=-6, erase=True)
+        self.check(2, padding=-6, erase=True)
+        self.assertIsNone(self.usual())  # two are not yet a habit
+        self.check(3, padding=-6, erase=True)
+        self.assertEqual(self.usual(), {"padding": -6, "erase_edge_ink": True})
+
+    def test_each_edit_is_usual_only_when_the_latest_three_agree_on_it(self):
+        for number in (2, 3, 4):
+            self.add_page_with_header(number)
+        for number in (1, 2, 3):
+            self.check(number, padding=-6, erase=True)
+        self.check(4, padding=-4, erase=True)
+        self.assertEqual(self.usual(), {"padding": None, "erase_edge_ink": True})
+        self.check(4, padding=-6, erase=False)
+        self.assertEqual(self.usual(), {"padding": -6, "erase_edge_ink": None})
+
+    def test_pages_that_recorded_no_header_padding_do_not_count(self):
+        for number in (2, 3, 4):
+            self.add_page_with_header(number)
+        for number in (1, 2, 3):
+            self.check(number, padding=-6, erase=True)
+        # Checked with the line padding only, as a page without a header is.
+        editing.save_finalize(
+            user=default_user(),
+            mushaf_id=self.mushaf.id,
+            page_number=4,
+            line_edits=[],
+            line_padding=14,
+            lines_finalized=True,
+        )
+        self.assertEqual(self.usual(), {"padding": -6, "erase_edge_ink": True})
+        self.assertEqual(
+            mushaf_service.get_mushaf_detail(self.mushaf.id, user=default_user())["usual_sura_header"],
+            {"padding": -6, "erase_edge_ink": True},
+        )
+
+
 class PageColumnTests(TestCase):
     """coordinates.page_column: a real crop is kept; a manual page's 1x1
     placeholder is replaced by the union (bounding box) of its line boxes."""

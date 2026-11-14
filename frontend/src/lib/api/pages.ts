@@ -25,12 +25,13 @@ export function savePage(id: string, pageNumber: number, data: PageSave): Promis
 }
 
 /** Save a page's cuts. `page` carries what goes with them, each left as it is
- * when not given: the padding most lines now carry, and the checked mark. */
+ * when not given: the padding most lines and most sura headers now carry, and the
+ * checked mark. */
 export function finalizePage(
   id: string,
   pageNumber: number,
   lines: FinalizeLine[],
-  page: { line_padding?: number; lines_finalized?: boolean } = {},
+  page: { line_padding?: number; sura_header_padding?: number; lines_finalized?: boolean } = {},
 ): Promise<PageData> {
   return apiJson<PageData>("POST", `/api/mushafs/${id}/pages/${pageNumber}/finalize`, {
     lines,

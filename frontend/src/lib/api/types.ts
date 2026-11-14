@@ -77,6 +77,9 @@ export type MushafDetail = Mushaf & {
   /** The padding the latest checked pages agree on, put on each page that opens
    * in Finalize with none yet; null while they differ. */
   usual_line_padding: number | null;
+  /** How the latest checked pages finished their sura headers, for the headers of
+   * a page that opens with its lines unpadded; null until there are enough. */
+  usual_sura_header: UsualSuraHeader | null;
   /** Whether word detection checks a word against the dots its spelling expects.
    * A fact about the printing, not about the text — see `IjamMode`. */
   ijam_mode: IjamMode;
@@ -183,7 +186,17 @@ export type PageData = {
   /** The padding the lines were given in Finalize as of the last save there;
    * null until then, and again once the lines are rebuilt. */
   line_padding?: number | null;
+  /** The same for the page's sura headers; null on a page without one. */
+  sura_header_padding?: number | null;
   lines: Line[];
+};
+
+/** Each null when the latest checked pages differ on it. */
+export type UsualSuraHeader = {
+  /** The padding they all gave their sura headers. */
+  padding: number | null;
+  /** Whether they all had their headers' edge ink erased. */
+  erase_edge_ink: boolean | null;
 };
 
 export type PageSura = { number: number; transliteration: string; name_arabic: string };

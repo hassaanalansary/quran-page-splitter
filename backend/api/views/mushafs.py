@@ -53,6 +53,13 @@ class CountingSystemOut(Schema):
     total_ayat: int
 
 
+class UsualSuraHeaderOut(Schema):
+    #: The padding the latest checked pages all gave their sura headers; null when they differ.
+    padding: int | None = None
+    #: Whether they all had their headers' edge ink erased; null when they differ.
+    erase_edge_ink: bool | None = None
+
+
 class MushafDetailOut(MushafOut):
     """MushafOut plus the extra fields the detail page needs (never on the list)."""
 
@@ -62,13 +69,16 @@ class MushafDetailOut(MushafOut):
     pdf_original_name: str = ""
     published_at: datetime | None = None
     description: str = ""
-    #: "box" | "uniform" | "tight" — how tall each exported line PNG is.
+    #: "box" | "uniform" | "tight" | "tight_uniform" — how tall each exported line PNG is.
     line_png_size: str = "box"
     #: Pages whose line cuts a person marked checked in Finalize.
     finalized_page_count: int = 0
     #: The padding the latest checked pages agree on (``find_usual_line_padding``),
     #: applied to a page that opens in Finalize with none yet; null when they differ.
     usual_line_padding: int | None = None
+    #: How the latest checked pages finished their sura headers
+    #: (find_usual_sura_header_edits), for the headers of a page opening unpadded.
+    usual_sura_header: UsualSuraHeaderOut | None = None
     #: "report" | "ignore" — whether word detection checks a word against the dots
     #: its spelling expects. A fact about the printing, not about the text.
     ijam_mode: str = "report"

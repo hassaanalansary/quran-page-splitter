@@ -452,6 +452,16 @@ class Page(BaseModel):
             "value is applied to a page still null when it opens."
         ),
     )
+    sura_header_padding = models.SmallIntegerField(
+        null=True,
+        help_text=(
+            "The padding the page's sura headers were given in Finalize, in px above and "
+            "below, as of its last save there (the value most of them share). Null on a page "
+            "without one, until then, and again whenever the lines are rebuilt. The latest "
+            "checked pages' agreeing value — and whether their headers' edge ink was erased — "
+            "is applied to the headers of a page opening with its lines unpadded."
+        ),
+    )
 
     class Meta:
         db_table = "page"

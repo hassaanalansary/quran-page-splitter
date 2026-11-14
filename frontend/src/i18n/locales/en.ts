@@ -759,6 +759,8 @@ export const en = {
     checkFailed: "Couldn't save the page's check.",
     usualPaddingApplied:
       "Your usual padding, {{px}} px, is on — the last checked pages all used it. Ctrl+Z takes it off.",
+    usualHeaderPaddingApplied:
+      "The sura headers got their own usual padding, {{px}} px, as on the latest checked pages.",
     exportedToast: "Exported {{count}} line image(s).",
     exportFailed: "Export failed.",
     unsavedStatus: "Unsaved cuts",
@@ -779,6 +781,8 @@ export const en = {
     edgeInkScopePage: "Every line on the page, sura headers aside.",
     edgeInkAutoApplied:
       "Erased as the page opened, after your usual padding. Ctrl+Z brings it back; press again to take the padding off too.",
+    edgeInkHeaderAutoApplied:
+      "The sura headers' edge ink was erased as the page opened, as on the latest checked pages.",
     edgeInkBadge: "edge",
     paddingLabel: "Padding · px",
     paddingLess: "Less padding",

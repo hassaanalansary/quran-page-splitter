@@ -46,6 +46,7 @@ class PageDataOut(Schema):
     bbox: RectSchema | None = None
     lines_finalized: bool = False
     line_padding: int | None = None
+    sura_header_padding: int | None = None
     lines: list[LineSchema]
 
 

@@ -52,6 +52,8 @@ def _with_work(owner, name, pdf_bytes=SHARED_PDF):
             bbox_h=707,
             reviewed=page_number == 1,
             lines_finalized=page_number == 1,
+            line_padding=14 if page_number == 1 else None,
+            sura_header_padding=-6 if page_number == 1 else None,
         )
         for line_number in (1, 2, 3):
             line = Line.objects.create(
@@ -174,6 +176,9 @@ class RoundTripTests(MediaTestCase):
         self.assertTrue(target.pages.get(page_number=1).reviewed)
         self.assertFalse(page.lines_finalized)
         self.assertTrue(target.pages.get(page_number=1).lines_finalized)
+        first = target.pages.get(page_number=1)
+        self.assertEqual((first.line_padding, first.sura_header_padding), (14, -6))
+        self.assertEqual((page.line_padding, page.sura_header_padding), (None, None))
 
         for line_number in (1, 2, 3):
             line = Line.objects.get(page=page, line_number=line_number)

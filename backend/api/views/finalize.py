@@ -28,9 +28,10 @@ class LineFinalizeSchema(Schema):
 
 class FinalizeIn(Schema):
     lines: list[LineFinalizeSchema] = Field(default_factory=list)
-    # The padding most of the lines now carry, and the checked mark: each left as
-    # it is when not given.
+    # The padding most of the lines and of the sura headers now carry, and the
+    # checked mark: each left as it is when not given.
     line_padding: int | None = None
+    sura_header_padding: int | None = None
     lines_finalized: bool | None = None
 
 
@@ -65,6 +66,7 @@ def finalize(request: HttpRequest, mushaf_id: uuid.UUID, page_number: int, data:
         page_number=page_number,
         line_edits=[line.model_dump() for line in data.lines],
         line_padding=data.line_padding,
+        sura_header_padding=data.sura_header_padding,
         lines_finalized=data.lines_finalized,
     )
 

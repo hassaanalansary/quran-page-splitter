@@ -31,6 +31,7 @@ import {
   type LineType,
   type PageData,
   type Rect,
+  type UsualSuraHeader,
 } from "@/lib/api";
 
 export const Route = createFileRoute("/mushafs/$mushafId/finalize")({
@@ -114,16 +115,37 @@ function findCommonPad(lines: EditLine[]): number {
   return common;
 }
 
-/** Whether the page-wide edge-ink press acts on a line: every line but the sura
- * headers, whose frame can reach their box's edges and would go with the rule. */
-function isPageEdgeInkTarget(line: EditLine): boolean {
-  return line.type !== "sura_header";
+/** Sura headers are finished apart: the page-wide edge-ink press leaves them out
+ * (a header's frame can reach its box's edges, and would go with the rule), and
+ * they keep a usual padding of their own. */
+function isSuraHeader(line: EditLine): boolean {
+  return line.type === "sura_header";
 }
 
-/** The page with its neighbours' edge ink erased, as the press with no line
- * selected does it. */
-function eraseEdgeInkPageWide(lines: EditLine[]): EditLine[] {
-  return lines.map((l) => (isPageEdgeInkTarget(l) ? { ...l, eraseEdgeInk: true } : l));
+/** The edits a page opening with its lines unpadded gets, as the latest checked
+ * pages were finished: the usual padding (the sura headers their own, when they
+ * have one), then the edge ink erased — on the lines when they got the usual
+ * padding, on the headers when the latest pages erased theirs. Each step is an
+ * edit of its own, so the first Ctrl+Z brings the ink back and the next takes the
+ * padding off. Returns the history, starting with the page as it loaded. */
+function applyUsualEdits(
+  loaded: EditLine[],
+  linePad: number | null,
+  header: UsualSuraHeader | null,
+): EditLine[][] {
+  const headerPad = header?.padding ?? linePad;
+  const padded = loaded.map((l) => {
+    const pad = isSuraHeader(l) ? headerPad : linePad;
+    return pad ? growLine(l, pad, null) : l;
+  });
+  const erased = padded.map((l) => {
+    const erases = isSuraHeader(l) ? header?.erase_edge_ink === true : linePad != null;
+    return erases && !l.eraseEdgeInk ? { ...l, eraseEdgeInk: true } : l;
+  });
+  const stack = [loaded];
+  if (padded.some((l, i) => l !== loaded[i])) stack.push(padded);
+  if (erased.some((l, i) => l !== padded[i])) stack.push(erased);
+  return stack;
 }
 
 /** Prefix media paths (relative from the export endpoint) with a leading slash. */
@@ -153,6 +175,11 @@ function FinalizePage() {
   const [autoPadded, setAutoPadded] = useState<number | null>(null);
   // Whether the edge ink was erased page-wide as it opened, after the usual padding.
   const [autoErased, setAutoErased] = useState(false);
+  // The same for the sura headers: the padding they already had when the page
+  // loaded — null when not known, on a page padded before it was recorded — and
+  // how they were finished as it opened, if they were.
+  const [headerPadBase, setHeaderPadBase] = useState<number | null>(0);
+  const [autoHeader, setAutoHeader] = useState<UsualSuraHeader | null>(null);
   const [selected, setSelected] = useState<number | null>(null);
   const [brushSize, setBrushSize] = useState(16);
   const [builtFor, setBuiltFor] = useState<number | null>(null);
@@ -195,22 +222,21 @@ function FinalizePage() {
 
   // The padding the latest checked pages agree on; null until the mushaf loads.
   const usualPadding = mushaf ? (mushaf.usual_line_padding ?? 0) : null;
+  // How they finished their sura headers; null while there is no habit yet.
+  const usualSuraHeader = mushaf?.usual_sura_header ?? null;
 
   // Build the model once per page (a save patches the cache in place, guarded by
   // the page number so it never clobbers in-flight edits).
   useEffect(() => {
     if (!pageData || usualPadding === null || builtFor === page) return;
     const loaded = fromPageData(pageData);
-    // A page whose lines were never padded here, nor checked, opens with the usual
-    // padding — as an edit of its own, so it is unsaved and Ctrl+Z takes it off.
-    const autoPad =
-      pageData.line_padding == null && !pageData.lines_finalized && usualPadding !== 0
-        ? usualPadding
-        : null;
-    const padded = autoPad != null ? loaded.map((l) => growLine(l, autoPad, null)) : loaded;
-    // Then the neighbours' edge ink goes, the press that always followed the padding —
-    // an edit of its own too, so the first Ctrl+Z brings the ink back, the next the padding.
-    const stack = autoPad != null ? [loaded, padded, eraseEdgeInkPageWide(padded)] : [loaded];
+    // A page whose lines were never padded here, nor checked, opens as the latest
+    // checked pages were finished — as edits of their own, so they are unsaved and
+    // Ctrl+Z takes them off.
+    const fresh = pageData.line_padding == null && !pageData.lines_finalized;
+    const linePad = fresh && usualPadding !== 0 ? usualPadding : null;
+    const headerHabit = fresh && loaded.some(isSuraHeader) ? usualSuraHeader : null;
+    const stack = applyUsualEdits(loaded, linePad, headerHabit);
     const next = stack[stack.length - 1];
     setModel(next);
     historyRef.current = { stack, index: stack.length - 1 };
@@ -218,15 +244,17 @@ function FinalizePage() {
     setBaseline(signLines(loaded));
     setGuardBaseline(signLines(next));
     setPadBase(pageData.line_padding ?? 0);
-    setAutoPadded(autoPad);
-    setAutoErased(autoPad != null);
+    setHeaderPadBase(pageData.sura_header_padding ?? (fresh ? 0 : null));
+    setAutoPadded(linePad);
+    setAutoErased(linePad != null);
+    setAutoHeader(headerHabit);
     // Nothing selected: the padding field then acts on the whole page. The view
     // still opens fitted on the first line — the canvas resets it per image.
     setSelected(null);
     setPngVersion(0);
     setViewing(null);
     setBuiltFor(page);
-  }, [pageData, usualPadding, page, builtFor]);
+  }, [pageData, usualPadding, usualSuraHeader, page, builtFor]);
 
   // The page's exported PNGs, from the server — so lines exported in an earlier
   // session show up as soon as the page opens, not only after a fresh export.
@@ -263,10 +291,26 @@ function FinalizePage() {
     [model, guardBaseline],
   );
   // The padding the page's lines carry now, saved with them: what they had when
-  // the page loaded, plus what most of them were given since.
-  const linePadding = padBase + findCommonPad(model);
+  // the page loaded, plus what most of them were given since. The sura headers'
+  // the same way, apart — sent only on a page that has one and when it is known.
+  const textLines = model.filter((l) => !isSuraHeader(l));
+  const headerLines = model.filter(isSuraHeader);
+  const linePadding = padBase + findCommonPad(textLines);
+  const suraHeaderPadding =
+    headerPadBase != null && headerLines.length > 0
+      ? headerPadBase + findCommonPad(headerLines)
+      : undefined;
   // Said only while the lines still carry it: Ctrl+Z takes the note off with it.
-  const usualPaddingOn = autoPadded != null && findCommonPad(model) === autoPadded;
+  const usualPaddingOn = autoPadded != null && findCommonPad(textLines) === autoPadded;
+  const usualHeaderPadding = autoHeader?.padding ? autoHeader.padding : null;
+  const usualHeaderPaddingOn =
+    usualHeaderPadding != null &&
+    headerLines.length > 0 &&
+    headerLines.every((l) => l.pad === usualHeaderPadding);
+  const usualHeaderErasedOn =
+    autoHeader?.erase_edge_ink === true &&
+    headerLines.length > 0 &&
+    headerLines.every((l) => l.eraseEdgeInk);
 
   // Save the whole page so every line's x/w lands uniformly in the DB (and export).
   const buildPayload = (): FinalizeLine[] =>
@@ -287,7 +331,10 @@ function FinalizePage() {
   const exportMutation = useMutation({
     mutationFn: async () => {
       const fresh = dirty
-        ? await finalizePage(mushafId, page, buildPayload(), { line_padding: linePadding })
+        ? await finalizePage(mushafId, page, buildPayload(), {
+            line_padding: linePadding,
+            sura_header_padding: suraHeaderPadding,
+          })
         : null;
       const res = await exportLines(mushafId, page);
       return { fresh, res };
@@ -321,13 +368,14 @@ function FinalizePage() {
   const checked = pageData?.lines_finalized ?? false;
   const invalidateTracker = () => {
     queryClient.invalidateQueries({ queryKey: queryKeys.processedPages(mushafId) });
-    // The detail carries the checked count and the usual padding.
+    // The detail carries the checked count and the usual lines' and headers' edits.
     queryClient.invalidateQueries({ queryKey: queryKeys.mushaf(mushafId), exact: true });
   };
   const checkAndNextMutation = useMutation({
     mutationFn: () =>
       finalizePage(mushafId, page, buildPayload(), {
         line_padding: linePadding,
+        sura_header_padding: suraHeaderPadding,
         lines_finalized: true,
       }),
     onSuccess: (fresh) => {
@@ -469,12 +517,10 @@ function FinalizePage() {
   };
 
   // Edge ink acts on the selected line, or on every line but the sura headers.
-  const pageEdgeTargets = model.filter(isPageEdgeInkTarget);
-  const edgeTargets = sel ? [sel] : pageEdgeTargets;
+  const edgeTargets = sel ? [sel] : textLines;
   const edgeAllOn = edgeTargets.length > 0 && edgeTargets.every((l) => l.eraseEdgeInk);
   // Said only while the page still has it: Ctrl+Z takes the note off with it.
-  const autoErasedOn =
-    autoErased && pageEdgeTargets.length > 0 && pageEdgeTargets.every((l) => l.eraseEdgeInk);
+  const autoErasedOn = autoErased && textLines.length > 0 && textLines.every((l) => l.eraseEdgeInk);
   const toggleEdgeInk = () => {
     const targets = new Set(edgeTargets.map((l) => l.line_number));
     commit(model.map((l) => (targets.has(l.line_number) ? { ...l, eraseEdgeInk: !edgeAllOn } : l)));
@@ -675,6 +721,11 @@ function FinalizePage() {
                     {t("finalize.usualPaddingApplied", { px: autoPadded })}
                   </span>
                 )}
+                {usualHeaderPaddingOn && (
+                  <span className="text-[12.5px] leading-normal text-ink-2">
+                    {t("finalize.usualHeaderPaddingApplied", { px: usualHeaderPadding })}
+                  </span>
+                )}
               </Card>
 
               <Card title={t("finalize.edgeInk")} end={<InfoTip text={t("tips.edgeInk")} />}>
@@ -696,6 +747,11 @@ function FinalizePage() {
                 {autoErasedOn && (
                   <span className="text-[12.5px] leading-normal text-ink-2">
                     {t("finalize.edgeInkAutoApplied")}
+                  </span>
+                )}
+                {usualHeaderErasedOn && (
+                  <span className="text-[12.5px] leading-normal text-ink-2">
+                    {t("finalize.edgeInkHeaderAutoApplied")}
                   </span>
                 )}
               </Card>

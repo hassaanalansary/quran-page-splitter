@@ -733,6 +733,8 @@ export const ar: typeof en = {
     checkFailed: "تعذّر حفظ تدقيق الصفحة.",
     usualPaddingApplied:
       "هامشك المعتاد، {{px}} بكسل، مُطبَّق — استعملته آخر الصفحات المُدقَّقة كلها. Ctrl+Z يزيله.",
+    usualHeaderPaddingApplied:
+      "نالت عناوين السور هامشها المعتاد، {{px}} بكسل، كما في آخر الصفحات المُدقَّقة.",
     exportedToast: "تم تصدير {{count}} صورة سطر.",
     exportFailed: "فشل التصدير.",
     unsavedStatus: "قصّات غير محفوظة",
@@ -753,6 +755,8 @@ export const ar: typeof en = {
     edgeInkScopePage: "كل أسطر الصفحة، عدا عناوين السور.",
     edgeInkAutoApplied:
       "مُحي عند فتح الصفحة، بعد هامشك المعتاد. Ctrl+Z يعيده، واضغط مرة أخرى لتزيل الهامش أيضًا.",
+    edgeInkHeaderAutoApplied:
+      "مُحي مِداد حواف عناوين السور عند فتح الصفحة، كما في آخر الصفحات المُدقَّقة.",
     edgeInkBadge: "حواف",
     paddingLabel: "الهامش · بكسل",
     paddingLess: "تقليل الهامش",
