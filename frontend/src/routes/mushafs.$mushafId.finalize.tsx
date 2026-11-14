@@ -42,6 +42,9 @@ type EditLine = {
   type: LineType;
   bbox: Rect;
   strokes: EraseStroke[];
+  /** Padding added to this line since the page was loaded (see `growLine`). Kept
+   * on the line so undo and redo carry the number back with the box. */
+  pad: number;
 };
 
 /** Ceiling for the page-wide padding field (px above and below each line). */
@@ -64,7 +67,20 @@ function fromPageData(data: PageData | undefined): EditLine[] {
       h: l.bbox_h,
     },
     strokes: (l.erase_strokes ?? []).map((s) => ({ brush_size: s.brush_size, points: s.points })),
+    pad: 0,
   }));
+}
+
+/** Grow (negative: shrink) a line by `delta` px on its top AND bottom edge, and
+ * count it in the line's padding. Applied over the current box, so a trim made
+ * in between survives; a line pinned at the page's top edge still grows
+ * downward, and none grows past the page's bottom (`pageHeight`, once known). */
+function growLine(line: EditLine, delta: number, pageHeight: number | null): EditLine {
+  const y = Math.max(0, line.bbox.y - delta);
+  const grewTop = line.bbox.y - y;
+  const maxH = pageHeight != null ? pageHeight - y : Number.MAX_SAFE_INTEGER;
+  const h = Math.min(maxH, Math.max(1, line.bbox.h + grewTop + delta));
+  return { ...line, pad: line.pad + delta, bbox: { ...line.bbox, y, h } };
 }
 
 function lineSig(l: EditLine): string {
@@ -99,8 +115,6 @@ function FinalizePage() {
   // serve the previous cut — this stamp busts that cache.
   const [pngVersion, setPngVersion] = useState(0);
   const [viewing, setViewing] = useState<number | null>(null);
-  // Padding added to every line of this page since it was loaded (see `padded`).
-  const [pad, setPad] = useState(0);
   const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);
 
   // ── undo/redo history (one entry per committed edit) ─────────────────────────
@@ -143,8 +157,9 @@ function FinalizePage() {
     historyRef.current = { stack: [next], index: 0 };
     forceHist();
     setBaseline(new Map(next.map((l) => [l.line_number, lineSig(l)] as const)));
-    setSelected(next[0]?.line_number ?? null);
-    setPad(0);
+    // Nothing selected: the padding field then acts on the whole page. The view
+    // still opens fitted on the first line — the canvas resets it per image.
+    setSelected(null);
     setPngVersion(0);
     setViewing(null);
     setBuiltFor(page);
@@ -296,31 +311,31 @@ function FinalizePage() {
       m.map((l) => (l.line_number === n ? { ...l, bbox: { ...l.bbox, ...box } } : l)),
     );
 
-  /** Grow (negative: shrink) every line by `delta` px on its top AND bottom
-   * edge. Applied as a delta over the current boxes, so per-line trims made in
-   * between survive; a line pinned at the page edge still grows downward. */
-  const padded = (m: EditLine[], delta: number): EditLine[] =>
-    m.map((l) => {
-      const y = Math.max(0, l.bbox.y - delta);
-      const grewTop = l.bbox.y - y;
-      const maxH = natural ? natural.h - y : Number.MAX_SAFE_INTEGER;
-      const h = Math.min(maxH, Math.max(1, l.bbox.h + grewTop + delta));
-      return { ...l, bbox: { ...l.bbox, y, h } };
-    });
-  // typing in the field: preview only (history lands on blur, like Y/H)
-  const livePadding = (next: number) => {
-    const delta = next - pad;
-    if (!delta) return;
-    setPad(next);
-    setModel((m) => padded(m, delta));
-  };
-  // −/+ buttons: one discrete step, one history entry
-  const stepPadding = (next: number) => {
-    const delta = next - pad;
-    if (!delta) return;
-    setPad(next);
-    commit(padded(model, delta));
-  };
+  // The padding field acts on the selected line, or on every line when none is.
+  const padsLine = (l: EditLine) => selected == null || l.line_number === selected;
+  const padTargets = model.filter(padsLine);
+  // What the field shows: the one padding its lines share — none when they differ.
+  const padShown =
+    padTargets.length > 0 && padTargets.every((l) => l.pad === padTargets[0].pad)
+      ? padTargets[0].pad
+      : null;
+  const pageHeight = natural?.h ?? null;
+  // typing in the field: preview only (history lands on blur, like Y/H). Sets
+  // every line it acts on to that padding, even lines that differed before.
+  const livePadding = (next: number) =>
+    setModel((m) =>
+      m.map((l) => (padsLine(l) && l.pad !== next ? growLine(l, next - l.pad, pageHeight) : l)),
+    );
+  // −/+ buttons: one step on each line it acts on, keeping their differences;
+  // one history entry
+  const stepPadding = (step: number) =>
+    commit(
+      model.map((l) => {
+        if (!padsLine(l)) return l;
+        const next = Math.max(PAD_MIN, Math.min(PAD_MAX, l.pad + step));
+        return next === l.pad ? l : growLine(l, next - l.pad, pageHeight);
+      }),
+    );
   // discrete (pushes history)
   const commitLine = (n: number, fn: (l: EditLine) => EditLine) =>
     commit(model.map((l) => (l.line_number === n ? fn(l) : l)));
@@ -342,6 +357,7 @@ function FinalizePage() {
         brush_size: s.brush_size,
         points: s.points,
       })),
+      pad: 0,
     }));
   };
 
@@ -468,22 +484,30 @@ function FinalizePage() {
               selectedKey={selected != null ? String(selected) : null}
               onSelect={(key) => setSelected(Number(key))}
               emptyText={t("finalize.noLines", { page })}
+              noneText={t("finalize.noLineSelected")}
             />
 
             <div data-tour="finalize-tools" className="flex flex-col gap-3.5">
-              <Card title={t("finalize.paddingTitle")}>
+              <Card
+                title={
+                  sel
+                    ? t("finalize.paddingTitleLine", { n: sel.line_number })
+                    : t("finalize.paddingTitle")
+                }
+              >
                 <div className="flex flex-wrap items-center gap-2">
                   <PadStep
                     label="−"
                     title={t("finalize.paddingLess")}
-                    disabled={pad <= PAD_MIN}
-                    onClick={() => stepPadding(Math.max(PAD_MIN, pad - PAD_STEP))}
+                    disabled={padTargets.every((l) => l.pad <= PAD_MIN)}
+                    onClick={() => stepPadding(-PAD_STEP)}
                   />
                   <input
                     type="number"
                     min={PAD_MIN}
                     max={PAD_MAX}
-                    value={pad}
+                    value={padShown ?? ""}
+                    placeholder="—"
                     aria-label={t("finalize.paddingLabel")}
                     onChange={(e) =>
                       livePadding(
@@ -499,11 +523,11 @@ function FinalizePage() {
                   <PadStep
                     label="+"
                     title={t("finalize.paddingMore")}
-                    disabled={pad >= PAD_MAX}
-                    onClick={() => stepPadding(Math.min(PAD_MAX, pad + PAD_STEP))}
+                    disabled={padTargets.every((l) => l.pad >= PAD_MAX)}
+                    onClick={() => stepPadding(PAD_STEP)}
                   />
                   <span className="flex items-center gap-1 text-[12.5px] text-ink-3">
-                    {t("finalize.paddingNote")}
+                    {sel ? t("finalize.paddingNoteLine") : t("finalize.paddingNote")}
                     <InfoTip text={t("tips.linePadding")} />
                   </span>
                 </div>

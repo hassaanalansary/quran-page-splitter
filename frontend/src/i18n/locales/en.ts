@@ -764,6 +764,8 @@ export const en = {
     edited: "edited",
     png: "png",
     paddingTitle: "Line padding · whole page",
+    paddingTitleLine: "Line padding · line {{n}}",
+    noLineSelected: "No line selected — padding acts on every line.",
     paddingLabel: "Padding · px",
     paddingLess: "Less padding",
     paddingMore: "More padding",
@@ -787,6 +789,7 @@ export const en = {
     lineAlt: "Line {{n}}",
     meta: "page {{page}} · {{count}} lines",
     paddingNote: "px above and below every line",
+    paddingNoteLine: "px above and below this line",
     brushPx: "{{size}} px",
     viewerOn_white: "Transparent PNG, shown on white",
     viewerOn_dark: "Transparent PNG, shown on black — the ink drawn white",
@@ -1779,7 +1782,7 @@ export const en = {
     },
     finalize: {
       s1: "Step through the lines with the ▲▼ navigator, or click one on the page — each is drawn exactly as it will be exported.",
-      s2: "Drag a line's top or bottom edge to trim it, or type its Y / H. The padding field gives every line on the page the same breathing room in one go.",
+      s2: "Drag a line's top or bottom edge to trim it, or type its Y / H. The padding field gives the selected line breathing room — or, with no line selected, every line on the page in one go.",
       s3: "Hold Shift and paint to erase ink bleeding in from a neighbouring line — erasing one line never touches another.",
       s4: "Save the cuts, then export the page to transparent line images.",
       s5: "Download the images as a zip once you're happy with them — ready to copy into the app.",
@@ -1820,7 +1823,7 @@ export const en = {
     preferAccel: "Use GPU/OpenCL acceleration for template matching when available.",
     brush: "Eraser diameter in pixels. Erasing only affects the selected line.",
     linePadding:
-      "Breathing room kept above and below every line of this page, in one go. Raise it if the cuts clip tails or dots.",
+      "Breathing room kept above and below the selected line — or, with no line selected, every line of this page in one go. Click empty space on the page to clear the selection. Raise it if the cuts clip tails or dots.",
     lineBox:
       "Y and H trim the line's top and bottom. X and W are locked to the shared page column.",
   },

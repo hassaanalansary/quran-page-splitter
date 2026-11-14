@@ -26,6 +26,7 @@ export function LineNavigator({
   onSelect,
   actions,
   emptyText,
+  noneText,
 }: {
   lines: NavigatorLine[];
   selectedKey: string | null;
@@ -33,13 +34,18 @@ export function LineNavigator({
   /** Buttons at the end of the card (Review's add and delete). */
   actions?: ReactNode;
   emptyText: string;
+  /** Shown while no line is selected, on a page where that means something
+   * (Lines: the tools then act on every line); ↓ then selects the first line.
+   * Without it, nothing selected displays the first line. */
+  noneText?: string;
 }) {
   const { t } = useTranslation();
   const total = lines.length;
   const idx = lines.findIndex((l) => l.key === selectedKey);
+  const none = idx < 0 && noneText !== undefined && total > 0;
   // Before the auto-select effect runs, fall back to the first line for display.
   const safeIdx = idx >= 0 ? idx : 0;
-  const current: NavigatorLine | undefined = lines[safeIdx];
+  const current: NavigatorLine | undefined = none ? undefined : lines[safeIdx];
 
   return (
     <div className="flex items-center gap-2.5 rounded-card border border-rule bg-card p-2.5">
@@ -53,12 +59,14 @@ export function LineNavigator({
         <NavArrow
           dir="down"
           title={t("review.nextLine")}
-          disabled={!current || safeIdx >= total - 1}
-          onClick={() => onSelect(lines[safeIdx + 1].key)}
+          disabled={none ? false : !current || safeIdx >= total - 1}
+          onClick={() => onSelect(lines[none ? 0 : safeIdx + 1].key)}
         />
       </div>
 
-      {total === 0 || !current ? (
+      {none ? (
+        <p className="m-0 min-w-0 flex-1 text-[12.5px] leading-snug text-ink-2">{noneText}</p>
+      ) : total === 0 || !current ? (
         <p className="m-0 min-w-0 flex-1 text-[12.5px] leading-snug text-ink-3">{emptyText}</p>
       ) : (
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
