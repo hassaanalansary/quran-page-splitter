@@ -411,6 +411,13 @@ class Page(BaseModel):
         default=False,
         help_text="True once a user has saved this page in review; reset to False on (re)process.",
     )
+    lines_finalized = models.BooleanField(
+        default=False,
+        help_text=(
+            "True once a user has marked this page's line cuts finished in Finalize. "
+            "Reset to False whenever the page's lines are rebuilt: (re)process or a review save."
+        ),
+    )
 
     class Meta:
         db_table = "page"

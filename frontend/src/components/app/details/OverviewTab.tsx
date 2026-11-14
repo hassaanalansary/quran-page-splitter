@@ -292,7 +292,7 @@ function stepShare(
     case "review":
       return of(mushaf.reviewed_page_count, mushaf.processed_page_count);
     case "finalize":
-      return of(stats?.exported_pngs ?? 0, stats?.lines_cut ?? 0);
+      return of(mushaf.finalized_page_count, mushaf.processed_page_count);
     case "ink":
       return of(
         (calibrationPages ?? []).filter((page) => page.processed).length,

@@ -72,6 +72,8 @@ export type MushafDetail = Mushaf & {
   description: string;
   /** Pad every exported line PNG on a page out to that page's tallest line. */
   export_uniform_size: boolean;
+  /** Pages whose line cuts a person marked finished in Finalize. */
+  finalized_page_count: number;
   /** Whether word detection checks a word against the dots its spelling expects.
    * A fact about the printing, not about the text — see `IjamMode`. */
   ijam_mode: IjamMode;
@@ -166,6 +168,8 @@ export type Line = {
 export type PageData = {
   page_number: number;
   bbox: Rect | null;
+  /** A person marked this page's line cuts finished in Finalize. */
+  lines_finalized?: boolean;
   lines: Line[];
 };
 
@@ -175,6 +179,8 @@ export type PageSura = { number: number; transliteration: string; name_arabic: s
 export type PageSummary = {
   page_number: number;
   reviewed: boolean;
+  /** A person marked this page's line cuts finished in Finalize. */
+  lines_finalized: boolean;
   /** Resolved physical PDF page (override or derived from the Quran range). */
   source_pdf_page: number;
   lines: number;

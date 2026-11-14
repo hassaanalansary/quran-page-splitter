@@ -32,6 +32,16 @@ export function finalizePage(
   return apiJson<PageData>("POST", `/api/mushafs/${id}/pages/${pageNumber}/finalize`, { lines });
 }
 
+/** Mark a page's line cuts finished in Finalize, or not finished again. Only this
+ * sets it — exporting never does. */
+export function markLinesFinalized(
+  id: string,
+  pageNumber: number,
+  finalized: boolean,
+): Promise<{ page_number: number; lines_finalized: boolean }> {
+  return apiJson("PUT", `/api/mushafs/${id}/pages/${pageNumber}/lines-finalized`, { finalized });
+}
+
 export function exportLines(id: string, pageNumber: number): Promise<ExportResult> {
   return apiJson<ExportResult>("POST", `/api/mushafs/${id}/pages/${pageNumber}/export-lines`, {});
 }

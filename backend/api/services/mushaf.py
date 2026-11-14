@@ -194,6 +194,7 @@ def get_mushaf_detail(mushaf_id: uuid.UUID, *, user: User) -> dict:
     data["published_at"] = mushaf.published_at
     data["description"] = mushaf.description
     data["export_uniform_size"] = mushaf.export_uniform_size
+    data["finalized_page_count"] = mushaf.pages.filter(lines_finalized=True).count()
     data["ijam_mode"] = mushaf.ijam_mode
     return data
 

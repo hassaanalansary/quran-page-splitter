@@ -9,6 +9,9 @@ type Props = {
   processed?: Set<number>;
   /** Processed pages that have also been reviewed (a different indicator). */
   reviewed?: Set<number>;
+  /** Pages whose line cuts were marked finished in Finalize (a third indicator,
+   * over the other two; only Finalize passes it). */
+  finalized?: Set<number>;
   /** Whether the page numbers should be shown in right-to-left order. */
   isRTL?: boolean;
   /** At the end of the rail (Ink's legend and page jump). */
@@ -30,8 +33,9 @@ function pagerItems(current: number, total: number): (number | "gap")[] {
 
 /**
  * Compact page-number rail (like the Setup filmstrip's), reusable across steps.
- * When `processed`/`reviewed` sets are given, each page number carries a small
- * indicator bar (navy = processed, green = reviewed).
+ * When `processed`/`reviewed`/`finalized` sets are given, each page number
+ * carries a small indicator bar (navy = processed, green = reviewed, gold =
+ * lines finalized).
  */
 export function PageRail({
   page,
@@ -39,6 +43,7 @@ export function PageRail({
   onPageChange,
   processed,
   reviewed,
+  finalized,
   isRTL,
   end,
 }: Props) {
@@ -57,7 +62,15 @@ export function PageRail({
             n={item}
             active={item === page}
             onClick={() => onPageChange(item)}
-            state={reviewed?.has(item) ? "reviewed" : processed?.has(item) ? "processed" : "none"}
+            state={
+              finalized?.has(item)
+                ? "finalized"
+                : reviewed?.has(item)
+                  ? "reviewed"
+                  : processed?.has(item)
+                    ? "processed"
+                    : "none"
+            }
           />
         ),
       )}
@@ -80,11 +93,17 @@ function Chip({
   n: number;
   active: boolean;
   onClick: () => void;
-  state: "reviewed" | "processed" | "none";
+  state: "finalized" | "reviewed" | "processed" | "none";
 }) {
   const { t } = useTranslation();
   const color =
-    state === "reviewed" ? "var(--done)" : state === "processed" ? "var(--lapis)" : null;
+    state === "finalized"
+      ? "var(--gold)"
+      : state === "reviewed"
+        ? "var(--done)"
+        : state === "processed"
+          ? "var(--lapis)"
+          : null;
   return (
     <button
       type="button"

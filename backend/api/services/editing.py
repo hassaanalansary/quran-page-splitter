@@ -48,6 +48,7 @@ def list_pages(mushaf_id: uuid.UUID, *, user: User) -> list[dict]:
         .values(
             "page_number",
             "reviewed",
+            "lines_finalized",
             "source_pdf_page",
             "lines_count",
             "segments_count",
@@ -61,6 +62,7 @@ def list_pages(mushaf_id: uuid.UUID, *, user: User) -> list[dict]:
         {
             "page_number": row["page_number"],
             "reviewed": row["reviewed"],
+            "lines_finalized": row["lines_finalized"],
             "source_pdf_page": row["source_pdf_page"] or mushaf.first_quran_pdf_page + row["page_number"] - 1,
             "lines": row["lines_count"],
             "ayat": row["ayat_count"],
@@ -106,6 +108,8 @@ def save_page(*, user: User, mushaf_id: uuid.UUID, page_number: int, bbox: dict,
             "bbox_w": bbox["w"],
             "bbox_h": bbox["h"],
             "reviewed": True,
+            # The lines are rebuilt below, so the cuts finished on them are gone.
+            "lines_finalized": False,
         },
     )
     page.lines.all().delete()
@@ -187,6 +191,21 @@ def save_finalize(*, user: User, mushaf_id: uuid.UUID, page_number: int, line_ed
                 ]
             )
     return coordinates.page_to_dict(page)
+
+
+def mark_lines_finalized(*, user: User, mushaf_id: uuid.UUID, page_number: int, finalized: bool) -> dict:
+    """Mark a page's line cuts finished in Finalize, or not finished again.
+
+    Only a person sets it, and only here: exporting never does, so exporting a
+    page to check a result does not count as finishing it. Rebuilding the page's
+    lines clears it (``coordinates.write_coords_to_page``, ``save_page``,
+    ``bulk_save``).
+    """
+    mushaf = mushaf_service.get_mushaf(mushaf_id, user=user)
+    page = mushaf_service.get_page(mushaf, page_number, message="page_no_finalize")
+    page.lines_finalized = finalized
+    page.save(update_fields=["lines_finalized"])
+    return {"page_number": page.page_number, "lines_finalized": page.lines_finalized}
 
 
 def review_data(mushaf_id: uuid.UUID, *, user: User) -> dict:
@@ -311,7 +330,14 @@ def bulk_save(*, user: User, mushaf_id: uuid.UUID, pages: list[dict], reviewed_p
             page, _ = Page.objects.update_or_create(
                 mushaf=mushaf,
                 page_number=entry["page_number"],
-                defaults={"bbox_x": bbox["x"], "bbox_y": bbox["y"], "bbox_w": bbox["w"], "bbox_h": bbox["h"]},
+                defaults={
+                    "bbox_x": bbox["x"],
+                    "bbox_y": bbox["y"],
+                    "bbox_w": bbox["w"],
+                    "bbox_h": bbox["h"],
+                    # The lines are rebuilt below, so the cuts finished on them are gone.
+                    "lines_finalized": False,
+                },
             )
             page.lines.all().delete()
             for line_data in entry["lines"]:

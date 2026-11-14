@@ -1,4 +1,5 @@
-"""Tests for editing.save_finalize (cut layer: bbox overrides + erase strokes)."""
+"""Tests for editing.save_finalize (cut layer: bbox overrides + erase strokes) and the
+Finalize tracker (editing.mark_lines_finalized)."""
 
 from django.test import TestCase
 from ninja.errors import HttpError
@@ -9,7 +10,9 @@ from api.tests.helpers import bare_mushaf, default_user
 from quran.services import suras
 
 
-class SaveFinalizeTests(TestCase):
+class OneProcessedPageCase(TestCase):
+    """A mushaf with page 1 processed: one line, a sura header."""
+
     def setUp(self):
         suras.seed_reference_data()
         self.mushaf = bare_mushaf("Finalize")
@@ -37,6 +40,8 @@ class SaveFinalizeTests(TestCase):
             },
         )
 
+
+class SaveFinalizeTests(OneProcessedPageCase):
     def test_bbox_override_updates_yh_only(self):
         """Finalize adjusts only the line's Y/H; X/W (content extent from segments,
         used by the coordinates export) are preserved — the cut width is derived
@@ -89,6 +94,86 @@ class SaveFinalizeTests(TestCase):
         self.assertIs(save({"erase_edge_ink": None}), True)
         self.assertIs(save({}), True)
         self.assertIs(save({"erase_edge_ink": False}), False)
+
+
+class LinesFinalizedTests(OneProcessedPageCase):
+    """The Finalize tracker: set only by a person, cleared when the lines are rebuilt."""
+
+    def mark(self, finalized: bool = True) -> dict:
+        return editing.mark_lines_finalized(
+            user=default_user(), mushaf_id=self.mushaf.id, page_number=1, finalized=finalized
+        )
+
+    def finalized(self) -> bool:
+        self.page.refresh_from_db()
+        return self.page.lines_finalized
+
+    def line_payload(self) -> dict:
+        return {
+            "line_number": 1,
+            "type": "sura_header",
+            "sura_number": 1,
+            "bbox_x": 10,
+            "bbox_y": 10,
+            "bbox_w": 80,
+            "bbox_h": 30,
+            "segments": [],
+        }
+
+    def test_marking_and_unmarking_show_in_the_page_and_the_page_list(self):
+        self.assertEqual(self.mark(), {"page_number": 1, "lines_finalized": True})
+        self.page.refresh_from_db()
+        self.assertIs(coordinates.page_to_dict(self.page)["lines_finalized"], True)
+        summary = editing.list_pages(self.mushaf.id, user=default_user())[0]
+        self.assertIs(summary["lines_finalized"], True)
+        self.mark(False)
+        self.assertFalse(self.finalized())
+
+    def test_saving_cuts_does_not_mark_the_page(self):
+        editing.save_finalize(
+            mushaf_id=self.mushaf.id, page_number=1, line_edits=[{"line_number": 1}], user=default_user()
+        )
+        self.assertFalse(self.finalized())
+
+    def test_reprocessing_clears_it(self):
+        self.mark()
+        coordinates.write_coords_to_page(
+            mushaf=self.mushaf,
+            page_number=1,
+            run=self.page.last_run,
+            coord_page={"crop_box": {"x": 0, "y": 0, "w": 100, "h": 100}, "lines": []},
+        )
+        self.assertFalse(self.finalized())
+
+    def test_a_review_save_clears_it(self):
+        self.mark()
+        editing.save_page(
+            user=default_user(),
+            mushaf_id=self.mushaf.id,
+            page_number=1,
+            bbox={"x": 0, "y": 0, "w": 100, "h": 100},
+            lines=[self.line_payload()],
+        )
+        self.assertFalse(self.finalized())
+
+    def test_a_bulk_review_save_clears_it_on_the_pages_it_writes(self):
+        self.mark()
+        editing.bulk_save(
+            user=default_user(),
+            mushaf_id=self.mushaf.id,
+            pages=[{"page_number": 1, "bbox": {"x": 0, "y": 0, "w": 100, "h": 100}, "lines": [self.line_payload()]}],
+            reviewed_pages=[1],
+        )
+        self.assertFalse(self.finalized())
+
+    def test_a_bulk_review_save_leaves_the_pages_it_only_flags(self):
+        self.mark()
+        editing.bulk_save(user=default_user(), mushaf_id=self.mushaf.id, pages=[], reviewed_pages=[1])
+        self.assertTrue(self.finalized())
+
+    def test_a_missing_page_is_refused(self):
+        with self.assertRaises(HttpError):
+            editing.mark_lines_finalized(user=default_user(), mushaf_id=self.mushaf.id, page_number=2, finalized=True)
 
     def test_missing_page_rejected(self):
         with self.assertRaises(HttpError):

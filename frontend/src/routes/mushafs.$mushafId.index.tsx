@@ -72,7 +72,7 @@ function MushafDetailsPage() {
     );
   }
 
-  const steps = pipelineSteps(mushaf, templatesReady, stats, abortPage, calibrationPages);
+  const steps = pipelineSteps(mushaf, templatesReady, abortPage, calibrationPages);
   const cta = continueTarget(mushaf, templatesReady, summaries, stats, calibrationPages);
 
   return (

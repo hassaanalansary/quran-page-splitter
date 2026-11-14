@@ -141,6 +141,7 @@ def serialize_tree(mushaf: Mushaf) -> list[dict]:
             "bbox_w": page.bbox_w,
             "bbox_h": page.bbox_h,
             "reviewed": page.reviewed,
+            "lines_finalized": page.lines_finalized,
             "lines": lines_by_page.get(page.page_number, []),
         }
         for page in mushaf.pages.all().order_by("page_number")
@@ -169,6 +170,7 @@ def write_tree(target: Mushaf, pages: list[dict]) -> None:
                 bbox_w=page.get("bbox_w"),
                 bbox_h=page.get("bbox_h"),
                 reviewed=bool(page.get("reviewed")),
+                lines_finalized=bool(page.get("lines_finalized")),
             )
             for page in pages
         ],

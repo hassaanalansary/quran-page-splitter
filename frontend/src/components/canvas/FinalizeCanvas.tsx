@@ -37,6 +37,7 @@ type Props = {
   onPageChange: (n: number) => void;
   processed?: Set<number>;
   reviewed?: Set<number>;
+  finalized?: Set<number>;
   onSelectLine: (n: number | null) => void;
   /** Live during an edge drag (preview, no history). */
   onResizeLine: (n: number, box: Box) => void;
@@ -95,6 +96,7 @@ export function FinalizeCanvas({
   onPageChange,
   processed,
   reviewed,
+  finalized,
   onSelectLine,
   onResizeLine,
   onResizeCommit,
@@ -765,6 +767,7 @@ export function FinalizeCanvas({
         onPageChange={onPageChange}
         processed={processed}
         reviewed={reviewed}
+        finalized={finalized}
       />
     </div>
   );

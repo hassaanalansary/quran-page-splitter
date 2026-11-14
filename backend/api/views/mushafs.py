@@ -63,6 +63,8 @@ class MushafDetailOut(MushafOut):
     published_at: datetime | None = None
     description: str = ""
     export_uniform_size: bool = False
+    #: Pages whose line cuts a person marked finished in Finalize.
+    finalized_page_count: int = 0
     #: "report" | "ignore" — whether word detection checks a word against the dots
     #: its spelling expects. A fact about the printing, not about the text.
     ijam_mode: str = "report"

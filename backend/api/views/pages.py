@@ -44,6 +44,7 @@ class LineSchema(Schema):
 class PageDataOut(Schema):
     page_number: int
     bbox: RectSchema | None = None
+    lines_finalized: bool = False
     lines: list[LineSchema]
 
 
@@ -61,6 +62,7 @@ class PageSuraOut(Schema):
 class PageSummaryOut(Schema):
     page_number: int
     reviewed: bool
+    lines_finalized: bool = False
     source_pdf_page: int
     lines: int
     ayat: int

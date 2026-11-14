@@ -272,15 +272,12 @@ export type StepInfo = {
 export function pipelineSteps(
   mushaf: MushafDetail,
   templatesReady: boolean,
-  stats: MushafStats | undefined,
   abortPage: number | null,
   calibrationPages?: CalibrationPageState[],
 ): StepInfo[] {
   const logical = mushaf.logical_page_count;
   const processed = mushaf.processed_page_count;
   const reviewed = mushaf.reviewed_page_count;
-  const exported = stats?.exported_pngs ?? 0;
-  const linesCut = stats?.lines_cut ?? 0;
 
   const process: StepInfo =
     processed === 0
@@ -329,26 +326,29 @@ export function pipelineSteps(
             detail: i18n.t("details.step_pages", { done: reviewed, total: processed }),
           };
 
+  // Lines: how many processed pages a person marked finalized. Exported PNGs used
+  // to stand in for this, but one "export all" made every page look finished.
+  const finalized = mushaf.finalized_page_count;
   const finalize: StepInfo =
-    exported === 0
+    processed === 0
       ? {
           slug: "finalize",
           label: i18n.t("header.steps.finalize"),
           state: "todo",
-          detail: i18n.t("details.step_pngsOut", { count: 0 }),
+          detail: i18n.t("details.step_awaiting"),
         }
-      : exported >= linesCut && linesCut > 0
+      : finalized >= processed
         ? {
             slug: "finalize",
             label: i18n.t("header.steps.finalize"),
             state: "done",
-            detail: i18n.t("details.step_pngsOut", { count: exported }),
+            detail: i18n.t("details.step_pagesFinalized", { done: finalized, total: processed }),
           }
         : {
             slug: "finalize",
             label: i18n.t("header.steps.finalize"),
-            state: "active",
-            detail: i18n.t("details.step_pngsProgress", { done: exported, total: linesCut }),
+            state: finalized === 0 ? "todo" : "active",
+            detail: i18n.t("details.step_pagesFinalized", { done: finalized, total: processed }),
           };
 
   // Ink: every page calibrated by hand or processed after the calibration — done

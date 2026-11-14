@@ -63,6 +63,23 @@ def finalize(request: HttpRequest, mushaf_id: uuid.UUID, page_number: int, data:
     )
 
 
+class LinesFinalizedIn(Schema):
+    finalized: bool
+
+
+class LinesFinalizedOut(Schema):
+    page_number: int
+    lines_finalized: bool
+
+
+@router.put("/{mushaf_id}/pages/{page_number}/lines-finalized", response=LinesFinalizedOut)
+def mark_lines_finalized(request: HttpRequest, mushaf_id: uuid.UUID, page_number: int, data: LinesFinalizedIn) -> dict:
+    """Mark a page's line cuts finished, or not finished again — the Finalize tracker."""
+    return editing_service.mark_lines_finalized(
+        user=current_user(request), mushaf_id=mushaf_id, page_number=page_number, finalized=data.finalized
+    )
+
+
 @router.post("/{mushaf_id}/pages/{page_number}/export-lines", response=ExportOut)
 def export_lines(request: HttpRequest, mushaf_id: uuid.UUID, page_number: int) -> dict:
     return export_service.export_lines(user=current_user(request), mushaf_id=mushaf_id, page_number=page_number)

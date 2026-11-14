@@ -50,7 +50,7 @@ export function useStepStates(mushaf: MushafDetail): StepStates {
     !!templates &&
     ["sura_header", "aya_separator"].every((type) => templates.some((tpl) => tpl.type === type));
   const steps = new Map(
-    pipelineSteps(mushaf, templatesReady, stats, null, calibrationPages).map((s) => [s.slug, s]),
+    pipelineSteps(mushaf, templatesReady, null, calibrationPages).map((s) => [s.slug, s]),
   );
   const pages = calibrationPages ?? [];
   return {

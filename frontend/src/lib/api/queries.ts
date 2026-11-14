@@ -48,7 +48,8 @@ export function useTemplates(id: string) {
   });
 }
 
-/** Processed/reviewed logical page numbers, as sets, for the page-rail indicator. */
+/** Processed/reviewed/lines-finalized logical page numbers, as sets, for the
+ * page-rail indicator. */
 export function useProcessedPages(id: string) {
   return useQuery({
     queryKey: queryKeys.processedPages(id),
@@ -56,6 +57,7 @@ export function useProcessedPages(id: string) {
     select: (rows) => ({
       processed: new Set(rows.map((r) => r.page_number)),
       reviewed: new Set(rows.filter((r) => r.reviewed).map((r) => r.page_number)),
+      finalized: new Set(rows.filter((r) => r.lines_finalized).map((r) => r.page_number)),
     }),
   });
 }

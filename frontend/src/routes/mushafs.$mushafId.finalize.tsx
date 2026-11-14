@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate, useParams } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Check } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
@@ -20,6 +21,7 @@ import {
   exportLines,
   finalizePage,
   linesZipUrl,
+  markLinesFinalized,
   pageImageUrl,
   queryKeys,
   useMushaf,
@@ -252,7 +254,32 @@ function FinalizePage() {
     onError: (e) => toast.error(e instanceof ApiError ? e.message : t("finalize.exportFailed")),
   });
 
-  const busy = saveMutation.isPending || exportMutation.isPending;
+  // The tracker: a person says the page's cuts are finished. Marking saves any
+  // unsaved cuts first, so what is marked finished is what the server holds.
+  const finalized = pageData?.lines_finalized ?? false;
+  const finalizedMutation = useMutation({
+    mutationFn: async (next: boolean) => {
+      const fresh = next && dirty ? await finalizePage(mushafId, page, buildPayload()) : null;
+      const res = await markLinesFinalized(mushafId, page, next);
+      return { fresh, res };
+    },
+    onSuccess: ({ fresh, res }) => {
+      if (fresh) markSaved(fresh);
+      queryClient.setQueryData<PageData>(queryKeys.page(mushafId, page), (prev) =>
+        prev ? { ...prev, lines_finalized: res.lines_finalized } : prev,
+      );
+      queryClient.invalidateQueries({ queryKey: queryKeys.processedPages(mushafId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.mushaf(mushafId), exact: true });
+      toast.success(
+        res.lines_finalized
+          ? t("finalize.finalizedToast", { page })
+          : t("finalize.unfinalizedToast", { page }),
+      );
+    },
+    onError: (e) => toast.error(e instanceof ApiError ? e.message : t("finalize.finalizeFailed")),
+  });
+
+  const busy = saveMutation.isPending || exportMutation.isPending || finalizedMutation.isPending;
 
   const leaveDialog = useLeaveGuard({
     dirty: () => dirty,
@@ -306,7 +333,9 @@ function FinalizePage() {
   ) : dirty ? (
     <StatusLine>{t("finalize.unsavedStatus")}</StatusLine>
   ) : (
-    <StatusLine tone="success">{t("finalize.savedStatus")}</StatusLine>
+    <StatusLine tone="success">
+      {finalized ? t("finalize.finalizedStatus") : t("finalize.savedStatus")}
+    </StatusLine>
   );
 
   // live (no history) — used during an edge-drag
@@ -399,6 +428,7 @@ function FinalizePage() {
           }
           processed={pages?.processed}
           reviewed={pages?.reviewed}
+          finalized={pages?.finalized}
           label={t("canvas.pdfShort", { page: mushaf.first_quran_pdf_page + page - 1 })}
           onSelectLine={setSelected}
           onResizeLine={liveLine}
@@ -450,6 +480,30 @@ function FinalizePage() {
                 )}
               </button>
             </div>
+            {/* The tracker. Marking is a person's word that the cuts are done —
+                exporting never sets it, so an export to check a result is free. */}
+            <button
+              type="button"
+              onClick={() => finalizedMutation.mutate(!finalized)}
+              disabled={!hasLines || busy}
+              aria-pressed={finalized}
+              className={`inline-flex h-10 cursor-pointer items-center justify-center gap-1.5 rounded-control border text-[13.5px] font-semibold transition-colors disabled:cursor-default disabled:opacity-50 ${
+                finalized
+                  ? "border-gold bg-gold-wash text-ink hover:bg-gold/25"
+                  : "border-rule-2 bg-card text-ink hover:bg-sheet"
+              }`}
+            >
+              {finalizedMutation.isPending ? (
+                <BusyLabel>{t("common.saving")}</BusyLabel>
+              ) : finalized ? (
+                <>
+                  <Check size={15} aria-hidden="true" />
+                  {t("finalize.finalizedOn")}
+                </>
+              ) : (
+                t("finalize.markFinalized")
+              )}
+            </button>
             {/* The PNGs live under media/ until they're pulled out — this is how
                 they leave the tool, saved wherever the browser asks. */}
             {exported.size > 0 ? (
