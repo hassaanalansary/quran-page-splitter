@@ -11,6 +11,7 @@ from unittest import mock
 from api.models import CalibrationProfile, CalibrationSettings, LibraryCheck
 from api.services import calibration as calibration_service
 from api.services import calibration_library as library_service
+from api.tests.helpers import default_user
 from api.tests.test_calibration_api import BAR, BODIES, DOT, CalibrationApiTestCase, drawn_pages
 
 
@@ -107,11 +108,15 @@ class LibraryDocumentTests(LibraryTestCase):
 
 class PricingTests(LibraryTestCase):
     def test_a_page_with_a_library_is_read_with_its_answers_priced_in(self):
+        # setUp processed page 2 already, and asking again from the same sources is
+        # refused as already processed: read it again the way the bulk batch does.
+        revision = self.document(2)["revision"]
         with (
             mock.patch.object(calibration_service, "align_document", wraps=calibration_service.align_document) as align,
             drawn_pages(bar=True),
         ):
-            self.client.post(self.url(2, "/process"))
+            read = calibration_service.process_page(self.mushaf, 2, expected_revision=revision, user=default_user())
+        self.assertTrue(read)
         self.assertTrue(any(call.kwargs.get("calibration_locks") for call in align.call_args_list))
         self.assertEqual(self.document(2)["profile"]["mode"], "learned")
 
