@@ -197,7 +197,7 @@ npm run build          # → frontend/dist
 | `Mushaf` | `owner`, `rawi`, `name` (unique per owner), the PDF (stored once as `pdfs/<sha>.pdf`), the Quran's first and last PDF page, `thumbnail`, `visibility` (`private` / `published`) and `published_at`, `ijam_mode`, `line_png_size` (`box` / `uniform` / `tight` / `tight_uniform`), `description`, `duplicated_from` |
 | `Template` | one per mushaf and type: `sura_header`, `aya_separator`, `sajda`, `rub_hizb`; an image and optional ignore rectangles |
 | `ProcessingRun` | one line-engine run: settings, page range, status, abort detail, log |
-| `ProcessJob` | one background job, and all a worker needs to run it: `kind` (`detection`, `calibration`, `calibration_batch`; `words` only for history), `params` (the runner's inputs), `state` (`queued`, `running`, then a final state), `requested_by` and `requested_at`, `run_started_at` and `claimed_by_worker`, `phase`, progress, heartbeat, cancel flag |
+| `ProcessJob` | one background job, and all a worker needs to run it: `kind` (`detection`, `calibration`, `calibration_batch`, `library_rebuild`; `words` only for history), `params` (the runner's inputs), `state` (`queued`, `running`, then a final state), `requested_by` and `requested_at`, `run_started_at` and `claimed_by_worker`, `phase`, progress, heartbeat, cancel flag |
 | `Page` | a logical page with data: its crop box, `reviewed`, `lines_finalized` (a person marked its cuts checked in Finalize), `line_padding` (the padding its lines got there; the latest three checked pages' agreeing value is put on each new page, and the edge ink erased page-wide after it), `sura_header_padding` (the same for its sura headers; with whether the latest checked pages erased their headers' edge ink, put on each new page's headers), the run that made it |
 | `Line` | `line_number`, `type` (`text` / `sura_header` / `besmella`), `sura`, its box, `erase_edge_ink`, its exported PNG and the rows a tight export cut off it |
 | `Segment` | a stretch of a line up to an aya ornament: `bbox_x`, `bbox_w`, `has_separator`, the derived `aya_number` |
@@ -269,6 +269,7 @@ logical page number.
 | GET | `/pages/{n}/calibration/evaluation` | the page's readings side by side |
 | GET / POST | `/pages/{n}/calibration/library`, `/library/compare` | the mushaf's fingerprint set, and one blob against it |
 | PUT / POST | `/calibration/library/looks-right`, `/library/remove`, `/library/restore` | Library mode's levers on the set |
+| POST | `/calibration/library/rebuild` | regroup the set from every confirmed page (a `library_rebuild` job); a new LIMIT in `/calibration/settings` starts one too |
 | POST | `/calibration/batch` | process a range of pages in one job |
 | GET / POST | `/calibration/job`, `/calibration/cancel` | poll / stop the page or batch job |
 | PUT | `/calibration/settings` | the library's comparison and LIMIT |

@@ -21,6 +21,7 @@ LIMIT for Library mode to show, and saved nowhere.
 from __future__ import annotations
 
 from collections import OrderedDict
+from collections.abc import Callable
 
 from django.db import transaction
 
@@ -76,16 +77,22 @@ def build_first_fingerprint_set(mushaf: Mushaf) -> FingerprintLibrary:
     return library_row
 
 
-def rebuild_fingerprint_set(mushaf: Mushaf) -> FingerprintLibrary:
+def rebuild_fingerprint_set(mushaf: Mushaf, *, progress: Callable[[str], None] | None = None) -> FingerprintLibrary:
     """Regroup the set from every confirmed page, at the settings in force now.
 
     The grouping runs outside the set's lock, so Confirms carry on meanwhile; a page
     confirmed after it began is brought into the new groups at commit, under the lock.
+    ``progress`` hears each step ("detecting" while it groups, "saving" while it
+    stores), so a long rebuild keeps its job's heartbeat.
     """
     settings = serialize_calibration_settings(mushaf)
     revisions = find_confirmed_revisions(mushaf)
     seen = {str(revision.pk) for revision in revisions}
+    if progress is not None:
+        progress("detecting")
     groups = regroup_confirmed_pages(mushaf, find_fingerprint_library(mushaf), settings, revisions=revisions)
+    if progress is not None:
+        progress("saving")
     with transaction.atomic():
         library_row = lock_fingerprint_library(mushaf, comparison_name=settings["comparison"], limit=settings["limit"])
         removed = load_removed_labels(mushaf)

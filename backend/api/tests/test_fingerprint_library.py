@@ -11,10 +11,19 @@ from unittest import mock
 
 from django.core.management import call_command
 
-from api.models import FingerprintLibrary, FingerprintShape, RemovedShape
+from api.models import (
+    CalibrationSettings,
+    FingerprintLibrary,
+    FingerprintShape,
+    ProcessJob,
+    ProcessJobKindChoices,
+    ProcessJobStateChoices,
+    RemovedShape,
+)
 from api.services import calibration, cloning, fingerprint_rebuild, fingerprint_store
 from api.services.fingerprint_rows import load_stored_groups
 from api.services.fingerprint_updates import check_every_shape_matches_labels
+from api.services.jobs.creation import create_queued_job
 from api.tests.test_calibration_api import BAR, DOT, drawn_pages
 from api.tests.test_calibration_library import LibraryTestCase
 
@@ -146,3 +155,51 @@ class TransferTests(FingerprintSetTestCase):
         self.assertFalse(FingerprintLibrary.objects.filter(mushaf=self.mushaf).exists())
         self.assertFalse(RemovedShape.objects.filter(mushaf=self.mushaf).exists())
         self.assertFalse(self.mushaf.calibration_reviews.exists())
+
+
+class RebuildJobTests(FingerprintSetTestCase):
+    def settings_url(self) -> str:
+        return f"/api/mushafs/{self.mushaf.id}/calibration/settings"
+
+    def test_a_new_limit_rebuilds_the_set_in_the_background_keeping_looks_right(self):
+        fatha = FingerprintShape.objects.get(library=self.library_row(), group__subtype="fatha")
+        fatha.looks_right = True
+        fatha.save()
+        version = self.library_row().version
+        response = self.client.put(self.settings_url(), {"revision": 0, "limit": 0.5}, content_type="application/json")
+        self.assertEqual(response.status_code, 200, response.content)
+        job = ProcessJob.objects.filter(mushaf=self.mushaf, kind=ProcessJobKindChoices.LIBRARY_REBUILD).get()
+        self.assertEqual(job.state, ProcessJobStateChoices.COMPLETED)
+        library_row = self.library_row()
+        self.assertEqual(library_row.limit, 0.5)
+        self.assertGreater(library_row.version, version)
+        kept = FingerprintShape.objects.get(library=library_row, group__subtype="fatha", is_fingerprint=True)
+        self.assertEqual((kept.blob_id, kept.looks_right), (fatha.blob_id, True))
+
+    def test_the_same_limit_again_starts_nothing(self):
+        response = self.client.put(self.settings_url(), {"revision": 0, "limit": 0.27}, content_type="application/json")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertFalse(ProcessJob.objects.filter(kind=ProcessJobKindChoices.LIBRARY_REBUILD).exists())
+
+    def test_a_new_limit_is_refused_while_another_job_holds_the_mushaf(self):
+        create_queued_job(
+            kind=ProcessJobKindChoices.DETECTION,
+            mushaf=self.mushaf,
+            requested_by=None,
+            params={},
+            first_page=1,
+            last_page=1,
+            total=1,
+        )
+        response = self.client.put(self.settings_url(), {"revision": 0, "limit": 0.5}, content_type="application/json")
+        self.assertEqual(response.status_code, 409, response.content)
+        self.assertFalse(CalibrationSettings.objects.filter(mushaf=self.mushaf, library_limit=0.5).exists())
+
+    def test_the_rebuild_button_starts_a_job(self):
+        version = self.library_row().version
+        response = self.client.post(f"/api/mushafs/{self.mushaf.id}/calibration/library/rebuild")
+        self.assertEqual(response.status_code, 202, response.content)
+        self.assertEqual(response.json()["job"]["kind"], "library_rebuild")
+        self.assertGreater(self.library_row().version, version)
+        polled = self.client.get(f"/api/mushafs/{self.mushaf.id}/calibration/job").json()["job"]
+        self.assertEqual((polled["kind"], polled["state"]), ("library_rebuild", "completed"))

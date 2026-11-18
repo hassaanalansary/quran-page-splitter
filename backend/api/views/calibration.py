@@ -20,24 +20,29 @@ from api.auth import current_user
 from api.models import ProcessJobKindChoices
 from api.services import calibration as calibration_service
 from api.services import calibration_batch as batch_service
-from api.services import calibration_cuts, fingerprint_updates
+from api.services import calibration_cuts, fingerprint_updates, library_settings
 from api.services import calibration_library as library_service
 from api.services import calibration_progress as progress_service
 from api.services import calibration_saving as saving_service
-from api.services import calibration_settings as settings_service
 from api.services import mushaf as mushaf_service
 from api.services.jobs.cancellation import request_job_cancellation
 from api.services.jobs.kinds.calibration_batch import start_calibration_batch_job
 from api.services.jobs.kinds.calibration_page import start_calibration_page_job
+from api.services.jobs.kinds.library_rebuild import start_library_rebuild_job
 from api.services.jobs.queries import find_latest_job_of_mushaf
 from api.services.jobs.serializers import serialize_job
 from api.views.processing import JobOut, JobStatusOut
 
 router = Router(tags=["calibration"])
 
-#: Calibration's two kinds of job, polled and cancelled from the one screen: a page
-#: processed on its own, and a batch of pages. One runs at a time, as for every kind.
-CALIBRATION_JOBS = (ProcessJobKindChoices.CALIBRATION, ProcessJobKindChoices.CALIBRATION_BATCH)
+#: Calibration's kinds of job, polled and cancelled from the one screen: a page
+#: processed on its own, a batch of pages, and the fingerprint set's rebuild. One runs
+#: at a time, as for every kind.
+CALIBRATION_JOBS = (
+    ProcessJobKindChoices.CALIBRATION,
+    ProcessJobKindChoices.CALIBRATION_BATCH,
+    ProcessJobKindChoices.LIBRARY_REBUILD,
+)
 
 
 class AllocationIn(Schema):
@@ -121,8 +126,20 @@ class SettingsIn(Schema):
 
 @router.put("/{mushaf_id}/calibration/settings")
 def save_calibration_settings(request: HttpRequest, mushaf_id: uuid.UUID, data: SettingsIn) -> JsonResponse:
+    """Save the library's settings. A new LIMIT or comparison regroups the set in the
+    background, and is refused while another job holds the mushaf."""
     mushaf = mushaf_service.get_mushaf(mushaf_id, user=current_user(request))
-    return _json(settings_service.save_calibration_settings(mushaf, data.model_dump(), user=current_user(request)))
+    return _json(library_settings.apply_library_settings(mushaf, data.model_dump(), user=current_user(request)))
+
+
+@router.post("/{mushaf_id}/calibration/library/rebuild", response={202: ProcessOut})
+def start_library_rebuild(request: HttpRequest, mushaf_id: uuid.UUID) -> tuple[int, dict]:
+    """Regroup the fingerprint set from every confirmed page; returns at once with the
+    job to poll. The set answers as it was until the rebuild commits."""
+    user = current_user(request)
+    mushaf = mushaf_service.get_mushaf(mushaf_id, user=user)
+    job = start_library_rebuild_job(mushaf, user=user)
+    return 202, {"job": serialize_job(job)}
 
 
 def _json(payload: dict, status: int = 200) -> JsonResponse:

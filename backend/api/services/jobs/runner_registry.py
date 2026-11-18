@@ -21,6 +21,7 @@ JOB_RUNNER_PATHS: dict[str, str] = {
     ProcessJobKindChoices.DETECTION: "api.services.jobs.kinds.detection.run_detection_job",
     ProcessJobKindChoices.CALIBRATION: "api.services.jobs.kinds.calibration_page.run_calibration_page_job",
     ProcessJobKindChoices.CALIBRATION_BATCH: "api.services.jobs.kinds.calibration_batch.run_calibration_batch_job",
+    ProcessJobKindChoices.LIBRARY_REBUILD: "api.services.jobs.kinds.library_rebuild.run_library_rebuild_job",
 }
 
 
