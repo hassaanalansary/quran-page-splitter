@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Check, ExternalLink } from "lucide-react";
+import { Check, ExternalLink, RefreshCw, RotateCcw, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -7,10 +7,12 @@ import { toast } from "sonner";
 import { LoadingState } from "@/components/app/SatrLoader";
 import {
   calibrationKeys,
+  rebuildLibrary,
+  removeLibraryShape,
+  restoreLibraryShape,
   setCalibrationSettings,
-  setLibraryCheck,
+  setShapeLooksRight,
   useCalibrationLibrary,
-  useLibraryMembers,
 } from "@/lib/api";
 import type {
   CalibrationBlob,
@@ -40,19 +42,19 @@ const SMALL =
 export type LibraryPlace = { group: string | null; scroll: number };
 
 /**
- * The fingerprint library, as the page on screen sees it: every other confirmed
- * page's examples, kind by kind — each mark type, the untyped marks, then the letters
- * (folded; smallest ink first, since a mark learned as a letter is small).
+ * The mushaf's one stored fingerprint set, as every page sees it, kind by kind — each
+ * mark type, the untyped marks, then the letters (folded; smallest ink first, since a
+ * mark learned as a letter is small).
  *
- *     limit [0.27] Preview · as page 15 sees it · 14 pages
+ *     Library v63 · 27 confirmed pages · limit [0.27] Preview · Rebuild
  *     selected  p15 l4 · blob 37 → mark · kasra 0.31 ★ · runner-up fatha 0.58
- *     this page [0.29] [0.44]
- *     fatha  ×20 ×3 ×1 …        a fingerprint, how many it stands for
- *       ▸ the one chosen: its members kept beside it, all of them on demand
+ *     fatha  ★ ★ ★ …            the fingerprints
+ *       ▸ the one chosen: the shapes kept beside it; Looks right, Remove, Open its source
+ *     Removed (2)               what was taken out, to Restore
  *
- * Nothing here changes the library: a wrong fingerprint is a wrong label on its page,
- * fixed there — "Open its source". With a blob selected on the page, every cell says
- * how far it is from it and each kind is ordered nearest first.
+ * A wrong label is fixed on its page — "Open its source" — and the page's re-confirm
+ * updates the set; Remove is for a badly printed example. With a blob selected on the
+ * page, every cell says how far it is from it and each kind is ordered nearest first.
  */
 export function LibraryView({
   mushafId,
@@ -97,8 +99,6 @@ export function LibraryView({
   const [limitDraft, setLimitDraft] = useState(() => String(settings?.limit ?? ""));
   const [chosen, setChosen] = useState<{ group: string; shape: LibraryShape } | null>(null);
   const [lettersOpen, setLettersOpen] = useState(false);
-  const [listed, setListed] = useState<string | null>(null);
-  const members = useLibraryMembers(mushafId, page, listed, previewLimit);
 
   // New since the last look: when that was is kept in the browser, per mushaf. Losing
   // it only means every example shows as new once.
@@ -128,23 +128,43 @@ export function LibraryView({
       onPreviewLimit(null);
       void client.invalidateQueries({ queryKey: calibrationKeys.page(mushafId, page) });
       void client.invalidateQueries({ queryKey: calibrationKeys.libraries(mushafId) });
+      // A new LIMIT regroups the set in the background: its job shows like any other.
+      void client.invalidateQueries({ queryKey: calibrationKeys.job(mushafId) });
     },
     onError: (error: Error) => toast.error(error.message),
   });
-  const checkMutation = useMutation({
-    mutationFn: ({ shape, kind }: { shape: LibraryShape; kind: LibraryKind | null }) =>
-      setLibraryCheck(
-        mushafId,
-        shape,
-        kind && !shape.looks_right ? { role: kind.role, subtype: kind.subtype } : null,
-      ),
+  const changed = () =>
+    void client.invalidateQueries({ queryKey: calibrationKeys.libraries(mushafId) });
+  const looksRightMutation = useMutation({
+    mutationFn: (shape: LibraryShape) => setShapeLooksRight(mushafId, shape, !shape.looks_right),
     onSuccess: () => {
       setChosen((current) =>
         current
           ? { ...current, shape: { ...current.shape, looks_right: !current.shape.looks_right } }
           : current,
       );
-      void client.invalidateQueries({ queryKey: calibrationKeys.libraries(mushafId) });
+      changed();
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+  const removeMutation = useMutation({
+    mutationFn: (shape: LibraryShape) => removeLibraryShape(mushafId, shape),
+    onSuccess: () => {
+      setChosen(null);
+      changed();
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+  const restoreMutation = useMutation({
+    mutationFn: (shape: LibraryShape) => restoreLibraryShape(mushafId, shape),
+    onSuccess: changed,
+    onError: (error: Error) => toast.error(error.message),
+  });
+  const rebuildMutation = useMutation({
+    mutationFn: () => rebuildLibrary(mushafId),
+    onSuccess: ({ job }) => {
+      client.setQueryData(calibrationKeys.job(mushafId), job);
+      changed();
     },
     onError: (error: Error) => toast.error(error.message),
   });
@@ -272,10 +292,7 @@ export function LibraryView({
     kind.role === "mark" && !!type && kind.subtype === type.subtype;
   const runnerUp = (kind: LibraryKind) =>
     kind.role === "mark" && !!type?.runner_up && kind.subtype === type.runner_up;
-  const older =
-    library.draft_pages !== null &&
-    (library.draft_pages.length !== library.pages.length ||
-      library.draft_pages.some((n) => !library.pages.includes(n)));
+  const older = library.draft_version !== null && library.draft_version !== library.version;
   const changes =
     library.preview && saved.data
       ? library.kinds
@@ -288,13 +305,13 @@ export function LibraryView({
           .filter((change) => change.delta !== 0)
       : [];
 
-  const cell = (kind: LibraryKind, group: LibraryGroup, shape: LibraryShape, count?: number) => {
+  const cell = (kind: LibraryKind, group: LibraryGroup, shape: LibraryShape, row = false) => {
     const distance = distances?.[shape.key];
     // The nearest fingerprint of its kind, with a blob selected: ★ for the type that
     // answers, ² for the runner-up.
-    const first = count !== undefined && !!distances && kind.groups[0]?.id === group.id;
+    const first = row && !!distances && kind.groups[0]?.id === group.id;
     const title = [
-      `${kindName(kind)}${count && count > 1 ? ` · ×${count}` : ""}`,
+      kindName(kind),
       t("calibration.library.from", { page: shape.page_number, line: shape.line_number }),
       distance !== undefined
         ? t("calibration.library.distance", { distance: distance.toFixed(2) })
@@ -315,9 +332,6 @@ export function LibraryView({
         onClick={() => setChosen({ group: group.id, shape })}
         onOpen={() => onOpenSource(shape, place())}
       >
-        {count !== undefined && count > 1 && (
-          <Badge className="start-0 top-0 bg-ink/75 text-paper">×{count}</Badge>
-        )}
         {isNew(shape) && (
           <span
             className="absolute end-1 top-1 h-2 w-2 rounded-full bg-gold"
@@ -345,16 +359,25 @@ export function LibraryView({
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <span className="text-[13px] text-ink-2">
           {library.pages.length
-            ? t("calibration.library.asSeen", { page, count: library.pages.length })
+            ? t("calibration.library.header", {
+                version: library.version,
+                count: library.pages.length,
+              })
             : t("calibration.library.nothingConfirmed")}
-          {library.left_out !== null && ` · ${t("calibration.library.leftOut", { page })}`}
         </span>
         <span className="font-mono text-[12px] text-ink-3">
-          {t("calibration.library.counts", {
-            fingerprints: library.fingerprints,
-            examples: library.examples,
-          })}
+          {t("calibration.library.fingerprintsCount", { fingerprints: library.fingerprints })}
         </span>
+        <button
+          type="button"
+          className={SMALL}
+          disabled={library.rebuilding || rebuildMutation.isPending || !library.pages.length}
+          onClick={() => rebuildMutation.mutate()}
+          title={t("calibration.library.rebuildHelp")}
+        >
+          <RefreshCw size={14} aria-hidden="true" />
+          {t("calibration.library.rebuild")}
+        </button>
         <span className="ms-auto flex flex-wrap items-center gap-1.5">
           <label className="flex items-center gap-1.5 text-[12.5px] font-semibold text-ink">
             {t("calibration.libraryLimit")}
@@ -409,11 +432,40 @@ export function LibraryView({
         {t("calibration.libraryLimitHelp", { value: library.default_limit })}
       </p>
 
-      {older && library.draft_pages && (
+      {library.rebuilding ? (
+        <p
+          role="status"
+          className="m-0 rounded-lg border-s-4 border-lapis bg-lapis-wash px-3.5 py-2.5 text-[12.5px] leading-snug text-ink"
+        >
+          {t("calibration.library.rebuilding")}
+        </p>
+      ) : (
+        library.needs_rebuild && (
+          <div
+            role="alert"
+            className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border-s-4 border-stop bg-sunk px-3.5 py-2.5"
+          >
+            <span className="min-w-[220px] flex-1 text-[12.5px] leading-snug text-ink">
+              {t("calibration.library.needsRebuild")}
+            </span>
+            <button
+              type="button"
+              className={`${SMALL} border-lapis bg-lapis text-on-lapis hover:bg-lapis/90`}
+              disabled={rebuildMutation.isPending}
+              onClick={() => rebuildMutation.mutate()}
+            >
+              <RefreshCw size={14} aria-hidden="true" />
+              {t("calibration.library.rebuild")}
+            </button>
+          </div>
+        )
+      )}
+
+      {older && library.draft_version !== null && (
         <p className="m-0 rounded-control bg-sunk px-3 py-2 text-[12.5px] leading-snug text-ink-2">
-          {t("calibration.library.older", {
-            then: library.draft_pages.length,
-            now: library.pages.length,
+          {t("calibration.library.olderVersion", {
+            then: library.draft_version,
+            now: library.version,
           })}
         </p>
       )}
@@ -541,10 +593,7 @@ export function LibraryView({
                 {kindName(kind)}
               </span>
               <span className="text-[11.5px] tabular-nums text-ink-3">
-                {t("calibration.library.kindCount", {
-                  count: kind.groups.length,
-                  examples: kind.examples,
-                })}
+                {t("calibration.library.kindCount", { count: kind.groups.length })}
               </span>
               {kind.role === "body" && (
                 <button
@@ -561,7 +610,7 @@ export function LibraryView({
             </div>
             {open && (
               <div dir="rtl" className="flex flex-wrap items-end gap-1.5">
-                {kind.groups.map((item) => cell(kind, item, item.fingerprint, item.count))}
+                {kind.groups.map((item) => cell(kind, item, item.fingerprint, true))}
               </div>
             )}
             {open && group && chosen && (
@@ -570,10 +619,10 @@ export function LibraryView({
                 group={group}
                 shape={chosen.shape}
                 language={i18n.language}
-                members={listed === group.id ? members : null}
-                onList={() => setListed(listed === group.id ? null : group.id)}
-                onCheck={() => checkMutation.mutate({ shape: chosen.shape, kind })}
-                checking={checkMutation.isPending}
+                editable={!library.preview}
+                onLooksRight={() => looksRightMutation.mutate(chosen.shape)}
+                onRemove={() => removeMutation.mutate(chosen.shape)}
+                busy={looksRightMutation.isPending || removeMutation.isPending}
                 onOpenSource={() => onOpenSource(chosen.shape, place())}
                 cell={(shape) => cell(kind, group, shape)}
               />
@@ -581,20 +630,63 @@ export function LibraryView({
           </section>
         );
       })}
+
+      {library.removed.length > 0 && (
+        <section className="flex flex-col gap-2 border-t border-rule pt-3">
+          <span className="text-[13px] font-semibold text-ink">
+            {t("calibration.library.removed", { count: library.removed.length })}
+          </span>
+          <div dir="rtl" className="flex flex-wrap items-end gap-2">
+            {library.removed.map((shape) => (
+              <div key={shape.key} className="flex flex-col items-center gap-1">
+                <InkCell
+                  data={shape.key}
+                  imageUrl={shape.image_url}
+                  imageSize={shape.image_size}
+                  crop={shape.crop}
+                  zoom={zoom}
+                  ring={null}
+                  title={[
+                    shape.role === "body"
+                      ? t("calibration.library.letters")
+                      : shape.subtype
+                        ? typeName(shape.subtype)
+                        : t("calibration.library.untypedMarks"),
+                    t("calibration.library.from", {
+                      page: shape.page_number,
+                      line: shape.line_number,
+                    }),
+                  ].join("\n")}
+                  onOpen={() => onOpenSource(shape, place())}
+                />
+                <button
+                  type="button"
+                  className={`${SMALL} h-7`}
+                  disabled={restoreMutation.isPending}
+                  onClick={() => restoreMutation.mutate(shape)}
+                >
+                  <RotateCcw size={13} aria-hidden="true" />
+                  {t("calibration.library.restore")}
+                </button>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   );
 }
 
-/** The chosen fingerprint — or one of its members — and the rest of its group. */
+/** The chosen fingerprint — or one of the shapes kept beside it — and the rest of its group. */
 function GroupDetail({
   kindName,
   group,
   shape,
   language,
-  members,
-  onList,
-  onCheck,
-  checking,
+  editable,
+  onLooksRight,
+  onRemove,
+  busy,
   onOpenSource,
   cell,
 }: {
@@ -602,10 +694,11 @@ function GroupDetail({
   group: LibraryGroup;
   shape: LibraryShape;
   language: string;
-  members: ReturnType<typeof useLibraryMembers> | null;
-  onList: () => void;
-  onCheck: () => void;
-  checking: boolean;
+  /** A preview shows a set nobody saved: nothing on it can be changed. */
+  editable: boolean;
+  onLooksRight: () => void;
+  onRemove: () => void;
+  busy: boolean;
   onOpenSource: () => void;
   cell: (shape: LibraryShape) => ReactNode;
 }) {
@@ -618,7 +711,7 @@ function GroupDetail({
         <span className="flex min-w-0 flex-1 flex-col gap-0.5">
           <strong className="text-[14px]">
             {isFingerprint
-              ? t("calibration.library.fingerprintOf", { kind: kindName, count: group.count })
+              ? t("calibration.library.fingerprintOf", { kind: kindName })
               : t("calibration.library.memberOf", { kind: kindName })}
           </strong>
           <span className="font-mono text-[12px] text-ink-3">
@@ -633,17 +726,31 @@ function GroupDetail({
           </span>
         </span>
         <span className="flex flex-wrap items-center gap-1.5">
-          <button
-            type="button"
-            aria-pressed={shape.looks_right}
-            disabled={checking}
-            onClick={onCheck}
-            title={t("calibration.library.looksRightHelp")}
-            className={`${SMALL} ${shape.looks_right ? "border-done bg-done text-on-done hover:bg-done/90" : ""}`}
-          >
-            <Check size={14} aria-hidden="true" />
-            {t("calibration.library.looksRight")}
-          </button>
+          {editable && (
+            <>
+              <button
+                type="button"
+                aria-pressed={shape.looks_right}
+                disabled={busy}
+                onClick={onLooksRight}
+                title={t("calibration.library.looksRightHelp")}
+                className={`${SMALL} ${shape.looks_right ? "border-done bg-done text-on-done hover:bg-done/90" : ""}`}
+              >
+                <Check size={14} aria-hidden="true" />
+                {t("calibration.library.looksRight")}
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={onRemove}
+                title={t("calibration.library.removeHelp")}
+                className={SMALL}
+              >
+                <Trash2 size={14} aria-hidden="true" />
+                {t("calibration.library.remove")}
+              </button>
+            </>
+          )}
           <button
             type="button"
             onClick={onOpenSource}
@@ -667,29 +774,6 @@ function GroupDetail({
             {group.kept.map((member) => cell(member))}
           </div>
         )}
-        {group.count > 1 && (
-          <button type="button" className={`${SMALL} self-start`} onClick={onList}>
-            {members
-              ? t("calibration.library.hideAll")
-              : t("calibration.library.showAll", { count: group.count })}
-          </button>
-        )}
-        {members &&
-          (members.isLoading ? (
-            <span className="text-[12px] text-ink-3">{t("calibration.library.loading")}</span>
-          ) : members.data ? (
-            <>
-              <span className="text-[12px] text-ink-3">
-                {t("calibration.library.allFarthest", {
-                  shown: members.data.members.length,
-                  count: members.data.total,
-                })}
-              </span>
-              <div dir="rtl" className="flex flex-wrap items-end gap-1.5">
-                {members.data.members.map((member) => cell(member))}
-              </div>
-            </>
-          ) : null)}
       </div>
     </div>
   );

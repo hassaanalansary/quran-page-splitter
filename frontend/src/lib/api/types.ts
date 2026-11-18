@@ -297,7 +297,12 @@ export type ProcessJobPhase = "starting" | "rendering" | "detecting" | "saving" 
 /** Which engine a run drives: detection walks pages, calibration processes one page
  * for review — or, as `calibration_batch`, a range of pages. `words` names the word
  * runs of old, which history still lists. */
-export type ProcessJobKind = "detection" | "words" | "calibration" | "calibration_batch";
+export type ProcessJobKind =
+  | "detection"
+  | "words"
+  | "calibration"
+  | "calibration_batch"
+  | "library_rebuild";
 
 /** Why a calibration batch processes a page, or leaves it alone — see
  * backend/api/services/calibration_batch.py. `drafted` is only a plan's word: such a

@@ -671,6 +671,13 @@ export function CalibrationEditor({
     announcedRef.current = job.id;
     void queryClient.invalidateQueries({ queryKey: calibrationKeys.pages(mushafId) });
     void queryClient.invalidateQueries({ queryKey: queryKeys.activity(mushafId) });
+    if (job.kind === "library_rebuild") {
+      // A regrouped set: every library shown is stale, no draft changed.
+      void queryClient.invalidateQueries({ queryKey: calibrationKeys.libraries(mushafId) });
+      if (job.state === "completed") toast.success(t("calibration.library.rebuiltToast"));
+      else toast.error(job.error ?? t("calibration.requestFailed"));
+      return;
+    }
     if (job.kind === "calibration_batch") {
       // The page on screen may be one it processed; the meter's processing time moved.
       void queryClient.invalidateQueries({ queryKey: calibrationKeys.page(mushafId, page) });
@@ -2112,7 +2119,7 @@ export function CalibrationEditor({
                     page={page}
                     revision={doc.revision}
                     confirmedRevision={doc.confirmed_revision}
-                    profile={doc.profile}
+                    library={doc.library}
                   />
                 )}
               </Fold>
@@ -2155,13 +2162,13 @@ function PageCard({
   page,
   revision,
   confirmedRevision,
-  profile,
+  library,
 }: {
   mushafId: string;
   page: number;
   revision: number;
   confirmedRevision: number | null;
-  profile: CalibrationDocument["profile"];
+  library: CalibrationDocument["library"];
 }) {
   const { t } = useTranslation();
   return (
@@ -2179,17 +2186,18 @@ function PageCard({
         </dd>
         <dt className="text-ink-3">{t("calibration.learning")}</dt>
         <dd>
-          {profile.pages.length
+          {library.pages.length
             ? t("calibration.learningFrom", {
-                count: profile.pages.length,
-                examples: profile.examples,
-                fingerprints: profile.fingerprints ?? "—",
+                version: library.version ?? "—",
+                count: library.pages.length,
+                fingerprints: library.fingerprints ?? "—",
               })
             : t("calibration.learningNone")}
         </dd>
       </dl>
       <p className="text-[10.5px] leading-snug text-ink-3">
-        {t(profile.mode === "shadow" ? "calibration.shadowNote" : "calibration.learnedNote")}
+        {t(library.mode === "shadow" ? "calibration.shadowNote" : "calibration.learnedNote")}
+        {library.hid_own_page && ` ${t("calibration.learningHidOwnPage")}`}
       </p>
       <a
         href={exportUrl(mushafId, { page })}

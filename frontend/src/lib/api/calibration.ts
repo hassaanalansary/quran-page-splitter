@@ -18,11 +18,9 @@ import type {
   CalibrationSettings,
   CalibrationTypes,
   LibraryCompare,
-  LibraryMembers,
   LibraryShape,
-  TextRole,
 } from "../calibration/types";
-import { apiDelete, apiGet, apiJson } from "./http";
+import { apiGet, apiJson } from "./http";
 import { isJobActive, type ProcessJob } from "./types";
 
 export const calibrationKeys = {
@@ -35,8 +33,6 @@ export const calibrationKeys = {
   libraries: (id: string) => ["mushaf", id, "calibration-library"] as const,
   library: (id: string, page: number, limit: number | null) =>
     ["mushaf", id, "calibration-library", page, limit] as const,
-  members: (id: string, page: number, group: string, limit: number | null) =>
-    ["mushaf", id, "calibration-library", page, limit, "members", group] as const,
 };
 
 const pagePath = (id: string, page: number) => `/api/mushafs/${id}/pages/${page}/calibration`;
@@ -91,20 +87,39 @@ export function compareWithLibrary(
   );
 }
 
-/** Say an example looks right — as the label it is confirmed as now — or take it back. */
-export function setLibraryCheck(
-  id: string,
-  shape: Pick<LibraryShape, "snapshot_id" | "blob_id">,
-  label: { role: TextRole; subtype: string } | null,
-) {
-  const path = `/api/mushafs/${id}/calibration/library/checks`;
-  return label
-    ? apiJson<unknown>("PUT", path, {
-        snapshot_id: shape.snapshot_id,
-        blob_id: shape.blob_id,
-        ...label,
-      })
-    : apiDelete(`${path}?snapshot=${encodeURIComponent(shape.snapshot_id)}&blob=${shape.blob_id}`);
+type ShapeRef = Pick<LibraryShape, "snapshot_id" | "blob_id">;
+const libraryPath = (id: string) => `/api/mushafs/${id}/calibration/library`;
+
+/** Say a kept shape looks right, or take it back: a looks-right shape is never
+ * dropped, and a looks-right fingerprint stays one through a Rebuild. */
+export function setShapeLooksRight(id: string, shape: ShapeRef, looksRight: boolean) {
+  return apiJson<{ version: number }>("PUT", `${libraryPath(id)}/looks-right`, {
+    snapshot_id: shape.snapshot_id,
+    blob_id: shape.blob_id,
+    looks_right: looksRight,
+  });
+}
+
+/** Take a badly printed example out of the set; a Rebuild never brings it back. */
+export function removeLibraryShape(id: string, shape: ShapeRef) {
+  return apiJson<{ version: number }>("POST", `${libraryPath(id)}/remove`, {
+    snapshot_id: shape.snapshot_id,
+    blob_id: shape.blob_id,
+  });
+}
+
+/** Put a removed example back where it fits. */
+export function restoreLibraryShape(id: string, shape: ShapeRef) {
+  return apiJson<{ version: number }>("POST", `${libraryPath(id)}/restore`, {
+    snapshot_id: shape.snapshot_id,
+    blob_id: shape.blob_id,
+  });
+}
+
+/** Regroup the set from every confirmed page, in the background; the job is polled
+ * with `useCalibrationJob`. */
+export function rebuildLibrary(id: string) {
+  return apiJson<{ job: ProcessJob }>("POST", `${libraryPath(id)}/rebuild`);
 }
 
 /** Process one page for review; the job is polled with `useCalibrationJob`. */
@@ -176,9 +191,9 @@ export function useCalibrationJob(id: string, intervalMs = 1000) {
   });
 }
 
-/** The library that answers for the page, kind by kind; with `limit`, the one it
- * would be at that LIMIT (a preview: nothing saved). Seconds to build, so kept until a
- * confirmation or a setting changes it. */
+/** The mushaf's fingerprint set, kind by kind; with `limit`, the one every confirmed
+ * page would make at that LIMIT (a preview: nothing saved). Kept until a confirmation,
+ * a change in Library mode or a setting moves it on. */
 export function useCalibrationLibrary(
   id: string,
   page: number,
@@ -194,27 +209,8 @@ export function useCalibrationLibrary(
       ),
     enabled,
     staleTime: 5 * 60_000,
-  });
-}
-
-/** Every member of one group, the farthest first — asked for when a person wants all. */
-export function useLibraryMembers(
-  id: string,
-  page: number,
-  group: string | null,
-  limit: number | null,
-) {
-  return useQuery({
-    queryKey: calibrationKeys.members(id, page, group ?? "", limit),
-    queryFn: ({ signal }) =>
-      apiGet<LibraryMembers>(
-        `${pagePath(id, page)}/library/members?group=${encodeURIComponent(group ?? "")}${
-          limit === null ? "" : `&limit=${limit}`
-        }`,
-        signal,
-      ),
-    enabled: group !== null,
-    staleTime: 5 * 60_000,
+    // While a rebuild runs, ask again until the regrouped set lands.
+    refetchInterval: (query) => (query.state.data?.rebuilding ? 2_000 : false),
   });
 }
 

@@ -114,15 +114,19 @@ export type CalibrationLine = {
   words: CalibrationWord[];
 };
 
-export type CalibrationProfile = {
-  signature: string;
-  mode: "shadow" | string;
-  /** Confirmed pages the examples come from — every one but this page. */
+/** What a draft records about the fingerprint set it was read with. A draft from
+ * before the stored set has no `version`. */
+export type CalibrationLibraryRecord = {
+  version: number | null;
+  /** The confirmed pages the set held (without this page, when it was hidden). */
   pages: number[];
+  /** The kept shapes it answered with, and the fingerprints among them. */
   examples: number;
-  /** The distinct shapes the library grouped those examples into, at `limit`. */
-  fingerprints?: number;
-  limit?: number;
+  fingerprints: number | null;
+  limit: number | null;
+  /** The page was already confirmed, so it was read without its own shapes. */
+  hid_own_page: boolean;
+  mode: "shadow" | string;
 };
 
 /** A mushaf's calibration settings. `limit` is the fingerprint library's LIMIT in
@@ -161,7 +165,7 @@ export type CalibrationDocument = {
   context_stale?: boolean;
   /** A preview response: shown, never stored. */
   preview?: boolean;
-  profile: CalibrationProfile;
+  library: CalibrationLibraryRecord;
   lines: CalibrationLine[];
   context: CalibrationLine[];
   issues: string[];
@@ -296,12 +300,11 @@ export type LibraryShape = {
   distance?: number;
 };
 
-/** One fingerprint and the members kept beside it, spread nearest to farthest. */
+/** One fingerprint and the shapes kept beside it, nearest to farthest. */
 export type LibraryGroup = {
-  /** Stable for one build of the library: what the members are asked by. */
+  /** Stable while its fingerprint stays. */
   id: string;
-  count: number;
-  /** The distance of its farthest member from the fingerprint. */
+  /** The distance of its farthest kept shape from the fingerprint. */
   farthest: number;
   fingerprint: LibraryShape;
   kept: LibraryShape[];
@@ -311,11 +314,13 @@ export type LibraryGroup = {
 export type LibraryKind = {
   role: TextRole;
   subtype: string;
-  examples: number;
   groups: LibraryGroup[];
 };
 
-/** The library that answers for one page: every other confirmed page, grouped. */
+/** An example a person took out of the set, and the label it was removed as. */
+export type LibraryRemovedShape = LibraryShape & { role: TextRole; subtype: string };
+
+/** The mushaf's one stored fingerprint set, as every page sees it. */
 export type CalibrationLibrary = {
   page: number;
   /** Built at another LIMIT for the asking; nothing saved. */
@@ -324,22 +329,19 @@ export type CalibrationLibrary = {
   saved_limit: number;
   default_limit: number;
   comparison: string;
-  /** The confirmed pages it is built from. */
+  /** The set's version: every Confirm, Rebuild and change here moves it on. */
+  version: number;
+  /** The confirmed pages it holds. */
   pages: number[];
-  /** The page itself, when it is confirmed: never in its own library. */
-  left_out: number | null;
-  /** The pages the page's draft was read with, when it was processed. */
-  draft_pages: number[] | null;
-  examples: number;
+  /** The version the page's draft was read with, when it was processed. */
+  draft_version: number | null;
+  /** A check found the set disagreeing with a confirmed page. */
+  needs_rebuild: boolean;
+  /** A Rebuild is running; the set answers as it was until it lands. */
+  rebuilding: boolean;
   fingerprints: number;
+  removed: LibraryRemovedShape[];
   kinds: LibraryKind[];
-};
-
-export type LibraryMembers = {
-  group: string;
-  total: number;
-  offset: number;
-  members: LibraryShape[];
 };
 
 /** One blob of the page against the library: what it answers, and the blob's
@@ -404,7 +406,7 @@ export type CalibrationComparison = {
   page: number;
   confirmed_revision: number;
   processed_revision: number;
-  profile: CalibrationProfile;
+  library: CalibrationLibraryRecord;
   lines: {
     line_number: number;
     bbox: Rect;
