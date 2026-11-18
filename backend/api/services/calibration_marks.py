@@ -183,7 +183,7 @@ def check_rows(
 ) -> dict[str, dict[int, WordCheck]]:
     """Every labelled word of ``rows`` checked against its text: snapshot id → word id →
     what the check found. ``marks`` are the rows' marks with their descriptors, as
-    ``calibration._page_marks`` lists them; ``ijam`` false for a mushaf whose dotting the
+    ``calibration.collect_marks_of_rows`` lists them; ``ijam`` false for a mushaf whose dotting the
     text does not describe.
 
     A text type is *sure* only if the examples are not sure of another. Replayed over the

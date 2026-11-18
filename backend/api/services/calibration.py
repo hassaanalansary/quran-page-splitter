@@ -53,22 +53,17 @@ import statistics
 from collections import Counter, OrderedDict, defaultdict
 from dataclasses import asdict, dataclass, field
 from itertools import pairwise
-from typing import Any, NoReturn, cast
+from typing import Any, cast
 
 import numpy as np
 from django.db import transaction
-from django.db.models import F
-from ninja.errors import HttpError
 
 from accounts.models import User
-from api import i18n
 from api.models import (
     ActivityTypeChoices,
-    CalibrationProfile,
     CalibrationReview,
     CalibrationRevision,
     CalibrationRevisionKind,
-    CalibrationSettings,
     CalibrationSnapshot,
     Line,
     LineTypeChoices,
@@ -88,13 +83,27 @@ from api.services.calibration_cuts import (
     piece_of_word,
     set_cut_from_edit,
 )
+from api.services.calibration_errors import refuse_request
+from api.services.calibration_examples import (
+    TEXT_ROLES,
+    find_confirmed_revision_of_review,
+    find_confirmed_revisions,
+    is_mark_typed,
+    load_revision_payloads,
+)
+from api.services.calibration_settings import serialize_calibration_settings
+from api.services.fingerprint_store import (
+    describe_library_for_draft,
+    load_current_library,
+    load_current_set,
+    read_library_record,
+)
 from core.text import line_marks, paws
 from core.word_boundary import IjamMode, WordBoundaryInput, WordInput, detect_words
 from core.word_boundary.calibration import COUNT_WEIGHT, FUSION_DISCOUNT
 from core.word_boundary.engine import detect_prepared
-from core.word_boundary.examples import FEATURE_VERSION
 from core.word_boundary.ink import attach_marks
-from core.word_boundary.library import COMPARISONS, DEFAULT_COMPARISON, Library, build_library, comparison
+from core.word_boundary.library import Library
 from core.word_boundary.results import InkComponent, WordLine
 from quran.services import words as words_service
 
@@ -102,7 +111,6 @@ logger = logging.getLogger(__name__)
 
 Doc = dict[str, Any]
 
-TEXT_ROLES = ("body", "mark")
 EXCEPTIONS = ("", "mixed", "broken", "fused", "uncertain")
 #: The contested band of ``body_score``: measured bimodal with an empty gap at 7-9
 #: (see ``core.word_boundary.calibration``), so a blob in here is the evidence's own
@@ -119,63 +127,17 @@ MAX_PAWS = 8
 SMALL_LETTER_AREA = 0.4
 #: The engine's doubts about a blob that an answer from the examples or the text settles.
 ENGINE_DOUBTS = ("uncertain", "search-override", "ambiguous")
-#: Which version of the library a profile was built by — part of its identity, so a
-#: change in how the library is built is a change of profile.
-LIBRARY_VERSION = 1
-#: Refused above this: a LIMIT that groups every shape together is a typo, not a setting.
-LIMIT_CEILING = 10.0
-#: The profile mode of a draft read with the library's answers priced in. Drafts read
-#: before learning always applied say "shadow" (or "experimental", when it was opted
-#: into); a realign prices them all the same.
+#: The mode of a draft read with the library's answers priced in. Drafts read before
+#: learning always applied say "shadow" (or "experimental", when it was opted into); a
+#: realign prices them all the same.
 LEARNED = "learned"
-
-
-def serialize_calibration_settings(mushaf: Mushaf) -> Doc:
-    """The mushaf's calibration settings: the library's comparison and LIMIT (``limit``
-    is what is in force; ``default_limit`` what an unset LIMIT means for that comparison)."""
-    setting = CalibrationSettings.objects.filter(mushaf=mushaf).first()
-    method = comparison(setting.comparison if setting else None)
-    return {
-        "revision": setting.revision if setting else 0,
-        "comparison": method.name,
-        "limit": setting.library_limit if setting and setting.library_limit is not None else method.default_limit,
-        "default_limit": method.default_limit,
-    }
-
-
-@transaction.atomic
-def save_calibration_settings(mushaf: Mushaf, data: Doc, *, user: User | None) -> Doc:
-    Mushaf.objects.select_for_update().get(pk=mushaf.pk)
-    setting, _ = CalibrationSettings.objects.get_or_create(mushaf=mushaf)
-    if setting.revision != data["revision"]:
-        refuse_request("stale_revision")
-    # Every save says the whole setting: a null LIMIT is the comparison's default.
-    chosen = data.get("comparison") or setting.comparison or DEFAULT_COMPARISON
-    limit = data.get("limit")
-    if chosen not in COMPARISONS or (limit is not None and not 0 < limit <= LIMIT_CEILING):
-        refuse_request("invalid_edits", 422)
-    setting.comparison = chosen
-    setting.library_limit = limit
-    setting.revision += 1
-    setting.save(update_fields=["comparison", "library_limit", "revision", "updated_at"])
-    activity.emit(
-        mushaf,
-        ActivityTypeChoices.CALIBRATION_SAVED,
-        {"action": "settings", **serialize_calibration_settings(mushaf)},
-        actor=user,
-    )
-    return serialize_calibration_settings(mushaf)
-
-
-def refuse_request(key: str, status: int = 409, **kwargs: object) -> NoReturn:
-    raise HttpError(status, i18n.t(f"calibration_{key}", **kwargs))
 
 
 def find_review_of_page(mushaf: Mushaf, page: int) -> CalibrationReview | None:
     return CalibrationReview.objects.filter(mushaf=mushaf, page_number=page).first()
 
 
-def _follows_text(mushaf: Mushaf) -> bool:
+def does_mushaf_follow_the_text(mushaf: Mushaf) -> bool:
     """Whether the loaded text's marks are this mushaf's to be checked against.
 
     There is one text, and it is Hafs's: another riwaya reads other harakat, other small
@@ -185,196 +147,6 @@ def _follows_text(mushaf: Mushaf) -> bool:
     """
     rawi = mushaf.rawi
     return rawi is not None and rawi.name.lower() == "hafs"
-
-
-# ---------------------------------------------------------------------------
-# Examples: what the matcher is built from
-# ---------------------------------------------------------------------------
-def find_confirmed_revision_of_review(review: CalibrationReview) -> CalibrationRevision | None:
-    """The immutable revision a review's confirmation points at, if it has one."""
-    if review.confirmed_revision is None:
-        return None
-    return CalibrationRevision.objects.filter(
-        review=review, number=review.confirmed_revision, kind=CalibrationRevisionKind.CONFIRMED
-    ).first()
-
-
-def find_confirmed_revisions_except_page(mushaf: Mushaf, page: int) -> list[CalibrationRevision]:
-    """Every confirmed approval of a page other than ``page``, in page order.
-
-    Never the page's own: a page is not predicted from its own labels, which is what
-    keeps the prediction record of each page an honest test of the others. Pages
-    after it count too — what a page teaches does not depend on when it was read.
-
-    One query, and **without payloads**: a confirmation's payload is its page's whole
-    draft, and every request that asks the library something starts here only to learn
-    *which* approvals apply — the library's signature, the pages it learns from. Read
-    whole, 26 confirmed pages cost 1.3 s of JSON on every such request. Where the
-    examples themselves are needed, :func:`load_revision_payloads` reads them.
-    """
-    return list(
-        CalibrationRevision.objects.filter(
-            review__mushaf=mushaf,
-            review__confirmed_revision__isnull=False,
-            kind=CalibrationRevisionKind.CONFIRMED,
-            number=F("review__confirmed_revision"),
-        )
-        .exclude(review__page_number=page)
-        .select_related("review")
-        .defer("payload", "review__payload")
-        .order_by("review__page_number")
-    )
-
-
-def load_revision_payloads(approved: list[CalibrationRevision]) -> list[CalibrationRevision]:
-    """The same approvals, in the same order, read with their payloads — for the few
-    places that need the examples themselves, and only when nothing is cached."""
-    loaded = CalibrationRevision.objects.filter(pk__in=[revision.pk for revision in approved])
-    by_pk = {revision.pk: revision for revision in loaded.select_related("review").defer("review__payload")}
-    return [by_pk[revision.pk] for revision in approved if revision.pk in by_pk]
-
-
-def is_blob_eligible_for_library(blob: Doc) -> bool:
-    """Whether a confirmed blob may teach the matcher body-versus-mark.
-
-    Not ornaments or symbols — they are structure, not text. Not anything flagged
-    as an exception, nor ink a person erased. And not a body standing for other than
-    exactly one PAW: a broken fragment (0) or fused pair (2) is letter ink whose
-    *count* is unusual, and teaching its shape as an ordinary body would teach the
-    wrong thing.
-    """
-    if blob["role"] not in TEXT_ROLES or blob.get("exception") or blob.get("erased"):
-        return False
-    if blob["role"] == "body" and blob.get("allocations"):
-        return bool(sum(allocation["paws"] for allocation in blob["allocations"]) == 1)
-    return True
-
-
-def collect_library_examples(mushaf: Mushaf, revisions: list[CalibrationRevision]) -> list[dict]:
-    ids = {line["snapshot_id"] for revision in revisions for line in revision.payload.get("lines", [])}
-    stored = {str(s.pk): s for s in CalibrationSnapshot.objects.filter(mushaf=mushaf, pk__in=ids)}
-    samples = []
-    for revision in revisions:
-        for line in revision.payload.get("lines", []):
-            snapshot = stored.get(line["snapshot_id"])
-            if snapshot is None:
-                continue
-            features = snapshots.blob_features(snapshot)
-            for blob in line["blobs"]:
-                if not is_blob_eligible_for_library(blob) or blob["id"] not in features:
-                    continue
-                samples.append(
-                    {
-                        "sample_id": f"{revision.pk}:{snapshot.pk}:{blob['id']}",
-                        "snapshot_id": str(snapshot.pk),
-                        "blob_id": blob["id"],
-                        "page_number": snapshot.page_number,
-                        "line_number": snapshot.line_number,
-                        "role": blob["role"],
-                        "subtype": blob["subtype"] if is_mark_typed(blob) else "",
-                        "revision_id": str(revision.pk),
-                        "features": features[blob["id"]],
-                    }
-                )
-    return samples
-
-
-#: Libraries by mushaf and profile signature. A signature fixes the examples, the
-#: comparison and the LIMIT exactly, so a cached library is never stale. The mushaf is
-#: part of the key because a duplicate carries its original's profiles under the same
-#: signatures, but its own snapshots. Bounded, because each holds its kept shapes.
-_LIBRARIES: OrderedDict[tuple[str, str], Library] = OrderedDict()
-_LIBRARIES_MAX = 2
-#: One build at a time per library (:mod:`api.services.build_once`).
-LIBRARY_BUILDS = BuildOnce()
-
-
-def take_cached_library(key: tuple[str, str]) -> Library | None:
-    """The library under ``key`` if it is built, marked as the most recently used."""
-    library = _LIBRARIES.get(key)
-    if library is not None:
-        _LIBRARIES.move_to_end(key)
-    return library
-
-
-def _library_of(mushaf: Mushaf, profile: CalibrationProfile) -> Library:
-    """A profile's library, built from exactly the approvals and settings it records.
-
-    Never from whatever is approved now: a page re-confirmed since would otherwise
-    change the examples behind a prediction that was made before it. A profile from
-    before the library (it records a matcher ``config`` instead) is read with the
-    default comparison and LIMIT.
-
-    Built once: a request that arrives while the same library is being built waits
-    for that build rather than starting another.
-    """
-    key = (str(mushaf.pk), profile.signature)
-    library = take_cached_library(key)
-    if library is not None:
-        return library
-    with LIBRARY_BUILDS.lock_for(key):
-        library = take_cached_library(key)
-        if library is not None:
-            return library
-        revisions = sorted(
-            CalibrationRevision.objects.filter(review__mushaf=mushaf, pk__in=profile.payload.get("revisions", []))
-            .select_related("review")
-            .defer("review__payload"),
-            key=lambda revision: revision.review.page_number,
-        )
-        library = build_library(
-            collect_library_examples(mushaf, revisions),
-            method=comparison(profile.payload.get("comparison")),
-            limit=profile.payload.get("limit"),
-        )
-        _LIBRARIES[key] = library
-        while len(_LIBRARIES) > _LIBRARIES_MAX:
-            _LIBRARIES.popitem(last=False)
-    return library
-
-
-def profile_for(mushaf: Mushaf, page: int) -> tuple[CalibrationProfile, Library]:
-    """The profile predictions for ``page`` are made from, and its library.
-
-    The profile row records only *which* approvals and *which* settings — the
-    examples are regrouped from those approvals' snapshots on demand (seconds). The
-    same approvals and settings always hash to the same signature, and so the same row.
-    """
-    approved = find_confirmed_revisions_except_page(mushaf, page)
-    settings = serialize_calibration_settings(mushaf)
-    identity = {
-        "feature_version": FEATURE_VERSION,
-        "library": LIBRARY_VERSION,
-        "comparison": settings["comparison"],
-        "limit": settings["limit"],
-        "revisions": [str(revision.pk) for revision in approved],
-    }
-    signature = snapshots.digest(identity)
-    profile, _ = CalibrationProfile.objects.get_or_create(
-        mushaf=mushaf,
-        signature=signature,
-        defaults={
-            "payload": {**identity, "pages": [revision.review.page_number for revision in approved]},
-            "mode": "shadow",
-        },
-    )
-    return profile, _library_of(mushaf, profile)
-
-
-def _library(mushaf: Mushaf, page: int) -> Library:
-    """The library that answers for ``page``: every other confirmed page's examples."""
-    return profile_for(mushaf, page)[1]
-
-
-def _profile_summary(profile: CalibrationProfile, library: Library) -> Doc:
-    return {
-        "signature": profile.signature,
-        "mode": profile.mode,
-        "pages": profile.payload.get("pages", []),
-        "examples": library.examples,
-        "fingerprints": library.fingerprints,
-        "limit": library.limit,
-    }
 
 
 # ---------------------------------------------------------------------------
@@ -465,10 +237,10 @@ FUSION_TABLES_MAX = 2
 FUSION_BUILDS = BuildOnce()
 
 
-def load_fusion_table(mushaf: Mushaf, page: int) -> FusionTable:
-    """What every other confirmed page shows printed touching — the same pages the
-    library learns from."""
-    approved = find_confirmed_revisions_except_page(mushaf, page)
+def load_fusion_table(mushaf: Mushaf) -> FusionTable:
+    """What every confirmed page shows printed touching — the same pages the library
+    learns from."""
+    approved = find_confirmed_revisions(mushaf)
     key = (str(mushaf.pk), tuple(str(revision.pk) for revision in approved))
     table = take_cached_fusion_table(key)
     if table is not None:
@@ -580,7 +352,8 @@ def page_document(mushaf: Mushaf, page: int) -> Doc:
     )
     for key in ("lines", "context", "issues", "stream"):
         document.setdefault(key, [])
-    document.setdefault("profile", {"signature": "", "mode": "shadow", "pages": [], "examples": 0})
+    document["library"] = read_library_record(document)
+    document.pop("profile", None)
     document["processed"] = bool(document["lines"])
     document["settings"] = serialize_calibration_settings(mushaf)
     _attach_urls(mushaf, document)
@@ -773,10 +546,14 @@ def make_fresh_draft_of_page(
     system = word_inputs.counting_system_for(mushaf)
     stream = words_service.word_stream(system, start=start, end=end)
     lines = _span_lines(mushaf, start, end)
-    profile, library = profile_for(mushaf, page)
+    earlier = find_review_of_page(mushaf, page)
+    # A page already confirmed is read without its own shapes, so its first guesses
+    # stay an honest test of the other pages.
+    hid_own_page = earlier is not None and earlier.confirmed_revision is not None
+    current = load_current_set(mushaf, hiding_page=page if hid_own_page else None)
+    library = current.library
     templates = snapshots.Templates.of(mushaf)
     approved = _approved_rows(mushaf, {line.page.page_number for line in lines} - {page})
-    earlier = find_review_of_page(mushaf, page)
     before = {row["snapshot_id"]: row for row in (earlier.payload.get("lines", []) if earlier else [])}
 
     rendered: dict[Any, Any] = {}
@@ -801,7 +578,17 @@ def make_fresh_draft_of_page(
         "start": list(start),
         "end": list(end),
         "stream": [asdict(word) for word in stream],
-        "profile": _profile_summary(profile, library),
+        "library": describe_library_for_draft(
+            current.library_row,
+            library,
+            [
+                revision.review.page_number
+                for revision in find_confirmed_revisions(mushaf)
+                if not (hid_own_page and revision.review.page_number == page)
+            ],
+            hid_own_page=hid_own_page,
+            mode="shadow",
+        ),
         "lines": [row for row in rows if not row["readonly"]],
         "context": [row for row in rows if row["readonly"]],
         "issues": [],
@@ -818,10 +605,10 @@ def make_fresh_draft_of_page(
     prediction = build_revision_record(document, context=True)
     # What the text says about the ink that reading put on the line — its small waw
     # and ya — goes on the draft, never on the prediction record.
-    reread = _place_text_locks(document) if _follows_text(mushaf) else set()
+    reread = _place_text_locks(document) if does_mushaf_follow_the_text(mushaf) else set()
     # Keep the canonical, unlocked prediction immutable for honest comparisons; the
     # draft is that reading again with the library's answers priced in.
-    document["profile"]["mode"] = LEARNED
+    document["library"]["mode"] = LEARNED
     if library.examples or reread:
         document = align_document(mushaf, document, calibration_locks=True)
     alive()
@@ -853,7 +640,7 @@ def make_fresh_draft_of_page(
         activity.emit(
             mushaf,
             ActivityTypeChoices.CALIBRATION_PROCESSED,
-            {"page_number": page, "revision": review.revision, "profile": profile.signature},
+            {"page_number": page, "revision": review.revision, "library_version": current.library_row.version},
             actor=user,
         )
     return True
@@ -1038,9 +825,9 @@ def align_document(
     the writing line are locked as marks (:func:`_place_text_locks`), provisionally,
     like calibration's. Where the reading then puts one somewhere the locks did not
     expect, the span is read once more under the corrected locks. Only for a mushaf
-    that follows the text (:func:`_follows_text`).
+    that follows the text (:func:`does_mushaf_follow_the_text`).
     """
-    text_locks = text_locks and _follows_text(mushaf)
+    text_locks = text_locks and does_mushaf_follow_the_text(mushaf)
     result = _read(
         mushaf, document, calibration_locks=calibration_locks, affected_ayas=affected_ayas, text_locks=text_locks
     )
@@ -1086,7 +873,7 @@ def _read(
     units = _fused_units(rows, result["stream"])
     unit_of = {member: head for head, members in units.items() for member in members}
     # Learned, like the library's prices: where this mushaf prints letters touching.
-    weights = _short_weights(result["stream"], load_fusion_table(mushaf, result["page"])) if calibration_locks else {}
+    weights = _short_weights(result["stream"], load_fusion_table(mushaf)) if calibration_locks else {}
 
     images, inks, cut_by_row = [], [], []
     for row in rows:
@@ -2002,23 +1789,6 @@ def exceptions(document: Doc) -> list[Doc]:
 # ---------------------------------------------------------------------------
 # Mark types: a guess for every mark nobody has typed
 # ---------------------------------------------------------------------------
-def is_mark_typed(blob: Doc) -> bool:
-    """A mark a person gave a type to — the only kind that may teach a type.
-
-    A type with no ``subtype_explicit`` predates the flag, and every type then was
-    set by hand. A type the text set (``subtype_source`` "text") counts as typed: the
-    text named that mark, and a person confirms the page it is on. Flagged ink and
-    erased ink teach nothing, as for roles.
-    """
-    return (
-        blob["role"] == "mark"
-        and bool(blob.get("subtype"))
-        and (bool(blob.get("subtype_explicit", True)) or blob.get("subtype_source") == "text")
-        and not blob.get("exception")
-        and not blob.get("erased")
-    )
-
-
 def collect_typed_marks_of_draft(stored: dict[str, CalibrationSnapshot], rows: list[Doc]) -> list[Doc]:
     samples = []
     for row in rows:
@@ -2040,7 +1810,9 @@ def collect_typed_marks_of_draft(stored: dict[str, CalibrationSnapshot], rows: l
     return samples
 
 
-def _page_marks(mushaf: Mushaf, rows: list[Doc]) -> tuple[dict[str, CalibrationSnapshot], list[tuple[Doc, Doc, Any]]]:
+def collect_marks_of_rows(
+    mushaf: Mushaf, rows: list[Doc]
+) -> tuple[dict[str, CalibrationSnapshot], list[tuple[Doc, Doc, Any]]]:
     """The rows' snapshots by id, and every mark on them with its descriptor — not the
     erased ones, which are no mark of the text."""
     stored = {
@@ -2092,13 +1864,13 @@ def suggest_mark_types(mushaf: Mushaf, page: int, data: Doc) -> Doc:
         refuse_request("not_processed", 422, page=page)
     edited = apply_edits_to_draft(mushaf, review, data)
     rows = edited["lines"]
-    stored, marks = _page_marks(mushaf, rows)
+    stored, marks = collect_marks_of_rows(mushaf, rows)
     here = collect_typed_marks_of_draft(stored, rows)
-    library = _library(mushaf, page)
+    library = load_current_library(mushaf)
     index = library.with_typed(here)
     checks = (
         text_marks.check_rows(rows, edited["stream"], marks, index, ijam=mushaf.ijam_mode != "ignore")
-        if _follows_text(mushaf)
+        if does_mushaf_follow_the_text(mushaf)
         else {}
     )
     named = {
@@ -2267,11 +2039,11 @@ def _noise(library: Library, marks: list[tuple[Doc, Doc, Any]], checks: dict[str
 def apply_text_types_to_draft(mushaf: Mushaf, document: Doc) -> None:
     """Type the marks of the document's own lines that their words' text surely names —
     see :func:`calibration_marks.apply_text_types`. In place."""
-    if not _follows_text(mushaf):
+    if not does_mushaf_follow_the_text(mushaf):
         return
     rows = [row for row in document["lines"] if not row.get("readonly")]
-    stored, marks = _page_marks(mushaf, rows)
-    index = _library(mushaf, document["page"]).with_typed(collect_typed_marks_of_draft(stored, rows))
+    stored, marks = collect_marks_of_rows(mushaf, rows)
+    index = load_current_library(mushaf).with_typed(collect_typed_marks_of_draft(stored, rows))
     checks = text_marks.check_rows(rows, document["stream"], marks, index, ijam=mushaf.ijam_mode != "ignore")
     text_marks.apply_text_types(rows, checks)
 
@@ -2384,7 +2156,7 @@ def evaluation_page(mushaf: Mushaf, page: int) -> Doc:
         "page": page,
         "confirmed_revision": confirmed.number,
         "processed_revision": processed.number,
-        "profile": canonical.get("profile", {}),
+        "library": read_library_record(canonical),
         "lines": lines,
     }
 
@@ -2466,7 +2238,7 @@ def _evaluate_page(mushaf: Mushaf, page: int, processed: Doc, confirmed: Doc) ->
     released = sum("released-lock" in blob["attention"] for row in calibrated.get("lines", []) for blob in row["blobs"])
     return {
         "page": page,
-        "profile": processed.get("profile", {}),
+        "library": read_library_record(processed),
         "blobs": len(truth),
         "words": len(truth_words),
         "proposals": proposals,

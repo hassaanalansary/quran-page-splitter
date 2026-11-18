@@ -1,16 +1,17 @@
-"""Tests for the fingerprint library as Ink's Library mode shows it.
+"""Tests for the stored fingerprint set as Ink's Library mode shows it.
 
 The drawn pages of :mod:`api.tests.test_calibration_api`, with a flat bar over every
 line's second body: page 1 confirmed with the dots typed ijamDot and the bars fatha,
-page 2 processed and open. So page 2's library holds page 1's ten examples, every
-kind of them printed pixel for pixel alike: three groups, one fingerprint each.
+page 2 processed and open. So the set holds page 1's examples, every kind of them
+printed pixel for pixel alike: three groups, one fingerprint each, and no kept shapes
+beside them (a copy of a fingerprint shows nothing new).
 """
 
 from unittest import mock
 
-from api.models import CalibrationProfile, CalibrationSettings, LibraryCheck
+from api.models import CalibrationSettings, FingerprintLibrary, FingerprintShape, RemovedShape
 from api.services import calibration as calibration_service
-from api.services import calibration_library as library_service
+from api.services import fingerprint_rebuild
 from api.tests.helpers import default_user
 from api.tests.test_calibration_api import BAR, BODIES, DOT, CalibrationApiTestCase, drawn_pages
 
@@ -55,22 +56,26 @@ class LibraryTestCase(CalibrationApiTestCase):
         self.assertEqual(response.status_code, 200, response.content)
         return response.json()
 
-    def checks_url(self) -> str:
-        return f"/api/mushafs/{self.mushaf.id}/calibration/library/checks"
+    def library_url(self, action: str) -> str:
+        return f"/api/mushafs/{self.mushaf.id}/calibration/library/{action}"
+
+    def shape_body(self, shape: dict, **more) -> dict:
+        return {"snapshot_id": shape["snapshot_id"], "blob_id": shape["blob_id"], **more}
 
 
 class LibraryDocumentTests(LibraryTestCase):
-    def test_the_library_is_every_other_confirmed_page_kind_by_kind(self):
+    def test_the_library_is_the_one_set_kind_by_kind(self):
         library = self.library(2)
-        self.assertEqual((library["pages"], library["left_out"], library["preview"]), ([1], None, False))
-        self.assertEqual(library["draft_pages"], [1])
-        self.assertEqual(library["examples"], 10)  # 3 bodies, a dot and a bar, twice
-        kinds = [(kind["role"], kind["subtype"], kind["examples"]) for kind in library["kinds"]]
+        library_row = FingerprintLibrary.objects.get(mushaf=self.mushaf)
+        self.assertEqual((library["pages"], library["preview"], library["version"]), ([1], False, library_row.version))
+        self.assertEqual(library["draft_version"], library_row.version)
+        self.assertEqual((library["needs_rebuild"], library["rebuilding"], library["removed"]), (False, False, []))
+        kinds = [(kind["role"], kind["subtype"], len(kind["groups"])) for kind in library["kinds"]]
         # The typed marks first, the letters last.
-        self.assertEqual(kinds, [("mark", "fatha", 2), ("mark", "ijamDot", 2), ("body", "", 6)])
+        self.assertEqual(kinds, [("mark", "fatha", 1), ("mark", "ijamDot", 1), ("body", "", 1)])
         fatha = library["kinds"][0]["groups"]
-        self.assertEqual(len(fatha), 1)
-        self.assertEqual((fatha[0]["count"], fatha[0]["farthest"], fatha[0]["kept"]), (2, 0.0, []))
+        self.assertEqual((fatha[0]["farthest"], fatha[0]["kept"]), (0.0, []))
+        self.assertNotIn("count", fatha[0])
         shape = fatha[0]["fingerprint"]
         self.assertEqual(
             (shape["page_number"], shape["crop"]["w"], bool(shape["image_url"])), (1, BAR[1] - BAR[0], True)
@@ -78,32 +83,25 @@ class LibraryDocumentTests(LibraryTestCase):
         self.assertIsNotNone(shape["confirmed_at"])
         self.assertFalse(shape["looks_right"])
 
-    def test_a_confirmed_page_is_left_out_of_its_own_library(self):
-        library = self.library(1)
-        self.assertEqual((library["pages"], library["left_out"], library["kinds"]), ([], 1, []))
+    def test_a_confirmed_page_sees_the_same_set_its_own_shapes_included(self):
+        self.assertEqual(self.library(1)["kinds"], self.library(2)["kinds"])
 
     def test_a_preview_builds_at_another_limit_and_saves_nothing(self):
-        self.library(2)
-        profiles = CalibrationProfile.objects.count()
-        cached = dict(calibration_service._LIBRARIES)
+        before = self.library(2)
+        shapes = FingerprintShape.objects.count()
         library = self.library(2, limit=0.5)
         self.assertEqual((library["preview"], library["limit"]), (True, 0.5))
         self.assertEqual(library["saved_limit"], library["default_limit"])
-        self.assertEqual(CalibrationProfile.objects.count(), profiles)
-        self.assertEqual(dict(calibration_service._LIBRARIES), cached)
+        self.assertEqual((library["version"], FingerprintShape.objects.count()), (before["version"], shapes))
         self.assertFalse(CalibrationSettings.objects.filter(mushaf=self.mushaf, library_limit=0.5).exists())
 
     def test_a_limit_out_of_range_is_refused(self):
         self.assertEqual(self.client.get(self.url(2, "/library"), {"limit": 0}).status_code, 422)
 
-    def test_the_members_are_every_example_of_a_group_farthest_first(self):
-        letters = self.library(2)["kinds"][2]["groups"][0]
-        response = self.client.get(self.url(2, "/library/members"), {"group": letters["id"]})
-        self.assertEqual(response.status_code, 200, response.content)
-        members = response.json()
-        self.assertEqual((members["total"], len(members["members"])), (6, 6))
-        self.assertEqual({member["page_number"] for member in members["members"]}, {1})
-        self.assertEqual(self.client.get(self.url(2, "/library/members"), {"group": "body::x:1"}).status_code, 404)
+    def test_the_preview_cache_is_not_the_lookup_cache(self):
+        fingerprint_rebuild.PREVIEW_LIBRARIES.clear()
+        self.library(2, limit=0.5)
+        self.assertEqual(len(fingerprint_rebuild.PREVIEW_LIBRARIES), 1)
 
 
 class PricingTests(LibraryTestCase):
@@ -120,7 +118,7 @@ class PricingTests(LibraryTestCase):
             )
         self.assertTrue(read)
         self.assertTrue(any(call.kwargs.get("calibration_locks") for call in align.call_args_list))
-        self.assertEqual(self.document(2)["profile"]["mode"], "learned")
+        self.assertEqual(self.document(2)["library"]["mode"], "learned")
 
 
 class CompareTests(LibraryTestCase):
@@ -148,25 +146,45 @@ class CompareTests(LibraryTestCase):
         self.type_mark(body, 1, BAR[0], "fatha")
         line = self.doc["lines"][0]
         self.assertEqual(self.compare(body, line, self.blob_at(line, BAR[0]))["own"], 1)
-        # A typed mark is asked of the other pages only.
+        # A typed mark is asked of the set alone.
         self.type_mark(body, 0, BAR[0], "fatha")
         self.assertEqual(self.compare(body, line, self.blob_at(line, BAR[0]))["own"], 0)
 
 
-class LooksRightTests(LibraryTestCase):
-    def test_looks_right_counts_only_while_the_label_stands(self):
-        shape = self.library(2)["kinds"][0]["groups"][0]["fingerprint"]
-        body = {"snapshot_id": shape["snapshot_id"], "blob_id": shape["blob_id"], "role": "mark", "subtype": "fatha"}
-        self.assertEqual(self.client.put(self.checks_url(), body, content_type="application/json").status_code, 200)
-        self.assertTrue(self.library(2)["kinds"][0]["groups"][0]["fingerprint"]["looks_right"])
-        # Looked at as another type: it does not stand for this one.
-        LibraryCheck.objects.filter(mushaf=self.mushaf).update(subtype="kasra")
-        self.assertFalse(self.library(2)["kinds"][0]["groups"][0]["fingerprint"]["looks_right"])
-        query = f"?snapshot={shape['snapshot_id']}&blob={shape['blob_id']}"
-        self.assertEqual(self.client.delete(self.checks_url() + query).status_code, 200)
-        self.assertFalse(LibraryCheck.objects.filter(mushaf=self.mushaf).exists())
+class LeverTests(LibraryTestCase):
+    def fatha(self) -> dict:
+        return self.library(2)["kinds"][0]["groups"][0]["fingerprint"]
 
-    def test_the_preview_cache_is_not_the_processing_cache(self):
-        library_service.PREVIEW_LIBRARIES.clear()
-        self.library(2, limit=0.5)
-        self.assertEqual(len(library_service.PREVIEW_LIBRARIES), 1)
+    def test_looks_right_is_a_flag_on_the_shape(self):
+        shape = self.fatha()
+        url = self.library_url("looks-right")
+        response = self.client.put(url, self.shape_body(shape, looks_right=True), content_type="application/json")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertTrue(self.fatha()["looks_right"])
+        self.client.put(url, self.shape_body(shape, looks_right=False), content_type="application/json")
+        self.assertFalse(self.fatha()["looks_right"])
+
+    def test_a_removed_shape_leaves_the_set_and_can_be_restored(self):
+        shape = self.fatha()
+        response = self.client.post(self.library_url("remove"), self.shape_body(shape), content_type="application/json")
+        self.assertEqual(response.status_code, 200, response.content)
+        library = self.library(2)
+        self.assertNotIn(("mark", "fatha"), [(kind["role"], kind["subtype"]) for kind in library["kinds"]])
+        self.assertEqual([(item["key"], item["subtype"]) for item in library["removed"]], [(shape["key"], "fatha")])
+        # A Rebuild never brings it back.
+        fingerprint_rebuild.rebuild_fingerprint_set(self.mushaf)
+        self.assertNotIn(
+            shape["key"], [group["fingerprint"]["key"] for kind in self.library(2)["kinds"] for group in kind["groups"]]
+        )
+        response = self.client.post(
+            self.library_url("restore"), self.shape_body(shape), content_type="application/json"
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertFalse(RemovedShape.objects.filter(mushaf=self.mushaf).exists())
+        self.assertEqual(self.library(2)["kinds"][0]["subtype"], "fatha")
+
+    def test_a_shape_outside_the_set_is_not_found(self):
+        body = {"snapshot_id": self.doc["lines"][0]["snapshot_id"], "blob_id": 9999}
+        self.assertEqual(
+            self.client.post(self.library_url("remove"), body, content_type="application/json").status_code, 404
+        )

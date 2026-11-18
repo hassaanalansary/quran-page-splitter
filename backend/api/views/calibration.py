@@ -20,10 +20,11 @@ from api.auth import current_user
 from api.models import ProcessJobKindChoices
 from api.services import calibration as calibration_service
 from api.services import calibration_batch as batch_service
-from api.services import calibration_cuts
+from api.services import calibration_cuts, fingerprint_updates
 from api.services import calibration_library as library_service
 from api.services import calibration_progress as progress_service
 from api.services import calibration_saving as saving_service
+from api.services import calibration_settings as settings_service
 from api.services import mushaf as mushaf_service
 from api.services.jobs.cancellation import request_job_cancellation
 from api.services.jobs.kinds.calibration_batch import start_calibration_batch_job
@@ -121,7 +122,7 @@ class SettingsIn(Schema):
 @router.put("/{mushaf_id}/calibration/settings")
 def save_calibration_settings(request: HttpRequest, mushaf_id: uuid.UUID, data: SettingsIn) -> JsonResponse:
     mushaf = mushaf_service.get_mushaf(mushaf_id, user=current_user(request))
-    return _json(calibration_service.save_calibration_settings(mushaf, data.model_dump(), user=current_user(request)))
+    return _json(settings_service.save_calibration_settings(mushaf, data.model_dump(), user=current_user(request)))
 
 
 def _json(payload: dict, status: int = 200) -> JsonResponse:
@@ -260,25 +261,10 @@ def calibration_types(request: HttpRequest, mushaf_id: uuid.UUID, page_number: i
 def get_calibration_library(
     request: HttpRequest, mushaf_id: uuid.UUID, page_number: int, limit: float | None = None
 ) -> JsonResponse:
-    """The fingerprint library that answers for the page, kind by kind — or, with
-    ``limit``, the one it would be at that LIMIT. Stores nothing."""
+    """The mushaf's fingerprint set, kind by kind — or, with ``limit``, the one every
+    confirmed page would make at that LIMIT. Stores nothing."""
     mushaf = mushaf_service.get_mushaf(mushaf_id, user=current_user(request), write=False)
     return _json(library_service.serialize_library_view(mushaf, page_number, limit=limit))
-
-
-@router.get("/{mushaf_id}/pages/{page_number}/calibration/library/members")
-def calibration_library_members(
-    request: HttpRequest,
-    mushaf_id: uuid.UUID,
-    page_number: int,
-    group: str,
-    offset: int = 0,
-    count: int = library_service.MEMBERS_PAGE,
-    limit: float | None = None,
-) -> JsonResponse:
-    """Every member of one fingerprint's group, the farthest first, a page at a time."""
-    mushaf = mushaf_service.get_mushaf(mushaf_id, user=current_user(request), write=False)
-    return _json(library_service.library_members(mushaf, page_number, group, offset=offset, count=count, limit=limit))
 
 
 class CompareIn(DraftIn):
@@ -300,22 +286,39 @@ def compare_blob_with_calibration_library(
     return _json(library_service.compare_blob_with_library(mushaf, page_number, data.model_dump(mode="json")))
 
 
-class LibraryCheckIn(Schema):
-    """An example blob a person found right, as the label it is confirmed as now."""
+class LibraryShapeIn(Schema):
+    """One shape of the mushaf's fingerprint set: a confirmed page's snapshot and blob."""
 
     snapshot_id: uuid.UUID
     blob_id: int = Field(ge=0)
-    role: str
-    subtype: str = Field(default="", max_length=32)
 
 
-@router.put("/{mushaf_id}/calibration/library/checks")
-def put_library_check(request: HttpRequest, mushaf_id: uuid.UUID, data: LibraryCheckIn) -> JsonResponse:
+class LooksRightIn(LibraryShapeIn):
+    looks_right: bool
+
+
+@router.put("/{mushaf_id}/calibration/library/looks-right")
+def set_library_shape_looks_right(request: HttpRequest, mushaf_id: uuid.UUID, data: LooksRightIn) -> JsonResponse:
+    """Say a kept shape looks right, or take it back. A looks-right shape is never
+    dropped, and a looks-right fingerprint stays one through a Rebuild."""
     mushaf = mushaf_service.get_mushaf(mushaf_id, user=current_user(request))
-    return _json(library_service.set_check(mushaf, data.model_dump(mode="json")))
+    library_row = fingerprint_updates.set_shape_looks_right(
+        mushaf, str(data.snapshot_id), data.blob_id, looks_right=data.looks_right
+    )
+    return _json({"version": library_row.version})
 
 
-@router.delete("/{mushaf_id}/calibration/library/checks")
-def delete_library_check(request: HttpRequest, mushaf_id: uuid.UUID, snapshot: uuid.UUID, blob: int) -> JsonResponse:
+@router.post("/{mushaf_id}/calibration/library/remove")
+def remove_library_shape(request: HttpRequest, mushaf_id: uuid.UUID, data: LibraryShapeIn) -> JsonResponse:
+    """Take a badly printed example out of the set; a Rebuild never brings it back."""
     mushaf = mushaf_service.get_mushaf(mushaf_id, user=current_user(request))
-    return _json(library_service.clear_check(mushaf, str(snapshot), blob))
+    library_row = fingerprint_updates.remove_shape_from_library(mushaf, str(data.snapshot_id), data.blob_id)
+    return _json({"version": library_row.version})
+
+
+@router.post("/{mushaf_id}/calibration/library/restore")
+def restore_library_shape(request: HttpRequest, mushaf_id: uuid.UUID, data: LibraryShapeIn) -> JsonResponse:
+    """Put a removed example back where it fits."""
+    mushaf = mushaf_service.get_mushaf(mushaf_id, user=current_user(request))
+    library_row = fingerprint_updates.restore_removed_shape(mushaf, str(data.snapshot_id), data.blob_id)
+    return _json({"version": library_row.version})

@@ -6,6 +6,7 @@ import uuid
 import zipfile
 from copy import deepcopy
 
+import numpy as np
 from django.core.exceptions import ValidationError
 from django.core.files.base import ContentFile
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -13,16 +14,21 @@ from django.db import IntegrityError, transaction
 from ninja.errors import HttpError
 
 from api.models import (
-    CalibrationProfile,
     CalibrationReview,
     CalibrationRevision,
     CalibrationSnapshot,
+    FingerprintGroup,
+    FingerprintLibrary,
+    FingerprintShape,
     Line,
     LineWord,
     Page,
+    RemovedShape,
 )
 from api.services import bundle, cloning
+from api.services.calibration_examples import LIBRARY_VERSION
 from api.tests.helpers import MediaTestCase, bare_mushaf, make_png_bytes
+from core.word_boundary.examples import FEATURE_COUNT, FEATURE_VERSION
 
 
 class CalibrationPersistenceTests(MediaTestCase):
@@ -60,17 +66,27 @@ class CalibrationPersistenceTests(MediaTestCase):
         CalibrationRevision.objects.create(
             review=review, number=2, kind="processed", payload={"draft": payload}, request_id=uuid.uuid4()
         )
-        CalibrationProfile.objects.create(
+        confirmed = review.revisions.get(number=1)
+        library_row = FingerprintLibrary.objects.create(
             mushaf=self.mushaf,
-            signature="b" * 64,
-            mode="active",
-            payload={
-                "sample_refs": [str(snapshot.pk)],
-                "config": {"k": 3},
-                "active_approval": True,
-                "cached_index": [1, 2],
-            },
+            version=4,
+            comparison="descriptor32",
+            limit=0.27,
+            feature_version=FEATURE_VERSION,
+            library_version=LIBRARY_VERSION,
         )
+        group = FingerprintGroup.objects.create(library=library_row, role="mark", subtype="fatha")
+        FingerprintShape.objects.create(
+            library=library_row,
+            group=group,
+            snapshot=snapshot,
+            blob_id=3,
+            revision=confirmed,
+            is_fingerprint=True,
+            looks_right=True,
+            features=np.arange(FEATURE_COUNT, dtype=np.float64).tobytes(),
+        )
+        RemovedShape.objects.create(mushaf=self.mushaf, snapshot=snapshot, blob_id=5, role="mark", subtype="kasra")
         return snapshot, review
 
     def test_bulk_line_deletion_keeps_snapshots(self):
@@ -109,7 +125,7 @@ class CalibrationPersistenceTests(MediaTestCase):
         with self.assertRaises(IntegrityError), transaction.atomic():
             CalibrationRevision.objects.create(review=review, number=1, kind="processed")
 
-    def _assert_copied(self, target, source_snapshot):
+    def _assert_copied(self, target, source_snapshot, *, with_shapes=True):
         snapshot = target.calibration_snapshots.get()
         self.assertNotEqual(snapshot.pk, source_snapshot.pk)
         # The copy's own line, with the original's id kept as provenance.
@@ -130,12 +146,24 @@ class CalibrationPersistenceTests(MediaTestCase):
         self.assertEqual(review.payload["context"]["reference"]["snapshot_id"], str(snapshot.pk))
         self.assertEqual(review.revisions.get(number=1).payload["lines"][0]["snapshot_id"], str(snapshot.pk))
         self.assertEqual(review.revisions.get(number=1).kind, "confirmed")
-        profile = target.calibration_profiles.get()
-        self.assertEqual(profile.mode, "shadow")
-        self.assertEqual(profile.payload, {"sample_refs": [str(snapshot.pk)], "config": {"k": 3}})
+        # The fingerprint set itself, its ids the target's own.
+        library_row = FingerprintLibrary.objects.get(mushaf=target)
+        self.assertEqual(
+            (library_row.comparison, library_row.limit, library_row.needs_rebuild), ("descriptor32", 0.27, False)
+        )
+        self.assertGreaterEqual(library_row.version, 1)
+        removed = target.removed_shapes.get()
+        self.assertEqual((removed.snapshot_id, removed.blob_id, removed.subtype), (snapshot.pk, 5, "kasra"))
+        if with_shapes:
+            shape = library_row.shapes.get()
+            self.assertEqual((shape.snapshot_id, shape.blob_id, shape.looks_right), (snapshot.pk, 3, True))
+            self.assertEqual(shape.revision_id, review.revisions.get(number=1).pk)
+            np.testing.assert_array_equal(
+                np.frombuffer(bytes(shape.features), dtype=np.float64), np.arange(FEATURE_COUNT, dtype=np.float64)
+            )
         self.assertEqual(copied_line.words.get().end_x, 150)
 
-    def test_clone_copies_history_and_independent_files_with_shadow_profile(self):
+    def test_clone_copies_history_files_and_the_fingerprint_set(self):
         source_snapshot, _ = self._calibration()
         target = cloning.duplicate(self.mushaf, owner=self.mushaf.owner)
         self._assert_copied(target, source_snapshot)
@@ -155,7 +183,8 @@ class CalibrationPersistenceTests(MediaTestCase):
             members = {name: archive.read(name) for name in archive.namelist()}
         target = bare_mushaf("Imported", owner=self.mushaf.owner)
         bundle.apply_bundle(target.pk, SimpleUploadedFile("work.zip", data), user=target.owner)
-        self._assert_copied(target, source_snapshot)
+        # A bundle carries no features, and this line's stand-in image measures none.
+        self._assert_copied(target, source_snapshot, with_shapes=False)
 
         manifest = json.loads(members["manifest.json"])
         manifest["schema"] = "mushaf-work/v1"

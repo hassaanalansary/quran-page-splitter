@@ -28,6 +28,9 @@ from api.models import (
 )
 from api.services import activity, calibration
 from api.services import calibration_marks as text_marks
+from api.services.calibration_examples import find_confirmed_revision_of_review
+from api.services.fingerprint_store import load_current_library
+from api.services.fingerprint_updates import add_confirmed_page_to_library
 from api.services.jobs.queries import find_active_job_of_mushaf
 
 #: What a reviewer typed before the text's own type existed, and that type.
@@ -49,15 +52,15 @@ class Command(BaseCommand):
             raise CommandError("Use the full mushaf UUID.") from exc
         if find_active_job_of_mushaf(mushaf.id) is not None:
             raise CommandError("Stop processing jobs first.")
-        if not calibration._follows_text(mushaf):
+        if not calibration.does_mushaf_follow_the_text(mushaf):
             raise CommandError("The text is Hafs's; this mushaf is printed in another riwaya.")
         total = 0
         for review in CalibrationReview.objects.select_for_update().filter(mushaf=mushaf).order_by("page_number"):
             if not review.payload.get("lines"):
                 continue
-            approval = calibration.find_confirmed_revision_of_review(review)
-            draft = find_marks_the_text_retypes(mushaf, review.page_number, review.payload)
-            confirmed = find_marks_the_text_retypes(mushaf, review.page_number, approval.payload) if approval else {}
+            approval = find_confirmed_revision_of_review(review)
+            draft = find_marks_the_text_retypes(mushaf, review.payload)
+            confirmed = find_marks_the_text_retypes(mushaf, approval.payload) if approval else {}
             if not draft and not confirmed:
                 continue
             total += len(draft) + len(confirmed)
@@ -76,11 +79,12 @@ class Command(BaseCommand):
                 record = copy.deepcopy(approval.payload)
                 retype_marks_in_document(record, confirmed)
                 record["retyped_from_text"] = sorted(f"{line}:{blob}" for line, blob in confirmed)
-                CalibrationRevision.objects.create(
+                retyped = CalibrationRevision.objects.create(
                     review=review, number=review.revision, kind=CalibrationRevisionKind.CONFIRMED, payload=record
                 )
                 if review.confirmed_revision == approval.number:
                     review.confirmed_revision = review.revision
+                    add_confirmed_page_to_library(mushaf, review.page_number, retyped)
             review.payload = payload
             review.save(update_fields=["revision", "confirmed_revision", "payload", "updated_at"])
             activity.emit(
@@ -92,17 +96,16 @@ class Command(BaseCommand):
         if not options["apply"]:
             self.stdout.write(f"DRY RUN: {total} marks to retype. Nothing changed. Use --apply to retype them.")
             return
-        calibration._LIBRARIES.clear()
         self.stdout.write(self.style.SUCCESS(f"Retyped {total} marks."))
 
 
-def find_marks_the_text_retypes(mushaf: Mushaf, page: int, document: dict) -> dict[tuple[int, int], str]:
+def find_marks_the_text_retypes(mushaf: Mushaf, document: dict) -> dict[tuple[int, int], str]:
     """(line number, blob id) → the text's type, for every mark typed by its old name."""
     rows = [row for row in document.get("lines", []) if not row.get("readonly")]
     if not rows:
         return {}
-    _, marks = calibration._page_marks(mushaf, rows)
-    index = calibration._library(mushaf, page)
+    _, marks = calibration.collect_marks_of_rows(mushaf, rows)
+    index = load_current_library(mushaf)
     checks = text_marks.check_rows(rows, document["stream"], marks, index, ijam=mushaf.ijam_mode != "ignore")
     found: dict[tuple[int, int], str] = {}
     for row in rows:

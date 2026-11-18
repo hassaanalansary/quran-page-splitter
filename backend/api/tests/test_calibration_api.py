@@ -26,11 +26,11 @@ from django.test import SimpleTestCase, override_settings
 from PIL import Image, ImageDraw
 
 from api.models import (
-    CalibrationProfile,
     CalibrationReview,
     CalibrationRevision,
     CalibrationSettings,
     CalibrationSnapshot,
+    FingerprintLibrary,
     Line,
     LineTypeChoices,
     LineWord,
@@ -42,6 +42,7 @@ from api.services import bundle, cloning, coordinates, data_export, export
 from api.services import calibration as calibration_service
 from api.services import calibration_snapshots as snapshots
 from api.services import mushaf as mushaf_service
+from api.services.calibration_examples import collect_library_examples, find_confirmed_revisions
 from api.tests.helpers import ApiTestCase, default_user, make_pdf_bytes
 from quran.models import Aya, CountingSystem, Rawi, Word
 from quran.services import suras
@@ -288,7 +289,7 @@ class ProcessTests(CalibrationApiTestCase):
     def test_the_first_page_has_no_examples_to_learn_from(self):
         self.process(1)
         document = self.document(1)
-        self.assertEqual(document["profile"]["examples"], 0)
+        self.assertEqual(document["library"]["examples"], 0)
         for blob in document["lines"][0]["blobs"]:
             self.assertIsNone(blob["proposed_role"])
 
@@ -513,14 +514,15 @@ class SettingsTests(CalibrationApiTestCase):
     def test_a_learned_draft_keeps_an_unlocked_baseline(self):
         self.process(1)
         doc = self.document(1)
-        self.assertEqual(doc["profile"]["mode"], "learned")
+        self.assertEqual(doc["library"]["mode"], "learned")
         stored = CalibrationRevision.objects.get(review__mushaf=self.mushaf, kind="processed")
-        self.assertEqual(stored.payload["profile"]["mode"], "shadow")
-        self.assertEqual(stored.payload["profile"]["pages"], [])
-        profile = CalibrationProfile.objects.get(signature=doc["profile"]["signature"])
-        self.assertEqual((profile.payload["comparison"], profile.payload["limit"]), ("descriptor32", 0.27))
+        self.assertEqual(stored.payload["library"]["mode"], "shadow")
+        self.assertEqual(stored.payload["library"]["pages"], [])
+        library_row = FingerprintLibrary.objects.get(mushaf=self.mushaf)
+        self.assertEqual((library_row.comparison, library_row.limit), ("descriptor32", 0.27))
+        self.assertEqual(stored.payload["library"]["version"], library_row.version)
 
-    def test_the_limit_is_saved_checked_and_part_of_the_profile(self):
+    def test_the_limit_is_saved_checked_and_the_set_is_grouped_with_it(self):
         url = f"/api/mushafs/{self.mushaf.id}/calibration/settings"
         data = {"revision": 0, "limit": 0.4}
         response = self.client.put(url, data, content_type="application/json")
@@ -531,8 +533,8 @@ class SettingsTests(CalibrationApiTestCase):
             body = {"revision": 1, **refused}
             self.assertEqual(self.client.put(url, body, content_type="application/json").status_code, 422)
         self.process(1)
-        profile = CalibrationProfile.objects.get(signature=self.document(1)["profile"]["signature"])
-        self.assertEqual(profile.payload["limit"], 0.4)
+        self.assertEqual(FingerprintLibrary.objects.get(mushaf=self.mushaf).limit, 0.4)
+        self.assertEqual(self.document(1)["library"]["limit"], 0.4)
         # A null LIMIT is the comparison's default again.
         response = self.client.put(url, {"revision": 1, "limit": None}, content_type="application/json")
         self.assertEqual(response.json()["limit"], 0.27)
@@ -544,14 +546,12 @@ class SettingsTests(CalibrationApiTestCase):
         mark = next(b for b in body["lines"][0]["blobs"] if b["role"] == "mark")
         mark.update(subtype="fatha", subtype_explicit=False)
         self.assertEqual(self.confirm(1, body).status_code, 200)
-        samples = calibration_service.collect_library_examples(
-            self.mushaf, calibration_service.find_confirmed_revisions_except_page(self.mushaf, 2)
-        )
+        samples = collect_library_examples(self.mushaf, find_confirmed_revisions(self.mushaf))
         self.assertTrue(all(not s["subtype"] for s in samples))
 
 
 class RestartTests(CalibrationApiTestCase):
-    def test_restart_requires_apply_backs_up_and_excludes_old_confirmations(self):
+    def test_restart_requires_apply_backs_up_and_starts_from_zero(self):
         self.process(1)
         self.assertEqual(self.confirm(1, self.draft(self.document(1))).status_code, 200)
         self.assertTrue(LineWord.objects.filter(line__page__mushaf=self.mushaf, line__page__page_number=1).exists())
@@ -564,10 +564,12 @@ class RestartTests(CalibrationApiTestCase):
             backup = Path(directory) / "backup.zip"
             call_command("restart_calibration", str(self.mushaf.pk), apply=True, backup=backup, stdout=io.StringIO())
             self.assertTrue(backup.is_file())
-        review = CalibrationReview.objects.get(mushaf=self.mushaf, page_number=1)
-        self.assertIsNone(review.confirmed_revision)
-        self.assertEqual(calibration_service.find_confirmed_revisions_except_page(self.mushaf, 2), [])
-        self.assertTrue(review.revisions.filter(kind="confirmed").exists())
+        # A real zero: no review, no revision, no fingerprint set; the snapshots stay.
+        self.assertFalse(CalibrationReview.objects.filter(mushaf=self.mushaf).exists())
+        self.assertFalse(CalibrationRevision.objects.filter(review__mushaf=self.mushaf).exists())
+        self.assertFalse(FingerprintLibrary.objects.filter(mushaf=self.mushaf).exists())
+        self.assertTrue(CalibrationSnapshot.objects.filter(mushaf=self.mushaf).exists())
+        self.assertEqual(find_confirmed_revisions(self.mushaf), [])
         self.assertFalse(self.document(1)["processed"])
         # Words exist only by confirmation: a restarted page has none.
         self.assertFalse(LineWord.objects.filter(line__page__mushaf=self.mushaf, line__page__page_number=1).exists())
@@ -582,13 +584,15 @@ class LearningTests(CalibrationApiTestCase):
         self.confirm(1, self.draft(self.document(1)))
         self.process(2)
 
-    def test_the_next_page_is_predicted_from_the_confirmed_one_only(self):
+    def test_the_next_page_is_predicted_from_the_confirmed_one(self):
         document = self.document(2)
-        self.assertEqual(document["profile"]["pages"], [1])
-        self.assertEqual(document["profile"]["examples"], 8)  # 3 bodies + 1 dot, twice
-        self.assertLessEqual(document["profile"]["fingerprints"], 8)
-        profile = CalibrationProfile.objects.get(signature=document["profile"]["signature"])
-        self.assertEqual(profile.mode, "shadow")
+        self.assertEqual(document["library"]["pages"], [1])
+        self.assertFalse(document["library"]["hid_own_page"])
+        # 3 bodies + 1 dot, twice, all printed alike: a copy of a fingerprint is not kept.
+        self.assertGreater(document["library"]["examples"], 0)
+        self.assertLessEqual(document["library"]["fingerprints"], document["library"]["examples"])
+        library_row = FingerprintLibrary.objects.get(mushaf=self.mushaf)
+        self.assertEqual(document["library"]["version"], library_row.version)
         # The library answers once it knows letters and marks, and says how sure.
         blob = self.blob_at(document["lines"][0], BODIES[0][0])
         self.assertEqual(blob["proposed_role"], "body")
@@ -1105,7 +1109,8 @@ class TypeSuggestionTests(CalibrationApiTestCase):
         found = [s for s in answer["suggestions"] if s["blob_id"] in dots]
         self.assertEqual(len(found), 2)
         self.assertTrue(all((s["subtype"], s["sure"]) == ("ijamDot", True) for s in found))
-        self.assertEqual(answer["examples"], 2)
+        # The two dots are printed alike: the set keeps one, a copy shows nothing new.
+        self.assertEqual(answer["examples"], 1)
 
     def test_typing_a_mark_teaches_the_rest_of_the_page_at_once(self):
         self.process(1)

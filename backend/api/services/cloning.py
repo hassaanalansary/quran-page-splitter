@@ -33,6 +33,7 @@ from api.models import (
 )
 from api.services import activity, bundle
 from api.services import mushaf as mushaf_service
+from api.services.fingerprint_transfer import serialize_fingerprint_set
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +87,9 @@ def _copy_tree(source: Mushaf, target: Mushaf) -> None:
     bundle.write_tree(target, bundle.serialize_tree(source))
 
 
-def _copy_calibration(source: Mushaf, target: Mushaf) -> None:
+def copy_calibration(source: Mushaf, target: Mushaf) -> None:
+    """The calibration history and the fingerprint set, its shapes' features handed over
+    as they are, so a copy measures nothing."""
     snapshots = {str(snapshot.pk): snapshot for snapshot in source.calibration_snapshots.all()}
 
     def read_file(snapshot_id: str, field: str) -> bytes:
@@ -94,7 +97,9 @@ def _copy_calibration(source: Mushaf, target: Mushaf) -> None:
             data: bytes = stored.read()
         return data
 
-    bundle.restore_calibration(target, bundle.serialize_calibration(source), read_file)
+    data = bundle.serialize_calibration(source)
+    data["fingerprint_set"] = serialize_fingerprint_set(source, with_features=True)
+    bundle.restore_calibration(target, data, read_file)
 
 
 def duplicate(source: Mushaf, *, owner: User) -> Mushaf:
@@ -131,7 +136,7 @@ def duplicate(source: Mushaf, *, owner: User) -> Mushaf:
         mushaf_service._copy_thumbnail_from(source, target)
         _copy_templates(source, target)
         _copy_tree(source, target)
-        _copy_calibration(source, target)
+        copy_calibration(source, target)
 
         activity.emit(
             target,

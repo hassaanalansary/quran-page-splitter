@@ -319,6 +319,8 @@ class ProcessJobKindChoices(models.TextChoices):
     #: Many pages processed for calibration review, one after another. It counts
     #: pages, where a one-page job counts that page's lines — hence a kind of its own.
     CALIBRATION_BATCH = "calibration_batch", "Calibration pages"
+    #: The mushaf's fingerprint set regrouped from its confirmed pages.
+    LIBRARY_REBUILD = "library_rebuild", "Library rebuild"
 
 
 class ProcessJob(BaseModel):
@@ -799,59 +801,109 @@ class CalibrationSettings(BaseModel):
         db_table = "calibration_settings"
 
 
-class CalibrationProfile(BaseModel):
-    """Which approved revisions a set of predictions was made from, and how.
+class FingerprintLibrary(BaseModel):
+    """A mushaf's one stored fingerprint set: what every page's lookups read.
 
-    Small by design: ``payload`` holds the matcher settings, the feature version and
-    the ids of the approved revisions — never the examples themselves, which are
-    rebuilt from those revisions' snapshots when needed. ``signature`` hashes the
-    three, so the same inputs always name the same profile.
-
-    ``mode`` is ``shadow`` until a person approves an evaluation: predictions are
-    recorded and shown, never applied. Copies and imports always arrive in shadow.
+    Updated at every Confirm (``api.services.fingerprint_updates``), regrouped only on a
+    Rebuild (``api.services.fingerprint_rebuild``). ``version`` counts every change, so a
+    server process holding an older copy knows to reload it; 0 means never built.
+    ``comparison`` and ``limit`` are what the set was grouped with, which may trail the
+    settings while a Rebuild after a new LIMIT is still running. ``needs_rebuild`` is
+    set when a check found the set disagreeing with the confirmed pages.
     """
 
-    mushaf = models.ForeignKey(Mushaf, on_delete=models.CASCADE, related_name="calibration_profiles")
-    signature = models.CharField(max_length=64)
-    payload = models.JSONField(default=dict)
-    mode = models.CharField(max_length=16, default="shadow")
+    mushaf = models.OneToOneField(Mushaf, on_delete=models.CASCADE, related_name="fingerprint_library")
+    version = models.PositiveIntegerField(default=0)
+    comparison = models.CharField(max_length=32, default="descriptor32")
+    limit = models.FloatField()
+    feature_version = models.PositiveIntegerField(default=0)
+    library_version = models.PositiveIntegerField(default=0)
+    needs_rebuild = models.BooleanField(default=False)
 
     class Meta:
-        db_table = "calibration_profile"
-        verbose_name = "Calibration Profile"
-        verbose_name_plural = "Calibration Profiles"
-        constraints = (models.UniqueConstraint(fields=["mushaf", "signature"], name="unique_calibration_profile"),)
+        db_table = "fingerprint_library"
+        verbose_name = "Fingerprint Library"
+        verbose_name_plural = "Fingerprint Libraries"
 
     def __str__(self) -> str:
-        return f"{self.mode} profile {self.signature[:8]} of {self.mushaf_id}"
+        return f"fingerprint set v{self.version} of {self.mushaf_id}"
 
 
-class LibraryCheck(BaseModel):
-    """A person looked at one example of the fingerprint library and found it right.
+class FingerprintGroup(BaseModel):
+    """One fingerprint of a kind (a role, and a mark's type) and the shapes kept beside it."""
 
-    Kept on the *example blob* — a confirmed page's snapshot and blob id — with the
-    role and type it was confirmed as when it was looked at, never on a fingerprint:
-    the library is regrouped from the confirmed pages whenever they change, and only
-    the blob stays put. It counts while that blob is still confirmed as that role and
-    type; once its label changes it is ignored, not deleted.
-    """
-
-    mushaf = models.ForeignKey(Mushaf, on_delete=models.CASCADE, related_name="library_checks")
-    snapshot = models.ForeignKey(CalibrationSnapshot, on_delete=models.CASCADE, related_name="library_checks")
-    blob_id = models.PositiveIntegerField()
+    library = models.ForeignKey(FingerprintLibrary, on_delete=models.CASCADE, related_name="groups")
     #: body | mark.
     role = models.CharField(max_length=8)
     #: A mark's type; "" for a body and an untyped mark.
     subtype = models.CharField(max_length=32, blank=True, default="")
 
     class Meta:
-        db_table = "library_check"
-        verbose_name = "Library Check"
-        verbose_name_plural = "Library Checks"
-        constraints = (models.UniqueConstraint(fields=["mushaf", "snapshot", "blob_id"], name="unique_library_check"),)
+        db_table = "fingerprint_group"
+        verbose_name = "Fingerprint Group"
+        verbose_name_plural = "Fingerprint Groups"
 
     def __str__(self) -> str:
-        return f"looks right: {self.role} {self.subtype} blob {self.blob_id} of {self.snapshot_id}"
+        return f"{self.role} {self.subtype} group of {self.library_id}"
+
+
+class FingerprintShape(BaseModel):
+    """One confirmed blob the set keeps: a group's fingerprint, or one of the up to 11
+    shapes kept beside it.
+
+    There is no blob table: a blob is a snapshot and a blob id, its geometry in the
+    snapshot's metadata and its label in its page's confirmed revision. ``features``
+    holds its raw descriptor (``examples.feature_vector``, 1,030 float64 numbers), so a
+    lookup never measures anything.
+    """
+
+    library = models.ForeignKey(FingerprintLibrary, on_delete=models.CASCADE, related_name="shapes")
+    group = models.ForeignKey(FingerprintGroup, on_delete=models.CASCADE, related_name="shapes")
+    snapshot = models.ForeignKey(CalibrationSnapshot, on_delete=models.CASCADE, related_name="fingerprint_shapes")
+    blob_id = models.PositiveIntegerField()
+    #: The confirmation it was learned from, while that revision lasts.
+    revision = models.ForeignKey(
+        CalibrationRevision, on_delete=models.SET_NULL, null=True, blank=True, related_name="fingerprint_shapes"
+    )
+    is_fingerprint = models.BooleanField(default=False)
+    #: To its group's fingerprint, in the comparison's units.
+    distance = models.FloatField(default=0.0)
+    #: A person found it right: never dropped by the spread rule, and a looks-right
+    #: fingerprint stays a fingerprint through a Rebuild.
+    looks_right = models.BooleanField(default=False)
+    features = models.BinaryField()
+
+    class Meta:
+        db_table = "fingerprint_shape"
+        verbose_name = "Fingerprint Shape"
+        verbose_name_plural = "Fingerprint Shapes"
+        constraints = (
+            models.UniqueConstraint(fields=["library", "snapshot", "blob_id"], name="unique_fingerprint_shape"),
+        )
+
+    def __str__(self) -> str:
+        return f"blob {self.blob_id} of {self.snapshot_id} in {self.group_id}"
+
+
+class RemovedShape(BaseModel):
+    """A confirmed blob a person took out of the fingerprint set, so a Rebuild never
+    brings it back and Restore is possible. It counts while the blob is still confirmed
+    as the role and type it was removed as."""
+
+    mushaf = models.ForeignKey(Mushaf, on_delete=models.CASCADE, related_name="removed_shapes")
+    snapshot = models.ForeignKey(CalibrationSnapshot, on_delete=models.CASCADE, related_name="removed_shapes")
+    blob_id = models.PositiveIntegerField()
+    role = models.CharField(max_length=8)
+    subtype = models.CharField(max_length=32, blank=True, default="")
+
+    class Meta:
+        db_table = "removed_shape"
+        verbose_name = "Removed Shape"
+        verbose_name_plural = "Removed Shapes"
+        constraints = (models.UniqueConstraint(fields=["mushaf", "snapshot", "blob_id"], name="unique_removed_shape"),)
+
+    def __str__(self) -> str:
+        return f"removed: {self.role} {self.subtype} blob {self.blob_id} of {self.snapshot_id}"
 
 
 class ActivityEvent(BaseModel):

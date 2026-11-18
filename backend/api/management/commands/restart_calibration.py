@@ -1,28 +1,21 @@
-"""Explicit, backup-first restart of calibration; never run by an ordinary job."""
+"""Explicit, backup-first restart of calibration from a real zero; never run by an ordinary job."""
 
-import shutil
 from pathlib import Path
 from typing import Any
 
 from django.core.management.base import BaseCommand, CommandError, CommandParser
 from django.db import transaction
 
-from api.models import (
-    ActivityTypeChoices,
-    CalibrationReview,
-    CalibrationSettings,
-    LineWord,
-    Mushaf,
-    Page,
-)
-from api.services import activity, bundle, calibration
+from api.models import Mushaf
+from api.services.calibration_restart import back_up_calibration, delete_calibration_labels, list_pages_to_restart
 from api.services.jobs.queries import find_active_job_of_mushaf
 
 
 class Command(BaseCommand):
     help = (
-        "Preview a calibration restart. --apply requires --backup; the pages' words are cleared "
-        "(words exist only by confirmation) and their history is retained."
+        "Preview a calibration restart. --apply requires --backup. A real zero: every review and "
+        "revision, the fingerprint set and the pages' words go; the line snapshots, settings and "
+        "activity log stay."
     )
 
     def add_arguments(self, parser: CommandParser) -> None:
@@ -38,57 +31,25 @@ class Command(BaseCommand):
             raise CommandError("Use the full mushaf UUID.") from exc
         if find_active_job_of_mushaf(mushaf.id) is not None:
             raise CommandError("Stop processing jobs before restarting calibration.")
-        pages = {p.page_number: p for p in Page.objects.select_for_update().filter(mushaf=mushaf)}
-        plans = []
-        for review in CalibrationReview.objects.select_for_update().filter(mushaf=mushaf).order_by("page_number"):
-            if not review.payload.get("lines") and review.confirmed_revision is None:
-                continue
-            plans.append(review)
-            self.stdout.write(f"Page {review.page_number}: restart labels; clear its words.")
+        pages = list_pages_to_restart(mushaf)
+        for review in pages:
+            self.stdout.write(f"Page {review.page_number}: delete its labels, history and words.")
         if not options["apply"]:
             self.stdout.write(
-                f"DRY RUN: {len(plans)} pages. Nothing changed. Use --apply --backup <new-file.zip> to proceed."
+                f"DRY RUN: {len(pages)} pages. Nothing changed. Use --apply --backup <new-file.zip> to proceed."
             )
             return
         backup = options.get("backup")
         if backup is None:
             raise CommandError("--backup is required with --apply.")
-        if not plans:
-            self.stdout.write("No active calibration pages to restart.")
-            return
-        # Exclusive creation prevents overwriting a prior recovery point.
-        _, archive = bundle.build_mushaf_bundle(mushaf.id, user=mushaf.owner)
         try:
-            with backup.open("xb") as output:
-                archive.seek(0)
-                shutil.copyfileobj(archive, output)
+            back_up_calibration(mushaf, backup)
         except OSError as exc:
             raise CommandError(f"Backup failed; nothing reset: {exc}") from exc
-        finally:
-            archive.close()
-        for review in plans:
-            page = pages.get(review.page_number)
-            if page is None:
-                raise CommandError(f"Page {review.page_number} disappeared; transaction rolled back.")
-            LineWord.objects.filter(line__page=page).delete()
-            review.revision += 1
-            review.confirmed_revision = None
-            review.payload = {}
-            review.save(update_fields=["revision", "confirmed_revision", "payload", "updated_at"])
-            activity.emit(
-                mushaf,
-                ActivityTypeChoices.CALIBRATION_SAVED,
-                {"page_number": review.page_number, "action": "restart", "revision": review.revision},
-                actor=mushaf.owner,
-            )
-        setting = CalibrationSettings.objects.filter(mushaf=mushaf).first()
-        if setting:
-            setting.revision += 1
-            setting.save()
-        calibration._LIBRARIES.clear()
+        delete_calibration_labels(mushaf, pages, user=mushaf.owner)
         self.stdout.write(
             self.style.SUCCESS(
-                f"Restarted {len(plans)} pages. Backup: {backup.resolve()}. "
-                "Old revisions and snapshots remain archived, excluded from teaching."
+                f"Restarted {len(pages)} pages from zero. Backup: {backup.resolve()}. "
+                "The line snapshots and settings remain."
             )
         )

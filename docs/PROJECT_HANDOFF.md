@@ -207,8 +207,9 @@ npm run build          # → frontend/dist
 | `CalibrationReview` | one per page in the word engine: the draft (`payload`), `revision`, `confirmed_revision` |
 | `CalibrationRevision` | immutable records of a page: `processed` (the engine's own reading, the prediction record) and `confirmed` (an approval, the only source of examples); `legacy` for history |
 | `CalibrationSettings` | per mushaf: the library's comparison and LIMIT |
-| `CalibrationProfile` | the recipe behind a prediction: the hash of the approvals and settings it was made from |
-| `LibraryCheck` | a person looked at one example of the library and found it right |
+| `FingerprintLibrary` | the mushaf's one stored fingerprint set: its `version` (bumped by every change), the `comparison` and `limit` it was grouped with, `needs_rebuild` |
+| `FingerprintGroup` / `FingerprintShape` | a fingerprint of a kind and the up to 11 shapes kept beside it, each a snapshot + blob id with its raw features and a `looks_right` flag |
+| `RemovedShape` | a blob a person took out of the set, so a Rebuild never brings it back (and Restore can) |
 | `ActivityEvent` | the per-mushaf audit feed (created, bounds set, template saved, run finished, review saved, lines exported, calibration processed / saved / confirmed / evaluated, ...) |
 
 Media live under `backend/media/`: per mushaf in `mushafs/<id>/`, but the PDF stays
@@ -266,8 +267,8 @@ logical page number.
 | POST | `/pages/{n}/calibration/confirm` | approve the page: writes its words, makes it an example |
 | POST | `/pages/{n}/calibration/types` | type suggestions and doubts for the marks; stores nothing |
 | GET | `/pages/{n}/calibration/evaluation` | the page's readings side by side |
-| GET / POST | `/pages/{n}/calibration/library`, `/library/members`, `/library/compare` | the library that answers for the page |
-| PUT / DELETE | `/calibration/library/checks` | mark library examples as looked at |
+| GET / POST | `/pages/{n}/calibration/library`, `/library/compare` | the mushaf's fingerprint set, and one blob against it |
+| PUT / POST | `/calibration/library/looks-right`, `/library/remove`, `/library/restore` | Library mode's levers on the set |
 | POST | `/calibration/batch` | process a range of pages in one job |
 | GET / POST | `/calibration/job`, `/calibration/cancel` | poll / stop the page or batch job |
 | PUT | `/calibration/settings` | the library's comparison and LIMIT |
@@ -329,10 +330,12 @@ then corrected in Review, where the client owns the numbering.
    touched ayat again without storing; *Accept* and *Save* store the draft.
 3. **Confirm**: writes the page's `LineWord` rows and an immutable `confirmed`
    revision. Only confirmed pages are examples.
-4. **The library**: built from the confirmed pages other than the page being read
-   (never its own), recorded by a `CalibrationProfile`. It proposes body or mark for
-   every blob with a confidence, prices the reading accordingly, and guesses the mark
-   types the text leaves open.
+4. **The library**: one stored fingerprint set per mushaf
+   ([plans/fingerprint-set.md](plans/fingerprint-set.md)), updated at every Confirm and
+   read by every page, its own blobs included (a page already confirmed is processed
+   with its own shapes hidden). The draft records the set's version. It proposes body
+   or mark for every blob with a confidence, prices the reading accordingly, and
+   guesses the mark types the text leaves open.
 5. **Batch** (`calibration_batch` job, `services/jobs/kinds/calibration_batch.py`; what
    it does to each page is decided in `services/calibration_batch`): process a range of pages once the readiness
    meter says the learning has settled; the pages are then reviewed in any order.

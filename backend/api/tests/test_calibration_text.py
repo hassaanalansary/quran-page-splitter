@@ -21,6 +21,7 @@ from api.management.commands import calibration_report
 from api.models import CalibrationRevision
 from api.services import calibration as calibration_service
 from api.services import calibration_marks
+from api.services.calibration_examples import is_mark_typed
 from api.tests.test_calibration_api import BODIES, DOT, SMALL, STRAY, CalibrationApiTestCase, drawn_pages
 from core.text import line_marks, text_marks
 from core.word_boundary.mark_check import WordCheck
@@ -176,8 +177,8 @@ class SmallLetterTests(SimpleTestCase):
 
     def test_a_type_the_text_set_teaches(self):
         mark = {"role": "mark", "subtype": "smallLetter", "subtype_explicit": False, "subtype_source": "text"}
-        self.assertTrue(calibration_service.is_mark_typed(mark))
-        self.assertFalse(calibration_service.is_mark_typed({**mark, "subtype_source": ""}))
+        self.assertTrue(is_mark_typed(mark))
+        self.assertFalse(is_mark_typed({**mark, "subtype_source": ""}))
 
 
 class SmallLetterLockTests(CalibrationApiTestCase):
@@ -436,6 +437,6 @@ class FollowsTextTests(SimpleTestCase):
         def mushaf(rawi: str | None):
             return SimpleNamespace(rawi=SimpleNamespace(name=rawi) if rawi else None)
 
-        self.assertTrue(calibration_service._follows_text(mushaf("Hafs")))
-        self.assertFalse(calibration_service._follows_text(mushaf("qalun")))
-        self.assertFalse(calibration_service._follows_text(mushaf(None)))
+        self.assertTrue(calibration_service.does_mushaf_follow_the_text(mushaf("Hafs")))
+        self.assertFalse(calibration_service.does_mushaf_follow_the_text(mushaf("qalun")))
+        self.assertFalse(calibration_service.does_mushaf_follow_the_text(mushaf(None)))

@@ -43,7 +43,6 @@ from accounts.models import User
 from api import i18n
 from api.models import (
     ActivityTypeChoices,
-    CalibrationProfile,
     CalibrationReview,
     CalibrationRevision,
     CalibrationRevisionKind,
@@ -58,6 +57,7 @@ from api.models import (
     TemplateTypeChoices,
 )
 from api.services import activity
+from api.services.fingerprint_transfer import restore_fingerprint_set, serialize_fingerprint_set
 
 logger = logging.getLogger(__name__)
 
@@ -281,7 +281,7 @@ def serialize_calibration(mushaf: Mushaf) -> dict:
                 "payload": deepcopy(review.payload),
                 "revisions": [
                     {
-                        # Profiles name the approvals they were built from by id.
+                        # The fingerprint set's shapes name their confirmations by id.
                         "id": str(revision.pk),
                         "number": revision.number,
                         "kind": revision.kind,
@@ -293,10 +293,9 @@ def serialize_calibration(mushaf: Mushaf) -> dict:
             }
             for review in mushaf.calibration_reviews.order_by("page_number").prefetch_related("revisions")
         ],
-        "profiles": [
-            {"signature": profile.signature, "payload": _portable_profile(profile.payload), "mode": "shadow"}
-            for profile in mushaf.calibration_profiles.order_by("signature")
-        ],
+        # The stored fingerprint set itself, without its shapes' features: the bundled
+        # line images measure them again (api.services.fingerprint_transfer).
+        "fingerprint_set": serialize_fingerprint_set(mushaf),
     }
 
 
@@ -306,14 +305,6 @@ def _revision_kind(revision: dict) -> str:
     if kind not in CalibrationRevisionKind.values:
         raise ValueError(f"Unknown calibration revision kind {kind!r}")
     return str(kind)
-
-
-def _portable_profile(payload: dict) -> dict:
-    return {
-        key: deepcopy(value)
-        for key, value in payload.items()
-        if key not in ("index", "cached_index", "index_path", "active_approval", "approved", "approved_at", "mode")
-    }
 
 
 def remap_snapshot_ids(value: Any, ids: dict[str, str]) -> Any:
@@ -352,7 +343,7 @@ def _offset_revisions(payload: dict, offset: int) -> dict:
     return payload
 
 
-def restore_calibration(target: Mushaf, data: dict, read_file: Callable[[str, str], bytes | None]) -> None:
+def restore_calibration(target: Mushaf, data: dict, read_file: Callable[[str, str], bytes | None]) -> dict[str, str]:
     """Restore files into target-owned paths and rebind every reference to the target.
 
     Snapshot ids, revision ids and line ids are all the target's own afterwards, so
@@ -361,6 +352,7 @@ def restore_calibration(target: Mushaf, data: dict, read_file: Callable[[str, st
     importing over a worked target: imported revisions are appended after it, and
     every reference to a revision number is shifted to match.
     """
+    had_confirmed_pages = CalibrationReview.objects.filter(mushaf=target, confirmed_revision__isnull=False).exists()
     lines = {
         (page_number, line_number): str(pk)
         for page_number, line_number, pk in Line.objects.filter(page__mushaf=target).values_list(
@@ -421,12 +413,10 @@ def restore_calibration(target: Mushaf, data: dict, read_file: Callable[[str, st
             review.payload["profile"] = {**review.payload["profile"], "mode": "shadow"}
         review.save()
 
-    for entry in data.get("profiles", []):
-        CalibrationProfile.objects.update_or_create(
-            mushaf=target,
-            signature=entry["signature"],
-            defaults={"mode": "shadow", "payload": remap_snapshot_ids(_portable_profile(entry["payload"]), ids)},
-        )
+    # A bundle from before the stored set carries ``profiles`` instead: ignored, and
+    # the target's set is built from its confirmed pages at the next lookup.
+    restore_fingerprint_set(target, data.get("fingerprint_set"), ids, had_confirmed_pages=had_confirmed_pages)
+    return ids
 
 
 # --------------------------------------------------------------------------
@@ -494,7 +484,7 @@ def build_mushaf_bundle(mushaf_id: uuid.UUID, *, user: User | None) -> tuple[str
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
         archive.writestr(MANIFEST_NAME, json.dumps(manifest, ensure_ascii=False, indent=2))
         archive.writestr(PAGES_NAME, json.dumps({"pages": pages}, ensure_ascii=False))
-        if any(calibration[key] for key in ("snapshots", "reviews", "profiles")):
+        if any(calibration[key] for key in ("snapshots", "reviews")):
             archive.writestr(CALIBRATION_NAME, json.dumps(calibration, ensure_ascii=False))
             for snapshot in mushaf.calibration_snapshots.all():
                 for field in ("image", "labels"):

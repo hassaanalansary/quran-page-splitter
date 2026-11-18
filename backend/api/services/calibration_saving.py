@@ -9,6 +9,7 @@ Both read the reviewer's edits the same way::
                                               write_confirmed_words
       bump_review_revision                    bump_review_revision
                                               record_confirmed_revision
+                                              add_confirmed_page_to_library
       store_review_payload                    store_review_payload
 
 **Idempotent per ``request_id``:** a retried request that already landed returns the
@@ -22,7 +23,8 @@ under the same edits instead. The search is deterministic, so what is stored is 
 the preview showed.
 
 Only a confirmation is a source of examples: it writes the page's words (the product)
-and an immutable ``confirmed`` revision.
+and an immutable ``confirmed`` revision, and brings the page into the mushaf's stored
+fingerprint set, in the same transaction.
 """
 
 from __future__ import annotations
@@ -54,6 +56,7 @@ from api.services.calibration import (
     refuse_if_context_lines_changed,
     refuse_request,
 )
+from api.services.fingerprint_updates import add_confirmed_page_to_library
 
 Doc = dict[str, Any]
 
@@ -92,7 +95,8 @@ def confirm_page(mushaf: Mushaf, page: int, data: Doc, *, user: User | None = No
     refuse_unacknowledged_exceptions(edits.document, data)
     write_confirmed_words(edits)
     bump_review_revision(edits)
-    record_confirmed_revision(edits)
+    revision = record_confirmed_revision(edits)
+    add_confirmed_page_to_library(mushaf, page, revision)
     store_review_payload(mushaf, page, edits, activity_type=ActivityTypeChoices.CALIBRATION_CONFIRMED, user=user)
     return page_document(mushaf, page)
 

@@ -39,6 +39,7 @@ from api.models import (
     ProcessJobStateChoices,
 )
 from api.services import calibration
+from api.services.calibration_examples import TEXT_ROLES, find_confirmed_revision_of_review
 from core.text import SMALL_LETTERS
 
 Doc = dict[str, Any]
@@ -91,7 +92,7 @@ def measure(mushaf: Mushaf, *, latest: int | None = None) -> list[Doc]:
         else list(reviews.order_by("-page_number")[:latest])[::-1]
     )
     for review in chosen:
-        confirmed = calibration.find_confirmed_revision_of_review(review)
+        confirmed = find_confirmed_revision_of_review(review)
         if confirmed is None:
             continue
         processed = CalibrationRevision.objects.filter(
@@ -117,7 +118,7 @@ def _page(page: int, processed: CalibrationRevision, confirmed: CalibrationRevis
     final = {
         (row["snapshot_id"], blob["id"]): blob for row in confirmed.payload.get("lines", []) for blob in row["blobs"]
     }
-    text = {key for key, blob in final.items() if blob["role"] in calibration.TEXT_ROLES and not blob.get("erased")}
+    text = {key for key, blob in final.items() if blob["role"] in TEXT_ROLES and not blob.get("erased")}
     engine = learned = learned_wrong = 0
     for row in processed.payload.get("lines", []):
         for blob in row["blobs"]:
@@ -126,7 +127,7 @@ def _page(page: int, processed: CalibrationRevision, confirmed: CalibrationRevis
                 continue
             right = final[key]["role"]
             engine += blob["role"] != right
-            if blob.get("proposed_role") in calibration.TEXT_ROLES:
+            if blob.get("proposed_role") in TEXT_ROLES:
                 learned += 1
                 learned_wrong += blob["proposed_role"] != right
     truth = calibration._placements(confirmed.payload.get("lines", []), page)

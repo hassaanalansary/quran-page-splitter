@@ -9,6 +9,7 @@ from ninja.errors import HttpError
 from PIL import Image
 
 from api.services import calibration, export
+from api.services.calibration_examples import is_blob_eligible_for_library, is_mark_typed
 from core.word_boundary.ink import Blob
 
 WORD = {"id": 1, "text": "بِهِۦ", "paws": 1, "aya": "2:102"}
@@ -68,8 +69,8 @@ class MergeTests(SimpleTestCase):
 class SkipTests(SimpleTestCase):
     def test_erased_ink_teaches_nothing_and_asks_nothing(self):
         erased = draft_blob(erased=True, exception="")
-        self.assertFalse(calibration.is_blob_eligible_for_library(erased))
-        self.assertFalse(calibration.is_mark_typed(erased))
+        self.assertFalse(is_blob_eligible_for_library(erased))
+        self.assertFalse(is_mark_typed(erased))
         row = {"line_number": 1, "blobs": [draft_blob(erased=True)], "words": [], "status": "exact"}
         self.assertEqual(calibration.exceptions({"lines": [row]}), [])
 

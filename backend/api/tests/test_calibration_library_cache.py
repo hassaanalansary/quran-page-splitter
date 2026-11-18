@@ -1,11 +1,12 @@
-"""What keeps Ink's requests to the fingerprint library short.
+"""What keeps Ink's requests to the fingerprint set short.
 
-Three costs that grew with every confirmed page:
+Costs that grew with every confirmed page:
 
-* learning *which* approvals a page's library comes from read every confirmation's
-  whole payload, on every request;
-* requests arriving while a library was being built each built another copy;
+* learning *which* approvals there are read every confirmation's whole payload;
+* requests arriving while the set was being loaded each loaded another copy;
 * every build measured most confirmed blobs' descriptors again.
+
+The set itself is stored now (``test_fingerprint_library``); these keep the rest short.
 """
 
 import threading
@@ -15,9 +16,10 @@ from unittest import mock
 import numpy as np
 from django.test import SimpleTestCase
 
-from api.services import calibration as calibration_service
 from api.services import calibration_snapshots as snapshots
+from api.services import fingerprint_store
 from api.services.build_once import BuildOnce
+from api.services.calibration_examples import find_confirmed_revisions, load_revision_payloads
 from api.services.calibration_feature_files import saved_features_path
 from api.tests.test_calibration_api import CalibrationApiTestCase
 
@@ -34,21 +36,20 @@ class ConfirmedPageTestCase(CalibrationApiTestCase):
 
 class ApprovedTests(ConfirmedPageTestCase):
     def test_approvals_are_read_without_their_payloads(self):
-        [approval] = calibration_service.find_confirmed_revisions_except_page(self.mushaf, 2)
+        [approval] = find_confirmed_revisions(self.mushaf)
         self.assertIn("payload", approval.get_deferred_fields())
         self.assertEqual(approval.review.page_number, 1)
-        self.assertEqual(calibration_service.find_confirmed_revisions_except_page(self.mushaf, 1), [])
 
     def test_payloads_are_read_where_the_examples_are_needed(self):
-        approved = calibration_service.find_confirmed_revisions_except_page(self.mushaf, 2)
-        [loaded] = calibration_service.load_revision_payloads(approved)
+        approved = find_confirmed_revisions(self.mushaf)
+        [loaded] = load_revision_payloads(approved)
         self.assertEqual(loaded.pk, approved[0].pk)
         self.assertNotIn("payload", loaded.get_deferred_fields())
         self.assertTrue(loaded.payload["lines"])
 
-    def test_the_library_and_its_signature_are_what_they_were(self):
-        profile, library = calibration_service.profile_for(self.mushaf, 2)
-        self.assertEqual(profile.payload["pages"], [1])
+    def test_the_set_holds_the_confirmed_page(self):
+        library = fingerprint_store.load_current_library(self.mushaf)
+        self.assertEqual({ref["page_number"] for ref in library.refs}, {1})
         self.assertGreater(library.examples, 0)
 
 
@@ -86,35 +87,35 @@ class BuildOnceTests(SimpleTestCase):
         self.assertIs(builds.lock_for("a"), builds.lock_for("a"))
         self.assertIsNot(builds.lock_for("a"), builds.lock_for("b"))
 
-    def test_requests_arriving_during_a_build_wait_for_it(self):
-        # Four requests for one page's library at once: one build, one library.
+    def test_requests_arriving_during_a_load_wait_for_it(self):
+        # Four requests for the same version at once: one load, one library.
         calls = []
 
-        def slow_build(samples, *, method, limit):
+        def slow_load(library_row):
             calls.append(1)
             time.sleep(0.2)
-            return object()
+            return mock.Mock(groups=[])
 
-        profile = mock.Mock(signature="same", payload={"revisions": [], "comparison": None, "limit": None})
-        mushaf = mock.Mock(pk="mushaf")
-        revisions = mock.MagicMock()
-        revisions.objects.filter.return_value.select_related.return_value.defer.return_value = []
+        library_row = mock.Mock(pk="set", version=7, limit=0.27, comparison="descriptor32")
         found = []
-        calibration_service._LIBRARIES.clear()
+        fingerprint_store.CURRENT_LIBRARIES.clear()
         with (
-            mock.patch.object(calibration_service, "build_library", side_effect=slow_build),
-            mock.patch.object(calibration_service, "collect_library_examples", return_value=[]),
-            mock.patch.object(calibration_service, "CalibrationRevision", revisions),
+            mock.patch.object(fingerprint_store, "load_stored_groups", side_effect=slow_load),
+            mock.patch.object(fingerprint_store, "build_library_from_groups", side_effect=lambda *args: object()),
         ):
             threads = [
-                threading.Thread(target=lambda: found.append(calibration_service._library_of(mushaf, profile)))
+                threading.Thread(
+                    target=lambda: found.append(
+                        fingerprint_store.load_library_version(mock.Mock(pk="mushaf"), library_row, None)
+                    )
+                )
                 for _ in range(4)
             ]
             for thread in threads:
                 thread.start()
             for thread in threads:
                 thread.join()
-        calibration_service._LIBRARIES.clear()
+        fingerprint_store.CURRENT_LIBRARIES.clear()
         self.assertEqual(len(calls), 1)
         self.assertEqual(len(found), 4)
         self.assertTrue(all(library is found[0] for library in found))

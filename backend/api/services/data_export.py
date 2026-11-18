@@ -82,6 +82,7 @@ from api.services import calibration_marks as text_marks
 from api.services import calibration_snapshots as snapshots
 from api.services import mushaf as mushaf_service
 from api.services.calibration_cuts import cut_fits_blob, piece_of_word, word_of_each_cut_pixel
+from api.services.calibration_examples import TEXT_ROLES
 from api.services.export import _safe_filename
 from quran.models import Aya
 
@@ -297,7 +298,7 @@ def _blob(blob: Doc, place: _Placement, ornaments: dict[int, str], symbols: dict
         "box": place.rect(blob["x"], blob["y"], blob["w"], blob["h"]),
         "area": blob["area"],
     }
-    if role in calibration.TEXT_ROLES:
+    if role in TEXT_ROLES:
         allocations = blob.get("allocations") or []
         entry["words"] = [allocation["word_id"] for allocation in allocations]
         if role == "body":
@@ -327,7 +328,7 @@ def _ink_boxes(row: Doc, words: dict[int, Doc]) -> dict[int, list[int]]:
     own piece where a person cut it, and is cut at the word's box where nobody did."""
     boxes: dict[int, list[int]] = {}
     for blob in row["blobs"]:
-        if blob["role"] not in calibration.TEXT_ROLES:
+        if blob["role"] not in TEXT_ROLES:
             continue
         owners = [allocation["word_id"] for allocation in blob.get("allocations") or []]
         cut = cut_fits_blob(blob)
@@ -419,7 +420,7 @@ def _maps(row: Doc, snapshot: CalibrationSnapshot, place: _Placement, words: lis
     lookup = np.zeros(int(ids.max()) + 1, dtype=np.int32)
     shared: list[tuple[int, list[int]]] = []
     for blob in row["blobs"]:
-        if blob["role"] not in calibration.TEXT_ROLES or blob["id"] >= lookup.size:
+        if blob["role"] not in TEXT_ROLES or blob["id"] >= lookup.size:
             continue
         owners = [a["word_id"] for a in blob.get("allocations") or [] if a["word_id"] in position]
         if len(owners) == 1:
@@ -568,7 +569,7 @@ def _page(context: _Context, page: Page, *, images: bool, maps: bool) -> tuple[D
         ornaments, symbols = _structure(snapshot)
         blob_ids: dict[int, list[int]] = {}
         for blob in row["blobs"] if row is not None else []:
-            if blob["role"] in calibration.TEXT_ROLES:
+            if blob["role"] in TEXT_ROLES:
                 for allocation in blob.get("allocations") or []:
                     blob_ids.setdefault(allocation["word_id"], []).append(blob["id"])
 
