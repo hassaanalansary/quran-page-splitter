@@ -5,6 +5,9 @@ reviewed. A batch processes a whole range in the background, one page after anot
 and the pages are reviewed and confirmed afterwards in any order. The readiness meter
 (:mod:`api.services.calibration_progress`) says when that stops costing anything.
 
+This module decides what a batch does to each page. The job that walks the range and
+does it is :mod:`api.services.jobs.kinds.calibration_batch`.
+
 What a batch does to each page of its range::
 
     no draft yet                              processed               new
@@ -31,28 +34,14 @@ learning has grown since.
 
 from __future__ import annotations
 
-import logging
-import time
 from typing import Any
 
 from django.db.models import Count, Q
 from ninja.errors import HttpError
 
-from accounts.models import User
 from api import i18n
-from api.models import (
-    CalibrationReview,
-    LineTypeChoices,
-    Mushaf,
-    Page,
-    ProcessJob,
-    ProcessJobKindChoices,
-    ProcessJobStateChoices,
-    Segment,
-)
-from api.services import calibration, calibration_progress, jobs
-
-logger = logging.getLogger(__name__)
+from api.models import CalibrationReview, LineTypeChoices, Mushaf, Page, Segment
+from api.services import calibration, calibration_progress
 
 Doc = dict[str, Any]
 
@@ -65,7 +54,7 @@ SKIP = ("current", "confirmed", "not_reviewed", "not_numbered", "missing")
 
 def _numbered(mushaf: Mushaf, first: int, last: int) -> set[int]:
     """The pages whose text lines' segments all carry an aya — the ones a span can be
-    read for (``calibration._span_for_page`` refuses the rest)."""
+    read for (``calibration.find_aya_span_of_page`` refuses the rest)."""
     counts = (
         Segment.objects.filter(
             line__page__mushaf=mushaf,
@@ -154,44 +143,7 @@ def plan(mushaf: Mushaf, first: int, last: int, *, refresh: bool = False) -> Doc
     }
 
 
-def start(
-    mushaf: Mushaf,
-    first: int,
-    last: int,
-    *,
-    refresh: bool = False,
-    user: User | None = None,
-    inline: bool | None = None,
-) -> ProcessJob:
-    """Start processing ``first``..``last`` as one background job. Refuses a range in
-    which there is nothing it could process."""
-    planned = plan(mushaf, first, last, refresh=refresh)
-    if not planned["process"] and not planned["drafted"]:
-        raise HttpError(422, i18n.t("calibration_batch_nothing", first=first, last=last))
-    report: Doc = {
-        "first": first,
-        "last": last,
-        "refresh": refresh,
-        "planned": planned["process"],
-        "processed": [],
-        "skipped": {},
-        "failed": [],
-        "busy_seconds": 0.0,
-    }
-    return jobs.start_pages(
-        mushaf,
-        kind=ProcessJobKindChoices.CALIBRATION_BATCH,
-        first_page=first,
-        last_page=last,
-        total=last - first + 1,
-        runner=_runner(mushaf, refresh, user),
-        user=user,
-        inline=inline,
-        report=report,
-    )
-
-
-def _reach(mushaf: Mushaf, number: int, *, refresh: bool) -> tuple[str, int]:
+def decide_batch_page_when_reached(mushaf: Mushaf, number: int, *, refresh: bool) -> tuple[str, int]:
     """Decide one page as the batch reaches it: the reason, and the draft revision it
     would be processed over."""
     page = Page.objects.filter(mushaf=mushaf, page_number=number).only("page_number", "reviewed").first()
@@ -202,61 +154,6 @@ def _reach(mushaf: Mushaf, number: int, *, refresh: bool) -> tuple[str, int]:
     if reason != "drafted":
         return reason, revision
     stored = CalibrationReview.objects.get(mushaf=mushaf, page_number=number)
-    current = calibration._sources_current(mushaf, stored.payload.get("lines", [])) and calibration._context_current(
-        mushaf, stored.payload.get("context", [])
-    )
+    lines_current = calibration.are_line_snapshots_current(mushaf, stored.payload.get("lines", []))
+    current = lines_current and calibration.are_context_lines_current(mushaf, stored.payload.get("context", []))
     return ("current" if current else "stale"), revision
-
-
-def _runner(mushaf: Mushaf, refresh: bool, user: User | None) -> Any:
-    def run(job: ProcessJob) -> None:
-        report: Doc = dict(job.report or {})
-        cancelled = False
-        for number in range(job.page_range_start, job.page_range_end + 1):
-            # Settled under it means another run may hold the mushaf now: stop quietly.
-            if jobs.is_settled(job.id):
-                return
-            if jobs.cancel_requested(job.id):
-                cancelled = True
-                break
-            reason, revision = _reach(mushaf, number, refresh=refresh)
-            if reason not in PROCESS:
-                report["skipped"].setdefault(reason, []).append(number)
-                jobs._touch(job.id, current_page=number, report=report)
-                continue
-            jobs._touch(job.id, current_page=number, phase="detecting", lines_done=0, report=report)
-            began = time.monotonic()
-            try:
-                done = calibration.process_page(
-                    mushaf,
-                    number,
-                    expected_revision=revision,
-                    user=user,
-                    progress=lambda count: jobs._touch(job.id, lines_done=count),
-                    cancelled=lambda: jobs.cancel_requested(job.id),
-                )
-            except HttpError as refused:
-                # Changed between deciding and storing: edited, re-reviewed, renumbered.
-                report["failed"].append({"page": number, "error": str(refused)})
-                jobs._touch(job.id, report=report)
-                continue
-            except Exception as failure:  # one page must not cost the rest of the range
-                logger.exception("Calibration batch %s: page %s failed", job.id, number)
-                report["failed"].append({"page": number, "error": str(failure) or failure.__class__.__name__})
-                jobs._touch(job.id, report=report)
-                continue
-            if not done:
-                cancelled = True
-                break
-            report["processed"].append(number)
-            report["busy_seconds"] = round(report.get("busy_seconds", 0.0) + time.monotonic() - began, 1)
-            logger.info("Calibration batch %s: page %s processed (%s)", job.id, number, reason)
-            jobs._touch(job.id, pages_saved=len(report["processed"]), report=report)
-        jobs.settle(
-            job.id,
-            ProcessJobStateChoices.CANCELLED if cancelled else ProcessJobStateChoices.COMPLETED,
-            pages_saved=len(report["processed"]),
-            report=report,
-        )
-
-    return run

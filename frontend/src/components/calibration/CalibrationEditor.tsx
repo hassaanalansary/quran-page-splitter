@@ -33,7 +33,8 @@ import {
   compareWithLibrary,
   confirmCalibration,
   exportUrl,
-  isJobRunning,
+  isJobActive,
+  isJobQueued,
   isJobSettled,
   previewCalibration,
   processCalibration,
@@ -45,6 +46,7 @@ import {
   useCalibrationPages,
   useProcessedPages,
 } from "@/lib/api";
+import { queuedJobLabel } from "@/lib/jobQueue";
 import {
   NO_SELECTION,
   acceptExpected,
@@ -352,7 +354,7 @@ export function CalibrationEditor({
   }, [doc, page, rebuild]);
 
   // ── derived ────────────────────────────────────────────────────────────────
-  const running = isJobRunning(job);
+  const running = isJobActive(job);
   /** The latest job when it is a batch of pages rather than one page. */
   const batch = job?.kind === "calibration_batch" ? job : null;
   const processingHere = running && !batch && job?.current_page === page;
@@ -658,7 +660,7 @@ export function CalibrationEditor({
   // Announce a settled run once, and fetch what it stored.
   useEffect(() => {
     if (!job) return;
-    if (isJobRunning(job)) {
+    if (isJobActive(job)) {
       watchedRef.current = job.id;
       if (job.current_page) jobPageRef.current = job.current_page;
       return;
@@ -1238,10 +1240,17 @@ export function CalibrationEditor({
     ) : processingHere && job ? (
       center(
         <>
-          <p className="text-[13px] text-ink-2">{t("calibration.processStarted", { page })}</p>
-          <div className="w-64">
-            <WordRunProgress job={job} />
-          </div>
+          {isJobQueued(job) ? (
+            // Nothing has run yet: say where the job is in the queue, not a 0% bar.
+            <p className="text-[13px] text-ink-2">{queuedJobLabel(t, job)}</p>
+          ) : (
+            <>
+              <p className="text-[13px] text-ink-2">{t("calibration.processStarted", { page })}</p>
+              <div className="w-64">
+                <WordRunProgress job={job} />
+              </div>
+            </>
+          )}
           <button
             type="button"
             className={`${OUTLINE} h-8 px-3`}

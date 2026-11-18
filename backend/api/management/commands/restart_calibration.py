@@ -14,9 +14,9 @@ from api.models import (
     LineWord,
     Mushaf,
     Page,
-    ProcessJob,
 )
 from api.services import activity, bundle, calibration
+from api.services.jobs.queries import find_active_job_of_mushaf
 
 
 class Command(BaseCommand):
@@ -36,7 +36,7 @@ class Command(BaseCommand):
             mushaf = Mushaf.objects.select_for_update().get(pk=options["mushaf_id"])
         except (Mushaf.DoesNotExist, ValueError) as exc:
             raise CommandError("Use the full mushaf UUID.") from exc
-        if ProcessJob.objects.filter(mushaf=mushaf, state="running").exists():
+        if find_active_job_of_mushaf(mushaf.id) is not None:
             raise CommandError("Stop processing jobs before restarting calibration.")
         pages = {p.page_number: p for p in Page.objects.select_for_update().filter(mushaf=mushaf)}
         plans = []

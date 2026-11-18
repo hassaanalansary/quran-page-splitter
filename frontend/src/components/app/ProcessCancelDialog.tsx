@@ -2,7 +2,7 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { useTranslation } from "react-i18next";
 
 import { DIALOG_PRIMARY, SatrDialogFrame } from "@/components/app/SatrDialog";
-import type { ProcessJob } from "@/lib/api";
+import { isJobQueued, type ProcessJob } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -21,6 +21,8 @@ type Props = {
  * with the numbers in view. */
 export function ProcessCancelDialog({ open, onOpenChange, onConfirm, job }: Props) {
   const { t } = useTranslation();
+  // A queued job has done nothing: there is no ledger to show, only that it leaves the queue.
+  const queued = isJobQueued(job);
   const done = job.pages_saved;
   const remaining = Math.max(0, job.total - done);
   const resumeFrom = job.current_page ?? job.page_range_start + job.pages_saved;
@@ -32,20 +34,24 @@ export function ProcessCancelDialog({ open, onOpenChange, onConfirm, job }: Prop
           {t("process.cancelConfirmTitle")}
         </DialogPrimitive.Title>
         <DialogPrimitive.Description className="m-0 text-[13.5px] leading-normal text-ink-2">
-          {t("process.cancelConfirmIntro")}
+          {queued ? t("process.cancelQueuedIntro") : t("process.cancelConfirmIntro")}
         </DialogPrimitive.Description>
-        <div className="grid grid-cols-3 gap-2">
-          <Tile value={String(done)} label={t("process.cancelConfirmSaved")} tone="done" />
-          <Tile value={String(remaining)} label={t("process.cancelConfirmRemaining")} />
-          <Tile
-            value={t("process.pageShort", { page: resumeFrom })}
-            label={t("process.cancelConfirmResume")}
-            tone="lapis"
-          />
-        </div>
-        <p className="m-0 text-[12.5px] leading-normal text-ink-3">
-          {t("process.cancelConfirmBody", { page: resumeFrom })}
-        </p>
+        {!queued && (
+          <>
+            <div className="grid grid-cols-3 gap-2">
+              <Tile value={String(done)} label={t("process.cancelConfirmSaved")} tone="done" />
+              <Tile value={String(remaining)} label={t("process.cancelConfirmRemaining")} />
+              <Tile
+                value={t("process.pageShort", { page: resumeFrom })}
+                label={t("process.cancelConfirmResume")}
+                tone="lapis"
+              />
+            </div>
+            <p className="m-0 text-[12.5px] leading-normal text-ink-3">
+              {t("process.cancelConfirmBody", { page: resumeFrom })}
+            </p>
+          </>
+        )}
       </div>
       <div className="flex flex-wrap justify-end gap-2 bg-sheet px-[22px] py-3">
         <button

@@ -84,19 +84,71 @@ How both engines work, step by step, is in [docs/ENGINES_FLOW.md](docs/ENGINES_F
 - **Media**: the PDFs, template crops, snapshots and exported PNGs live under
   `backend/media/`. Page images are rendered from the PDF on demand.
 - **Jobs**: line processing and word processing run as background jobs that the
-  browser polls; one job per mushaf at a time, and a job whose worker stops
-  reporting is marked interrupted.
+  browser polls. A **Celery worker** runs them, with Redis as the queue; without
+  Redis they run on a thread of the web process. When every worker slot is busy, a
+  job waits its turn and the screen says how many are ahead of it. One job per
+  mushaf at a time, and a job whose worker stops reporting is marked interrupted.
+  See `backend/api/services/jobs/__init__.py` for the flow.
 
-In production Django serves the built SPA, `/api`, `/media` and the sign-in paths
-from one origin. In development Vite (`:5173`) proxies them to Django (`:8000`).
+In development Vite (`:5173`) proxies `/api`, `/media` and the sign-in paths to
+Django (`:8000`). In production nginx serves the built SPA and `/media`, and passes
+the rest to Django, behind Traefik for HTTPS: see [DEPLOY.md](DEPLOY.md).
 
-## Requirements
+## Run it with Docker (Linux)
 
-- Python `>= 3.13` and [`uv`](https://docs.astral.sh/uv/)
-- Node.js and npm
-- PostgreSQL (recommended; SQLite works without it)
+The usual way. Docker runs Django, the Celery worker, Postgres 18 and Redis; Vite
+runs on your machine.
 
-## Install & run
+You need Docker Engine with the Compose plugin, [`just`](https://just.systems),
+and Node.js with npm.
+
+```bash
+just build                   # once, and again when backend/uv.lock changes
+just up                      # starts everything; Django migrates on start
+just manage seed_quran       # once: reference data, the word list, the aya maps
+just manage createsuperuser  # once, for /admin
+```
+
+```bash
+cd frontend
+npm install
+npm run dev                  # http://localhost:5173
+```
+
+| Command | What it does |
+| --- | --- |
+| `just` | lists every recipe |
+| `just logs` / `just logs celeryworker` | follow the logs |
+| `just psql` | `psql` on the database, inside its container |
+| `just redis-cli` | `redis-cli`, inside its container |
+| `just manage <command>` | a `manage.py` command, such as `shell` or `migrate` |
+| `just shell` | bash in the Django container |
+| `just test` | the backend tests, in the container |
+| `just check` | ruff and mypy, in the container |
+| `just dump-db quran.dump` | dump the database to a file |
+| `just restore-db quran.dump` | **replace** the database with a dump (`pg_dump -Fc`), then migrate |
+| `just flower` | a page showing the worker and its tasks, on `:5555` |
+| `just down` | stop everything; `just prune` also deletes the database |
+
+- The database also answers on `localhost:5433`, and Redis on `localhost:6380`,
+  for any client you like. The user, password and database are in
+  `.envs/.local/.postgres`.
+- Values in `.envs/.local/` win over `backend/.env` inside the containers.
+- The containers run as you, so files under `backend/media` and `backend/logs`
+  belong to you.
+- The worker restarts when you save a `.py` file. A job it was running stops at
+  its next page and can be resumed from there.
+
+To bring an existing database across, dump it where it lives with
+`pg_dump -Fc -d <database> -f quran.dump`, then run `just restore-db quran.dump`.
+Copy `backend/media/` across by hand: git does not carry it.
+
+Production is a separate stack: [DEPLOY.md](DEPLOY.md).
+
+## Run it without Docker
+
+You need Python `>= 3.13` with [`uv`](https://docs.astral.sh/uv/), Node.js and
+npm, and PostgreSQL (recommended; SQLite works without it).
 
 ```bash
 cd backend
@@ -111,6 +163,16 @@ uv run python manage.py runserver 8000
 cd frontend
 npm install
 npm run dev                  # http://localhost:5173
+```
+
+Jobs then run on a thread of the web process, so there is no queue: a job that
+finds every slot busy is refused. To run them in a worker as Docker does, start
+Redis, set `JOB_RUNNER=celery` and `CELERY_BROKER_URL` in `backend/.env`, and
+start a worker beside `runserver`:
+
+```bash
+cd backend
+uv run celery -A config worker --loglevel info --concurrency 2
 ```
 
 - Interactive API docs: `http://localhost:8000/api/docs`
@@ -129,7 +191,7 @@ uv run python manage.py test --parallel 4        # Postgres test database
 cd frontend
 npx tsc --noEmit
 npm run lint
-npm run build                # → frontend/dist, which Django serves
+npm run build                # → frontend/dist, which Django serves without Docker
 ```
 
 ## Documentation
@@ -140,3 +202,4 @@ npm run build                # → frontend/dist, which Django serves
   (`mushaf-export/v2`).
 - [docs/PROJECT_HANDOFF.md](docs/PROJECT_HANDOFF.md): the developer reference
   (layout, data model, API, conventions).
+- [DEPLOY.md](DEPLOY.md): running the production stack on a server.

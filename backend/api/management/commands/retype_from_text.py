@@ -25,10 +25,10 @@ from api.models import (
     CalibrationRevision,
     CalibrationRevisionKind,
     Mushaf,
-    ProcessJob,
 )
 from api.services import activity, calibration
 from api.services import calibration_marks as text_marks
+from api.services.jobs.queries import find_active_job_of_mushaf
 
 #: What a reviewer typed before the text's own type existed, and that type.
 RENAMED = {("sukun", "roundZero"), ("sukun", "rectZero"), ("ijamDot", "waqfMuanaqa")}
@@ -47,7 +47,7 @@ class Command(BaseCommand):
             mushaf = Mushaf.objects.select_for_update().get(pk=options["mushaf_id"])
         except (Mushaf.DoesNotExist, ValueError) as exc:
             raise CommandError("Use the full mushaf UUID.") from exc
-        if ProcessJob.objects.filter(mushaf=mushaf, state="running").exists():
+        if find_active_job_of_mushaf(mushaf.id) is not None:
             raise CommandError("Stop processing jobs first.")
         if not calibration._follows_text(mushaf):
             raise CommandError("The text is Hafs's; this mushaf is printed in another riwaya.")

@@ -23,7 +23,7 @@ import type {
   TextRole,
 } from "../calibration/types";
 import { apiDelete, apiGet, apiJson } from "./http";
-import { isJobRunning, type ProcessJob } from "./types";
+import { isJobActive, type ProcessJob } from "./types";
 
 export const calibrationKeys = {
   page: (id: string, page: number) => ["mushaf", id, "page", page, "calibration"] as const,
@@ -171,7 +171,7 @@ export function useCalibrationJob(id: string, intervalMs = 1000) {
       apiGet<{ job: ProcessJob | null }>(`/api/mushafs/${id}/calibration/job`, signal).then(
         (body) => body.job,
       ),
-    refetchInterval: (query) => (isJobRunning(query.state.data) ? intervalMs : false),
+    refetchInterval: (query) => (isJobActive(query.state.data) ? intervalMs : false),
     staleTime: 0,
   });
 }

@@ -31,6 +31,8 @@ import {
   ApiError,
   DEFAULT_PROCESS_SETTINGS,
   cancelProcess,
+  didJobNeverStart,
+  isJobQueued,
   isJobSettled,
   pageImageUrl,
   queryKeys,
@@ -45,6 +47,7 @@ import {
   type ProcessSettings,
   type Rect,
 } from "@/lib/api";
+import { queuedJobLabel } from "@/lib/jobQueue";
 import {
   readLastProcessRequestFor,
   writeLastProcessOutcome,
@@ -239,7 +242,13 @@ function ProcessPage() {
         abort_page: job.stopped_on_page ?? undefined,
         ended_at,
       });
-      toast.info(t("process.cancelledToast", { count: pages_saved }));
+      // Cancelled while it still waited in the queue: nothing ran, so there are no
+      // saved pages to count.
+      toast.info(
+        didJobNeverStart(job)
+          ? t("process.cancelQueuedToast")
+          : t("process.cancelledToast", { count: pages_saved }),
+      );
     } else if (job.state === "aborted_line_detection") {
       writeLastProcessOutcome(mushafId, {
         status: "aborted",
@@ -252,15 +261,20 @@ function ProcessPage() {
       // The server lost the worker (restart, deploy, crash). Distinct from an
       // error: nothing went wrong with the *work*, and whatever pages were
       // saved before it stopped are still there to resume from.
+      // A job that never started was not interrupted in its work: no worker picked
+      // it up, so the fix is on the server, not in the settings.
+      const message = didJobNeverStart(job)
+        ? t("process.unclaimedToast")
+        : t("process.interruptedToast", { count: pages_saved });
       writeLastProcessOutcome(mushafId, {
         status: "error",
         pages_saved,
         abort_page: job.stopped_on_page ?? undefined,
-        message: t("process.interruptedToast"),
+        message,
         ended_at,
       });
       setDetailsOpen(true);
-      toast.warning(t("process.interruptedToast", { count: pages_saved }));
+      toast.warning(message);
     } else {
       writeLastProcessOutcome(mushafId, {
         status: "error",
@@ -372,10 +386,12 @@ function ProcessPage() {
     </StatusLine>
   ) : cancelled ? (
     <StatusLine tone="warning">
-      {t("process.cancelStatus", {
-        page: settledJob?.stopped_on_page ?? "?",
-        count: settledJob?.pages_saved ?? 0,
-      })}
+      {didJobNeverStart(settledJob)
+        ? t("process.cancelQueuedStatus")
+        : t("process.cancelStatus", {
+            page: settledJob?.stopped_on_page ?? "?",
+            count: settledJob?.pages_saved ?? 0,
+          })}
     </StatusLine>
   ) : failed ? (
     <StatusLine tone="error">{t("process.errorStatus")}</StatusLine>
@@ -445,7 +461,9 @@ function ProcessPage() {
     try {
       const updated = await cancelProcess(mushafId);
       queryClient.setQueryData(queryKeys.processJob(mushafId), updated);
-      toast.info(t("process.cancelRequestedToast"));
+      // A queued job is cancelled at once, and the settle effect announces it.
+      // Only a running job is still on its way to a stop.
+      if (!isJobSettled(updated)) toast.info(t("process.cancelRequestedToast"));
     } catch (e) {
       setCancelling(false);
       // A 404 means it finished on its own between the click and the request.
@@ -550,7 +568,9 @@ function ProcessPage() {
                 )}
               </button>
               <span className="text-center text-[12.5px] text-ink-3">
-                {t("process.cancelConfirmIntro")}
+                {isJobQueued(activeJob)
+                  ? t("process.cancelQueuedIntro")
+                  : t("process.cancelConfirmIntro")}
               </span>
             </div>
           ) : (
@@ -600,7 +620,9 @@ function ProcessPage() {
         {activeJob ? (
           <>
             <RunCard job={activeJob} runNumber={runNumber} />
-            <Note icon={<Info size={15} aria-hidden="true" />}>{t("process.runningNote")}</Note>
+            <Note icon={<Info size={15} aria-hidden="true" />}>
+              {isJobQueued(activeJob) ? t("process.queuedNote") : t("process.runningNote")}
+            </Note>
           </>
         ) : (
           <>
@@ -608,6 +630,7 @@ function ProcessPage() {
               <div ref={outcomeRef} className="scroll-mt-2">
                 <OutcomeCard
                   kind={cancelled ? "cancelled" : failed ? "error" : "abort"}
+                  neverStarted={didJobNeverStart(settledJob)}
                   stoppedOn={settledJob.stopped_on_page}
                   pagesSaved={settledJob.pages_saved}
                   error={settledJob.error}
@@ -822,8 +845,10 @@ const selectClass =
   "h-9 w-full min-w-0 cursor-pointer rounded-control border border-rule-2 bg-card px-1.5 text-[13.5px] text-ink outline-none focus:border-lapis focus:shadow-[inset_0_0_0_1px_var(--lapis)]";
 
 /** What the run is doing right now, named after the page it is on — the phase
- * changes several times per page, so this is also the "it hasn't hung" signal. */
+ * changes several times per page, so this is also the "it hasn't hung" signal.
+ * A queued run is doing nothing yet: it says how many jobs are ahead of it. */
 function phaseLabel(t: TFunction, job: ProcessJob): string {
+  if (isJobQueued(job)) return queuedJobLabel(t, job);
   const page = job.current_page;
   if (page == null) return t("process.processing");
   switch (job.phase) {
@@ -917,6 +942,7 @@ function FooterLink({ onClick, children }: { onClick: () => void; children: Reac
  * what was kept rather than what broke. */
 function OutcomeCard({
   kind,
+  neverStarted,
   stoppedOn,
   pagesSaved,
   error,
@@ -924,6 +950,8 @@ function OutcomeCard({
   onResume,
 }: {
   kind: "abort" | "cancelled" | "error";
+  /** The run was cancelled while it still waited in the queue: no page was reached. */
+  neverStarted: boolean;
   stoppedOn: number | null;
   pagesSaved: number;
   error: string | null;
@@ -943,7 +971,9 @@ function OutcomeCard({
     kind === "error"
       ? error
       : kind === "cancelled"
-        ? t("process.cancelledLead", { page: stoppedOn ?? "?" })
+        ? neverStarted
+          ? t("process.cancelQueuedLead")
+          : t("process.cancelledLead", { page: stoppedOn ?? "?" })
         : t("process.abortLead", { page: stoppedOn ?? "?" });
   const action =
     "inline-flex h-8 cursor-pointer items-center rounded-control border border-current/25 bg-card px-2.5 text-[12.5px] font-semibold text-ink transition-colors hover:bg-sheet";

@@ -1,0 +1,24 @@
+# Django and the Celery worker of docker-compose.local.yml.
+#
+# Throwaway values for a developer's own machine, so this file is tracked. A value
+# here wins over the same name in backend/.env. A name that is only in backend/.env
+# still applies inside the containers: the Google sign-in keys, for one.
+
+SECRET_KEY=local-only-not-a-secret-change-nothing-here
+DEBUG=True
+ALLOWED_HOSTS=localhost,127.0.0.1,django
+
+# --- Jobs ----------------------------------------------------------------
+# Jobs run in the celeryworker container. JOB_WORKER_SLOTS is how many run at
+# once: the web process reads it for the queue, and the worker for --concurrency.
+JOB_RUNNER=celery
+JOB_WORKER_SLOTS=2
+CELERY_BROKER_URL=redis://redis:6379/0
+
+# --- Cache ---------------------------------------------------------------
+# allauth counts its rate limits here. Redis is shared by every process.
+CACHE_URL=redis://redis:6379/1
+
+# --- OpenCV --------------------------------------------------------------
+# The containers have no GPU. This says so, and OpenCV does not go looking.
+OPENCV_ACCEL=cpu

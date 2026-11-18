@@ -1,0 +1,41 @@
+#!/bin/bash
+# Runs before every command of the django image, local and production: the web
+# server, the Celery worker, and one-off commands such as `manage.py migrate`.
+
+set -o errexit
+set -o pipefail
+set -o nounset
+
+# Django reads one DATABASE_URL. The compose env files hold the same values as
+# separate POSTGRES_* variables, because the postgres image needs them that way.
+# A value set here wins over the DATABASE_URL in backend/.env.
+export DATABASE_URL="postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}"
+
+# Wait until Postgres accepts connections. `depends_on` only waits for the
+# container to start, and the server inside needs a moment more.
+python << 'END'
+import os
+import sys
+import time
+
+import psycopg
+
+deadline = time.monotonic() + 30
+while True:
+    try:
+        psycopg.connect(
+            host=os.environ["POSTGRES_HOST"],
+            port=os.environ["POSTGRES_PORT"],
+            dbname=os.environ["POSTGRES_DB"],
+            user=os.environ["POSTGRES_USER"],
+            password=os.environ["POSTGRES_PASSWORD"],
+            connect_timeout=3,
+        ).close()
+        break
+    except psycopg.OperationalError as error:
+        if time.monotonic() > deadline:
+            sys.exit(f"Postgres did not accept connections within 30 seconds: {error}")
+        time.sleep(1)
+END
+
+exec "$@"

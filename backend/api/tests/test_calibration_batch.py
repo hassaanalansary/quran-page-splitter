@@ -10,9 +10,17 @@ from django.test import SimpleTestCase
 
 from api.models import CalibrationReview, CalibrationRevision, Page, ProcessJob, Segment
 from api.services import calibration as calibration_service
-from api.services import calibration_batch
 from api.services import calibration_progress as progress
+from api.services.calibration_batch import decide_batch_page_when_reached
+from api.services.jobs.execution import execute_job
+from api.services.jobs.kinds.calibration_batch import start_calibration_batch_job
+from api.services.jobs.kinds.calibration_page import start_calibration_page_job
 from api.tests.test_calibration_api import DOT, CalibrationApiTestCase, drawn_pages
+
+#: The modules of the two calibration jobs. A job module imports the functions it
+#: calls by name, so a test that replaces one of them has to replace it there.
+BATCH_JOB = "api.services.jobs.kinds.calibration_batch"
+PAGE_JOB = "api.services.jobs.kinds.calibration_page"
 
 
 class BatchTestCase(CalibrationApiTestCase):
@@ -114,15 +122,14 @@ class RunTests(BatchTestCase):
         self.process(2)
         document = self.document(2)
 
-        def reach_then_save(mushaf, number, *, refresh):
-            reached = real_reach(mushaf, number, refresh=refresh)
+        def decide_then_save(mushaf, number, *, refresh):
+            decided = decide_batch_page_when_reached(mushaf, number, refresh=refresh)
             # Someone saves page 2 after the batch decided it, before it is stored.
             if number == 2:
                 calibration_service.save(mushaf, 2, self.draft(document), user=self.user)
-            return reached
+            return decided
 
-        real_reach = calibration_batch._reach
-        with mock.patch.object(calibration_batch, "_reach", side_effect=reach_then_save):
+        with mock.patch(f"{BATCH_JOB}.decide_batch_page_when_reached", side_effect=decide_then_save):
             report = self.batch(refresh=True).json()["job"]["report"]
         self.assertEqual(report["processed"], [1])
         self.assertEqual([failure["page"] for failure in report["failed"]], [2])
@@ -132,10 +139,12 @@ class RunTests(BatchTestCase):
         def stop_once_page_1_is_stored(job_id):
             return self.drafted(1)
 
-        with mock.patch("api.services.calibration_batch.jobs.cancel_requested", side_effect=stop_once_page_1_is_stored):
+        with mock.patch(f"{BATCH_JOB}.is_job_cancellation_requested", side_effect=stop_once_page_1_is_stored):
             job = self.batch().json()["job"]
         self.assertEqual((job["state"], job["report"]["processed"]), ("cancelled", [1]))
         self.assertFalse(self.drafted(2))
+        # Where a later batch would pick up: the first page this one did not finish.
+        self.assertEqual(job["stopped_on_page"], 2)
 
     def test_one_failing_page_does_not_cost_the_rest(self):
         real = calibration_service.process_page
@@ -146,8 +155,8 @@ class RunTests(BatchTestCase):
             return real(mushaf, page, **kwargs)
 
         with (
-            mock.patch.object(calibration_service, "process_page", side_effect=fail_page_1),
-            self.assertLogs("api.services.calibration_batch", level="ERROR"),
+            mock.patch(f"{BATCH_JOB}.process_page", side_effect=fail_page_1),
+            self.assertLogs(BATCH_JOB, level="ERROR"),
         ):
             job = self.batch().json()["job"]
         self.assertEqual(job["state"], "completed")
@@ -157,6 +166,59 @@ class RunTests(BatchTestCase):
     def test_a_second_run_is_refused_while_one_is_working(self):
         ProcessJob.objects.create(mushaf=self.mushaf, page_range_start=1, page_range_end=1, kind="calibration")
         self.assertEqual(self.batch().status_code, 409)
+
+
+class JobsFromTheirRowTests(BatchTestCase):
+    """A worker is handed the job's id and nothing else: the row has to say the rest."""
+
+    @staticmethod
+    def queued_only(module: str):
+        """The request half, stopped short of the dispatch: only the row exists."""
+        return mock.patch(f"{module}.dispatch_job", side_effect=lambda job, **_: job)
+
+    def test_a_calibration_page_job_runs_from_its_row_alone(self):
+        with self.queued_only(PAGE_JOB):
+            job = start_calibration_page_job(self.mushaf, 1, user=self.user)
+        self.assertEqual((job.state, job.params), ("queued", {"page": 1, "expected_revision": 0}))
+        self.assertFalse(self.drafted(1))
+
+        with drawn_pages():
+            execute_job(job.id, "worker-a")
+
+        job.refresh_from_db()
+        self.assertEqual((job.state, job.pages_saved, job.claimed_by_worker), ("completed", 1, "worker-a"))
+        self.assertTrue(self.drafted(1))
+
+    def test_a_calibration_batch_job_runs_from_its_row_alone(self):
+        with self.queued_only(BATCH_JOB):
+            job = start_calibration_batch_job(self.mushaf, 1, 2, user=self.user)
+        self.assertEqual((job.state, job.params), ("queued", {"refresh": False}))
+        self.assertFalse(self.drafted(1) or self.drafted(2))
+
+        with drawn_pages():
+            execute_job(job.id, "worker-a")
+
+        job.refresh_from_db()
+        self.assertEqual((job.state, job.report["processed"]), ("completed", [1, 2]))
+        self.assertTrue(self.drafted(1) and self.drafted(2))
+
+    def test_a_page_job_whose_draft_was_saved_while_it_waited_settles_as_error(self):
+        """The row carries the draft revision the request saw. A draft saved while the
+        job waited in the queue is not processed over."""
+        self.process(1)
+        Segment.objects.filter(line__page__page_number=1, line__line_number=1).update(bbox_w=480)
+        with self.queued_only(PAGE_JOB):
+            job = start_calibration_page_job(self.mushaf, 1, user=self.user)
+        CalibrationReview.objects.filter(mushaf=self.mushaf, page_number=1).update(
+            revision=job.params["expected_revision"] + 1
+        )
+
+        with drawn_pages(), self.assertLogs("api.services.jobs.execution", level="ERROR"):
+            execute_job(job.id, "worker-a")
+
+        job.refresh_from_db()
+        self.assertEqual(job.state, "error")
+        self.assertEqual(self.processings(1), 1)
 
 
 class ReadinessApiTests(BatchTestCase):

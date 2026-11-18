@@ -23,6 +23,11 @@ export const en = {
     leaveAnyway: "Leave anyway",
     keepEditing: "Keep editing",
   },
+  // A job that waits for a worker. Shared by every screen that shows a job.
+  jobQueue: {
+    ahead: "Queued, {{count}} ahead of you",
+    next: "Queued, next in line",
+  },
   lang: {
     label: "Language",
     en: "English",
@@ -466,6 +471,12 @@ export const en = {
     cancelConfirmKeep: "Keep processing",
     cancelConfirmStop: "Stop it",
     cancelRequestedToast: "Stopping after the current page. Pages already done stay saved.",
+    // Cancelling a run that still waits in the queue
+    cancelQueuedIntro: "It has not started yet, so it is only taken out of the queue.",
+    cancelQueuedToast: "Taken out of the queue. Nothing was processed.",
+    cancelQueuedStatus: "Taken out of the queue before it started.",
+    cancelQueuedLead:
+      "It was still waiting in the queue, so no page was processed. Start it again whenever you like.",
     cancelFailed: "Couldn't stop the run.",
     cancelledToast: "Processing stopped — {{count}} pages saved.",
     cancelStatus: "Stopped at page {{page}} — {{count}} pages saved.",
@@ -479,6 +490,8 @@ export const en = {
     processFailed: "Processing failed.",
     interruptedToast:
       "The server stopped this run before it finished — {{count}} page(s) were saved and can be resumed from.",
+    unclaimedToast:
+      "No worker picked this run up, so it never started. Check that the worker is running, then start it again.",
     loadedToast: "Loaded settings from run {{label}}.",
     loadedToastResume: "Loaded settings from run {{label}} · resuming from p.{{from}}.",
     // Bounds lock
@@ -556,6 +569,8 @@ export const en = {
     maxHeadersHint: "most on one page",
     runningNote:
       "The run is on the server — you can leave this page. Settings are locked until it ends.",
+    queuedNote:
+      "The run is waiting its turn on the server — you can leave this page. Settings are locked until it ends.",
     runCardTitle: "Run {{n}} · pages {{start}}–{{end}}",
     runCardRange: "Pages {{start}}–{{end}}",
     runCardSaved: "of {{total}} pages saved",

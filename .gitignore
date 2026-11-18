@@ -99,3 +99,15 @@ export_reference_data.py
 frontend/.tanstack/tmp/*
 
 !docs/*.png
+
+# =====================================
+# Docker
+# =====================================
+
+# The local env files hold throwaway values and are tracked. The `*.local` rule
+# above would otherwise hide the folder `.envs/.local`.
+!.envs/.local/
+# The real production values live on the server only (DEPLOY.md).
+.envs/.production/
+# Where `collectstatic` gathers the admin's static files.
+backend/staticfiles/

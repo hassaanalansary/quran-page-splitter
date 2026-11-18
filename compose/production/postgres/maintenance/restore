@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# Replace the database with a dump from /backups. The dump is one that `backup`
+# made, or any `pg_dump -Fc` of this major version or an older one.
+#
+#   docker compose exec postgres restore quran.dump
+#
+# THIS DROPS THE DATABASE FIRST. Everything in it now is gone afterwards. Run
+# `manage.py migrate` when it is done: a dump from an older version of the code
+# lacks the newer migrations.
+
+set -o errexit
+set -o pipefail
+set -o nounset
+
+if [[ -z "${1:-}" ]]; then
+  echo "Name a dump in /backups, for example: restore quran.dump" >&2
+  echo "The dumps there now:" >&2
+  ls -1 /backups >&2
+  exit 1
+fi
+
+backup_path="/backups/${1}"
+if [[ ! -f "${backup_path}" ]]; then
+  echo "No dump at ${backup_path}" >&2
+  exit 1
+fi
+
+export PGPASSWORD="${POSTGRES_PASSWORD}"
+
+echo "Dropping '${POSTGRES_DB}' and restoring it from ${backup_path}"
+# --force ends the connections that Django and the worker hold: a database with
+# open connections cannot be dropped. Both reconnect on their next query.
+dropdb --force --if-exists --username="${POSTGRES_USER}" "${POSTGRES_DB}"
+createdb --username="${POSTGRES_USER}" --owner="${POSTGRES_USER}" "${POSTGRES_DB}"
+# --no-owner: the dump may name a role that does not exist here, such as the
+# `postgres` role of the machine it was made on. Everything goes to POSTGRES_USER.
+pg_restore --no-owner --role="${POSTGRES_USER}" --username="${POSTGRES_USER}" --dbname="${POSTGRES_DB}" "${backup_path}"
+
+echo "Restored '${POSTGRES_DB}' from ${backup_path}"
