@@ -68,7 +68,7 @@ Processing an already-confirmed page → load_current_library(mushaf, hiding_pag
 - When the group is full, the farthest shape stays. Of the others, the one with the smallest distance gap to its neighbour is dropped.
 - Looks-right shapes are never dropped, and they count toward the 11. A newcomer that can't displace anything is not kept.
 - "Neighbour" means the next kept shape when they are sorted by distance to the fingerprint. An exact copy is within `_EXACT` (1e-6), as before.
-- Ties go by blob key.
+- On a tie the newcomer goes, so the kept shapes don't churn; then by blob key.
 
 **Per-page cap: measure only.** The page that starts a group fills it with its own blobs first. Hiding that page (decision 6) can then leave the group nearly empty, even when later pages had good blobs that were never kept. The replay (§5) reports how many groups a hidden page empties and how many guesses change, with and without a cap (at most 4 of the 11 kept from one page). No cap unless the numbers show a real loss. The user's view is that this matters little, since they review the library often.
 

@@ -52,7 +52,7 @@ KEEP = 12
 #: A group's fingerprint is re-chosen from at most this many of its members.
 MEDOID_SAMPLE = 60
 #: At or below this two descriptors are one bitmap: noise of the batched sums.
-_EXACT = 1e-6
+EXACT_DISTANCE = 1e-6
 
 
 class Comparison(Protocol):
@@ -67,7 +67,7 @@ class Comparison(Protocol):
 
     def describe(self, features: Sequence[float] | np.ndarray) -> np.ndarray: ...
 
-    def stack(self, reps: Sequence[np.ndarray]) -> Any: ...
+    def stack(self, reps: Sequence[np.ndarray] | np.ndarray) -> Any: ...
 
     def distances(self, bank: Any, reps: Sequence[np.ndarray]) -> np.ndarray: ...
 
@@ -100,8 +100,13 @@ class Descriptor32:
         result: np.ndarray = vector * self.root
         return result
 
-    def stack(self, reps: Sequence[np.ndarray]) -> tuple[np.ndarray, np.ndarray]:
-        matrix = np.stack(reps) if len(reps) else np.zeros((0, FEATURE_COUNT), dtype=np.float64)
+    def stack(self, reps: Sequence[np.ndarray] | np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        # A matrix already stacked is used as it is, so its rows can be the library's
+        # ``reps`` without the numbers being held twice.
+        if isinstance(reps, np.ndarray) and reps.ndim == 2 and reps.shape[0]:
+            matrix = reps
+        else:
+            matrix = np.stack(list(reps)) if len(reps) else np.zeros((0, FEATURE_COUNT), dtype=np.float64)
         return matrix, np.einsum("ij,ij->i", matrix, matrix)
 
     def distances(self, bank: tuple[np.ndarray, np.ndarray], reps: Sequence[np.ndarray]) -> np.ndarray:
@@ -160,20 +165,28 @@ def find_typical_member(method: Comparison, reps: list[np.ndarray], members: lis
     return sample[int(np.argmin(np.minimum(matrix, matrix.T).sum(axis=1)))]
 
 
-def group_examples(method: Comparison, reps: list[np.ndarray], limit: float) -> list[dict]:
+def group_examples(method: Comparison, reps: list[np.ndarray], limit: float, seeds: Sequence[int] = ()) -> list[dict]:
     """One kind's examples in fingerprint groups: ``centre`` (the fingerprint) and
-    ``members`` (every example of the group, the nearest to the fingerprint first)."""
+    ``members`` (every example of the group, the nearest to the fingerprint first).
+
+    ``seeds`` are examples that must stay fingerprints — a person found them right: the
+    first walk starts from them, and the second keeps them as their own centres where
+    every other group's centre is re-chosen."""
     if not reps:
         return []
-    first, owner = assign_examples_to_fingerprints(method, reps, limit, [])
+    seeds = list(dict.fromkeys(seeds))
+    first, owner = assign_examples_to_fingerprints(method, reps, limit, seeds)
     members: list[list[int]] = [[] for _ in first]
     for index, group_index in enumerate(owner):
         members[group_index].append(index)
     # Placed once more against the re-chosen fingerprints, in the same order: one now
     # beyond every fingerprint starts a group of its own, which later ones may join.
-    final, owner = assign_examples_to_fingerprints(
-        method, reps, limit, [find_typical_member(method, reps, own) for own in members]
-    )
+    centres = [
+        seeds[group_index] if group_index < len(seeds) else find_typical_member(method, reps, own)
+        for group_index, own in enumerate(members)
+        if group_index < len(seeds) or own
+    ]
+    final, owner = assign_examples_to_fingerprints(method, reps, limit, centres)
     groups = []
     for group_index, centre in enumerate(final):
         own = [index for index, found in enumerate(owner) if found == group_index]
@@ -198,7 +211,7 @@ def pick_spread_members(item: dict) -> list[int]:
     fingerprint shows nothing new: skipped."""
     members, distance = item["members"], item["distance"]
     picks = sorted(set(np.linspace(0, len(members) - 1, min(KEEP, len(members))).round().astype(int).tolist()))
-    return [i for i in picks if members[i] != item["centre"] and distance[i] > _EXACT]
+    return [i for i in picks if members[i] != item["centre"] and distance[i] > EXACT_DISTANCE]
 
 
 def list_kept_shapes(groups: list[dict]) -> list[tuple[int, bool, int]]:
@@ -346,7 +359,7 @@ class Library:
             if not close:
                 answers.append({**nothing, "distance": round(min(nearest.values()), 4)})
                 continue
-            exact = [name for name in close if nearest[name] <= _EXACT]
+            exact = [name for name in close if nearest[name] <= EXACT_DISTANCE]
             winner = exact[0] if len(exact) == 1 else close[0]
             rivals = [name for name in rank if name != winner]
             score = nearest[winner]
@@ -393,7 +406,13 @@ class Library:
     # ---- this page's own typing ----------------------------------------------------
     def with_typed(self, samples: list[dict]) -> Library:
         """This library and the given typed marks besides — a page's own marks, kept
-        whole and ungrouped, so typing a few on a page teaches the rest at once."""
+        whole and ungrouped, so typing a few on a page teaches the rest at once.
+
+        A mark the library already keeps as that same type (a confirmed page's own
+        shape) is not added again: counted twice, it would weigh twice in a type's
+        support."""
+        kept = {(example_key(ref), str(self.kinds[index])) for index, ref in enumerate(self.refs)}
+        samples = [sample for sample in samples if (example_key(sample), sample["subtype"]) not in kept]
         if not samples:
             return self
         reps = [*self.reps, *(self.method.describe(sample["features"]) for sample in samples)]
@@ -420,6 +439,11 @@ def _no_role() -> dict:
     return {"role": None, "confidence": 0.0, "reasons": ["no_examples"]}
 
 
+def example_key(item: dict) -> tuple[str, int]:
+    """Which blob an example or a ref is: its snapshot id and blob id."""
+    return (str(item.get("snapshot_id")), int(item.get("blob_id") or 0))
+
+
 def reference_of_example(sample: dict, *, fingerprint: bool) -> dict:
     """What identifies an example — never its descriptor — and whether it is its
     group's fingerprint."""
@@ -428,12 +452,20 @@ def reference_of_example(sample: dict, *, fingerprint: bool) -> dict:
     return ref
 
 
-def build_library(samples: list[dict], *, method: Comparison | None = None, limit: float | None = None) -> Library:
+def build_library(
+    samples: list[dict],
+    *,
+    method: Comparison | None = None,
+    limit: float | None = None,
+    fingerprint_keys: frozenset[tuple[str, int]] = frozenset(),
+) -> Library:
     """A library from confirmed examples — each ``features``, ``role`` ("body" or
     "mark"), ``subtype`` (a mark's type, or "") and whatever identifies it
     (``snapshot_id``, ``blob_id``, ``page_number``, ``line_number`` …), in page order.
 
-    Grouped kind by kind: the letters, each mark type, and the untyped marks."""
+    Grouped kind by kind: the letters, each mark type, and the untyped marks. The
+    examples named in ``fingerprint_keys`` (snapshot id, blob id) stay fingerprints:
+    a person found them right."""
     method = method or comparison()
     limit = method.default_limit if limit is None else limit
     if limit <= 0:
@@ -449,7 +481,8 @@ def build_library(samples: list[dict], *, method: Comparison | None = None, limi
     shown: list[dict] = []
     for (role, kind), own in kinds.items():
         described = [method.describe(sample["features"]) for sample in own]
-        groups = group_examples(method, described, limit)
+        seeds = [index for index, sample in enumerate(own) if example_key(sample) in fingerprint_keys]
+        groups = group_examples(method, described, limit, seeds)
         prints += len(groups)
         for index, fingerprint, count in list_kept_shapes(groups):
             roles.append(role)
@@ -470,6 +503,8 @@ def build_library(samples: list[dict], *, method: Comparison | None = None, limi
             }
             for item in groups
         ]
+    # The kept shapes' numbers held once: the rows of the matrix the bank stacks.
+    matrix = np.stack(reps) if reps else np.zeros((0, 0))
     return Library(
         method=method,
         limit=limit,
@@ -477,8 +512,8 @@ def build_library(samples: list[dict], *, method: Comparison | None = None, limi
         kinds=np.array(names, dtype=str),
         refs=refs,
         copies=copies,
-        reps=reps,
-        bank=method.stack(reps),
+        reps=list(matrix),
+        bank=method.stack(matrix) if reps else method.stack([]),
         examples=len(samples),
         typed_examples=sum(1 for sample in samples if sample["role"] == "mark" and sample.get("subtype")),
         fingerprints=prints,
