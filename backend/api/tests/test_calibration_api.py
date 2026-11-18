@@ -643,7 +643,7 @@ class SurvivalTests(CalibrationApiTestCase):
         self.assertTrue(self.document(1)["stale"])
 
 
-class FusionTests(CalibrationApiTestCase):
+class FusionTestCase(CalibrationApiTestCase):
     """Page 1's first line prints words 2 and 3 as one blob."""
 
     def setUp(self):
@@ -662,6 +662,8 @@ class FusionTests(CalibrationApiTestCase):
         )
         return body
 
+
+class FusionTests(FusionTestCase):
     def test_a_word_whose_only_ink_is_a_shared_blob_is_placed(self):
         body = self.share(self.draft(self.doc), [2, 3])
         response = self.client.post(self.url(1, "/preview"), body, content_type="application/json")
@@ -684,6 +686,104 @@ class FusionTests(CalibrationApiTestCase):
         body = self.share(self.draft(self.doc), [1, 3])
         response = self.client.post(self.url(1, "/preview"), body, content_type="application/json")
         self.assertEqual(response.status_code, 422)
+
+
+#: A knife line straight down through the fused blob at page x 470, top to bottom of
+#: the line: word 2 keeps x 470-489, word 3 the rest — far from the middle (415).
+KNIFE = [470, LINE_TOPS[0] + 2, 470, LINE_TOPS[0] + 38]
+
+
+class KnifeTests(FusionTestCase):
+    """Page 1's fused blob, shared by words 2 and 3, cut by hand."""
+
+    def cut(self, body: dict, lines: list[list[int]], owners: list[int]) -> dict:
+        self.draft_blob(body, 0, FUSED[0])["cut"] = {"lines": lines, "owners": owners}
+        return body
+
+    def save_cut(self, lines: list[list[int]], owners: list[int]):
+        """Share the blob by words 2 and 3, cut it, and accept the reading — so word 3,
+        whose only ink is that blob, is on the line to take its edges."""
+        body = self.cut(self.share(self.draft(self.doc), [2, 3]), lines, owners)
+        with drawn_pages(fused_page=1):
+            return self.put(1, {**body, "realign": True})
+
+    def words_of(self, document: dict) -> dict[int, dict]:
+        return {word["word_id"]: word for word in document["lines"][0]["words"]}
+
+    def test_a_cut_gives_each_word_the_extent_of_its_own_piece(self):
+        saved = self.save_cut([KNIFE], [2, 3])
+        self.assertEqual(saved.status_code, 200, saved.content)
+        words = self.words_of(saved.json())
+        self.assertEqual((words[2]["start_x"], words[2]["end_x"]), (FUSED[1], 470))
+        self.assertEqual((words[3]["start_x"], words[3]["end_x"]), (470, FUSED[0]))
+        self.assertTrue(words[2]["shared"] and words[3]["shared"])
+        cut = self.blob_at(saved.json()["lines"][0], FUSED[0])["cut"]
+        self.assertEqual(cut["owners"], [2, 3])
+        # Measured by the server, rightmost piece first; the line's pixels went back.
+        top = LINE_TOPS[0] + 8
+        self.assertEqual(
+            cut["pieces"],
+            [
+                {"x": 470, "y": top, "w": FUSED[1] - 470, "h": 24, "area": (FUSED[1] - 470) * 24},
+                {"x": FUSED[0], "y": top, "w": 470 - FUSED[0], "h": 24, "area": (470 - FUSED[0]) * 24},
+            ],
+        )
+
+    def test_the_pieces_follow_the_owners_order(self):
+        words = self.words_of(self.save_cut([KNIFE], [3, 2]).json())
+        self.assertEqual((words[3]["start_x"], words[3]["end_x"]), (FUSED[1], 470))
+        self.assertEqual((words[2]["start_x"], words[2]["end_x"]), (470, FUSED[0]))
+
+    def test_a_cut_that_does_not_give_each_word_one_piece_is_refused(self):
+        top = LINE_TOPS[0]
+        # A line that grazes the top of the blob cuts nothing off.
+        grazing = self.cut(self.share(self.draft(self.doc), [2, 3]), [[400, top + 2, 402, top + 9]], [2, 3])
+        self.assertEqual(self.put(1, grazing).status_code, 422)
+        # Owners that are not the blob's words.
+        strangers = self.cut(self.share(self.draft(self.doc), [2, 3]), [KNIFE], [2, 4])
+        self.assertEqual(self.put(1, strangers).status_code, 422)
+        # A line off the line's box.
+        off = self.cut(self.share(self.draft(self.doc), [2, 3]), [[470, top - 30, 470, top + 38]], [2, 3])
+        self.assertEqual(self.put(1, off).status_code, 422)
+        # A blob only one word holds is not cut.
+        alone = self.cut(self.share(self.draft(self.doc), [2]), [KNIFE], [2, 3])
+        self.assertEqual(self.put(1, alone).status_code, 422)
+
+    def test_unsharing_the_blob_drops_its_cut(self):
+        saved = self.save_cut([KNIFE], [2, 3]).json()
+        self.assertIn("cut", self.blob_at(saved["lines"][0], FUSED[0]))
+        body = self.draft(saved)
+        self.draft_blob(body, 0, FUSED[0]).update(allocations=[{"word_id": 2, "paws": 2}])
+        again = self.put(1, body).json()
+        self.assertNotIn("cut", self.blob_at(again["lines"][0], FUSED[0]))
+
+    def test_a_save_that_sends_no_cut_takes_it_off(self):
+        saved = self.save_cut([KNIFE], [2, 3]).json()
+        again = self.put(1, self.share(self.draft(saved), [2, 3])).json()
+        self.assertNotIn("cut", self.blob_at(again["lines"][0], FUSED[0]))
+        words = self.words_of(again)
+        middle = (FUSED[0] + FUSED[1]) // 2
+        self.assertEqual((words[2]["end_x"], words[3]["start_x"]), (middle, middle))
+
+    def test_processing_the_page_again_keeps_the_cut(self):
+        saved = self.save_cut([KNIFE], [2, 3]).json()
+        with drawn_pages(fused_page=1):
+            calibration_service.process_page(self.mushaf, 1, expected_revision=saved["revision"], user=default_user())
+        document = self.document(1)
+        self.assertEqual(self.blob_at(document["lines"][0], FUSED[0])["cut"]["lines"], [KNIFE])
+        words = self.words_of(document)
+        self.assertEqual((words[2]["end_x"], words[3]["start_x"]), (470, 470))
+
+    def test_confirming_writes_the_cut_words(self):
+        saved = self.save_cut([KNIFE], [2, 3]).json()
+        body = self.cut(self.share(self.draft(saved), [2, 3]), [KNIFE], [2, 3])
+        confirmed = self.confirm(1, {**body, "acknowledge_exceptions": True})
+        self.assertEqual(confirmed.status_code, 200, confirmed.content)
+        stored = {
+            word.word_id: (word.start_x, word.end_x)
+            for word in LineWord.objects.filter(line__page__page_number=1, line__line_number=1)
+        }
+        self.assertEqual((stored[2], stored[3]), ((FUSED[1], 470), (470, FUSED[0])))
 
 
 class FusedUnitTests(SimpleTestCase):

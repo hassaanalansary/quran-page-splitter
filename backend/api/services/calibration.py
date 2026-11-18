@@ -84,6 +84,14 @@ from api.services import activity, jobs, line_images, word_coordinates, word_inp
 from api.services import calibration_marks as text_marks
 from api.services import calibration_snapshots as snapshots
 from api.services.build_once import BuildOnce
+from api.services.calibration_cuts import (
+    CutRefused,
+    LineRaster,
+    cut_fits_blob,
+    drop_cuts_that_no_longer_fit,
+    piece_of_word,
+    set_cut_from_edit,
+)
 from core.text import line_marks, paws
 from core.word_boundary import IjamMode, WordBoundaryInput, WordInput, detect_words
 from core.word_boundary.calibration import COUNT_WEIGHT, FUSION_DISCOUNT
@@ -939,6 +947,11 @@ def _carry_decisions(document: Doc, before: dict[str, Doc]) -> bool:
             if earlier.get("ownership_explicit") and (allocations or not earlier.get("allocations")):
                 blob.update(ownership_explicit=True, allocations=allocations)
                 carried = True
+                if earlier.get("cut"):
+                    # The same pixels, so the same pieces. The reading these decisions
+                    # go into ends in ``_box_words``, which drops the cut if the span
+                    # took one of its words away.
+                    blob["cut"] = copy.deepcopy(earlier["cut"])
             if "erased" in earlier and blob["initial_role"] in TEXT_ROLES:
                 # The same pixels, so the same noise: the erase holds, and so does the
                 # mark of a blob erased once and restored, which the export looks for.
@@ -1217,7 +1230,7 @@ def _erase(blob: Doc) -> None:
         exception="",
         attention=[],
     )
-    for key in ("subtype_source", "text_role", "text_word", "text_type"):
+    for key in ("subtype_source", "text_role", "text_word", "text_type", "cut"):
         blob.pop(key, None)
 
 
@@ -1461,9 +1474,11 @@ def _split_unit(components: list[int], members: list[int], blobs: dict[int, Doc]
 def _edges_from_ink(row: Doc, word_id: int) -> tuple[int, int] | None:
     """A word's right and left edge, from its assigned bodies and marks.
 
-    Where a body is shared with the word before — to the right — the word starts
-    inside it, at its middle; shared with the word after, it ends there: the cut lies
-    somewhere inside that one blob of ink, and its middle is as near as ink can say.
+    A body shared with other words and cut by a person's knife gives the word the
+    extent of its own piece (:mod:`api.services.calibration_cuts`). Uncut, where it is
+    shared with the word before — to the right — the word starts inside it, at its
+    middle; shared with the word after, it ends there: the cut lies somewhere inside
+    that one blob of ink, and its middle is as near as ink alone can say.
     """
     start: int | None = None
     end: int | None = None
@@ -1472,9 +1487,13 @@ def _edges_from_ink(row: Doc, word_id: int) -> tuple[int, int] | None:
         if blob["role"] not in TEXT_ROLES or word_id not in ids:
             continue
         # Whole pixels, the same arithmetic as the editor's ``edgesFromInk``.
-        middle = blob["x"] + blob["w"] // 2
-        right = middle if any(ident < word_id for ident in ids) else blob["x"] + blob["w"]
-        left = middle if any(ident > word_id for ident in ids) else blob["x"]
+        piece = piece_of_word(blob, word_id) if cut_fits_blob(blob) else None
+        if piece is not None:
+            right, left = piece["x"] + piece["w"], piece["x"]
+        else:
+            middle = blob["x"] + blob["w"] // 2
+            right = middle if any(ident < word_id for ident in ids) else blob["x"] + blob["w"]
+            left = middle if any(ident > word_id for ident in ids) else blob["x"]
         start = right if start is None else max(start, right)
         end = left if end is None else min(end, left)
     if start is None or end is None or start <= end:
@@ -1488,9 +1507,12 @@ def _box_words(row: Doc) -> None:
     A word's box spans its bodies *and* its marks (the user's rule, 2026-09-27), and
     nothing else sets it: no edge is placed by hand. A word with no ink keeps the
     edges it had — a box needs numbers; its count says 0 of N. ``shared`` says the
-    word holds a body with another word, so one of its edges is that body's middle.
-    The editor's ``recalculate`` does the same arithmetic.
+    word holds a body with another word, so one of its edges is inside that body: at
+    its middle, or at its piece's edge once a person cut it. A cut whose words or role
+    changed under it is dropped first. The editor's ``recalculate`` does the same
+    arithmetic.
     """
+    drop_cuts_that_no_longer_fit(row)
     for word in row["words"]:
         ident = word["word_id"]
         edges = _edges_from_ink(row, ident)
@@ -1839,9 +1861,10 @@ def _blob_ayas(blob: Doc, row: Doc, references: dict[int, Doc]) -> set[str]:
 def _apply_edits(mushaf: Mushaf, review: CalibrationReview, data: Doc) -> Doc:
     """The draft with the client's edits applied — validated, never trusted.
 
-    The client sends every editable line whole: every blob's decisions. Unknown
-    blobs, words outside the span, a structural blob given a text role, marks
-    carrying PAWs — all refused as one invalid edit. Words are not sent: each box is
+    The client sends every editable line whole: every blob's decisions, a shared
+    body's cut among them. Unknown blobs, words outside the span, a structural blob
+    given a text role, marks carrying PAWs, a cut that doesn't give each of its words
+    one piece — all refused as one invalid edit. Words are not sent: each box is
     taken again from the ink its word now has, and an aya is read again only when
     its ink changed.
     """
@@ -1860,9 +1883,15 @@ def _apply_edits(mushaf: Mushaf, review: CalibrationReview, data: Doc) -> Doc:
         blobs = {blob["id"]: blob for blob in edit["blobs"]}
         if len(blobs) != len(edit["blobs"]) or set(blobs) != {blob["id"] for blob in row["blobs"]}:
             _refuse("invalid_edits", 422)
+        raster = LineRaster(row["snapshot_id"])
         for blob in row["blobs"]:
             before = copy.deepcopy(blob)
             _merge_blob(blob, blobs[blob["id"]], references)
+            # A cut decides only which pixels are whose — no aya needs reading again.
+            try:
+                set_cut_from_edit(blob, blobs[blob["id"]].get("cut"), row["bbox"], raster)
+            except CutRefused:
+                _refuse("invalid_edits", 422)
             if any(
                 before.get(key) != blob.get(key)
                 for key in ("role", "explicit", "allocations", "ownership_explicit", "erased")

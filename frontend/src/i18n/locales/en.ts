@@ -1124,8 +1124,27 @@ export const en = {
     assign: "Assign",
     shareWith: "Also part of…",
     shareHelp:
-      "A body printed touching across a word break belongs to both words; the cut between them sits at its middle",
+      "A body printed touching across a word break belongs to both words. They divide it at its middle, or where you cut it with the knife",
     share: "Share",
+    // The knife: a shared body cut into one piece per word
+    knife: {
+      help: "Draw a straight line, at any slope, across the place where the two words' letters touch. Each piece then belongs to one word, and each word's box reaches as far as its own piece.",
+      start: "Knife",
+      recut: "Cut again",
+      stop: "Put the knife away",
+      swap: "Swap pieces",
+      clear: "Remove cut",
+      draw: "Drag a line across the place where the letters touch, at any slope. Esc puts the knife away.",
+      cutNote:
+        "Cut by hand: each piece shows its word. Click a piece to give it to the other word.",
+      middleNote: "Divided at its middle. Use the knife when the two words' parts differ in width.",
+      note: {
+        nothing: "That line split nothing off. Draw it right across where the letters touch.",
+        "too-many": "That line made more pieces than the blob has words. Try a shorter line.",
+        more: "Kept. Draw another line: this blob needs one piece per word.",
+        done: "Cut.",
+      },
+    },
     release: "Take back my decisions on these",
 
     // Why a blob asks for a look — signals, never verdicts
@@ -1828,8 +1847,8 @@ export const en = {
       s2: "Bodies are near-black and marks teal. Ornaments are purple, symbols amber. Each word's badge shows assigned / expected PAWs. Selected bodies have solid outlines; selected marks have dashed outlines.",
       s3: "Step through what asks for a look with N and Shift+N. A flag is a signal, never a verdict — and an unflagged blob is not thereby right.",
       s4: "In Blobs mode, click a blob — or press ← — and the bar under the lines says what it is, its type, and its word. ← → move blob by blob, ↑ ↓ line by line, Ctrl+← → word by word, Shift adds the next. Under each line every mark shows its type: solid when typed, dashed when only expected. A accepts the expected type, 1–9 and 0 type the selected marks, B sets Body, M sets Mark. Choose a type in the filter to see only its marks, in blue — the quick way to catch one that is not what it says. Tick Clicks pick the faded ink too to fix one the filter missed, then Accept the expected ones in one go. Doubtful lists typed marks the other pages disagree with. Gallery lays a type's marks side by side — one scroll instead of a scan of the page.",
-      s5: "Assign ink to a word: its box spans all of its ink, bodies and marks alike. A mark that belongs to no word would stretch its neighbour's box, so Unassign marks leaves it unattached. Shared bodies need per-word PAW contributions.",
-      s6: "Every word's box is taken from its ink and follows it — nothing is cut by hand, so give the ink to the right word and the box is right. A body two words share is cut at its middle. Del erases ink that is noise: it belongs to no word, and the line's image is exported without it.",
+      s5: "Assign ink to a word: its box spans all of its ink, bodies and marks alike. A mark that belongs to no word would stretch its neighbour's box, so Unassign marks leaves it unattached. Shared bodies need per-word PAW contributions, and the knife cuts one where its words meet.",
+      s6: "Every word's box is taken from its ink and follows it — nothing is cut by hand, so give the ink to the right word and the box is right. A body two words share is divided at its middle, unless you cut it with the knife where the letters touch. Del erases ink that is noise: it belongs to no word, and the line's image is exported without it.",
       s7: "Preview recalculates affected ayat without saving; accept or discard it. Save draft keeps unfinished work. Confirm page makes it teach the next page you process. Body or mark is read with the library's answers. Suggested mark types remain editable and need explicit confirmation to teach their type.",
     },
     stepEyebrow: "Step {{n}} · {{name}}",

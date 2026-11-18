@@ -12,12 +12,14 @@ import {
 } from "@/lib/calibration/model";
 import {
   belongsAt,
+  inkBoxOf,
   bodyPieces,
   inkColor,
   wordBlobs,
   wordCrop,
   type PlaybackWord,
 } from "@/lib/calibration/playback";
+import { cutPiecesOfLine } from "@/lib/calibration/blobCuts";
 import type { CalibrationBlob } from "@/lib/calibration/types";
 
 import { paint, type Raster } from "./inkPaint";
@@ -129,14 +131,16 @@ export function WordAnatomy({
     const bodiesAbove = upper < marks.length - upper;
     const found: Callout[] = blobs.map((blob) => {
       const top = blob.role === "body" ? bodiesAbove : above(blob);
-      const left = blob.x - line.bbox.x - crop.x;
-      const edge = top ? blob.y : blob.y + blob.h;
+      // A body cut with the knife is pointed at by this word's own piece.
+      const ink = inkBoxOf(blob, word.word_id);
+      const left = ink.x - line.bbox.x - crop.x;
+      const edge = top ? ink.y : ink.y + ink.h;
       const rgb =
         blob.role === "mark" ? inkColor(blob, typeOf(blob).subtype, byType).join(",") : null;
       return {
         blob,
         above: top,
-        ax: (left + blob.w / 2) * scale + inkLeft,
+        ax: (left + ink.w / 2) * scale + inkLeft,
         ay: (edge - line.bbox.y - crop.y) * scale + inkTop,
         x: 0,
         colour: rgb ? `rgb(${rgb})` : "var(--color-ink-2)",
@@ -158,7 +162,7 @@ export function WordAnatomy({
       }
     }
     return found;
-  }, [blobs, line, crop.x, crop.y, scale, inkLeft, inkTop, box.w, typeOf, byType]);
+  }, [blobs, line, word.word_id, crop.x, crop.y, scale, inkLeft, inkTop, box.w, typeOf, byType]);
   const rowWidth = (top: boolean) => {
     const n = callouts.filter((callout) => callout.above === top).length;
     return Math.min(LABEL_MAX, Math.max(0, box.w - 2 * MARGIN) / Math.max(1, n)) - LABEL_GAP;
@@ -171,9 +175,11 @@ export function WordAnatomy({
     context.clearRect(0, 0, crop.w, crop.h);
     if (!raster) return;
     const byId = new Map(line.blobs.map((blob) => [blob.id, blob]));
-    paint(context, raster, -crop.x, -crop.y, (id, x) => {
+    const cut = cutPiecesOfLine(line, raster);
+    paint(context, raster, -crop.x, -crop.y, (id, x, y) => {
       const blob = byId.get(id);
-      if (!blob || blob.erased || !belongsAt(blob, word, line.bbox.x + x)) return null;
+      if (!blob || blob.erased) return null;
+      if (!belongsAt(blob, word, line.bbox.x + x, line.bbox.y + y, cut.get(id))) return null;
       return inkColor(blob, blob.role === "mark" ? typeOf(blob).subtype : "", byType);
     });
   }, [raster, line, word, crop.x, crop.y, crop.w, crop.h, byType, typeOf]);

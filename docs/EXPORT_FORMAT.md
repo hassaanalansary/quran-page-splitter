@@ -194,7 +194,12 @@ value = R + 256·G + 65536·B          0 = background
 | blobs | the blob whose `id` is `k`                       |
 
 A blob shared by two words — printed touching across the word break — is split
-between them at their boxes in the word map.
+between them in the word map. Where a reviewer cut it with the knife, each pixel
+goes to the word of the piece it lies in, so an alef standing on the tip of the
+previous word's lam is the alef's word's and the lam's bowl stays with its own.
+Where nobody cut it, the split falls at the words' boxes, which meet at the blob's
+middle. A cut word's `box` and `ink` reach exactly as far as its own piece, so two
+neighbouring words' boxes may overlap.
 
 The maps hold ink as the engine measured it, so the faint anti-aliased edge of a
 letter in the PNG may read 0. When hit-testing a tap, look a pixel or two around.

@@ -20,6 +20,7 @@ from api.auth import current_user
 from api.models import ProcessJobKindChoices
 from api.services import calibration as calibration_service
 from api.services import calibration_batch as batch_service
+from api.services import calibration_cuts
 from api.services import calibration_library as library_service
 from api.services import calibration_progress as progress_service
 from api.services import jobs as jobs_service
@@ -44,6 +45,15 @@ class AllocationIn(Schema):
     paws: int = Field(ge=0, le=calibration_service.MAX_PAWS)
 
 
+class BlobCutIn(Schema):
+    """Where a body two words share divides between them: the lines a person drew
+    across it with the knife, page pixels, and each resulting piece's word in piece
+    order (rightmost piece first). The server measures the pieces itself."""
+
+    lines: list[list[int]] = Field(min_length=1, max_length=calibration_cuts.MAX_CUT_LINES)
+    owners: list[int] = Field(min_length=2, max_length=calibration_service.MAX_PAWS)
+
+
 class BlobEditIn(Schema):
     id: int
     #: body | mark for text; an ornament or a symbol keeps its own role.
@@ -60,6 +70,9 @@ class BlobEditIn(Schema):
     #: Not ink of the text — noise the line's cutting left. Text blobs only; read
     #: around, taught nothing, and cut out of the exported line image.
     erased: bool = False
+    #: A shared body's knife cut. Omitted or null: none, so its words divide it at
+    #: its middle.
+    cut: BlobCutIn | None = None
 
 
 class LineEditIn(Schema):

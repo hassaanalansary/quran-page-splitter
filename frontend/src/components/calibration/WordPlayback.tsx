@@ -38,6 +38,7 @@ import {
   wordBlobs,
   wordCrop,
 } from "@/lib/calibration/playback";
+import { cutPiecesOfLine } from "@/lib/calibration/blobCuts";
 import type { CalibrationLine } from "@/lib/calibration/types";
 import { revealInScroller } from "@/lib/reveal";
 
@@ -210,9 +211,11 @@ export function WordPlayer({
     const raster = rasters.lines.get(line.snapshot_id);
     if (!raster) return;
     const blobs = new Map(line.blobs.map((blob) => [blob.id, blob]));
-    paint(context, raster, line.bbox.x - block.x, line.bbox.y - block.y, (id, x) => {
+    const cut = cutPiecesOfLine(line, raster);
+    paint(context, raster, line.bbox.x - block.x, line.bbox.y - block.y, (id, x, y) => {
       const blob = blobs.get(id);
-      if (!blob || blob.erased || !belongsAt(blob, word, line.bbox.x + x)) return null;
+      if (!blob || blob.erased) return null;
+      if (!belongsAt(blob, word, line.bbox.x + x, line.bbox.y + y, cut.get(id))) return null;
       return inkColor(blob, types.get(blob.id) ?? "", byType);
     });
   }, [current, rasters, block, types, byType]);

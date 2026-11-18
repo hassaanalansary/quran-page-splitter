@@ -111,6 +111,37 @@ assert.equal(
     .length,
   10,
 );
+// Cut with the knife: an alef (word 2's) standing on a bowl (word 1's), one blob.
+// Each pixel belongs to its piece's word, whatever the boxes say.
+{
+  const knifed: CalibrationBlob = {
+    ...shared,
+    x: 110,
+    y: 22,
+    w: 4,
+    h: 3,
+    cut: {
+      lines: [[109, 23, 114, 23]],
+      owners: [1, 2],
+      pieces: [
+        { x: 110, y: 22, w: 4, h: 3, area: 8 },
+        { x: 110, y: 22, w: 1, h: 1, area: 1 },
+      ],
+    },
+  };
+  // Piece 0 everywhere but the top-left pixel, which is piece 1.
+  const labels = new Int32Array(12).fill(0);
+  labels[0] = 1;
+  const pieces = { labels, width: 4, height: 3, boxes: knifed.cut!.pieces };
+  assert.equal(belongsAt(knifed, word, 110, 22, pieces), false);
+  assert.equal(belongsAt(knifed, second, 110, 22, pieces), true);
+  assert.equal(belongsAt(knifed, word, 112, 24, pieces), true);
+  assert.equal(belongsAt(knifed, second, 112, 24, pieces), false);
+  // Its crop holds only the word's own piece.
+  const cutLine = { ...line, blobs: [knifed], words: [word, second] };
+  const secondCrop = wordCrop({ line: cutLine, word: { ...second, start_x: 111 }, wordIndex: 1 });
+  assert.ok(secondCrop.x + secondCrop.w + line.bbox.x <= 111 + 12);
+}
 assert.deepEqual(inkColor(line.blobs[1], "madda", false), MARK_INK);
 assert.notDeepEqual(inkColor(line.blobs[1], "madda", true), inkColor(line.blobs[1], "fatha", true));
 assert.deepEqual(inkColor(line.blobs[1], "unknown-type", true), MARK_INK);

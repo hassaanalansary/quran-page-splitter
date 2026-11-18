@@ -25,7 +25,7 @@ import type {
   TextRole,
 } from "@/lib/calibration/types";
 
-import { BlobCrop, OwnershipControls } from "./BlobDetails";
+import { BlobCrop, OwnershipControls, type KnifeControls } from "./BlobDetails";
 import { ROLE_RGB } from "./colors";
 import { attentionHelpKey, attentionKey, useTypeName } from "./labels";
 import { HOTKEY_TYPES, SUBTYPES, SUBTYPE_GLYPHS, hotkeyOf, subtypeGlyph } from "./subtypes";
@@ -73,6 +73,7 @@ export function SelectionBar({
   onShare,
   onRelease,
   onUnassign,
+  knife,
 }: {
   line: CalibrationLine | null;
   blobs: CalibrationBlob[];
@@ -101,6 +102,8 @@ export function SelectionBar({
   onShare: (shares: Allocation[]) => void;
   onRelease: () => void;
   onUnassign: () => void;
+  /** The knife on the one selected shared body. */
+  knife: KnifeControls;
 }) {
   const { t } = useTranslation();
   const typeName = useTypeName();
@@ -552,6 +555,7 @@ export function SelectionBar({
               line={line}
               blobs={blobs}
               disabled={disabled}
+              knife={knife}
               onException={onException}
               onFusedMark={onFusedMark}
               onAssign={onAssign}

@@ -172,6 +172,33 @@ class SourceTests(ExportTestCase):
         [shared] = [blob for blob in line["blobs"] if blob["box"]["page"][0] == FUSED[0]]
         self.assertEqual((shared["words"], shared["paws"]), ([2, 3], 2))
 
+    def test_a_blob_cut_by_hand_is_split_by_its_pieces(self):
+        with drawn_pages(fused_page=1):
+            self.client.post(self.url(1, "/process"))
+        body = self.draft(self.document(1))
+        fused = self.draft_blob_of(body, FUSED[0])
+        top = LINE_TOPS[0]
+        fused.update(
+            role="body",
+            explicit=True,
+            ownership_explicit=True,
+            allocations=[{"word_id": 2, "paws": 1}, {"word_id": 3, "paws": 1}],
+            # Straight down at x 470: word 2 keeps only 470-489, far right of the middle.
+            cut={"lines": [[470, top + 2, 470, top + 38]], "owners": [2, 3]},
+        )
+        with drawn_pages(fused_page=1):
+            saved = self.put(1, {**body, "realign": True})
+        self.assertEqual(saved.status_code, 200, saved.content)
+        archive = self.export()
+        line = self.page(archive, 1)["lines"][0]
+        words = self.pixels(archive, line["maps"]["words"])
+        middle = (FUSED[0] + FUSED[1]) // 2
+        # Between the middle and the cut the ink is word 3's now, not word 2's.
+        self.assertEqual((words[20, 480 - 100], words[20, middle + 10 - 100], words[20, middle - 10 - 100]), (2, 3, 3))
+        by_id = {word["id"]: word for word in line["words"]}
+        self.assertEqual(by_id[2]["ink"]["page"], [470, top + 8, FUSED[1] - 470, 24])
+        self.assertEqual(by_id[3]["ink"]["page"], [FUSED[0], top + 8, 470 - FUSED[0], 24])
+
 
 class PlacementTests(ExportTestCase):
     def test_uniform_size_moves_every_png_rectangle_by_its_padding(self):

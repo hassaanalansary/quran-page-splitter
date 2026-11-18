@@ -34,8 +34,9 @@ states a downstream app trusts is its own call.
 **The maps** are RGB PNGs the size of the line PNG, each pixel a number
 ``R + 256·G + 65536·B``, 0 for background — an encoding a browser canvas reads back
 exactly. The word map's ``k`` is the line's ``words[k-1]``; the blob map's is the ``id``
-of one of the line's ``blobs``. A blob two words share is split between them at their
-boxes. The maps mark ink as the engine measured it, so the faint anti-aliased fringe
+of one of the line's ``blobs``. A blob two words share is split between them by the
+pieces a person cut it into, or, where nobody cut it, at their boxes. The maps mark
+ink as the engine measured it, so the faint anti-aliased fringe
 of a letter in the PNG may read as background.
 
 Streamed: each page is written to the response as soon as it is made, so a whole
@@ -80,6 +81,7 @@ from api.services import calibration, coordinates, pdf, word_inputs
 from api.services import calibration_marks as text_marks
 from api.services import calibration_snapshots as snapshots
 from api.services import mushaf as mushaf_service
+from api.services.calibration_cuts import cut_fits_blob, piece_of_word, word_of_each_cut_pixel
 from api.services.export import _safe_filename
 from quran.models import Aya
 
@@ -321,21 +323,27 @@ def _blob(blob: Doc, place: _Placement, ornaments: dict[int, str], symbols: dict
 
 
 def _ink_boxes(row: Doc, words: dict[int, Doc]) -> dict[int, list[int]]:
-    """Each word's ink, tight: the union of its blobs, a shared one cut at the word's box."""
+    """Each word's ink, tight: the union of its blobs. A shared blob gives each word its
+    own piece where a person cut it, and is cut at the word's box where nobody did."""
     boxes: dict[int, list[int]] = {}
     for blob in row["blobs"]:
         if blob["role"] not in calibration.TEXT_ROLES:
             continue
         owners = [allocation["word_id"] for allocation in blob.get("allocations") or []]
+        cut = cut_fits_blob(blob)
         for owner in owners:
             left, right = blob["x"], blob["x"] + blob["w"]
+            top, bottom = blob["y"], blob["y"] + blob["h"]
             word = words.get(owner)
-            if len(owners) > 1 and word is not None:
+            piece = piece_of_word(blob, owner) if cut else None
+            if piece is not None:
+                left, top = piece["x"], piece["y"]
+                right, bottom = piece["x"] + piece["w"], piece["y"] + piece["h"]
+            elif len(owners) > 1 and word is not None:
                 left, right = max(left, word["end_x"]), min(right, word["start_x"])
                 if right <= left:
                     continue
             box = boxes.get(owner)
-            top, bottom = blob["y"], blob["y"] + blob["h"]
             boxes[owner] = (
                 [left, top, right, bottom]
                 if box is None
@@ -365,6 +373,39 @@ def _laid(snapshot: CalibrationSnapshot, place: _Placement) -> np.ndarray:
     return ids
 
 
+def paint_cut_blobs(
+    word_map: np.ndarray,
+    snapshot: CalibrationSnapshot,
+    place: _Placement,
+    blobs: list[Doc],
+    position: dict[int, int],
+) -> set[int]:
+    """Give every pixel of a blob a person cut the word of its own piece, on the word
+    map laid over the line's PNG. In place.
+
+    Returns the ids painted. A blob whose stored lines no longer cut it into its
+    pieces (the rule changed under an old draft) is left out, and the caller splits
+    it at the words' boxes as if nobody had cut it.
+    """
+    raster = snapshots.read_raster(snapshot)
+    origin = snapshot.metadata["bbox"]
+    dx = origin["x"] - place.left + place.offset_x
+    dy = origin["y"] - place.top + place.offset_y
+    height, width = word_map.shape
+    painted: set[int] = set()
+    for blob in blobs:
+        found = word_of_each_cut_pixel(raster, origin, blob)
+        if found is None:
+            continue
+        rows, columns, words = found
+        rows, columns = rows + dy, columns + dx
+        inside = (rows >= 0) & (rows < height) & (columns >= 0) & (columns < width)
+        values = np.asarray([position.get(int(word), 0) for word in words], dtype=word_map.dtype)
+        word_map[rows[inside], columns[inside]] = values[inside]
+        painted.add(blob["id"])
+    return painted
+
+
 def _maps(row: Doc, snapshot: CalibrationSnapshot, place: _Placement, words: list[Doc]) -> tuple[bytes, bytes]:
     """The line's word map and blob map, laid exactly over its PNG — without the ink a
     person erased, which the PNG is cut without."""
@@ -386,7 +427,11 @@ def _maps(row: Doc, snapshot: CalibrationSnapshot, place: _Placement, words: lis
         elif owners:
             shared.append((blob["id"], owners))
     word_map = lookup[ids]
+    cut_blobs = [blob for blob in row["blobs"] if blob["id"] in dict(shared) and cut_fits_blob(blob)]
+    painted = paint_cut_blobs(word_map, snapshot, place, cut_blobs, position) if cut_blobs else set()
     for ident, owners in shared:
+        if ident in painted:
+            continue
         rows, cols = np.nonzero(ids == ident)
         if not rows.size:
             continue

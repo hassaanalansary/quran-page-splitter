@@ -15,8 +15,10 @@
 //     given to a word stretches it, and one taken away shrinks it;
 //   * nothing else sets a box: no edge is placed by hand, and a draft carries blob
 //     decisions only — the server takes every box from the ink again.
+import { cutFitsBlob, pieceOfWord, swapPieceOwner } from "./blobCuts.ts";
 import type {
   Allocation,
+  BlobCut,
   BlobException,
   CalibrationBlob,
   CalibrationDocument,
@@ -94,8 +96,8 @@ export function draftOf(
       .filter((line) => !line.readonly)
       .map((line) => ({
         snapshot_id: line.snapshot_id,
-        blobs: line.blobs.map(
-          ({
+        blobs: line.blobs.map((blob) => {
+          const {
             id,
             role,
             explicit,
@@ -105,7 +107,8 @@ export function draftOf(
             exception,
             allocations,
             erased,
-          }) => ({
+          } = blob;
+          return {
             id,
             role,
             explicit,
@@ -115,8 +118,10 @@ export function draftOf(
             exception,
             allocations,
             erased: !!erased,
-          }),
-        ),
+            // Only a cut that still fits travels; the server measures its pieces.
+            cut: cutFitsBlob(blob) ? { lines: blob.cut.lines, owners: blob.cut.owners } : null,
+          };
+        }),
       })),
   };
 }
@@ -301,10 +306,11 @@ function ownersOf(blob: CalibrationBlob): number[] {
 /** A word's right and left edge, from all text ink given to it — the server's
  * `_edges_from_ink`, pixel for pixel.
  *
- * Where a body is shared with the word before (to the right, a smaller id), the
- * word starts at the body's middle; shared with the word after, it ends there: the
- * cut lies somewhere inside that one piece of ink, and its middle is as near as ink
- * can say. Null when the word has no ink of its own. */
+ * A body shared with other words and cut with the knife gives the word the extent
+ * of its own piece. Uncut, where it is shared with the word before (to the right, a
+ * smaller id), the word starts at the body's middle; shared with the word after, it
+ * ends there: the cut lies somewhere inside that one piece of ink, and its middle is
+ * as near as ink alone can say. Null when the word has no ink of its own. */
 export function edgesFromInk(
   line: CalibrationLine,
   wordId: number,
@@ -314,9 +320,14 @@ export function edgesFromInk(
   for (const blob of line.blobs) {
     const ids = blob.allocations.map((allocation) => allocation.word_id);
     if (!isText(blob) || !ids.includes(wordId)) continue;
+    const piece = cutFitsBlob(blob) ? pieceOfWord(blob.cut, wordId) : null;
     const middle = blob.x + Math.floor(blob.w / 2);
-    const right = ids.some((id) => id < wordId) ? middle : blob.x + blob.w;
-    const left = ids.some((id) => id > wordId) ? middle : blob.x;
+    const right = piece
+      ? piece.x + piece.w
+      : ids.some((id) => id < wordId)
+        ? middle
+        : blob.x + blob.w;
+    const left = piece ? piece.x : ids.some((id) => id > wordId) ? middle : blob.x;
     start = start === null ? right : Math.max(start, right);
     end = end === null ? left : Math.min(end, left);
   }
@@ -324,9 +335,11 @@ export function edgesFromInk(
 }
 
 /** Recalculate the named words' edges from the bodies and marks that belong to them
- * — the server's `_box_words`. A word left with no ink keeps its old edges (a box
+ * — the server's `_box_words`. A cut whose words or role changed under it goes
+ * first, as the server drops it. A word left with no ink keeps its old edges (a box
  * needs numbers); its badge says 0 of N. */
-function recalculate(line: CalibrationLine, words: Set<number>): CalibrationLine {
+function recalculate(edited: CalibrationLine, words: Set<number>): CalibrationLine {
+  const line = dropCutsThatNoLongerFit(edited);
   if (!words.size) return line;
   return {
     ...line,
@@ -342,6 +355,18 @@ function recalculate(line: CalibrationLine, words: Set<number>): CalibrationLine
       const edges = edgesFromInk(line, id);
       return edges ? { ...word, shared, ...edges } : { ...word, shared };
     }),
+  };
+}
+
+/** The line without the cuts that no longer fit their blobs — the server's
+ * `drop_cuts_that_no_longer_fit`. The same line when every cut still fits. */
+function dropCutsThatNoLongerFit(line: CalibrationLine): CalibrationLine {
+  if (!line.blobs.some((blob) => blob.cut && !cutFitsBlob(blob))) return line;
+  return {
+    ...line,
+    blobs: line.blobs.map((blob) =>
+      !blob.cut || cutFitsBlob(blob) ? blob : { ...blob, cut: undefined },
+    ),
   };
 }
 
@@ -657,8 +682,8 @@ export function assignToWord(
  *
  * Each word is given its own share of the blob's PAWs, so both counts close on
  * their own. The alignment reads the joined words as one unit and splits them
- * again at this blob; the cut between them sits at the blob's middle (see
- * `edgesFromInk`). */
+ * again at this blob. Between them the blob divides at its middle until a person
+ * cuts it with the knife (`cutBlob`); a cut stays while the same words share it. */
 export function shareBetween(
   lines: CalibrationLine[],
   selection: BlobSelection,
@@ -678,6 +703,70 @@ export function shareBetween(
       };
     });
     return recalculate({ ...line, blobs }, affected);
+  });
+}
+
+// ── The knife: a shared body cut into one piece per word ─────────────────────
+
+/** Change one blob of one editable line, and recalculate the words it is shared by. */
+function onBlob(
+  lines: CalibrationLine[],
+  snapshot: string,
+  blobId: number,
+  edit: (blob: CalibrationBlob) => CalibrationBlob | null,
+): CalibrationLine[] {
+  return lines.map((line) => {
+    if (line.readonly || line.snapshot_id !== snapshot) return line;
+    const target = line.blobs.find((blob) => blob.id === blobId);
+    const next = target ? edit(target) : null;
+    if (!target || !next) return line;
+    const blobs = line.blobs.map((blob) => (blob.id === blobId ? next : blob));
+    return recalculate({ ...line, blobs }, new Set(ownersOf(next)));
+  });
+}
+
+/** Cut a shared body with the knife: the lines a person drew, each piece's word, and
+ * the pieces as the editor measured them (the server measures them again). Refused —
+ * the lines unchanged — unless the blob is a body shared by exactly those words and
+ * there is one piece per word. */
+export function cutBlob(
+  lines: CalibrationLine[],
+  snapshot: string,
+  blobId: number,
+  cut: BlobCut,
+): CalibrationLine[] {
+  return onBlob(lines, snapshot, blobId, (blob) => {
+    const next = { ...blob, cut: { ...cut, lines: [...cut.lines], owners: [...cut.owners] } };
+    return cutFitsBlob(next) ? next : null;
+  });
+}
+
+/** Give the clicked piece of a cut blob the next piece's word, and that piece its
+ * word: with two pieces, the swap. */
+export function swapCutPiece(
+  lines: CalibrationLine[],
+  snapshot: string,
+  blobId: number,
+  piece: number,
+): CalibrationLine[] {
+  return onBlob(lines, snapshot, blobId, (blob) =>
+    cutFitsBlob(blob)
+      ? { ...blob, cut: { ...blob.cut, owners: swapPieceOwner(blob.cut.owners, piece) } }
+      : null,
+  );
+}
+
+/** Take the knife's cut off the selected blobs: their words divide them at the
+ * middle again. */
+export function clearCut(lines: CalibrationLine[], selection: BlobSelection): CalibrationLine[] {
+  return onLine(lines, selection, (line, chosen) => {
+    const affected = new Set<number>();
+    const blobs = line.blobs.map((blob) => {
+      if (!chosen.has(blob.id) || !blob.cut) return blob;
+      ownersOf(blob).forEach((id) => affected.add(id));
+      return { ...blob, cut: undefined };
+    });
+    return affected.size ? recalculate({ ...line, blobs }, affected) : line;
   });
 }
 

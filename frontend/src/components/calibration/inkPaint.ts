@@ -1,15 +1,15 @@
 /** A line's label raster: which blob each pixel is, 0 for the background. */
 export type Raster = { ids: Uint32Array; width: number; height: number };
 
-/** Paint a line's ink into a layer at (dx, dy): each pixel's blob, by `colour`, which
- * says nothing for ink that is not drawn. Through a scratch canvas, so the line's
+/** Paint a line's ink into a layer at (dx, dy): each pixel's blob, by `colour` — told
+ * the pixel's raster column and row — which says nothing for ink that is not drawn. Through a scratch canvas, so the line's
  * empty pixels leave its neighbours' ink alone where the boxes overlap. */
 export function paint(
   context: CanvasRenderingContext2D,
   raster: Raster,
   dx: number,
   dy: number,
-  colour: (id: number, x: number) => readonly [number, number, number] | null,
+  colour: (id: number, x: number, y: number) => readonly [number, number, number] | null,
 ) {
   if (!raster.width || !raster.height) return;
   const image = new ImageData(raster.width, raster.height);
@@ -17,7 +17,7 @@ export function paint(
   for (let i = 0; i < raster.ids.length; i++) {
     const id = raster.ids[i];
     if (!id) continue;
-    const rgb = colour(id, i % raster.width);
+    const rgb = colour(id, i % raster.width, Math.floor(i / raster.width));
     if (!rgb) continue;
     const p = i * 4;
     data[p] = rgb[0];

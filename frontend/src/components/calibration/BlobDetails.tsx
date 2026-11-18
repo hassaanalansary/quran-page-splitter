@@ -1,8 +1,9 @@
-import { X } from "lucide-react";
+import { Scissors, X } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { mediaUrl } from "@/lib/api";
+import { cutFitsBlob, type KnifeVerdict } from "@/lib/calibration/blobCuts";
 import { isFusedBody, subtypeParts } from "@/lib/calibration/model";
 import type {
   Allocation,
@@ -24,6 +25,20 @@ const ACTION =
 /** A PAW count's input. */
 const PAWS_INPUT =
   "h-[34px] w-14 flex-none rounded-control border border-rule-2 bg-card px-2 font-mono text-[13px] text-ink outline-none focus:border-lapis";
+
+/** The knife on the one selected shared body, as the editor holds it. */
+export type KnifeControls = {
+  /** The knife is out on the selected blob: a drag on its line draws a cut. */
+  active: boolean;
+  /** What the last line drawn did, when it was dropped or another is needed. */
+  note: KnifeVerdict | null;
+  /** Take the knife out, or put it away without cutting. */
+  onToggle: () => void;
+  /** Give each piece the other word. */
+  onSwap: () => void;
+  /** Take the cut off: the words divide the blob at its middle again. */
+  onClear: () => void;
+};
 
 /** One blob's own pixels, cut from its line's image at a readable size. */
 export function BlobCrop({
@@ -68,14 +83,16 @@ export function BlobCrop({
 
 /**
  * Which word the selected ink belongs to, and the rarer decisions about it: give it
- * to a word with a PAW count, share one body across a word break, leave marks
- * unattached, flag ink out of the ordinary — and name the marks printed in a mixed
- * body — take decisions back. Recording ownership changes nobody's role.
+ * to a word with a PAW count, share one body across a word break — and cut it with
+ * the knife where its words meet — leave marks unattached, flag ink out of the
+ * ordinary, name the marks printed in a mixed body, take decisions back. Recording
+ * ownership changes nobody's role.
  */
 export function OwnershipControls({
   line,
   blobs,
   disabled,
+  knife,
   onException,
   onFusedMark,
   onAssign,
@@ -86,6 +103,7 @@ export function OwnershipControls({
   line: CalibrationLine;
   blobs: CalibrationBlob[];
   disabled: boolean;
+  knife: KnifeControls;
   onException: (exception: BlobException) => void;
   /** Name a mark printed in the mixed body, or take it off. */
   onFusedMark: (part: string) => void;
@@ -221,6 +239,51 @@ export function OwnershipControls({
               />
             </label>
           ))}
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            <button
+              type="button"
+              className={`${ACTION} inline-flex items-center gap-1.5 ${
+                knife.active ? "border-[color:var(--ov-warn)] text-[color:var(--ov-warn)]" : ""
+              }`}
+              aria-pressed={knife.active}
+              disabled={disabled}
+              title={t("calibration.knife.help")}
+              onClick={knife.onToggle}
+            >
+              <Scissors size={14} aria-hidden="true" />
+              {knife.active
+                ? t("calibration.knife.stop")
+                : t(cutFitsBlob(single) ? "calibration.knife.recut" : "calibration.knife.start")}
+            </button>
+            {cutFitsBlob(single) && !knife.active && (
+              <>
+                <button type="button" className={ACTION} disabled={disabled} onClick={knife.onSwap}>
+                  {t("calibration.knife.swap")}
+                </button>
+                <button
+                  type="button"
+                  className={ACTION}
+                  disabled={disabled}
+                  onClick={knife.onClear}
+                >
+                  {t("calibration.knife.clear")}
+                </button>
+              </>
+            )}
+          </div>
+          <span
+            className="text-[12px] leading-[1.45]"
+            style={{ color: knife.note ? "var(--ov-warn)" : undefined }}
+            role={knife.note ? "status" : undefined}
+          >
+            {knife.active
+              ? t(knife.note ? `calibration.knife.note.${knife.note}` : "calibration.knife.draw")
+              : t(
+                  cutFitsBlob(single)
+                    ? "calibration.knife.cutNote"
+                    : "calibration.knife.middleNote",
+                )}
+          </span>
         </div>
       )}
 

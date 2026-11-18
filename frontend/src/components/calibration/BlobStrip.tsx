@@ -10,6 +10,15 @@ import { useTranslation } from "react-i18next";
 import { BusyLabel } from "@/components/app/SatrLoader";
 import { mediaUrl } from "@/lib/api";
 import {
+  cutBlobInRaster,
+  cutFitsBlob,
+  judgeKnifeLine,
+  pieceAt,
+  type BlobPieces,
+  type KnifeOutcome,
+  type KnifeState,
+} from "@/lib/calibration/blobCuts";
+import {
   decodeLabels,
   doubtOf,
   expectationKey,
@@ -35,9 +44,9 @@ import {
   type MarkChecks,
   type NoiseSuspects,
 } from "@/lib/calibration/model";
-import type { CalibrationLine } from "@/lib/calibration/types";
+import type { CalibrationBlob, CalibrationLine, CutLine } from "@/lib/calibration/types";
 
-import { HIGHLIGHT_RGB, ROLE_RGB, UNSETTLED_RGB } from "./colors";
+import { HIGHLIGHT_RGB, PIECE_RGB, ROLE_RGB, UNSETTLED_RGB } from "./colors";
 import { exceptionKey, useTypeName } from "./labels";
 import { TANWEEN_MARKS, subtypeGlyph } from "./subtypes";
 
@@ -106,6 +115,9 @@ export function BlobStrip({
   noise,
   checks,
   showTypes = false,
+  knife = null,
+  onKnifeLine,
+  onSwapPiece,
 }: {
   line: CalibrationLine;
   scale: number;
@@ -142,6 +154,13 @@ export function BlobStrip({
   movedWords?: Set<number>;
   /** Label every mark with its type in a lane under the line. */
   showTypes?: boolean;
+  /** The knife, when it is out on a blob of this line: a drag draws a line across
+   * that blob instead of a selection rectangle. */
+  knife?: KnifeState | null;
+  /** A knife line was drawn: what it did, measured on this line's raster. */
+  onKnifeLine?: (outcome: KnifeOutcome) => void;
+  /** A click on a piece of the selected cut blob: give that piece the other word. */
+  onSwapPiece?: (blobId: number, piece: number) => void;
 }) {
   const { t } = useTranslation();
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -149,7 +168,9 @@ export function BlobStrip({
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
   const [rectangle, setRectangle] = useState<{ from: Point; to: Point } | null>(null);
+  const [knifeDrag, setKnifeDrag] = useState<{ from: Point; to: Point } | null>(null);
   const drag = useRef<{ from: Point; client: Point; additive: boolean } | null>(null);
+  const knifeHere = knife && knife.snapshot === line.snapshot_id ? knife : null;
 
   // Load the line image and its label raster once per snapshot — they never change.
   useEffect(() => {
@@ -224,6 +245,19 @@ export function BlobStrip({
         .map((blob) => blob.id),
     );
   }, [showTypes, line.readonly, line.blobs, line.snapshot_id, guesses, doubted]);
+  // The pieces of every blob cut with the knife, measured on this raster — and, while
+  // the knife is out, of its blob as the lines drawn so far cut it.
+  const pieces = useMemo(() => {
+    const found = new Map<number, BlobPieces>();
+    if (!raster) return found;
+    const measure = (blob: CalibrationBlob, lines: CutLine[]) =>
+      cutBlobInRaster(raster.ids, raster.width, raster.height, line.bbox, blob, lines);
+    for (const blob of line.blobs)
+      if (cutFitsBlob(blob)) found.set(blob.id, measure(blob, blob.cut.lines));
+    const target = knifeHere ? line.blobs.find((blob) => blob.id === knifeHere.blobId) : undefined;
+    if (target && knifeHere?.lines.length) found.set(target.id, measure(target, knifeHere.lines));
+    return found;
+  }, [raster, line.blobs, line.bbox, knifeHere]);
   useEffect(() => {
     const context = canvas.current?.getContext("2d");
     if (!context || !raster) return;
@@ -251,15 +285,28 @@ export function BlobStrip({
       }
       const picked = shown?.has(id) ?? false;
       const faded = !chosen && ((shown !== null && !picked) || (dim && !needsLook(blob)));
-      const colour = chosen
-        ? SELECTED_RGB
-        : faded
-          ? ([255, 255, 255] as const)
-          : picked
-            ? HIGHLIGHT_RGB
-            : unsettled.has(id)
-              ? UNSETTLED_RGB
-              : ROLE_RGB[blob.role];
+      // A selected blob cut with the knife shows its pieces, each in its colour.
+      const cut = chosen ? pieces.get(id) : undefined;
+      const piece = cut
+        ? pieceAt(
+            cut,
+            blob,
+            line.bbox.x + (i % raster.width),
+            line.bbox.y + Math.floor(i / raster.width),
+          )
+        : -1;
+      const colour =
+        piece >= 0
+          ? PIECE_RGB[piece % PIECE_RGB.length]
+          : chosen
+            ? SELECTED_RGB
+            : faded
+              ? ([255, 255, 255] as const)
+              : picked
+                ? HIGHLIGHT_RGB
+                : unsettled.has(id)
+                  ? UNSETTLED_RGB
+                  : ROLE_RGB[blob.role];
       const alpha = faded ? 0.8 : chosen || picked || unsettled.has(id) ? 0.92 : 0.7;
       data[p] = Math.round(data[p] * (1 - alpha) + colour[0] * alpha);
       data[p + 1] = Math.round(data[p + 1] * (1 - alpha) + colour[1] * alpha);
@@ -267,7 +314,18 @@ export function BlobStrip({
       data[p + 3] = 255;
     }
     context.putImageData(pixels, 0, 0);
-  }, [raster, line.blobs, line.snapshot_id, selection, dim, shown, unsettled]);
+  }, [
+    raster,
+    line.blobs,
+    line.snapshot_id,
+    line.bbox.x,
+    line.bbox.y,
+    selection,
+    dim,
+    shown,
+    unsettled,
+    pieces,
+  ]);
 
   const selectedWords = useMemo(() => {
     if (selection.snapshot !== line.snapshot_id) return new Set<number>();
@@ -324,6 +382,33 @@ export function BlobStrip({
 
   const typeName = useTypeName();
 
+  /** A raster point as a whole page pixel inside the line's box — where a knife line
+   * may start or end. */
+  const toPagePixel = (point: Point): [number, number] => {
+    const width = raster?.width ?? line.bbox.w;
+    const height = raster?.height ?? line.bbox.h;
+    return [
+      line.bbox.x + Math.max(0, Math.min(width - 1, Math.floor(point.x))),
+      line.bbox.y + Math.max(0, Math.min(height - 1, Math.floor(point.y))),
+    ];
+  };
+
+  /** The knife line from `from` to `to` (raster points), measured against the lines
+   * drawn before it, and said to the editor. */
+  const drawKnifeLine = (from: Point, to: Point) => {
+    const blob = knifeHere ? line.blobs.find((b) => b.id === knifeHere.blobId) : undefined;
+    if (!knifeHere || !blob || !raster || !onKnifeLine) return;
+    const drawn: CutLine = [...toPagePixel(from), ...toPagePixel(to)];
+    const lines = [...knifeHere.lines, drawn];
+    const before = knifeHere.lines.length ? (pieces.get(blob.id)?.boxes.length ?? 1) : 1;
+    const after = cutBlobInRaster(raster.ids, raster.width, raster.height, line.bbox, blob, lines);
+    onKnifeLine({
+      verdict: judgeKnifeLine(before, after.boxes.length, blob.allocations.length),
+      lines,
+      pieces: after.boxes,
+    });
+  };
+
   const onPointerDown = (event: ReactPointerEvent<HTMLCanvasElement>) => {
     if (!canSelect || event.button !== 0) return;
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -339,17 +424,44 @@ export function BlobStrip({
       event.clientX - drag.current.client.x,
       event.clientY - drag.current.client.y,
     );
-    if (moved > CLICK_SLOP)
-      setRectangle({ from: drag.current.from, to: toRaster(event, event.currentTarget) });
+    if (moved <= CLICK_SLOP) return;
+    const to = toRaster(event, event.currentTarget);
+    if (knifeHere) setKnifeDrag({ from: drag.current.from, to });
+    else setRectangle({ from: drag.current.from, to });
   };
   const onPointerUp = (event: ReactPointerEvent<HTMLCanvasElement>) => {
     const start = drag.current;
     drag.current = null;
     setRectangle(null);
+    setKnifeDrag(null);
     if (!start || !raster) return;
     const to = toRaster(event, event.currentTarget);
     const isRectangle =
       Math.hypot(event.clientX - start.client.x, event.clientY - start.client.y) > CLICK_SLOP;
+    if (knifeHere) {
+      // The knife is out: a drag is a cut, and a click does nothing.
+      if (isRectangle) drawKnifeLine(start.from, to);
+      if (event.currentTarget.hasPointerCapture(event.pointerId))
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      return;
+    }
+    if (!isRectangle && !start.additive && onSwapPiece && !disabled) {
+      // A click on a piece of the one selected cut blob gives that piece the other word.
+      const hit = labelAt(raster.ids, raster.width, raster.height, to.x, to.y);
+      const only = selection.snapshot === line.snapshot_id && selection.ids.length === 1;
+      const cut = only && hit === selection.ids[0] ? pieces.get(hit) : undefined;
+      const blob = cut ? line.blobs.find((b) => b.id === hit) : undefined;
+      if (cut && blob) {
+        const [pageX, pageY] = toPagePixel(to);
+        const piece = pieceAt(cut, blob, pageX, pageY);
+        if (piece >= 0) {
+          onSwapPiece(hit, piece);
+          if (event.currentTarget.hasPointerCapture(event.pointerId))
+            event.currentTarget.releasePointerCapture(event.pointerId);
+          return;
+        }
+      }
+    }
     const hits = isRectangle
       ? labelsInRect(
           raster.ids,
@@ -455,6 +567,7 @@ export function BlobStrip({
               onPointerCancel={() => {
                 drag.current = null;
                 setRectangle(null);
+                setKnifeDrag(null);
               }}
             />
 
@@ -608,6 +721,95 @@ export function BlobStrip({
                     />
                   );
                 })}
+
+            {/* The knife's lines: the selected cut blob's, dashed; the ones drawn
+                while the knife is out, solid; the one being dragged, live. Each piece
+                of the selected cut blob carries its word's name, in its colour. */}
+            {(() => {
+              const selectedCut = line.blobs.find(
+                (blob) =>
+                  cutFitsBlob(blob) &&
+                  selection.snapshot === line.snapshot_id &&
+                  selection.ids.length === 1 &&
+                  selection.ids[0] === blob.id,
+              );
+              const kept = knifeHere?.lines ?? [];
+              const settled = selectedCut?.cut?.lines ?? [];
+              if (!kept.length && !settled.length && !knifeDrag) return null;
+              const toScreen = ([x1, y1, x2, y2]: CutLine) => ({
+                x1: (x1 - line.bbox.x + 0.5) * scale,
+                y1: (y1 - line.bbox.y + 0.5) * scale,
+                x2: (x2 - line.bbox.x + 0.5) * scale,
+                y2: (y2 - line.bbox.y + 0.5) * scale,
+              });
+              return (
+                <svg
+                  className="pointer-events-none absolute left-0 top-0 overflow-visible"
+                  width={width}
+                  height={height}
+                  aria-hidden="true"
+                >
+                  {!knifeHere &&
+                    settled.map((cutLine, index) => (
+                      <line
+                        key={`settled-${index}`}
+                        {...toScreen(cutLine)}
+                        stroke="var(--ov-warn)"
+                        strokeWidth={1.5}
+                        strokeDasharray="4 3"
+                      />
+                    ))}
+                  {kept.map((cutLine, index) => (
+                    <line
+                      key={`kept-${index}`}
+                      {...toScreen(cutLine)}
+                      stroke="var(--ov-warn)"
+                      strokeWidth={2}
+                    />
+                  ))}
+                  {knifeDrag && (
+                    <line
+                      x1={knifeDrag.from.x * scale}
+                      y1={knifeDrag.from.y * scale}
+                      x2={knifeDrag.to.x * scale}
+                      y2={knifeDrag.to.y * scale}
+                      stroke="var(--ov-warn)"
+                      strokeWidth={2}
+                      strokeLinecap="round"
+                    />
+                  )}
+                </svg>
+              );
+            })()}
+            {line.blobs
+              .filter(
+                (blob) =>
+                  !knifeHere &&
+                  cutFitsBlob(blob) &&
+                  isSelected(selection, line.snapshot_id, blob.id) &&
+                  selection.ids.length === 1,
+              )
+              .flatMap((blob) =>
+                (blob.cut?.pieces ?? []).map((piece, index) => {
+                  const owner = blob.cut?.owners[index];
+                  const text = line.words.find((word) => word.word_id === owner)?.text ?? "";
+                  const colour = PIECE_RGB[index % PIECE_RGB.length];
+                  return (
+                    <span
+                      key={`piece-${blob.id}-${index}`}
+                      dir="rtl"
+                      className="pointer-events-none absolute -translate-x-full -translate-y-full whitespace-nowrap rounded-[3px] px-1 font-quran text-[13px] leading-[17px] text-white shadow-[0_0_0_1px_#ffffff]"
+                      style={{
+                        background: `rgb(${colour.join(",")})`,
+                        left: (piece.x - line.bbox.x + piece.w) * scale,
+                        top: Math.max(17, (piece.y - line.bbox.y) * scale - 2),
+                      }}
+                    >
+                      {text}
+                    </span>
+                  );
+                }),
+              )}
 
             {rectangle && (
               <div

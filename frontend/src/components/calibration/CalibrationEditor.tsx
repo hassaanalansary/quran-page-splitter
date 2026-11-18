@@ -51,6 +51,8 @@ import {
   addSubtypePart,
   assignToWord,
   attentionItems,
+  clearCut,
+  cutBlob,
   changedWords,
   currentOf,
   doubtsOf,
@@ -80,6 +82,7 @@ import {
   setRole,
   setSubtype,
   shareBetween,
+  swapCutPiece,
   stepAttention,
   stepBlob,
   stepGallery,
@@ -103,6 +106,12 @@ import {
   type History,
   type NoiseSuspects,
 } from "@/lib/calibration/model";
+import {
+  defaultOwners,
+  type KnifeOutcome,
+  type KnifeState,
+  type KnifeVerdict,
+} from "@/lib/calibration/blobCuts";
 import type {
   CalibrationDocument,
   CalibrationDraft,
@@ -112,6 +121,7 @@ import type {
 import { revealInScroller } from "@/lib/reveal";
 import { cn } from "@/lib/utils";
 
+import type { KnifeControls } from "./BlobDetails";
 import { BlobStrip, STRIP_CHROME } from "./BlobStrip";
 import { BulkPanel } from "./BulkPanel";
 import { HIGHLIGHT_RGB, ROLE_RGB, UNSETTLED_RGB } from "./colors";
@@ -706,6 +716,66 @@ export function CalibrationEditor({
   /** Edits are accepted: a processed, current page, with nothing else in flight. */
   const editable = processed && !stale && !held && !preview && !busy;
 
+  // ── the knife ──────────────────────────────────────────────────────────────
+  // Out on one shared body at a time, and only while that body alone is selected on
+  // a page that takes edits: selecting anything else puts it away. A save in flight
+  // only pauses it.
+  const [knife, setKnife] = useState<KnifeState | null>(null);
+  const [knifeNote, setKnifeNote] = useState<KnifeVerdict | null>(null);
+  const knifeBlob =
+    knife && selection.snapshot === knife.snapshot && selection.ids.length === 1
+      ? (selectedBlobs.find((blob) => blob.id === knife.blobId) ?? null)
+      : null;
+  const knifeOn = knife && knifeBlob && processed && !stale && !held && !preview ? knife : null;
+  useEffect(() => {
+    if (knife && !knifeOn) {
+      setKnife(null);
+      setKnifeNote(null);
+    }
+  }, [knife, knifeOn]);
+  const putKnifeAway = () => {
+    setKnife(null);
+    setKnifeNote(null);
+  };
+  /** A line drawn with the knife: the cut is made once there is one piece per word,
+   * each piece going to the words in reading order — the rightmost to the first. */
+  const onKnifeLine = (outcome: KnifeOutcome) => {
+    if (!knifeOn || !knifeBlob || !editable) return;
+    if (outcome.verdict === "done") {
+      commit(
+        cutBlob(lines, knifeOn.snapshot, knifeOn.blobId, {
+          lines: outcome.lines,
+          owners: defaultOwners(knifeBlob),
+          pieces: outcome.pieces,
+        }),
+      );
+      putKnifeAway();
+    } else {
+      if (outcome.verdict === "more") setKnife({ ...knifeOn, lines: outcome.lines });
+      setKnifeNote(outcome.verdict);
+    }
+  };
+  const knifeControls: KnifeControls = {
+    active: !!knifeOn,
+    note: knifeOn ? knifeNote : null,
+    onToggle: () => {
+      if (knifeOn) return putKnifeAway();
+      const [blob] = selectedBlobs;
+      if (!editable || selectedBlobs.length !== 1 || blob.role !== "body") return;
+      if (blob.allocations.length < 2) return;
+      setKnife({ snapshot: selection.snapshot, blobId: blob.id, lines: [] });
+      setKnifeNote(null);
+    },
+    onSwap: () => {
+      const [blob] = selectedBlobs;
+      if (editable && selectedBlobs.length === 1)
+        commit(swapCutPiece(lines, selection.snapshot, blob.id, 0));
+    },
+    onClear: () => {
+      if (editable) commit(clearCut(lines, selection));
+    },
+  };
+
   // Ask for a type for every untyped mark when the page opens, and again shortly
   // after the typing changes — so the marks typed here teach the rest of the page
   // at once. Guesses change nothing in the draft: accepting one is what types it.
@@ -919,7 +989,9 @@ export function CalibrationEditor({
       }
       if (event.altKey) return;
       if (key === "escape") {
-        setSelection(NO_SELECTION);
+        // The knife is put away first; the selection goes on a second press.
+        if (knifeOn) putKnifeAway();
+        else setSelection(NO_SELECTION);
       } else if (key === "n") {
         event.preventDefault();
         stepLook(event.shiftKey ? -1 : 1);
@@ -1287,6 +1359,13 @@ export function CalibrationEditor({
               dim={dim}
               selectable={!line.readonly}
               disabled={line.readonly || !editable}
+              knife={editable ? knifeOn : null}
+              onKnifeLine={onKnifeLine}
+              onSwapPiece={
+                editable && !line.readonly
+                  ? (blobId, piece) => commit(swapCutPiece(lines, line.snapshot_id, blobId, piece))
+                  : undefined
+              }
             />
           </div>
         ))}
@@ -1720,6 +1799,7 @@ export function CalibrationEditor({
             onShare={(shares) => commit(shareBetween(lines, selection, shares))}
             onRelease={() => commit(releaseDecisions(lines, selection))}
             onUnassign={() => commit(unassignMarks(lines, selection))}
+            knife={knifeControls}
           />
         )}
 

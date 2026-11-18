@@ -20,6 +20,17 @@ export type DecisionSource = "human" | "calibration" | "text" | "search";
  * broken fragment or for any mark, and 2 or more for bodies printed touching. */
 export type Allocation = { word_id: number; paws: number };
 
+/** One straight line a person drew with the knife, `[x1, y1, x2, y2]`, page pixels. */
+export type CutLine = [number, number, number, number];
+
+/** One piece of a cut blob: its extent, page pixels, and how many pixels it holds. */
+export type PieceBox = { x: number; y: number; w: number; h: number; area: number };
+
+/** A body two words share, cut by hand into one piece per word (see blobCuts.ts).
+ * `owners[i]` is the word of `pieces[i]`; the pieces are in their fixed order, the
+ * rightmost first. It changes no PAW count and nothing the reading sees. */
+export type BlobCut = { lines: CutLine[]; owners: number[]; pieces: PieceBox[] };
+
 /** Calibration's shadow proposal for a blob: what its nearest confirmed examples
  * say, or `role: null` when they do not clear the gate — `reasons` says why. */
 export type Proposal = { role?: TextRole | null; confidence?: number; reasons?: string[] };
@@ -63,6 +74,9 @@ export type CalibrationBlob = {
    * belongs to no word, is read around, teaches nothing, and the exported line image
    * is cut without it. `false` once restored; absent on a blob never erased. */
   erased?: boolean;
+  /** Where a shared body divides between its words: a person's knife. Absent, the
+   * words divide it at its middle. */
+  cut?: BlobCut;
 };
 
 export type CalibrationWord = {
@@ -164,7 +178,7 @@ export type CalibrationDraft = {
   realign?: boolean;
   lines: {
     snapshot_id: string;
-    blobs: Pick<
+    blobs: (Pick<
       CalibrationBlob,
       | "id"
       | "role"
@@ -175,7 +189,10 @@ export type CalibrationDraft = {
       | "exception"
       | "allocations"
       | "erased"
-    >[];
+    > & {
+      /** What the knife drew and whose each piece is; the server measures the pieces. */
+      cut: Pick<BlobCut, "lines" | "owners"> | null;
+    })[];
   }[];
 };
 

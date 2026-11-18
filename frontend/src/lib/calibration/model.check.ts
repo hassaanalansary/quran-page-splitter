@@ -65,6 +65,9 @@ import {
   needsLook,
   unassignMarks,
   shareBetween,
+  clearCut,
+  cutBlob,
+  swapCutPiece,
   stepAttention,
   stepHistory,
   wordCount,
@@ -235,6 +238,47 @@ const sel = (ids: number[], snapshot = "s1") => ({ snapshot, ids });
     input,
     "at least two words",
   );
+
+  // The knife: cut at x 470, word 2 keeps its piece 470-489 and word 3 the rest.
+  const knife = {
+    lines: [[470, 2, 470, 38]] as [number, number, number, number][],
+    owners: [2, 3],
+    pieces: [
+      { x: 470, y: 10, w: 20, h: 20, area: 400 },
+      { x: 340, y: 10, w: 130, h: 20, area: 2600 },
+    ],
+  };
+  const cut = cutBlob(lines, "s1", 3, knife);
+  const [, cutSecond, cutThird] = cut[0].words;
+  assert.deepEqual([cutSecond.start_x, cutSecond.end_x], [490, 470]);
+  assert.deepEqual([cutThird.start_x, cutThird.end_x], [470, 340]);
+  // Sent without its pieces: the server measures them again.
+  assert.deepEqual(draftOf({ revision: 3 }, cut, "r").lines[0].blobs[2].cut, {
+    lines: knife.lines,
+    owners: [2, 3],
+  });
+  assert.equal(draftOf({ revision: 3 }, lines, "r").lines[0].blobs[2].cut, null);
+  // A click on a piece gives it the other word.
+  const swapped = swapCutPiece(cut, "s1", 3, 0);
+  assert.deepEqual(pick(swapped, 3).cut?.owners, [3, 2]);
+  assert.deepEqual([swapped[0].words[2].start_x, swapped[0].words[2].end_x], [490, 470]);
+  // Not a cut of this blob's words, or not one piece per word: refused, unchanged.
+  assert.deepEqual(cutBlob(lines, "s1", 3, { ...knife, owners: [2, 4] }), lines);
+  assert.deepEqual(cutBlob(lines, "s1", 3, { ...knife, pieces: knife.pieces.slice(1) }), lines);
+  // Cleared, the middle again.
+  const cleared = clearCut(cut, sel([3]));
+  assert.equal(pick(cleared, 3).cut, undefined);
+  assert.deepEqual([cleared[0].words[1].end_x, cleared[0].words[2].start_x], [415, 415]);
+  // Unshared, turned into a mark or erased, the blob loses its cut.
+  assert.equal(pick(assignToWord(cut, sel([3]), 2, 2), 3).cut, undefined);
+  assert.equal(pick(setRole(cut, sel([3]), "mark"), 3).cut, undefined);
+  assert.equal(pick(setErased(cut, sel([3]), true), 3).cut, undefined);
+  // The same words sharing it with other PAW counts keep it.
+  const recounted = shareBetween(cut, sel([3]), [
+    { word_id: 2, paws: 1 },
+    { word_id: 3, paws: 2 },
+  ]);
+  assert.deepEqual(pick(recounted, 3).cut?.owners, [2, 3]);
 }
 
 // Read-only context is never edited, nor sent.

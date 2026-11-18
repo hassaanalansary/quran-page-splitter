@@ -1,3 +1,4 @@
+import { cutFitsBlob, pieceAt, pieceOfWord, type BlobPieces } from "./blobCuts.ts";
 import type { CalibrationBlob, CalibrationLine, CalibrationWord } from "./types.ts";
 
 export type PlaybackWord = { line: CalibrationLine; word: CalibrationWord; wordIndex: number };
@@ -41,14 +42,28 @@ export function playbackWords(lines: CalibrationLine[]): PlaybackWord[] {
 }
 
 export function wordBlobs(entry: PlaybackWord): CalibrationBlob[] {
-  if (entry.word.word_id === null) return [];
+  const wordId = entry.word.word_id;
+  if (wordId === null) return [];
   return entry.line.blobs
     .filter(
       (blob) =>
         (blob.role === "body" || blob.role === "mark") &&
-        blob.allocations.some((allocation) => allocation.word_id === entry.word.word_id),
+        blob.allocations.some((allocation) => allocation.word_id === wordId),
     )
-    .sort((a, b) => b.x + b.w - (a.x + a.w) || a.y - b.y || a.id - b.id);
+    .sort((a, b) => {
+      const [one, other] = [inkBoxOf(a, wordId), inkBoxOf(b, wordId)];
+      return other.x + other.w - (one.x + one.w) || one.y - other.y || a.id - b.id;
+    });
+}
+
+/** The part of a blob a word owns: its own piece where the blob was cut with the
+ * knife, the whole blob otherwise. */
+export function inkBoxOf(
+  blob: CalibrationBlob,
+  wordId: number | null,
+): { x: number; y: number; w: number; h: number } {
+  const piece = wordId !== null && cutFitsBlob(blob) ? pieceOfWord(blob.cut, wordId) : null;
+  return piece ?? blob;
 }
 
 export function inkColor(blob: CalibrationBlob, type: string, distinguishTypes: boolean): RGB {
@@ -59,19 +74,32 @@ export function inkColor(blob: CalibrationBlob, type: string, distinguishTypes: 
       : MARK_INK;
 }
 
-/** Shared ink is allocated by the internal cut, not painted whole for both words.
- * Unshared owned ink outside a word's box stays visible: that discrepancy matters. */
-export function belongsAt(blob: CalibrationBlob, word: CalibrationWord, pageX: number): boolean {
+/** Shared ink is allocated by the internal cut, not painted whole for both words: by
+ * its pieces where it was cut with the knife (`pieces`, measured on the line's
+ * raster), else at the words' boxes. Unshared owned ink outside a word's box stays
+ * visible: that discrepancy matters. */
+export function belongsAt(
+  blob: CalibrationBlob,
+  word: CalibrationWord,
+  pageX: number,
+  pageY?: number,
+  pieces?: BlobPieces,
+): boolean {
   if (word.word_id === null || !blob.allocations.some((a) => a.word_id === word.word_id))
     return false;
+  if (pieces && pageY !== undefined && cutFitsBlob(blob)) {
+    const piece = pieceAt(pieces, blob, pageX, pageY);
+    return piece >= 0 && blob.cut.owners[piece] === word.word_id;
+  }
   return blob.allocations.length <= 1 || (pageX >= word.end_x && pageX < word.start_x);
 }
 
 /** Crop includes owned marks and fragments even where the box stops short of them —
- * at the middle of a body two words share. */
+ * at the middle of a body two words share. A body cut with the knife counts only
+ * the word's own piece. */
 export function wordCrop(entry: PlaybackWord) {
   const { line, word } = entry;
-  const blobs = wordBlobs(entry);
+  const blobs = wordBlobs(entry).map((blob) => inkBoxOf(blob, word.word_id));
   const left = Math.min(word.end_x, ...blobs.map((b) => b.x));
   const right = Math.max(word.start_x, ...blobs.map((b) => b.x + b.w));
   const top = blobs.length ? Math.min(...blobs.map((b) => b.y)) : line.bbox.y;
