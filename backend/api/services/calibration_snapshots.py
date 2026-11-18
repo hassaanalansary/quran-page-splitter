@@ -349,8 +349,8 @@ def select_span(ink: LineInk, metadata: dict, start: tuple[int, int], end: tuple
 #: do its descriptors; bounded because a line's are ~270 KB. Behind it, a file per
 #: snapshot (:mod:`api.services.calibration_feature_files`) keeps every line ever
 #: measured, across restarts.
-_FEATURES: OrderedDict[tuple[str, int], dict[int, np.ndarray]] = OrderedDict()
-_FEATURES_MAX = 256
+FEATURES_CACHE: OrderedDict[tuple[str, int], dict[int, np.ndarray]] = OrderedDict()
+FEATURES_CACHE_MAX = 256
 
 
 def blob_features(snapshot: CalibrationSnapshot) -> dict[int, np.ndarray]:
@@ -360,17 +360,17 @@ def blob_features(snapshot: CalibrationSnapshot) -> dict[int, np.ndarray]:
     then read from the file saved beside it, and held in memory for the lines in use.
     """
     key = (str(snapshot.pk), FEATURE_VERSION)
-    cached = _FEATURES.get(key)
+    cached = FEATURES_CACHE.get(key)
     if cached is not None:
-        _FEATURES.move_to_end(key)
+        FEATURES_CACHE.move_to_end(key)
         return cached
     found = read_saved_features(snapshot)
     if found is None:
         found = measure_blob_features(snapshot)
         save_features(snapshot, found)
-    _FEATURES[key] = found
-    while len(_FEATURES) > _FEATURES_MAX:
-        _FEATURES.popitem(last=False)
+    FEATURES_CACHE[key] = found
+    while len(FEATURES_CACHE) > FEATURES_CACHE_MAX:
+        FEATURES_CACHE.popitem(last=False)
     return found
 
 

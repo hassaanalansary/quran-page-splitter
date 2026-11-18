@@ -34,14 +34,14 @@ class ConfirmedPageTestCase(CalibrationApiTestCase):
 
 class ApprovedTests(ConfirmedPageTestCase):
     def test_approvals_are_read_without_their_payloads(self):
-        [approval] = calibration_service._approved(self.mushaf, 2)
+        [approval] = calibration_service.find_confirmed_revisions_except_page(self.mushaf, 2)
         self.assertIn("payload", approval.get_deferred_fields())
         self.assertEqual(approval.review.page_number, 1)
-        self.assertEqual(calibration_service._approved(self.mushaf, 1), [])
+        self.assertEqual(calibration_service.find_confirmed_revisions_except_page(self.mushaf, 1), [])
 
     def test_payloads_are_read_where_the_examples_are_needed(self):
-        approved = calibration_service._approved(self.mushaf, 2)
-        [loaded] = calibration_service.approvals_with_payloads(approved)
+        approved = calibration_service.find_confirmed_revisions_except_page(self.mushaf, 2)
+        [loaded] = calibration_service.load_revision_payloads(approved)
         self.assertEqual(loaded.pk, approved[0].pk)
         self.assertNotIn("payload", loaded.get_deferred_fields())
         self.assertTrue(loaded.payload["lines"])
@@ -59,10 +59,10 @@ class FeatureFileTests(ConfirmedPageTestCase):
 
     def test_descriptors_are_kept_beside_the_snapshot_and_read_back(self):
         snapshot = self.snapshot()
-        snapshots._FEATURES.clear()
+        snapshots.FEATURES_CACHE.clear()
         measured = snapshots.blob_features(snapshot)
         self.assertTrue(saved_features_path(snapshot).exists())
-        snapshots._FEATURES.clear()
+        snapshots.FEATURES_CACHE.clear()
         with mock.patch.object(snapshots, "measure_blob_features", side_effect=AssertionError("measured again")):
             read = snapshots.blob_features(snapshot)
         self.assertEqual(sorted(read), sorted(measured))
@@ -71,10 +71,10 @@ class FeatureFileTests(ConfirmedPageTestCase):
 
     def test_an_unreadable_file_is_measured_again(self):
         snapshot = self.snapshot()
-        snapshots._FEATURES.clear()
+        snapshots.FEATURES_CACHE.clear()
         measured = snapshots.blob_features(snapshot)
         saved_features_path(snapshot).write_bytes(b"not an archive")
-        snapshots._FEATURES.clear()
+        snapshots.FEATURES_CACHE.clear()
         again = snapshots.blob_features(snapshot)
         self.assertEqual(sorted(again), sorted(measured))
         self.assertIsNotNone(np.load(saved_features_path(snapshot)))
@@ -103,7 +103,7 @@ class BuildOnceTests(SimpleTestCase):
         calibration_service._LIBRARIES.clear()
         with (
             mock.patch.object(calibration_service, "build_library", side_effect=slow_build),
-            mock.patch.object(calibration_service, "_samples", return_value=[]),
+            mock.patch.object(calibration_service, "collect_library_examples", return_value=[]),
             mock.patch.object(calibration_service, "CalibrationRevision", revisions),
         ):
             threads = [

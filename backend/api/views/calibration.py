@@ -23,6 +23,7 @@ from api.services import calibration_batch as batch_service
 from api.services import calibration_cuts
 from api.services import calibration_library as library_service
 from api.services import calibration_progress as progress_service
+from api.services import calibration_saving as saving_service
 from api.services import mushaf as mushaf_service
 from api.services.jobs.cancellation import request_job_cancellation
 from api.services.jobs.kinds.calibration_batch import start_calibration_batch_job
@@ -118,9 +119,9 @@ class SettingsIn(Schema):
 
 
 @router.put("/{mushaf_id}/calibration/settings")
-def calibration_settings(request: HttpRequest, mushaf_id: uuid.UUID, data: SettingsIn) -> JsonResponse:
+def save_calibration_settings(request: HttpRequest, mushaf_id: uuid.UUID, data: SettingsIn) -> JsonResponse:
     mushaf = mushaf_service.get_mushaf(mushaf_id, user=current_user(request))
-    return _json(calibration_service.save_settings(mushaf, data.model_dump(), user=current_user(request)))
+    return _json(calibration_service.save_calibration_settings(mushaf, data.model_dump(), user=current_user(request)))
 
 
 def _json(payload: dict, status: int = 200) -> JsonResponse:
@@ -224,7 +225,7 @@ def save_calibration(request: HttpRequest, mushaf_id: uuid.UUID, page_number: in
     """Save the draft. Never a source of examples — only a confirmation is."""
     mushaf = mushaf_service.get_mushaf(mushaf_id, user=current_user(request))
     return _json(
-        calibration_service.save(mushaf, page_number, data.model_dump(mode="json"), user=current_user(request))
+        saving_service.save_page_draft(mushaf, page_number, data.model_dump(mode="json"), user=current_user(request))
     )
 
 
@@ -240,9 +241,7 @@ def confirm_calibration(request: HttpRequest, mushaf_id: uuid.UUID, page_number:
     """Approve the whole page: its words become the product, its blobs examples."""
     mushaf = mushaf_service.get_mushaf(mushaf_id, user=current_user(request))
     return _json(
-        calibration_service.save(
-            mushaf, page_number, data.model_dump(mode="json"), confirm=True, user=current_user(request)
-        )
+        saving_service.confirm_page(mushaf, page_number, data.model_dump(mode="json"), user=current_user(request))
     )
 
 
@@ -251,20 +250,20 @@ def calibration_types(request: HttpRequest, mushaf_id: uuid.UUID, page_number: i
     """A type for every untyped mark, and a doubt on every typed one the other pages
     disagree with — learned from typed marks. Stores nothing."""
     mushaf = mushaf_service.get_mushaf(mushaf_id, user=current_user(request), write=False)
-    return _json(calibration_service.type_suggestions(mushaf, page_number, data.model_dump(mode="json")))
+    return _json(calibration_service.suggest_mark_types(mushaf, page_number, data.model_dump(mode="json")))
 
 
 # ---------------------------------------------------------------------------
 # The library, as Ink's Library mode shows it
 # ---------------------------------------------------------------------------
 @router.get("/{mushaf_id}/pages/{page_number}/calibration/library")
-def calibration_library(
+def get_calibration_library(
     request: HttpRequest, mushaf_id: uuid.UUID, page_number: int, limit: float | None = None
 ) -> JsonResponse:
     """The fingerprint library that answers for the page, kind by kind — or, with
     ``limit``, the one it would be at that LIMIT. Stores nothing."""
     mushaf = mushaf_service.get_mushaf(mushaf_id, user=current_user(request), write=False)
-    return _json(library_service.library_document(mushaf, page_number, limit=limit))
+    return _json(library_service.serialize_library_view(mushaf, page_number, limit=limit))
 
 
 @router.get("/{mushaf_id}/pages/{page_number}/calibration/library/members")
@@ -292,13 +291,13 @@ class CompareIn(DraftIn):
 
 
 @router.post("/{mushaf_id}/pages/{page_number}/calibration/library/compare")
-def calibration_library_compare(
+def compare_blob_with_calibration_library(
     request: HttpRequest, mushaf_id: uuid.UUID, page_number: int, data: CompareIn
 ) -> JsonResponse:
     """One blob against the library: what it answers, and how far the blob is from
     every kept shape. Stores nothing."""
     mushaf = mushaf_service.get_mushaf(mushaf_id, user=current_user(request), write=False)
-    return _json(library_service.compare(mushaf, page_number, data.model_dump(mode="json")))
+    return _json(library_service.compare_blob_with_library(mushaf, page_number, data.model_dump(mode="json")))
 
 
 class LibraryCheckIn(Schema):

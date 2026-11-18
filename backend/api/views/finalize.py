@@ -111,7 +111,7 @@ def download_bundle(request: HttpRequest, mushaf_id: uuid.UUID) -> FileResponse:
     Carries the geometry and templates but not the PDF — it names the PDF by
     sha256 instead, and import refuses unless the target was built from it.
     """
-    filename, buffer = bundle_service.build(mushaf_id, user=current_user(request))
+    filename, buffer = bundle_service.build_mushaf_bundle(mushaf_id, user=current_user(request))
     return FileResponse(buffer, as_attachment=True, filename=filename, content_type="application/zip")
 
 

@@ -354,7 +354,9 @@ class PreviewTests(CalibrationApiTestCase):
         self.assertEqual(shown.status_code, 200, shown.content)
         self.assertEqual(self.blob_at(shown.json()["lines"][0], DOT[0])["allocations"], [])
         with drawn_pages():
-            calibration_service.process_page(self.mushaf, 1, expected_revision=saved["revision"], user=default_user())
+            calibration_service.make_fresh_draft_of_page(
+                self.mushaf, 1, expected_revision=saved["revision"], user=default_user()
+            )
         blob = self.blob_at(self.document(1)["lines"][0], DOT[0])
         self.assertEqual(blob["allocations"], [])
         self.assertTrue(blob["ownership_explicit"])
@@ -542,7 +544,9 @@ class SettingsTests(CalibrationApiTestCase):
         mark = next(b for b in body["lines"][0]["blobs"] if b["role"] == "mark")
         mark.update(subtype="fatha", subtype_explicit=False)
         self.assertEqual(self.confirm(1, body).status_code, 200)
-        samples = calibration_service._samples(self.mushaf, calibration_service._approved(self.mushaf, 2))
+        samples = calibration_service.collect_library_examples(
+            self.mushaf, calibration_service.find_confirmed_revisions_except_page(self.mushaf, 2)
+        )
         self.assertTrue(all(not s["subtype"] for s in samples))
 
 
@@ -562,7 +566,7 @@ class RestartTests(CalibrationApiTestCase):
             self.assertTrue(backup.is_file())
         review = CalibrationReview.objects.get(mushaf=self.mushaf, page_number=1)
         self.assertIsNone(review.confirmed_revision)
-        self.assertEqual(calibration_service._approved(self.mushaf, 2), [])
+        self.assertEqual(calibration_service.find_confirmed_revisions_except_page(self.mushaf, 2), [])
         self.assertTrue(review.revisions.filter(kind="confirmed").exists())
         self.assertFalse(self.document(1)["processed"])
         # Words exist only by confirmation: a restarted page has none.
@@ -768,7 +772,9 @@ class KnifeTests(FusionTestCase):
     def test_processing_the_page_again_keeps_the_cut(self):
         saved = self.save_cut([KNIFE], [2, 3]).json()
         with drawn_pages(fused_page=1):
-            calibration_service.process_page(self.mushaf, 1, expected_revision=saved["revision"], user=default_user())
+            calibration_service.make_fresh_draft_of_page(
+                self.mushaf, 1, expected_revision=saved["revision"], user=default_user()
+            )
         document = self.document(1)
         self.assertEqual(self.blob_at(document["lines"][0], FUSED[0])["cut"]["lines"], [KNIFE])
         words = self.words_of(document)
@@ -925,7 +931,7 @@ class CopyTests(CalibrationApiTestCase):
 
     def test_importing_over_a_worked_mushaf_shifts_every_revision_reference(self):
         CalibrationSettings.objects.create(mushaf=self.mushaf, revision=3)
-        _, output = bundle.build(self.mushaf.pk, user=self.mushaf.owner)
+        _, output = bundle.build_mushaf_bundle(self.mushaf.pk, user=self.mushaf.owner)
         with output:
             data = output.read()
         bundle.apply_bundle(self.mushaf.pk, SimpleUploadedFile("work.zip", data), user=self.mushaf.owner, replace=True)
@@ -1220,7 +1226,9 @@ class EraseTests(CalibrationApiTestCase):
     def test_an_erase_holds_when_the_page_is_processed_again(self):
         saved = self.erase(self.doc)
         with drawn_pages(stray=True):
-            calibration_service.process_page(self.mushaf, 1, expected_revision=saved["revision"], user=default_user())
+            calibration_service.make_fresh_draft_of_page(
+                self.mushaf, 1, expected_revision=saved["revision"], user=default_user()
+            )
         line = self.document(1)["lines"][0]
         self.assertEqual(self.blob_at(line, STRAY[0])["erased"], True)
         self.assertEqual(line["words"][0]["end_x"], BODIES[0][0])

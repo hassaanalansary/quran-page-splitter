@@ -4,7 +4,7 @@ import math
 import unittest
 
 from core.word_boundary.examples import MASK_FEATURES
-from core.word_boundary.library import KEEP, build_library, comparison, group, kept
+from core.word_boundary.library import KEEP, build_library, comparison, group_examples, list_kept_shapes
 
 
 def descriptor(value=0.0):
@@ -33,20 +33,20 @@ def reps(values):
 class GroupingTests(unittest.TestCase):
     def test_examples_within_the_limit_share_a_fingerprint(self):
         method, shapes = reps([0.0, 0.1, 0.2, 5.0, 5.1])
-        groups = group(method, shapes, 0.27)
+        groups = group_examples(method, shapes, 0.27)
         self.assertEqual(sorted(sorted(item["members"]) for item in groups), [[0, 1, 2], [3, 4]])
 
     def test_the_fingerprint_is_the_groups_most_typical_member(self):
         # The walk starts the group at 0.0; re-chosen, the middle of 0.0..0.2 stands for it.
         method, shapes = reps([0.0, 0.1, 0.2])
-        (only,) = group(method, shapes, 0.27)
+        (only,) = group_examples(method, shapes, 0.27)
         self.assertEqual(only["centre"], 1)
         self.assertEqual(only["members"][0], 1)  # nearest the fingerprint first
 
     def test_a_group_keeps_its_fingerprint_and_members_spread_to_its_edge(self):
         method, shapes = reps([0.01 * i for i in range(30)])
-        groups = group(method, shapes, 0.27)
-        shapes_kept = kept(groups)
+        groups = group_examples(method, shapes, 0.27)
+        shapes_kept = list_kept_shapes(groups)
         for item in groups:
             own = [entry for entry in shapes_kept if entry[0] in item["members"]]
             self.assertLessEqual(len(own), KEEP)

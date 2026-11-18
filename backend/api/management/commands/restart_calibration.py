@@ -57,7 +57,7 @@ class Command(BaseCommand):
             self.stdout.write("No active calibration pages to restart.")
             return
         # Exclusive creation prevents overwriting a prior recovery point.
-        _, archive = bundle.build(mushaf.id, user=mushaf.owner)
+        _, archive = bundle.build_mushaf_bundle(mushaf.id, user=mushaf.owner)
         try:
             with backup.open("xb") as output:
                 archive.seek(0)

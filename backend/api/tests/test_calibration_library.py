@@ -115,7 +115,9 @@ class PricingTests(LibraryTestCase):
             mock.patch.object(calibration_service, "align_document", wraps=calibration_service.align_document) as align,
             drawn_pages(bar=True),
         ):
-            read = calibration_service.process_page(self.mushaf, 2, expected_revision=revision, user=default_user())
+            read = calibration_service.make_fresh_draft_of_page(
+                self.mushaf, 2, expected_revision=revision, user=default_user()
+            )
         self.assertTrue(read)
         self.assertTrue(any(call.kwargs.get("calibration_locks") for call in align.call_args_list))
         self.assertEqual(self.document(2)["profile"]["mode"], "learned")
@@ -165,6 +167,6 @@ class LooksRightTests(LibraryTestCase):
         self.assertFalse(LibraryCheck.objects.filter(mushaf=self.mushaf).exists())
 
     def test_the_preview_cache_is_not_the_processing_cache(self):
-        library_service._PREVIEW.clear()
+        library_service.PREVIEW_LIBRARIES.clear()
         self.library(2, limit=0.5)
-        self.assertEqual(len(library_service._PREVIEW), 1)
+        self.assertEqual(len(library_service.PREVIEW_LIBRARIES), 1)

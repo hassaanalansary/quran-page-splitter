@@ -129,7 +129,9 @@ def comparison(name: str | None = None) -> Comparison:
 # ---------------------------------------------------------------------------
 # Grouping
 # ---------------------------------------------------------------------------
-def _walk(method: Comparison, reps: list[np.ndarray], limit: float, start: list[int]) -> tuple[list[int], list[int]]:
+def assign_examples_to_fingerprints(
+    method: Comparison, reps: list[np.ndarray], limit: float, start: list[int]
+) -> tuple[list[int], list[int]]:
     """Each example, in order, joins its nearest fingerprint within ``limit`` or becomes
     one. Returns (fingerprints, the group of each example)."""
     prints = list(start)
@@ -148,7 +150,7 @@ def _walk(method: Comparison, reps: list[np.ndarray], limit: float, start: list[
     return prints, owner
 
 
-def _typical(method: Comparison, reps: list[np.ndarray], members: list[int]) -> int:
+def find_typical_member(method: Comparison, reps: list[np.ndarray], members: list[int]) -> int:
     """The member with the least total distance to the others — of a spread sample of
     a big group."""
     if len(members) <= 2:
@@ -158,18 +160,20 @@ def _typical(method: Comparison, reps: list[np.ndarray], members: list[int]) -> 
     return sample[int(np.argmin(np.minimum(matrix, matrix.T).sum(axis=1)))]
 
 
-def group(method: Comparison, reps: list[np.ndarray], limit: float) -> list[dict]:
+def group_examples(method: Comparison, reps: list[np.ndarray], limit: float) -> list[dict]:
     """One kind's examples in fingerprint groups: ``centre`` (the fingerprint) and
     ``members`` (every example of the group, the nearest to the fingerprint first)."""
     if not reps:
         return []
-    first, owner = _walk(method, reps, limit, [])
+    first, owner = assign_examples_to_fingerprints(method, reps, limit, [])
     members: list[list[int]] = [[] for _ in first]
     for index, group_index in enumerate(owner):
         members[group_index].append(index)
     # Placed once more against the re-chosen fingerprints, in the same order: one now
     # beyond every fingerprint starts a group of its own, which later ones may join.
-    final, owner = _walk(method, reps, limit, [_typical(method, reps, own) for own in members])
+    final, owner = assign_examples_to_fingerprints(
+        method, reps, limit, [find_typical_member(method, reps, own) for own in members]
+    )
     groups = []
     for group_index, centre in enumerate(final):
         own = [index for index, found in enumerate(owner) if found == group_index]
@@ -187,7 +191,7 @@ def group(method: Comparison, reps: list[np.ndarray], limit: float) -> list[dict
     return groups
 
 
-def spread(item: dict) -> list[int]:
+def pick_spread_members(item: dict) -> list[int]:
     """Which of a group's members are kept beside its fingerprint, by their place in
     ``members``: up to ``KEEP - 1``, spread from the nearest to the farthest, so they
     cover the group's whole reach. A member printed pixel for pixel like its
@@ -197,13 +201,13 @@ def spread(item: dict) -> list[int]:
     return [i for i in picks if members[i] != item["centre"] and distance[i] > _EXACT]
 
 
-def kept(groups: list[dict]) -> list[tuple[int, bool, int]]:
+def list_kept_shapes(groups: list[dict]) -> list[tuple[int, bool, int]]:
     """(example, is the fingerprint, examples its group stands for) for every shape a
-    library keeps: each fingerprint, and the members :func:`spread` keeps."""
+    library keeps: each fingerprint, and the members :func:`pick_spread_members` keeps."""
     found = []
     for item in groups:
         found.append((item["centre"], True, len(item["members"])))
-        found += [(item["members"][i], False, 1) for i in spread(item)]
+        found += [(item["members"][i], False, 1) for i in pick_spread_members(item)]
     return found
 
 
@@ -257,7 +261,7 @@ class Library:
         """Whether it knows letters and marks both — what a body-or-mark answer needs."""
         return bool((self.roles == "body").any() and (self.roles == "mark").any())
 
-    def _distances(self, features: Sequence[Sequence[float] | np.ndarray]) -> np.ndarray:
+    def measure_distances(self, features: Sequence[Sequence[float] | np.ndarray]) -> np.ndarray:
         if not len(features) or not len(self.refs):
             return np.zeros((len(features), len(self.refs)))
         return self.method.distances(self.bank, [self.method.describe(entry) for entry in features])
@@ -268,7 +272,7 @@ class Library:
         kept mark, with how sure (see the module's docstring) and both shapes."""
         if not self.can_propose:
             return [_no_role() for _ in features]
-        distances = self._distances(features)
+        distances = self.measure_distances(features)
         bodies, marks = np.flatnonzero(self.roles == "body"), np.flatnonzero(self.roles == "mark")
         answers = []
         for row in distances:
@@ -297,7 +301,7 @@ class Library:
         """The ``count`` kept shapes nearest one blob, of either role, nearest first."""
         if not len(self.refs):
             return []
-        row = self._distances([features])[0]
+        row = self.measure_distances([features])[0]
         return [
             {**self._ref(int(i)), "distance": round(float(row[i]), 4)} for i in np.argsort(row, kind="stable")[:count]
         ]
@@ -308,7 +312,7 @@ class Library:
         type; nearer is likelier. Empty when the library knows no type."""
         if not self._by_type:
             return [{} for _ in features]
-        distances = self._distances(features)
+        distances = self.measure_distances(features)
         return [{kind: round(float(row[where].min()), 4) for kind, where in self._by_type.items()} for row in distances]
 
     def predict_types(self, features: Sequence[Sequence[float] | np.ndarray]) -> list[dict]:
@@ -329,7 +333,7 @@ class Library:
         }
         if not self._by_type:
             return [dict(nothing) for _ in features]
-        distances = self._distances(features)
+        distances = self.measure_distances(features)
         names = list(self._by_type)
         answers = []
         for row in distances:
@@ -372,7 +376,7 @@ class Library:
         its distance and its own ``per_type`` nearest kept shapes — nearest type first."""
         if not self._by_type:
             return []
-        row = self._distances([features])[0]
+        row = self.measure_distances([features])[0]
         found = []
         for name, where in self._by_type.items():
             closest = where[np.lexsort((where, row[where]))][:per_type]
@@ -397,7 +401,7 @@ class Library:
             self,
             roles=np.concatenate((self.roles, np.array(["mark"] * len(samples), dtype=str))),
             kinds=np.concatenate((self.kinds, np.array([sample["subtype"] for sample in samples], dtype=str))),
-            refs=[*self.refs, *(_ref_of(sample, fingerprint=False) for sample in samples)],
+            refs=[*self.refs, *(reference_of_example(sample, fingerprint=False) for sample in samples)],
             copies=[*self.copies, *([1] * len(samples))],
             reps=reps,
             bank=self.method.stack(reps),
@@ -416,7 +420,7 @@ def _no_role() -> dict:
     return {"role": None, "confidence": 0.0, "reasons": ["no_examples"]}
 
 
-def _ref_of(sample: dict, *, fingerprint: bool) -> dict:
+def reference_of_example(sample: dict, *, fingerprint: bool) -> dict:
     """What identifies an example — never its descriptor — and whether it is its
     group's fingerprint."""
     ref = {key: value for key, value in sample.items() if key not in ("features", "role", "subtype")}
@@ -445,22 +449,24 @@ def build_library(samples: list[dict], *, method: Comparison | None = None, limi
     shown: list[dict] = []
     for (role, kind), own in kinds.items():
         described = [method.describe(sample["features"]) for sample in own]
-        groups = group(method, described, limit)
+        groups = group_examples(method, described, limit)
         prints += len(groups)
-        for index, fingerprint, count in kept(groups):
+        for index, fingerprint, count in list_kept_shapes(groups):
             roles.append(role)
             names.append(kind)
-            refs.append(_ref_of(own[index], fingerprint=fingerprint))
+            refs.append(reference_of_example(own[index], fingerprint=fingerprint))
             copies.append(count)
             reps.append(described[index])
         shown += [
             {
                 "role": role,
                 "subtype": kind,
-                "centre": _ref_of(own[item["centre"]], fingerprint=True),
-                "members": [_ref_of(own[index], fingerprint=index == item["centre"]) for index in item["members"]],
+                "centre": reference_of_example(own[item["centre"]], fingerprint=True),
+                "members": [
+                    reference_of_example(own[index], fingerprint=index == item["centre"]) for index in item["members"]
+                ],
                 "distance": item["distance"],
-                "kept": spread(item),
+                "kept": pick_spread_members(item),
             }
             for item in groups
         ]

@@ -91,7 +91,7 @@ def measure(mushaf: Mushaf, *, latest: int | None = None) -> list[Doc]:
         else list(reviews.order_by("-page_number")[:latest])[::-1]
     )
     for review in chosen:
-        confirmed = calibration._approval(review)
+        confirmed = calibration.find_confirmed_revision_of_review(review)
         if confirmed is None:
             continue
         processed = CalibrationRevision.objects.filter(

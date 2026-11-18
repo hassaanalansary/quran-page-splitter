@@ -5,7 +5,7 @@ posts to ``api.views.calibration.process_calibration``, which only registers a j
 returns 202; the work runs on a worker thread. This command runs that same work on the
 main thread, so a breakpoint anywhere in it stops cleanly::
 
-    # the default: process_page() called directly, everything rolled back
+    # the default: make_fresh_draft_of_page() called directly, everything rolled back
     uv run python manage.py debug_calibrate --page 15 --rollback
 
     # through start_calibration_page_job() and the job bookkeeping, still on this thread
@@ -13,7 +13,7 @@ main thread, so a breakpoint anywhere in it stops cleanly::
 
 ``--via`` picks how much of the stack is involved:
 
-``service``     call ``calibration.process_page()`` directly. Works on any reviewed,
+``service``     call ``calibration.make_fresh_draft_of_page()`` directly. Works on any reviewed,
                 numbered page, processed or not — the job's "already processed"
                 refusal is not on this path. Start here.
 ``job-inline``  go through ``start_calibration_page_job()``, as the view does, but run
@@ -94,8 +94,8 @@ class Command(BaseCommand):
     def _dispatch(self, mushaf: Mushaf, page: int, via: str) -> None:
         review = CalibrationReview.objects.filter(mushaf=mushaf, page_number=page).first()
         if via == "service":
-            # ⬅ BREAKPOINT HERE, then Step Into: process_page is the whole run.
-            done = calibration_service.process_page(
+            # ⬅ BREAKPOINT HERE, then Step Into: make_fresh_draft_of_page is the whole run.
+            done = calibration_service.make_fresh_draft_of_page(
                 mushaf,
                 page,
                 expected_revision=review.revision if review else 0,
@@ -103,7 +103,7 @@ class Command(BaseCommand):
                 progress=lambda count: self.stdout.write(f"  line {count} measured"),
                 cancelled=None,
             )
-            self.stdout.write(f"  process_page returned {done}")
+            self.stdout.write(f"  make_fresh_draft_of_page returned {done}")
         else:
             # The view's own call, minus HTTP. INLINE: the job's runner runs here.
             job = start_calibration_page_job(mushaf, page, user=mushaf.owner, job_runner=INLINE)

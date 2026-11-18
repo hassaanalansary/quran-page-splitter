@@ -146,7 +146,7 @@ class CalibrationPersistenceTests(MediaTestCase):
 
     def test_bundle_v2_round_trip_and_v1_compatibility(self):
         source_snapshot, _ = self._calibration()
-        _, output = bundle.build(self.mushaf.pk, user=self.mushaf.owner)
+        _, output = bundle.build_mushaf_bundle(self.mushaf.pk, user=self.mushaf.owner)
         with output:
             data = output.read()
         with zipfile.ZipFile(io.BytesIO(data)) as archive:
@@ -175,7 +175,7 @@ class CalibrationPersistenceTests(MediaTestCase):
         original = CalibrationRevision.objects.create(
             review=review, number=1, kind="legacy", payload={"original": True}
         )
-        _, output = bundle.build(self.mushaf.pk, user=self.mushaf.owner)
+        _, output = bundle.build_mushaf_bundle(self.mushaf.pk, user=self.mushaf.owner)
         with output:
             bundle.apply_bundle(target.pk, SimpleUploadedFile("work.zip", output.read()), user=target.owner)
         review.refresh_from_db()
@@ -185,7 +185,7 @@ class CalibrationPersistenceTests(MediaTestCase):
 
     def test_missing_snapshot_file_rejects_bundle_and_rolls_back_rows(self):
         self._calibration()
-        _, output = bundle.build(self.mushaf.pk, user=self.mushaf.owner)
+        _, output = bundle.build_mushaf_bundle(self.mushaf.pk, user=self.mushaf.owner)
         corrupt = io.BytesIO()
         with output, zipfile.ZipFile(output) as source, zipfile.ZipFile(corrupt, "w") as archive:
             for name in source.namelist():

@@ -88,7 +88,7 @@ def _with_work(owner, name, pdf_bytes=SHARED_PDF):
 
 
 def _export_bytes(mushaf, user):
-    _, buffer = bundle.build(mushaf.id, user=user)
+    _, buffer = bundle.build_mushaf_bundle(mushaf.id, user=user)
     data = buffer.read()
     buffer.close()
     return data

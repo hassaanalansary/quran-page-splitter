@@ -5,7 +5,7 @@
     POST …/calibration/batch ─▶ start_calibration_batch_job ─▶ dispatch
                                 ─▶ run_calibration_batch_job
                                    └ for each page: decide_batch_page_when_reached
-                                                    process_batch_page ─▶ calibration.process_page
+                                                    process_batch_page ─▶ calibration.make_fresh_draft_of_page
 
 What a batch does to each page, and why, is decided in ``api.services.calibration_batch``,
 which knows nothing about jobs. The job counts pages. Its ``report`` column says what
@@ -27,7 +27,7 @@ from accounts.models import User
 from api import i18n
 from api.models import Mushaf, ProcessJob, ProcessJobKindChoices, ProcessJobStateChoices
 from api.services import calibration_batch
-from api.services.calibration import process_page
+from api.services.calibration import make_fresh_draft_of_page
 from api.services.calibration_batch import PROCESS, decide_batch_page_when_reached
 from api.services.jobs.admission import (
     refuse_if_mushaf_has_active_job,
@@ -127,7 +127,7 @@ def process_batch_page(job: ProcessJob, page_number: int, expected_revision: int
     record_job_progress(job.id, current_page=page_number, phase="detecting", lines_done=0, report=report)
     began = time.monotonic()
     try:
-        stored = process_page(
+        stored = make_fresh_draft_of_page(
             job.mushaf,
             page_number,
             expected_revision=expected_revision,

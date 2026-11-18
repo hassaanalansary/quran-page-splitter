@@ -316,11 +316,11 @@ def _portable_profile(payload: dict) -> dict:
     }
 
 
-def _remap_snapshot_refs(value: Any, ids: dict[str, str]) -> Any:
+def remap_snapshot_ids(value: Any, ids: dict[str, str]) -> Any:
     if isinstance(value, dict):
-        return {ids.get(key, key): _remap_snapshot_refs(item, ids) for key, item in value.items()}
+        return {ids.get(key, key): remap_snapshot_ids(item, ids) for key, item in value.items()}
     if isinstance(value, list):
-        return [_remap_snapshot_refs(item, ids) for item in value]
+        return [remap_snapshot_ids(item, ids) for item in value]
     return ids.get(value, value) if isinstance(value, str) else value
 
 
@@ -402,7 +402,7 @@ def restore_calibration(target: Mushaf, data: dict, read_file: Callable[[str, st
         used_requests = set(review.revisions.values_list("request_id", flat=True))
         for revision in entry.get("revisions", []):
             request_id = uuid.UUID(revision["request_id"]) if revision.get("request_id") else None
-            payload = _remap_snapshot_refs(revision.get("payload", {}), ids)
+            payload = remap_snapshot_ids(revision.get("payload", {}), ids)
             created_revision = CalibrationRevision.objects.create(
                 review=review,
                 number=offset + revision["number"],
@@ -415,7 +415,7 @@ def restore_calibration(target: Mushaf, data: dict, read_file: Callable[[str, st
         review.revision = offset + entry["revision"]
         confirmed = entry.get("confirmed_revision")
         review.confirmed_revision = offset + confirmed if confirmed is not None else review.confirmed_revision
-        payload = _remap_snapshot_refs(entry.get("payload", {}), ids)
+        payload = remap_snapshot_ids(entry.get("payload", {}), ids)
         review.payload = _offset_revisions(_rebind_lines(payload, lines, page), offset)
         if "profile" in review.payload:
             review.payload["profile"] = {**review.payload["profile"], "mode": "shadow"}
@@ -425,7 +425,7 @@ def restore_calibration(target: Mushaf, data: dict, read_file: Callable[[str, st
         CalibrationProfile.objects.update_or_create(
             mushaf=target,
             signature=entry["signature"],
-            defaults={"mode": "shadow", "payload": _remap_snapshot_refs(_portable_profile(entry["payload"]), ids)},
+            defaults={"mode": "shadow", "payload": remap_snapshot_ids(_portable_profile(entry["payload"]), ids)},
         )
 
 
@@ -445,7 +445,7 @@ def _last_run_settings(mushaf: Mushaf) -> dict | None:
     return run.settings if run else None
 
 
-def build(mushaf_id: uuid.UUID, *, user: User | None) -> tuple[str, SpooledTemporaryFile]:
+def build_mushaf_bundle(mushaf_id: uuid.UUID, *, user: User | None) -> tuple[str, SpooledTemporaryFile]:
     """Package a mushaf's work as a zip, ready to stream as a download."""
     from api.services import mushaf as mushaf_service
 

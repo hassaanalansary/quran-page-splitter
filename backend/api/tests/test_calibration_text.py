@@ -176,8 +176,8 @@ class SmallLetterTests(SimpleTestCase):
 
     def test_a_type_the_text_set_teaches(self):
         mark = {"role": "mark", "subtype": "smallLetter", "subtype_explicit": False, "subtype_source": "text"}
-        self.assertTrue(calibration_service._typed(mark))
-        self.assertFalse(calibration_service._typed({**mark, "subtype_source": ""}))
+        self.assertTrue(calibration_service.is_mark_typed(mark))
+        self.assertFalse(calibration_service.is_mark_typed({**mark, "subtype_source": ""}))
 
 
 class SmallLetterLockTests(CalibrationApiTestCase):

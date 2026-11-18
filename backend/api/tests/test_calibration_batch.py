@@ -11,6 +11,7 @@ from django.test import SimpleTestCase
 from api.models import CalibrationReview, CalibrationRevision, Page, ProcessJob, Segment
 from api.services import calibration as calibration_service
 from api.services import calibration_progress as progress
+from api.services import calibration_saving as saving_service
 from api.services.calibration_batch import decide_batch_page_when_reached
 from api.services.jobs.execution import execute_job
 from api.services.jobs.kinds.calibration_batch import start_calibration_batch_job
@@ -126,7 +127,7 @@ class RunTests(BatchTestCase):
             decided = decide_batch_page_when_reached(mushaf, number, refresh=refresh)
             # Someone saves page 2 after the batch decided it, before it is stored.
             if number == 2:
-                calibration_service.save(mushaf, 2, self.draft(document), user=self.user)
+                saving_service.save_page_draft(mushaf, 2, self.draft(document), user=self.user)
             return decided
 
         with mock.patch(f"{BATCH_JOB}.decide_batch_page_when_reached", side_effect=decide_then_save):
@@ -147,7 +148,7 @@ class RunTests(BatchTestCase):
         self.assertEqual(job["stopped_on_page"], 2)
 
     def test_one_failing_page_does_not_cost_the_rest(self):
-        real = calibration_service.process_page
+        real = calibration_service.make_fresh_draft_of_page
 
         def fail_page_1(mushaf, page, **kwargs):
             if page == 1:
@@ -155,7 +156,7 @@ class RunTests(BatchTestCase):
             return real(mushaf, page, **kwargs)
 
         with (
-            mock.patch(f"{BATCH_JOB}.process_page", side_effect=fail_page_1),
+            mock.patch(f"{BATCH_JOB}.make_fresh_draft_of_page", side_effect=fail_page_1),
             self.assertLogs(BATCH_JOB, level="ERROR"),
         ):
             job = self.batch().json()["job"]

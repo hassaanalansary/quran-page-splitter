@@ -55,9 +55,9 @@ class Command(BaseCommand):
         for review in CalibrationReview.objects.select_for_update().filter(mushaf=mushaf).order_by("page_number"):
             if not review.payload.get("lines"):
                 continue
-            approval = calibration._approval(review)
-            draft = _renamed(mushaf, review.page_number, review.payload)
-            confirmed = _renamed(mushaf, review.page_number, approval.payload) if approval else {}
+            approval = calibration.find_confirmed_revision_of_review(review)
+            draft = find_marks_the_text_retypes(mushaf, review.page_number, review.payload)
+            confirmed = find_marks_the_text_retypes(mushaf, review.page_number, approval.payload) if approval else {}
             if not draft and not confirmed:
                 continue
             total += len(draft) + len(confirmed)
@@ -70,11 +70,11 @@ class Command(BaseCommand):
             if not options["apply"]:
                 continue
             payload = copy.deepcopy(review.payload)
-            _retype(payload, draft)
+            retype_marks_in_document(payload, draft)
             review.revision += 1
             if approval is not None and confirmed:
                 record = copy.deepcopy(approval.payload)
-                _retype(record, confirmed)
+                retype_marks_in_document(record, confirmed)
                 record["retyped_from_text"] = sorted(f"{line}:{blob}" for line, blob in confirmed)
                 CalibrationRevision.objects.create(
                     review=review, number=review.revision, kind=CalibrationRevisionKind.CONFIRMED, payload=record
@@ -96,7 +96,7 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS(f"Retyped {total} marks."))
 
 
-def _renamed(mushaf: Mushaf, page: int, document: dict) -> dict[tuple[int, int], str]:
+def find_marks_the_text_retypes(mushaf: Mushaf, page: int, document: dict) -> dict[tuple[int, int], str]:
     """(line number, blob id) → the text's type, for every mark typed by its old name."""
     rows = [row for row in document.get("lines", []) if not row.get("readonly")]
     if not rows:
@@ -115,7 +115,7 @@ def _renamed(mushaf: Mushaf, page: int, document: dict) -> dict[tuple[int, int],
     return found
 
 
-def _retype(document: dict, renamed: dict[tuple[int, int], str]) -> None:
+def retype_marks_in_document(document: dict, renamed: dict[tuple[int, int], str]) -> None:
     for row in document.get("lines", []):
         for blob in row["blobs"]:
             kind = renamed.get((row["line_number"], blob["id"]))

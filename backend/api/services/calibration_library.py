@@ -42,46 +42,46 @@ MEMBERS_PAGE = 60
 #: The last previewed library, so a preview's comparisons do not rebuild it for every
 #: blob asked about. One slot, beside the processing cache rather than in it: a preview
 #: never takes the place of a library a page was processed with.
-_PREVIEW: OrderedDict[tuple, Library] = OrderedDict()
+PREVIEW_LIBRARIES: OrderedDict[tuple, Library] = OrderedDict()
 
 
 #: One build at a time per previewed library (:mod:`api.services.build_once`).
 PREVIEW_BUILDS = BuildOnce()
 
 
-def _preview(mushaf: Mushaf, page: int, limit: float) -> Library:
+def build_preview_library(mushaf: Mushaf, page: int, limit: float) -> Library:
     if not 0 < limit <= calibration.LIMIT_CEILING:
-        calibration._refuse("invalid_edits", 422)
-    approved = calibration._approved(mushaf, page)
-    method = comparison(calibration.settings_document(mushaf)["comparison"])
+        calibration.refuse_request("invalid_edits", 422)
+    approved = calibration.find_confirmed_revisions_except_page(mushaf, page)
+    method = comparison(calibration.serialize_calibration_settings(mushaf)["comparison"])
     key = (str(mushaf.pk), tuple(str(revision.pk) for revision in approved), method.name, limit)
-    library = _PREVIEW.get(key)
+    library = PREVIEW_LIBRARIES.get(key)
     if library is not None:
         return library
     with PREVIEW_BUILDS.lock_for(key):
-        library = _PREVIEW.get(key)
+        library = PREVIEW_LIBRARIES.get(key)
         if library is None:
-            samples = calibration._samples(mushaf, calibration.approvals_with_payloads(approved))
+            samples = calibration.collect_library_examples(mushaf, calibration.load_revision_payloads(approved))
             library = build_library(samples, method=method, limit=limit)
-            _PREVIEW.clear()
-            _PREVIEW[key] = library
+            PREVIEW_LIBRARIES.clear()
+            PREVIEW_LIBRARIES[key] = library
     return library
 
 
-def _library(mushaf: Mushaf, page: int, limit: float | None) -> Library:
+def choose_library_to_show(mushaf: Mushaf, page: int, limit: float | None) -> Library:
     """The library for ``page`` — at ``limit`` when one is previewed."""
-    return calibration._library(mushaf, page) if limit is None else _preview(mushaf, page, limit)
+    return calibration._library(mushaf, page) if limit is None else build_preview_library(mushaf, page, limit)
 
 
-def _key(ref: Doc) -> str:
+def blob_key_of(ref: Doc) -> str:
     return f"{ref['snapshot_id']}:{ref['blob_id']}"
 
 
-def _group_id(item: Doc) -> str:
-    return f"{item['role']}:{item['subtype']}:{_key(item['centre'])}"
+def group_id_of(item: Doc) -> str:
+    return f"{item['role']}:{item['subtype']}:{blob_key_of(item['centre'])}"
 
 
-class _Shapes:
+class ShapeImages:
     """Refs made into what the view draws: where the blob is, its crop of its line's
     image, when its page was confirmed, and whether someone found it right."""
 
@@ -98,7 +98,7 @@ class _Shapes:
             for check in LibraryCheck.objects.filter(mushaf=mushaf, snapshot_id__in=ids)
         }
 
-    def of(self, ref: Doc, role: str, subtype: str) -> Doc | None:
+    def describe_shape(self, ref: Doc, role: str, subtype: str) -> Doc | None:
         source = self.stored.get(ref["snapshot_id"])
         raw = self.raw.get(ref["snapshot_id"], {}).get(ref["blob_id"])
         if source is None or raw is None:
@@ -106,7 +106,7 @@ class _Shapes:
         check = self.checks.get((ref["snapshot_id"], ref["blob_id"]))
         confirmed = self.confirmed.get(ref.get("revision_id") or "")
         return {
-            "key": _key(ref),
+            "key": blob_key_of(ref),
             "snapshot_id": ref["snapshot_id"],
             "blob_id": ref["blob_id"],
             "page_number": source.page_number,
@@ -126,7 +126,7 @@ class _Shapes:
         }
 
 
-def _ordered(groups: list[Doc], role: str) -> list[Doc]:
+def order_groups_for_audit(groups: list[Doc], role: str) -> list[Doc]:
     """A mark type's groups as a person audits them: the groups of one first, then the
     ones reaching farthest, then the rest by size. Letters smallest ink first."""
     if role == "body":
@@ -134,32 +134,32 @@ def _ordered(groups: list[Doc], role: str) -> list[Doc]:
     return sorted(groups, key=lambda item: (item["count"] != 1, -item["farthest"], -item["count"]))
 
 
-def library_document(mushaf: Mushaf, page: int, *, limit: float | None = None) -> Doc:
+def serialize_library_view(mushaf: Mushaf, page: int, *, limit: float | None = None) -> Doc:
     """The library that answers for ``page``, kind by kind — or, with ``limit``, the
     one it would be at that LIMIT, built for the asking and saved nowhere."""
-    settings = calibration.settings_document(mushaf)
-    approved = calibration._approved(mushaf, page)
-    library = _library(mushaf, page, limit)
+    settings = calibration.serialize_calibration_settings(mushaf)
+    approved = calibration.find_confirmed_revisions_except_page(mushaf, page)
+    library = choose_library_to_show(mushaf, page, limit)
     review = calibration.find_review_of_page(mushaf, page)
     profile = (review.payload.get("profile") or {}) if review and review.payload.get("lines") else {}
-    shapes = _Shapes(
+    shapes = ShapeImages(
         mushaf,
         [ref for item in library.groups for ref in (item["centre"], *(item["members"][i] for i in item["kept"]))],
     )
 
     kinds: dict[tuple[str, str], list[Doc]] = {}
     for item in library.groups:
-        fingerprint = shapes.of(item["centre"], item["role"], item["subtype"])
+        fingerprint = shapes.describe_shape(item["centre"], item["role"], item["subtype"])
         if fingerprint is None:
             continue
         kept = []
         for index in item["kept"]:
-            shape = shapes.of(item["members"][index], item["role"], item["subtype"])
+            shape = shapes.describe_shape(item["members"][index], item["role"], item["subtype"])
             if shape is not None:
                 kept.append({**shape, "distance": round(item["distance"][index], 4)})
         kinds.setdefault((item["role"], item["subtype"]), []).append(
             {
-                "id": _group_id(item),
+                "id": group_id_of(item),
                 "count": len(item["members"]),
                 "farthest": round(item["distance"][-1], 4),
                 "fingerprint": fingerprint,
@@ -190,7 +190,7 @@ def library_document(mushaf: Mushaf, page: int, *, limit: float | None = None) -
                 "role": role,
                 "subtype": subtype,
                 "examples": sum(group["count"] for group in kinds[(role, subtype)]),
-                "groups": _ordered(kinds[(role, subtype)], role),
+                "groups": order_groups_for_audit(kinds[(role, subtype)], role),
             }
             for role, subtype in order
         ],
@@ -202,22 +202,22 @@ def library_members(
 ) -> Doc:
     """Every member of one group, the farthest from its fingerprint first, a page of
     them at a time."""
-    library = _library(mushaf, page, limit)
-    item = next((item for item in library.groups if _group_id(item) == group), None)
+    library = choose_library_to_show(mushaf, page, limit)
+    item = next((item for item in library.groups if group_id_of(item) == group), None)
     if item is None:
-        calibration._refuse("not_found", 404, page=page)
+        calibration.refuse_request("not_found", 404, page=page)
     order = list(range(len(item["members"])))[::-1]
     window = order[max(0, offset) : max(0, offset) + max(1, min(count, MEMBERS_PAGE))]
-    shapes = _Shapes(mushaf, [item["members"][index] for index in window])
+    shapes = ShapeImages(mushaf, [item["members"][index] for index in window])
     members = []
     for index in window:
-        shape = shapes.of(item["members"][index], item["role"], item["subtype"])
+        shape = shapes.describe_shape(item["members"][index], item["role"], item["subtype"])
         if shape is not None:
             members.append({**shape, "distance": round(item["distance"][index], 4)})
     return {"group": group, "total": len(item["members"]), "offset": offset, "members": members}
 
 
-def compare(mushaf: Mushaf, page: int, data: Doc) -> Doc:
+def compare_blob_with_library(mushaf: Mushaf, page: int, data: Doc) -> Doc:
     """One blob of the page against the library: what it answers — body or mark from
     the nearest letter and the nearest mark, and a mark's type and its runner-up — and
     the blob's distance to every kept shape, so the view can sort each type by it.
@@ -229,16 +229,16 @@ def compare(mushaf: Mushaf, page: int, data: Doc) -> Doc:
     """
     review = calibration.find_review_of_page(mushaf, page)
     if review is None or not review.payload.get("lines"):
-        calibration._refuse("not_processed", 422, page=page)
-    rows = calibration._apply_edits(mushaf, review, data)["lines"]
+        calibration.refuse_request("not_processed", 422, page=page)
+    rows = calibration.apply_edits_to_draft(mushaf, review, data)["lines"]
     row = next((row for row in rows if row["snapshot_id"] == data["snapshot_id"]), None)
     blob = next((blob for blob in (row["blobs"] if row else []) if blob["id"] == data["blob_id"]), None)
     snapshot = CalibrationSnapshot.objects.filter(mushaf=mushaf, pk=data["snapshot_id"]).first()
     features = snapshots.blob_features(snapshot).get(data["blob_id"]) if snapshot else None
     if blob is None or features is None:
-        calibration._refuse("not_found", 404, page=page)
+        calibration.refuse_request("not_found", 404, page=page)
 
-    library = _library(mushaf, page, data.get("limit"))
+    library = choose_library_to_show(mushaf, page, data.get("limit"))
     found = library.role_of(features)
     answer = (
         {
@@ -246,14 +246,14 @@ def compare(mushaf: Mushaf, page: int, data: Doc) -> Doc:
             "confidence": found["confidence"],
             "nearest_letter": found["nearest_letter"],
             "nearest_mark": found["nearest_mark"],
-            "letter": _key(found["letter"]),
-            "mark": _key(found["mark"]),
+            "letter": blob_key_of(found["letter"]),
+            "mark": blob_key_of(found["mark"]),
         }
         if found["role"] is not None
         else None
     )
-    row_distances = library._distances([features])[0] if library.refs else np.zeros(0)
-    distances = {_key(ref): round(float(row_distances[i]), 4) for i, ref in enumerate(library.refs)}
+    row_distances = library.measure_distances([features])[0] if library.refs else np.zeros(0)
+    distances = {blob_key_of(ref): round(float(row_distances[i]), 4) for i, ref in enumerate(library.refs)}
 
     stored = {str(snapshot.pk): snapshot}
     stored.update(
@@ -262,10 +262,10 @@ def compare(mushaf: Mushaf, page: int, data: Doc) -> Doc:
             for s in CalibrationSnapshot.objects.filter(mushaf=mushaf, pk__in=[r["snapshot_id"] for r in rows])
         }
     )
-    typed = calibration._typed(blob)
+    typed = calibration.is_mark_typed(blob)
     own_samples = [
         sample
-        for sample in calibration._typed_samples(stored, rows)
+        for sample in calibration.collect_typed_marks_of_draft(stored, rows)
         if (sample["snapshot_id"], sample["blob_id"]) != (data["snapshot_id"], data["blob_id"])
     ]
     kind = None
@@ -293,7 +293,7 @@ def set_check(mushaf: Mushaf, data: Doc) -> Doc:
     """Say an example looks right, as the role and type it is confirmed as now."""
     snapshot = CalibrationSnapshot.objects.filter(mushaf=mushaf, pk=data["snapshot_id"]).first()
     if snapshot is None or data["role"] not in calibration.TEXT_ROLES:
-        calibration._refuse("not_found", 404, page=data.get("page", 0))
+        calibration.refuse_request("not_found", 404, page=data.get("page", 0))
     LibraryCheck.objects.update_or_create(
         mushaf=mushaf,
         snapshot=snapshot,

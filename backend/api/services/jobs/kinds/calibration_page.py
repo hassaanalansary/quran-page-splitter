@@ -3,13 +3,13 @@
 ::
 
     POST …/calibration/process ─▶ start_calibration_page_job ─▶ dispatch
-                                  ─▶ run_calibration_page_job ─▶ calibration.process_page
+                                  ─▶ run_calibration_page_job ─▶ calibration.make_fresh_draft_of_page
 
-The work itself is ``api.services.calibration.process_page``, which knows nothing
+The work itself is ``api.services.calibration.make_fresh_draft_of_page``, which knows nothing
 about jobs. The job counts the lines of the aya span that covers the page.
 
 The row's ``params``: ``page``, the page to process, and ``expected_revision``, the
-draft revision the request saw. ``process_page`` refuses to store over a newer one.
+draft revision the request saw. ``make_fresh_draft_of_page`` refuses to store over a newer one.
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ from api.services.calibration import (
     are_line_snapshots_current,
     find_aya_span_of_page,
     find_review_of_page,
-    process_page,
+    make_fresh_draft_of_page,
 )
 from api.services.jobs.admission import (
     refuse_if_mushaf_has_active_job,
@@ -84,7 +84,7 @@ def run_calibration_page_job(job: ProcessJob) -> None:
     cancel arrived before anything was. A cancelled job names the page in
     ``stopped_on_page``: nothing of it was stored."""
     page = int(job.params["page"])
-    stored = process_page(
+    stored = make_fresh_draft_of_page(
         job.mushaf,
         page,
         expected_revision=int(job.params["expected_revision"]),

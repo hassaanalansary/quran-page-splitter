@@ -50,7 +50,6 @@ import copy
 import logging
 import math
 import statistics
-import uuid
 from collections import Counter, OrderedDict, defaultdict
 from dataclasses import asdict, dataclass, field
 from itertools import pairwise
@@ -77,7 +76,7 @@ from api.models import (
     Page,
     Segment,
 )
-from api.services import activity, line_images, word_coordinates, word_inputs
+from api.services import activity, line_images, word_inputs
 from api.services import calibration_marks as text_marks
 from api.services import calibration_snapshots as snapshots
 from api.services.build_once import BuildOnce
@@ -131,7 +130,7 @@ LIMIT_CEILING = 10.0
 LEARNED = "learned"
 
 
-def settings_document(mushaf: Mushaf) -> Doc:
+def serialize_calibration_settings(mushaf: Mushaf) -> Doc:
     """The mushaf's calibration settings: the library's comparison and LIMIT (``limit``
     is what is in force; ``default_limit`` what an unset LIMIT means for that comparison)."""
     setting = CalibrationSettings.objects.filter(mushaf=mushaf).first()
@@ -145,27 +144,30 @@ def settings_document(mushaf: Mushaf) -> Doc:
 
 
 @transaction.atomic
-def save_settings(mushaf: Mushaf, data: Doc, *, user: User | None) -> Doc:
+def save_calibration_settings(mushaf: Mushaf, data: Doc, *, user: User | None) -> Doc:
     Mushaf.objects.select_for_update().get(pk=mushaf.pk)
     setting, _ = CalibrationSettings.objects.get_or_create(mushaf=mushaf)
     if setting.revision != data["revision"]:
-        _refuse("stale_revision")
+        refuse_request("stale_revision")
     # Every save says the whole setting: a null LIMIT is the comparison's default.
     chosen = data.get("comparison") or setting.comparison or DEFAULT_COMPARISON
     limit = data.get("limit")
     if chosen not in COMPARISONS or (limit is not None and not 0 < limit <= LIMIT_CEILING):
-        _refuse("invalid_edits", 422)
+        refuse_request("invalid_edits", 422)
     setting.comparison = chosen
     setting.library_limit = limit
     setting.revision += 1
     setting.save(update_fields=["comparison", "library_limit", "revision", "updated_at"])
     activity.emit(
-        mushaf, ActivityTypeChoices.CALIBRATION_SAVED, {"action": "settings", **settings_document(mushaf)}, actor=user
+        mushaf,
+        ActivityTypeChoices.CALIBRATION_SAVED,
+        {"action": "settings", **serialize_calibration_settings(mushaf)},
+        actor=user,
     )
-    return settings_document(mushaf)
+    return serialize_calibration_settings(mushaf)
 
 
-def _refuse(key: str, status: int = 409, **kwargs: object) -> NoReturn:
+def refuse_request(key: str, status: int = 409, **kwargs: object) -> NoReturn:
     raise HttpError(status, i18n.t(f"calibration_{key}", **kwargs))
 
 
@@ -188,7 +190,7 @@ def _follows_text(mushaf: Mushaf) -> bool:
 # ---------------------------------------------------------------------------
 # Examples: what the matcher is built from
 # ---------------------------------------------------------------------------
-def _approval(review: CalibrationReview) -> CalibrationRevision | None:
+def find_confirmed_revision_of_review(review: CalibrationReview) -> CalibrationRevision | None:
     """The immutable revision a review's confirmation points at, if it has one."""
     if review.confirmed_revision is None:
         return None
@@ -197,7 +199,7 @@ def _approval(review: CalibrationReview) -> CalibrationRevision | None:
     ).first()
 
 
-def _approved(mushaf: Mushaf, page: int) -> list[CalibrationRevision]:
+def find_confirmed_revisions_except_page(mushaf: Mushaf, page: int) -> list[CalibrationRevision]:
     """Every confirmed approval of a page other than ``page``, in page order.
 
     Never the page's own: a page is not predicted from its own labels, which is what
@@ -208,7 +210,7 @@ def _approved(mushaf: Mushaf, page: int) -> list[CalibrationRevision]:
     draft, and every request that asks the library something starts here only to learn
     *which* approvals apply — the library's signature, the pages it learns from. Read
     whole, 26 confirmed pages cost 1.3 s of JSON on every such request. Where the
-    examples themselves are needed, :func:`approvals_with_payloads` reads them.
+    examples themselves are needed, :func:`load_revision_payloads` reads them.
     """
     return list(
         CalibrationRevision.objects.filter(
@@ -224,7 +226,7 @@ def _approved(mushaf: Mushaf, page: int) -> list[CalibrationRevision]:
     )
 
 
-def approvals_with_payloads(approved: list[CalibrationRevision]) -> list[CalibrationRevision]:
+def load_revision_payloads(approved: list[CalibrationRevision]) -> list[CalibrationRevision]:
     """The same approvals, in the same order, read with their payloads — for the few
     places that need the examples themselves, and only when nothing is cached."""
     loaded = CalibrationRevision.objects.filter(pk__in=[revision.pk for revision in approved])
@@ -232,13 +234,7 @@ def approvals_with_payloads(approved: list[CalibrationRevision]) -> list[Calibra
     return [by_pk[revision.pk] for revision in approved if revision.pk in by_pk]
 
 
-def _approvals(mushaf: Mushaf) -> list[tuple[int, CalibrationRevision]]:
-    """Every page's confirmed approval, with its page number, in page order."""
-    reviews = CalibrationReview.objects.filter(mushaf=mushaf, confirmed_revision__isnull=False).order_by("page_number")
-    return [(review.page_number, revision) for review in reviews if (revision := _approval(review)) is not None]
-
-
-def _eligible(blob: Doc) -> bool:
+def is_blob_eligible_for_library(blob: Doc) -> bool:
     """Whether a confirmed blob may teach the matcher body-versus-mark.
 
     Not ornaments or symbols — they are structure, not text. Not anything flagged
@@ -254,7 +250,7 @@ def _eligible(blob: Doc) -> bool:
     return True
 
 
-def _samples(mushaf: Mushaf, revisions: list[CalibrationRevision]) -> list[dict]:
+def collect_library_examples(mushaf: Mushaf, revisions: list[CalibrationRevision]) -> list[dict]:
     ids = {line["snapshot_id"] for revision in revisions for line in revision.payload.get("lines", [])}
     stored = {str(s.pk): s for s in CalibrationSnapshot.objects.filter(mushaf=mushaf, pk__in=ids)}
     samples = []
@@ -265,7 +261,7 @@ def _samples(mushaf: Mushaf, revisions: list[CalibrationRevision]) -> list[dict]
                 continue
             features = snapshots.blob_features(snapshot)
             for blob in line["blobs"]:
-                if not _eligible(blob) or blob["id"] not in features:
+                if not is_blob_eligible_for_library(blob) or blob["id"] not in features:
                     continue
                 samples.append(
                     {
@@ -275,7 +271,7 @@ def _samples(mushaf: Mushaf, revisions: list[CalibrationRevision]) -> list[dict]
                         "page_number": snapshot.page_number,
                         "line_number": snapshot.line_number,
                         "role": blob["role"],
-                        "subtype": blob["subtype"] if _typed(blob) else "",
+                        "subtype": blob["subtype"] if is_mark_typed(blob) else "",
                         "revision_id": str(revision.pk),
                         "features": features[blob["id"]],
                     }
@@ -327,7 +323,7 @@ def _library_of(mushaf: Mushaf, profile: CalibrationProfile) -> Library:
             key=lambda revision: revision.review.page_number,
         )
         library = build_library(
-            _samples(mushaf, revisions),
+            collect_library_examples(mushaf, revisions),
             method=comparison(profile.payload.get("comparison")),
             limit=profile.payload.get("limit"),
         )
@@ -344,8 +340,8 @@ def profile_for(mushaf: Mushaf, page: int) -> tuple[CalibrationProfile, Library]
     examples are regrouped from those approvals' snapshots on demand (seconds). The
     same approvals and settings always hash to the same signature, and so the same row.
     """
-    approved = _approved(mushaf, page)
-    settings = settings_document(mushaf)
+    approved = find_confirmed_revisions_except_page(mushaf, page)
+    settings = serialize_calibration_settings(mushaf)
     identity = {
         "feature_version": FEATURE_VERSION,
         "library": LIBRARY_VERSION,
@@ -463,42 +459,42 @@ def _printed_joins(document: Doc) -> list[tuple[Join, bool]]:
 
 
 #: Fusion tables by mushaf and the approvals they came from. Bounded.
-_FUSIONS: OrderedDict[tuple[str, tuple[str, ...]], FusionTable] = OrderedDict()
-_FUSIONS_MAX = 2
+FUSION_TABLES: OrderedDict[tuple[str, tuple[str, ...]], FusionTable] = OrderedDict()
+FUSION_TABLES_MAX = 2
 #: One build at a time per fusion table: it reads every confirmation's payload.
 FUSION_BUILDS = BuildOnce()
 
 
-def _fusion_table(mushaf: Mushaf, page: int) -> FusionTable:
+def load_fusion_table(mushaf: Mushaf, page: int) -> FusionTable:
     """What every other confirmed page shows printed touching — the same pages the
     library learns from."""
-    approved = _approved(mushaf, page)
+    approved = find_confirmed_revisions_except_page(mushaf, page)
     key = (str(mushaf.pk), tuple(str(revision.pk) for revision in approved))
-    table = take_cached_fusions(key)
+    table = take_cached_fusion_table(key)
     if table is not None:
         return table
     with FUSION_BUILDS.lock_for(key):
-        table = take_cached_fusions(key)
+        table = take_cached_fusion_table(key)
         if table is not None:
             return table
-        approved = approvals_with_payloads(approved)
+        approved = load_revision_payloads(approved)
         touching = Counter(item for revision in approved for item in _touching_joins(revision.payload))
         printed = Counter(item for revision in approved for item in _printed_joins(revision.payload))
         tallies: dict[bool, dict[Join, tuple[int, int]]] = {False: {}, True: {}}
         for (join, across), count in printed.items():
             tallies[across][join] = (touching[(join, across)], count)
         table = FusionTable(within=tallies[False], across=tallies[True])
-        _FUSIONS[key] = table
-        while len(_FUSIONS) > _FUSIONS_MAX:
-            _FUSIONS.popitem(last=False)
+        FUSION_TABLES[key] = table
+        while len(FUSION_TABLES) > FUSION_TABLES_MAX:
+            FUSION_TABLES.popitem(last=False)
     return table
 
 
-def take_cached_fusions(key: tuple[str, tuple[str, ...]]) -> FusionTable | None:
+def take_cached_fusion_table(key: tuple[str, tuple[str, ...]]) -> FusionTable | None:
     """The fusion table under ``key`` if it is built, marked as the most recently used."""
-    table = _FUSIONS.get(key)
+    table = FUSION_TABLES.get(key)
     if table is not None:
-        _FUSIONS.move_to_end(key)
+        FUSION_TABLES.move_to_end(key)
     return table
 
 
@@ -586,7 +582,7 @@ def page_document(mushaf: Mushaf, page: int) -> Doc:
         document.setdefault(key, [])
     document.setdefault("profile", {"signature": "", "mode": "shadow", "pages": [], "examples": 0})
     document["processed"] = bool(document["lines"])
-    document["settings"] = settings_document(mushaf)
+    document["settings"] = serialize_calibration_settings(mushaf)
     _attach_urls(mushaf, document)
     # Stale snapshots stay readable — the reviewer can see what they had — but no
     # longer accept edits: labels only mean something against the current pixels.
@@ -624,9 +620,9 @@ def find_aya_span_of_page(mushaf: Mushaf, page_number: int) -> tuple[tuple[int, 
     """
     page = Page.objects.filter(mushaf=mushaf, page_number=page_number).first()
     if page is None:
-        _refuse("not_found", 404, page=page_number)
+        refuse_request("not_found", 404, page=page_number)
     if not page.reviewed:
-        _refuse("not_reviewed", 422, page=page_number)
+        refuse_request("not_reviewed", 422, page=page_number)
     rows = list(
         Segment.objects.filter(line__page=page, line__type=LineTypeChoices.TEXT)
         .order_by("line__line_number", "segment_order")
@@ -634,7 +630,7 @@ def find_aya_span_of_page(mushaf: Mushaf, page_number: int) -> tuple[tuple[int, 
     )
     numbered = [(sura, aya) for sura, aya in rows if sura is not None and aya is not None]
     if not rows or len(numbered) != len(rows):
-        _refuse("not_numbered", 422, page=page_number)
+        refuse_request("not_numbered", 422, page=page_number)
     return numbered[0], numbered[-1]
 
 
@@ -732,7 +728,7 @@ def _approved_rows(mushaf: Mushaf, pages: set[int]) -> dict[str, Doc]:
     for review in CalibrationReview.objects.filter(
         mushaf=mushaf, page_number__in=pages, confirmed_revision__isnull=False
     ):
-        revision = _approval(review)
+        revision = find_confirmed_revision_of_review(review)
         if revision is None:
             continue
         for row in revision.payload.get("lines", []):
@@ -753,7 +749,7 @@ def _approved_rows(mushaf: Mushaf, pages: set[int]) -> dict[str, Doc]:
     return found
 
 
-def process_page(
+def make_fresh_draft_of_page(
     mushaf: Mushaf,
     page: int,
     *,
@@ -819,7 +815,7 @@ def process_page(
 
     document = align_document(mushaf, document, text_locks=False)
     alive()
-    prediction = _record(document, context=True)
+    prediction = build_revision_record(document, context=True)
     # What the text says about the ink that reading put on the line — its small waw
     # and ya — goes on the draft, never on the prediction record.
     reread = _place_text_locks(document) if _follows_text(mushaf) else set()
@@ -833,7 +829,7 @@ def process_page(
     # The draft: that reading, with what people already decided put back on it.
     if _carry_decisions(document, before):
         document = align_document(mushaf, document, calibration_locks=True)
-    _apply_text_types(mushaf, document)
+    apply_text_types_to_draft(mushaf, document)
     alive()
     shown = _shown(document)
     frozen = _frozen_record(mushaf, page, start, end, user)
@@ -843,7 +839,7 @@ def process_page(
     with transaction.atomic():
         review, _ = CalibrationReview.objects.select_for_update().get_or_create(mushaf=mushaf, page_number=page)
         if review.revision != expected_revision:
-            _refuse("stale_revision")
+            refuse_request("stale_revision")
         review.revision += 1
         document["processed_revision"] = review.revision
         review.payload = document
@@ -928,7 +924,7 @@ def _as_constraint(row: Doc) -> Doc:
     return row
 
 
-def _record(document: Doc, *, context: bool = False) -> Doc:
+def build_revision_record(document: Doc, *, context: bool = False) -> Doc:
     """The part of a document an immutable revision keeps.
 
     An approval keeps only its own page: the context lines were never approved.
@@ -1090,7 +1086,7 @@ def _read(
     units = _fused_units(rows, result["stream"])
     unit_of = {member: head for head, members in units.items() for member in members}
     # Learned, like the library's prices: where this mushaf prints letters touching.
-    weights = _short_weights(result["stream"], _fusion_table(mushaf, result["page"])) if calibration_locks else {}
+    weights = _short_weights(result["stream"], load_fusion_table(mushaf, result["page"])) if calibration_locks else {}
 
     images, inks, cut_by_row = [], [], []
     for row in rows:
@@ -1808,7 +1804,7 @@ def _blob_ayas(blob: Doc, row: Doc, references: dict[int, Doc]) -> set[str]:
     return nearby or {word["aya"] for word in row["words"]}
 
 
-def _apply_edits(mushaf: Mushaf, review: CalibrationReview, data: Doc) -> Doc:
+def apply_edits_to_draft(mushaf: Mushaf, review: CalibrationReview, data: Doc) -> Doc:
     """The draft with the client's edits applied — validated, never trusted.
 
     The client sends every editable line whole: every blob's decisions, a shared
@@ -1819,20 +1815,20 @@ def _apply_edits(mushaf: Mushaf, review: CalibrationReview, data: Doc) -> Doc:
     its ink changed.
     """
     if data["revision"] != review.revision:
-        _refuse("stale_revision")
+        refuse_request("stale_revision")
     document: Doc = copy.deepcopy(review.payload)
     if not are_line_snapshots_current(mushaf, document.get("lines", [])):
-        _refuse("stale_source")
+        refuse_request("stale_source")
     incoming = {line["snapshot_id"]: line for line in data["lines"]}
     if len(incoming) != len(data["lines"]) or set(incoming) != {row["snapshot_id"] for row in document["lines"]}:
-        _refuse("invalid_edits", 422)
+        refuse_request("invalid_edits", 422)
     references = {word["id"]: word for word in document["stream"]}
     pending = set(document.get("pending_ayas", []))
     for row in document["lines"]:
         edit = incoming[row["snapshot_id"]]
         blobs = {blob["id"]: blob for blob in edit["blobs"]}
         if len(blobs) != len(edit["blobs"]) or set(blobs) != {blob["id"] for blob in row["blobs"]}:
-            _refuse("invalid_edits", 422)
+            refuse_request("invalid_edits", 422)
         raster = LineRaster(row["snapshot_id"])
         for blob in row["blobs"]:
             before = copy.deepcopy(blob)
@@ -1841,7 +1837,7 @@ def _apply_edits(mushaf: Mushaf, review: CalibrationReview, data: Doc) -> Doc:
             try:
                 set_cut_from_edit(blob, blobs[blob["id"]].get("cut"), row["bbox"], raster)
             except CutRefused:
-                _refuse("invalid_edits", 422)
+                refuse_request("invalid_edits", 422)
             if any(
                 before.get(key) != blob.get(key)
                 for key in ("role", "explicit", "allocations", "ownership_explicit", "erased")
@@ -1856,25 +1852,25 @@ def _merge_blob(blob: Doc, new: Doc, references: dict[int, Doc]) -> None:
     role = new["role"]
     structural = blob["initial_role"] in ("ornament", "symbol")
     if (structural and role != blob["initial_role"]) or (not structural and role not in TEXT_ROLES):
-        _refuse("invalid_edits", 422)
+        refuse_request("invalid_edits", 422)
     # Only text ink is erased: an ornament or a symbol is the page's structure.
     erased = bool(new.get("erased"))
     if erased and structural:
-        _refuse("invalid_edits", 422)
+        refuse_request("invalid_edits", 422)
     if new.get("exception", "") not in EXCEPTIONS:
-        _refuse("invalid_edits", 422)
+        refuse_request("invalid_edits", 422)
     allocations = new.get("allocations") or []
     word_ids = [allocation["word_id"] for allocation in allocations]
     if len(set(word_ids)) != len(word_ids) or any(word_id not in references for word_id in word_ids):
-        _refuse("invalid_edits", 422)
+        refuse_request("invalid_edits", 422)
     if len(word_ids) > 1 and not _joinable(word_ids, references, role):
-        _refuse("invalid_edits", 422)
+        refuse_request("invalid_edits", 422)
     for allocation in allocations:
         paws = allocation["paws"]
         if not isinstance(paws, int) or isinstance(paws, bool) or not 0 <= paws <= MAX_PAWS:
-            _refuse("invalid_edits", 422)
+            refuse_request("invalid_edits", 422)
         if role != "body" and paws:
-            _refuse("invalid_edits", 422)
+            refuse_request("invalid_edits", 422)
     # A decision is what the client says is one. A role that merely differs from the
     # stored one is not: undoing an accepted preview sends back the reading from
     # before it, and inferring "decided" there would turn every blob that reading
@@ -1921,7 +1917,7 @@ def _joinable(word_ids: list[int], references: dict[int, Doc], role: str) -> boo
     )
 
 
-def _require_context(mushaf: Mushaf, document: Doc) -> None:
+def refuse_if_context_lines_changed(mushaf: Mushaf, document: Doc) -> None:
     """Refuse to read a page across neighbouring lines that have since changed.
 
     Reading the page again aligns the ayat that cross its breaks against those
@@ -1930,7 +1926,7 @@ def _require_context(mushaf: Mushaf, document: Doc) -> None:
     confirming read nothing, so only a preview and an accepted one need this.
     """
     if not are_context_lines_current(mushaf, document.get("context", [])):
-        _refuse("stale_context")
+        refuse_request("stale_context")
 
 
 def preview(mushaf: Mushaf, page: int, data: Doc) -> Doc:
@@ -1942,16 +1938,16 @@ def preview(mushaf: Mushaf, page: int, data: Doc) -> Doc:
     """
     review = find_review_of_page(mushaf, page)
     if review is None or not review.payload.get("lines"):
-        _refuse("not_processed", 422, page=page)
-    edited = _apply_edits(mushaf, review, data)
-    _require_context(mushaf, edited)
+        refuse_request("not_processed", 422, page=page)
+    edited = apply_edits_to_draft(mushaf, review, data)
+    refuse_if_context_lines_changed(mushaf, edited)
     document = align_document(
         mushaf,
         edited,
         affected_ayas=set(edited.get("pending_ayas", [])),
         calibration_locks=True,
     )
-    _apply_text_types(mushaf, document)
+    apply_text_types_to_draft(mushaf, document)
     document["pending_ayas"] = []
     document.pop("request", None)
     document.update(
@@ -2003,93 +1999,10 @@ def exceptions(document: Doc) -> list[Doc]:
     return found
 
 
-def _request_hash(data: Doc, confirm: bool) -> str:
-    return snapshots.digest({"data": {k: v for k, v in data.items() if k != "request_id"}, "confirm": confirm})
-
-
-@transaction.atomic
-def save(mushaf: Mushaf, page: int, data: Doc, *, confirm: bool = False, user: User | None = None) -> Doc:
-    """Store the reviewer's edits as the draft — and, with ``confirm``, approve the page.
-
-    Idempotent per ``request_id``: a retried request that already landed returns the
-    current state instead of applying twice, and a *different* request reusing the
-    id is refused. A confirmation additionally writes the page's words (the product)
-    and an immutable ``confirmed`` revision — the only thing examples come from.
-    Counts that do not close are allowed, but only when acknowledged.
-
-    ``realign`` is how a preview is accepted. The edits carry decisions, never the
-    engine's verdicts — a line's status, a blob's attention — so storing
-    them as they came would keep the verdicts of the reading *before* the preview.
-    The page is read again under the same edits instead; the search is
-    deterministic, so what is stored is what the preview showed.
-    """
-    # Page, then review: always in this order, so two saves cannot deadlock.
-    page_row = Page.objects.select_for_update().filter(mushaf=mushaf, page_number=page).first()
-    review = CalibrationReview.objects.select_for_update().filter(mushaf=mushaf, page_number=page).first()
-    if review is None or not review.payload.get("lines"):
-        _refuse("not_processed", 422, page=page)
-    request_id = str(data["request_id"])
-    request_hash = _request_hash(data, confirm)
-    landed = review.payload.get("request") or {}
-    previous = CalibrationRevision.objects.filter(review=review, request_id=request_id).first()
-    if previous is not None or landed.get("id") == request_id:
-        if (previous.payload.get("request_hash") if previous else landed.get("hash")) != request_hash:
-            _refuse("request_reused")
-        return page_document(mushaf, page)
-
-    document = _apply_edits(mushaf, review, data)
-    if data.get("realign"):
-        _require_context(mushaf, document)
-        document = align_document(
-            mushaf,
-            document,
-            affected_ayas=set(document.get("pending_ayas", [])),
-            calibration_locks=True,
-        )
-        _apply_text_types(mushaf, document)
-        document["pending_ayas"] = []
-    if confirm:
-        found = exceptions(document)
-        if found and not data.get("acknowledge_exceptions"):
-            _refuse("exceptions", 422, count=len(found))
-        if page_row is None:
-            _refuse("stale_source")
-        word_coordinates.replace_page_words(
-            page_row,
-            [
-                {
-                    "line_id": uuid.UUID(row["line_id"]),
-                    "words": [{key: word[key] for key in ("word_id", "start_x", "end_x")} for word in row["words"]],
-                }
-                for row in document["lines"]
-            ],
-        )
-    review.revision += 1
-    document["request"] = {"id": request_id, "hash": request_hash}
-    if confirm:
-        review.confirmed_revision = review.revision
-        CalibrationRevision.objects.create(
-            review=review,
-            number=review.revision,
-            kind=CalibrationRevisionKind.CONFIRMED,
-            payload={**_record(document), "request_hash": request_hash, "acknowledged": exceptions(document)},
-            request_id=request_id,
-        )
-    review.payload = document
-    review.save(update_fields=["revision", "confirmed_revision", "payload", "updated_at"])
-    activity.emit(
-        mushaf,
-        ActivityTypeChoices.CALIBRATION_CONFIRMED if confirm else ActivityTypeChoices.CALIBRATION_SAVED,
-        {"page_number": page, "revision": review.revision},
-        actor=user,
-    )
-    return page_document(mushaf, page)
-
-
 # ---------------------------------------------------------------------------
 # Mark types: a guess for every mark nobody has typed
 # ---------------------------------------------------------------------------
-def _typed(blob: Doc) -> bool:
+def is_mark_typed(blob: Doc) -> bool:
     """A mark a person gave a type to — the only kind that may teach a type.
 
     A type with no ``subtype_explicit`` predates the flag, and every type then was
@@ -2106,11 +2019,11 @@ def _typed(blob: Doc) -> bool:
     )
 
 
-def _typed_samples(stored: dict[str, CalibrationSnapshot], rows: list[Doc]) -> list[Doc]:
+def collect_typed_marks_of_draft(stored: dict[str, CalibrationSnapshot], rows: list[Doc]) -> list[Doc]:
     samples = []
     for row in rows:
         snapshot = stored.get(row["snapshot_id"])
-        typed = [blob for blob in row["blobs"] if _typed(blob)]
+        typed = [blob for blob in row["blobs"] if is_mark_typed(blob)]
         if snapshot is None or not typed:
             continue
         features = snapshots.blob_features(snapshot)
@@ -2145,7 +2058,7 @@ def _page_marks(mushaf: Mushaf, rows: list[Doc]) -> tuple[dict[str, CalibrationS
     return stored, marks
 
 
-def type_suggestions(mushaf: Mushaf, page: int, data: Doc) -> Doc:
+def suggest_mark_types(mushaf: Mushaf, page: int, data: Doc) -> Doc:
     """A type for every mark on the page that nobody has typed yet, and a doubt on
     every typed one the other pages disagree with. Stores nothing.
 
@@ -2176,11 +2089,11 @@ def type_suggestions(mushaf: Mushaf, page: int, data: Doc) -> Doc:
     """
     review = find_review_of_page(mushaf, page)
     if review is None or not review.payload.get("lines"):
-        _refuse("not_processed", 422, page=page)
-    edited = _apply_edits(mushaf, review, data)
+        refuse_request("not_processed", 422, page=page)
+    edited = apply_edits_to_draft(mushaf, review, data)
     rows = edited["lines"]
     stored, marks = _page_marks(mushaf, rows)
-    here = _typed_samples(stored, rows)
+    here = collect_typed_marks_of_draft(stored, rows)
     library = _library(mushaf, page)
     index = library.with_typed(here)
     checks = (
@@ -2194,7 +2107,7 @@ def type_suggestions(mushaf: Mushaf, page: int, data: Doc) -> Doc:
         for check in per_word.values()
         for ident in check.types
     }
-    untyped = [mark for mark in marks if not _typed(mark[1])]
+    untyped = [mark for mark in marks if not is_mark_typed(mark[1])]
     typed = [mark for mark in marks if text_marks.human_typed(mark[1])]
     guesses = index.predict_types([features for _, _, features in untyped])
     # What each mark is typed or taken for, line by line — what the ink's arrangements
@@ -2351,14 +2264,14 @@ def _noise(library: Library, marks: list[tuple[Doc, Doc, Any]], checks: dict[str
     return found
 
 
-def _apply_text_types(mushaf: Mushaf, document: Doc) -> None:
+def apply_text_types_to_draft(mushaf: Mushaf, document: Doc) -> None:
     """Type the marks of the document's own lines that their words' text surely names —
     see :func:`calibration_marks.apply_text_types`. In place."""
     if not _follows_text(mushaf):
         return
     rows = [row for row in document["lines"] if not row.get("readonly")]
     stored, marks = _page_marks(mushaf, rows)
-    index = _library(mushaf, document["page"]).with_typed(_typed_samples(stored, rows))
+    index = _library(mushaf, document["page"]).with_typed(collect_typed_marks_of_draft(stored, rows))
     checks = text_marks.check_rows(rows, document["stream"], marks, index, ijam=mushaf.ijam_mode != "ignore")
     text_marks.apply_text_types(rows, checks)
 
@@ -2422,7 +2335,7 @@ def erased_mask(raster: np.ndarray, erased: set[int]) -> np.ndarray:
 def evaluation_page(mushaf: Mushaf, page: int) -> Doc:
     """Render-ready historical readings; never use the current draft as truth."""
     review = find_review_of_page(mushaf, page)
-    confirmed = _approval(review) if review is not None else None
+    confirmed = find_confirmed_revision_of_review(review) if review is not None else None
     processed = (
         CalibrationRevision.objects.filter(
             review=review,
@@ -2433,7 +2346,7 @@ def evaluation_page(mushaf: Mushaf, page: int) -> Doc:
         else None
     )
     if processed is None or confirmed is None:
-        _refuse("not_found", 404, page=page)
+        refuse_request("not_found", 404, page=page)
     canonical = processed.payload
     readings = {
         "frozen": canonical.get("frozen", {}),
@@ -2493,7 +2406,7 @@ def evaluation(mushaf: Mushaf) -> Doc:
     for review in CalibrationReview.objects.filter(mushaf=mushaf, confirmed_revision__isnull=False).order_by(
         "page_number"
     ):
-        confirmed = _approval(review)
+        confirmed = find_confirmed_revision_of_review(review)
         if confirmed is None:
             continue
         processed = CalibrationRevision.objects.filter(
