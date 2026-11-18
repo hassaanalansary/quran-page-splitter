@@ -31,6 +31,7 @@ import numpy as np
 from api.models import CalibrationRevision, CalibrationSnapshot, LibraryCheck, Mushaf
 from api.services import calibration
 from api.services import calibration_snapshots as snapshots
+from api.services.build_once import BuildOnce
 from core.word_boundary.library import Library, build_library, comparison
 
 Doc = dict[str, Any]
@@ -44,6 +45,10 @@ MEMBERS_PAGE = 60
 _PREVIEW: OrderedDict[tuple, Library] = OrderedDict()
 
 
+#: One build at a time per previewed library (:mod:`api.services.build_once`).
+PREVIEW_BUILDS = BuildOnce()
+
+
 def _preview(mushaf: Mushaf, page: int, limit: float) -> Library:
     if not 0 < limit <= calibration.LIMIT_CEILING:
         calibration._refuse("invalid_edits", 422)
@@ -51,9 +56,15 @@ def _preview(mushaf: Mushaf, page: int, limit: float) -> Library:
     method = comparison(calibration.settings_document(mushaf)["comparison"])
     key = (str(mushaf.pk), tuple(str(revision.pk) for revision in approved), method.name, limit)
     library = _PREVIEW.get(key)
-    if library is None:
-        _PREVIEW.clear()
-        library = _PREVIEW[key] = build_library(calibration._samples(mushaf, approved), method=method, limit=limit)
+    if library is not None:
+        return library
+    with PREVIEW_BUILDS.lock_for(key):
+        library = _PREVIEW.get(key)
+        if library is None:
+            samples = calibration._samples(mushaf, calibration.approvals_with_payloads(approved))
+            library = build_library(samples, method=method, limit=limit)
+            _PREVIEW.clear()
+            _PREVIEW[key] = library
     return library
 
 

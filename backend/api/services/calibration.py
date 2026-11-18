@@ -58,6 +58,7 @@ from typing import Any, NoReturn, cast
 
 import numpy as np
 from django.db import transaction
+from django.db.models import F
 from ninja.errors import HttpError
 
 from accounts.models import User
@@ -82,6 +83,7 @@ from api.models import (
 from api.services import activity, jobs, line_images, word_coordinates, word_inputs, word_runs
 from api.services import calibration_marks as text_marks
 from api.services import calibration_snapshots as snapshots
+from api.services.build_once import BuildOnce
 from core.text import line_marks, paws
 from core.word_boundary import IjamMode, WordBoundaryInput, WordInput, detect_words
 from core.word_boundary.calibration import COUNT_WEIGHT, FUSION_DISCOUNT
@@ -196,13 +198,33 @@ def _approved(mushaf: Mushaf, page: int) -> list[CalibrationRevision]:
     Never the page's own: a page is not predicted from its own labels, which is what
     keeps the prediction record of each page an honest test of the others. Pages
     after it count too — what a page teaches does not depend on when it was read.
+
+    One query, and **without payloads**: a confirmation's payload is its page's whole
+    draft, and every request that asks the library something starts here only to learn
+    *which* approvals apply — the library's signature, the pages it learns from. Read
+    whole, 26 confirmed pages cost 1.3 s of JSON on every such request. Where the
+    examples themselves are needed, :func:`approvals_with_payloads` reads them.
     """
-    reviews = (
-        CalibrationReview.objects.filter(mushaf=mushaf, confirmed_revision__isnull=False)
-        .exclude(page_number=page)
-        .order_by("page_number")
+    return list(
+        CalibrationRevision.objects.filter(
+            review__mushaf=mushaf,
+            review__confirmed_revision__isnull=False,
+            kind=CalibrationRevisionKind.CONFIRMED,
+            number=F("review__confirmed_revision"),
+        )
+        .exclude(review__page_number=page)
+        .select_related("review")
+        .defer("payload", "review__payload")
+        .order_by("review__page_number")
     )
-    return [revision for revision in (_approval(review) for review in reviews) if revision is not None]
+
+
+def approvals_with_payloads(approved: list[CalibrationRevision]) -> list[CalibrationRevision]:
+    """The same approvals, in the same order, read with their payloads — for the few
+    places that need the examples themselves, and only when nothing is cached."""
+    loaded = CalibrationRevision.objects.filter(pk__in=[revision.pk for revision in approved])
+    by_pk = {revision.pk: revision for revision in loaded.select_related("review").defer("review__payload")}
+    return [by_pk[revision.pk] for revision in approved if revision.pk in by_pk]
 
 
 def _approvals(mushaf: Mushaf) -> list[tuple[int, CalibrationRevision]]:
@@ -262,6 +284,16 @@ def _samples(mushaf: Mushaf, revisions: list[CalibrationRevision]) -> list[dict]
 #: signatures, but its own snapshots. Bounded, because each holds its kept shapes.
 _LIBRARIES: OrderedDict[tuple[str, str], Library] = OrderedDict()
 _LIBRARIES_MAX = 2
+#: One build at a time per library (:mod:`api.services.build_once`).
+LIBRARY_BUILDS = BuildOnce()
+
+
+def take_cached_library(key: tuple[str, str]) -> Library | None:
+    """The library under ``key`` if it is built, marked as the most recently used."""
+    library = _LIBRARIES.get(key)
+    if library is not None:
+        _LIBRARIES.move_to_end(key)
+    return library
 
 
 def _library_of(mushaf: Mushaf, profile: CalibrationProfile) -> Library:
@@ -271,26 +303,32 @@ def _library_of(mushaf: Mushaf, profile: CalibrationProfile) -> Library:
     change the examples behind a prediction that was made before it. A profile from
     before the library (it records a matcher ``config`` instead) is read with the
     default comparison and LIMIT.
+
+    Built once: a request that arrives while the same library is being built waits
+    for that build rather than starting another.
     """
     key = (str(mushaf.pk), profile.signature)
-    library = _LIBRARIES.get(key)
+    library = take_cached_library(key)
     if library is not None:
-        _LIBRARIES.move_to_end(key)
         return library
-    revisions = sorted(
-        CalibrationRevision.objects.filter(
-            review__mushaf=mushaf, pk__in=profile.payload.get("revisions", [])
-        ).select_related("review"),
-        key=lambda revision: revision.review.page_number,
-    )
-    library = build_library(
-        _samples(mushaf, revisions),
-        method=comparison(profile.payload.get("comparison")),
-        limit=profile.payload.get("limit"),
-    )
-    _LIBRARIES[key] = library
-    while len(_LIBRARIES) > _LIBRARIES_MAX:
-        _LIBRARIES.popitem(last=False)
+    with LIBRARY_BUILDS.lock_for(key):
+        library = take_cached_library(key)
+        if library is not None:
+            return library
+        revisions = sorted(
+            CalibrationRevision.objects.filter(review__mushaf=mushaf, pk__in=profile.payload.get("revisions", []))
+            .select_related("review")
+            .defer("review__payload"),
+            key=lambda revision: revision.review.page_number,
+        )
+        library = build_library(
+            _samples(mushaf, revisions),
+            method=comparison(profile.payload.get("comparison")),
+            limit=profile.payload.get("limit"),
+        )
+        _LIBRARIES[key] = library
+        while len(_LIBRARIES) > _LIBRARIES_MAX:
+            _LIBRARIES.popitem(last=False)
     return library
 
 
@@ -422,6 +460,8 @@ def _printed_joins(document: Doc) -> list[tuple[Join, bool]]:
 #: Fusion tables by mushaf and the approvals they came from. Bounded.
 _FUSIONS: OrderedDict[tuple[str, tuple[str, ...]], FusionTable] = OrderedDict()
 _FUSIONS_MAX = 2
+#: One build at a time per fusion table: it reads every confirmation's payload.
+FUSION_BUILDS = BuildOnce()
 
 
 def _fusion_table(mushaf: Mushaf, page: int) -> FusionTable:
@@ -429,19 +469,31 @@ def _fusion_table(mushaf: Mushaf, page: int) -> FusionTable:
     library learns from."""
     approved = _approved(mushaf, page)
     key = (str(mushaf.pk), tuple(str(revision.pk) for revision in approved))
+    table = take_cached_fusions(key)
+    if table is not None:
+        return table
+    with FUSION_BUILDS.lock_for(key):
+        table = take_cached_fusions(key)
+        if table is not None:
+            return table
+        approved = approvals_with_payloads(approved)
+        touching = Counter(item for revision in approved for item in _touching_joins(revision.payload))
+        printed = Counter(item for revision in approved for item in _printed_joins(revision.payload))
+        tallies: dict[bool, dict[Join, tuple[int, int]]] = {False: {}, True: {}}
+        for (join, across), count in printed.items():
+            tallies[across][join] = (touching[(join, across)], count)
+        table = FusionTable(within=tallies[False], across=tallies[True])
+        _FUSIONS[key] = table
+        while len(_FUSIONS) > _FUSIONS_MAX:
+            _FUSIONS.popitem(last=False)
+    return table
+
+
+def take_cached_fusions(key: tuple[str, tuple[str, ...]]) -> FusionTable | None:
+    """The fusion table under ``key`` if it is built, marked as the most recently used."""
     table = _FUSIONS.get(key)
     if table is not None:
         _FUSIONS.move_to_end(key)
-        return table
-    touching = Counter(item for revision in approved for item in _touching_joins(revision.payload))
-    printed = Counter(item for revision in approved for item in _printed_joins(revision.payload))
-    tallies: dict[bool, dict[Join, tuple[int, int]]] = {False: {}, True: {}}
-    for (join, across), count in printed.items():
-        tallies[across][join] = (touching[(join, across)], count)
-    table = FusionTable(within=tallies[False], across=tallies[True])
-    _FUSIONS[key] = table
-    while len(_FUSIONS) > _FUSIONS_MAX:
-        _FUSIONS.popitem(last=False)
     return table
 
 
