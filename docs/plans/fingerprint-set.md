@@ -1,6 +1,6 @@
 # One stored fingerprint set per mushaf
 
-Settled with the user on 2026-11-17/18, in a Windows session (`1a3b5dc9`) that ended with the move to Ubuntu. The Celery branch was merged into this branch on 2026-11-18 (`b17218c`). Being built from 2026-11-18, with the names in §4.1 and the choices in §7.
+Settled with the user on 2026-11-17/18, in a Windows session (`1a3b5dc9`) that ended with the move to Ubuntu. The Celery branch was merged into this branch on 2026-11-18 (`b17218c`). **Built 2026-11-18**, with the names in §4.1 and the choices in §7: renames `ad66baa`, core `7656017`, the stored set `51f0cae`, the rebuild job `0bf12e2`, Library mode `0c3ea6a`. Migration 0040 is for the user to run (Django in Docker runs it on start). The replay (`wl-out/library/replay_incremental.py`, git-ignored like the other audit tools) is for the user to run once enough pages of the new mushaf are confirmed.
 
 ## 0. Summary
 
@@ -195,6 +195,9 @@ Unchanged: `serialize_calibration`, `restore_calibration`, `apply_bundle`, `buil
   - copy a mushaf.
 
 ## 6. Open
+
+- **The replay's numbers** (§5): the per-page cap stays out unless they show a real loss.
+- **A bundle carries no features**: an imported set re-measures its shapes from the bundled line images, so a shape whose blob can't be measured is left out until a Rebuild.
 
 - **`docs/ENGINES_FLOW.md`:** its passage on `profile_for` ("other than the page itself") goes stale. Discuss with the user before touching it; the doc only takes "continue the flow" additions.
 - **Then the real-zero restart** and a fresh walkthrough on the new approach.

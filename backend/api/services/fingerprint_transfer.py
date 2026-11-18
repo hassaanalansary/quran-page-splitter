@@ -15,6 +15,7 @@ target starts with identical fingerprints, and can Rebuild at any time.
 
 from __future__ import annotations
 
+import uuid
 from typing import Any
 
 import numpy as np
@@ -152,7 +153,7 @@ def restore_removed_shapes(target: Mushaf, data: Doc, ids: dict[str, str]) -> No
             continue
         RemovedShape.objects.update_or_create(
             mushaf=target,
-            snapshot_id=snapshot_id,
+            snapshot_id=uuid.UUID(snapshot_id),
             blob_id=int(item["blob_id"]),
             defaults={"role": item["role"], "subtype": item.get("subtype") or ""},
         )

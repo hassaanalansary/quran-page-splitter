@@ -19,6 +19,7 @@ Confirm, it flags the set ``needs_rebuild``, and Library mode offers a Rebuild.
 
 from __future__ import annotations
 
+import uuid
 from dataclasses import dataclass
 
 from django.db import transaction
@@ -119,7 +120,9 @@ def remove_shape_from_library(mushaf: Mushaf, snapshot_id: str, blob_id: int) ->
 def restore_removed_shape(mushaf: Mushaf, snapshot_id: str, blob_id: int) -> FingerprintLibrary:
     """Forget a removal, and put the example back where it fits, as a Confirm would."""
     locked = require_current_set(mushaf)
-    removal = RemovedShape.objects.filter(mushaf=mushaf, snapshot_id=snapshot_id, blob_id=blob_id).first()
+    removal = RemovedShape.objects.filter(
+        mushaf=mushaf, snapshot_id=uuid.UUID(str(snapshot_id)), blob_id=blob_id
+    ).first()
     if removal is None:
         refuse_request("not_found", 404, page=0)
     removal.delete()

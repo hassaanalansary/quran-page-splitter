@@ -18,7 +18,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from api.models import FingerprintGroup, FingerprintLibrary, FingerprintShape, Mushaf, RemovedShape
-from core.word_boundary.library import comparison
+from core.word_boundary.library import Comparison, comparison
 from core.word_boundary.library_updates import KeptShape, ShapeGroup
 
 
@@ -75,7 +75,7 @@ def load_stored_groups(library_row: FingerprintLibrary) -> StoredGroups:
     groups: dict[str, ShapeGroup] = {}
     pending: dict[str, list[tuple[bool, KeptShape]]] = {}
     shapes: dict[tuple[str, int], StoredShapeState] = {}
-    kinds = {
+    kinds: dict[str, tuple[str, str]] = {
         str(pk): (role, subtype)
         for pk, role, subtype in FingerprintGroup.objects.filter(library=library_row)
         .order_by("created_at", "pk")
@@ -127,15 +127,15 @@ def load_stored_groups(library_row: FingerprintLibrary) -> StoredGroups:
             revision_id=shape.revision_id,
         )
     group_ids: dict[int, str] = {}
-    for group_id, (role, subtype) in kinds.items():
-        members = pending.get(group_id, [])
+    for kind_group_id, (role, subtype) in kinds.items():
+        members = pending.get(kind_group_id, [])
         fingerprints = [shape for is_fingerprint, shape in members if is_fingerprint]
         if not fingerprints:
             continue
         kept = sorted((shape for is_fingerprint, shape in members if not is_fingerprint), key=sort_key)
         group = ShapeGroup(role=role, subtype=subtype, fingerprint=fingerprints[0], kept=kept)
-        groups[group_id] = group
-        group_ids[id(group)] = group_id
+        groups[kind_group_id] = group
+        group_ids[id(group)] = kind_group_id
     return StoredGroups(groups=list(groups.values()), group_ids=group_ids, shapes=shapes)
 
 
@@ -181,7 +181,7 @@ def save_stored_groups(library_row: FingerprintLibrary, stored: StoredGroups) ->
     FingerprintShape.objects.filter(pk__in=gone).delete()
     FingerprintShape.objects.bulk_create(created)
     # Last, once every shape that moved out of a group has moved: a group's rows cascade.
-    alive_ids = {stored.group_id_of(group) for group in stored.groups} - {None}
+    alive_ids = [group_id for group in stored.groups if (group_id := stored.group_id_of(group)) is not None]
     FingerprintGroup.objects.filter(library=library_row).exclude(pk__in=alive_ids).delete()
 
 
@@ -225,5 +225,6 @@ def load_removed_labels(mushaf: Mushaf) -> dict[tuple[str, int], tuple[str, str]
     }
 
 
-def comparison_of(library_row: FingerprintLibrary):
+def comparison_of(library_row: FingerprintLibrary) -> Comparison:
+    """How the set compares shapes: the comparison it was grouped with."""
     return comparison(library_row.comparison)

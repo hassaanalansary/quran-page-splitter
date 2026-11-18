@@ -125,7 +125,7 @@ def read_library_record(document: Doc) -> Doc:
     """The draft's record of the set it was read with. A draft from before the stored
     set (an old bundle, an older processed revision) recorded a ``profile`` instead:
     read the same way, with no version."""
-    record = document.get("library")
+    record: Doc | None = document.get("library")
     if record:
         return record
     profile = document.get("profile") or {}
