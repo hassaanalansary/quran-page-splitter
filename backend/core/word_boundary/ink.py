@@ -33,6 +33,8 @@ from core.word_boundary.calibration import (
     SCORE_NESTED_IN_A_BODY,
     SCORE_RELATIVE_AREA,
     SCORE_RELATIVE_HEIGHT,
+    SURE_CONFIDENCE,
+    SURE_PRICE,
 )
 from core.word_boundary.inputs import LineImage
 
@@ -61,12 +63,22 @@ class Blob:
     #: scale, so nothing is ever forbidden — only priced.
     body_score: int = 0
 
+    #: What the confirmed pages' fingerprint library says this blob is ("body" or
+    #: "mark"), and how sure (0..1) — set by the caller when learning applies. While
+    #: set, it prices the blob's roles instead of ``body_score``.
+    library_role: str | None = None
+    library_confidence: float = 0.0
+
     @property
     def cost_as_body(self) -> int:
+        if self.library_role is not None:
+            return self._against_library("body")
         return BODY_SCORE_MAX - self.body_score
 
     @property
     def cost_as_mark(self) -> int:
+        if self.library_role is not None:
+            return self._against_library("mark")
         # Capped, and this cap is the single most sensitive number in the file.
         # Leaving a body-looking component unused has to stay cheap, because a
         # line routinely carries a stroke or two more than its text accounts for
@@ -77,6 +89,13 @@ class Blob:
         # across 1..14, only 6 reproduces every verified line and lands on
         # exactly the span's word total.
         return min(self.body_score, MAX_UNUSED_COMPONENT_COST)
+
+    def _against_library(self, role: str) -> int:
+        """Reading the blob as the library's role costs nothing; against it, the full
+        ``SURE_PRICE`` once the library is sure, and in proportion below that."""
+        if role == self.library_role:
+            return 0
+        return round(SURE_PRICE * min(1.0, self.library_confidence / SURE_CONFIDENCE))
 
     #: Role selected by the line parser.  ``None`` means the line was unresolved.
     role: str | None = None

@@ -52,6 +52,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    # WhiteNoise is inserted here when DEBUG is off: see STATIC_ROOT below.
     # Compress responses (the review-data payload is large); browsers send
     # Accept-Encoding: gzip and decompress transparently.
     "django.middleware.gzip.GZipMiddleware",
@@ -235,8 +236,15 @@ SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG
 # Separately overridable: behind a TLS-terminating proxy Django sees plain HTTP
 # and would redirect forever. Set SECURE_SSL_REDIRECT=False there and let the
-# proxy handle it (and set SECURE_PROXY_SSL_HEADER if you want Django to know).
+# proxy handle it, and set TRUST_PROXY_SSL_HEADER=True so that Django knows.
 SECURE_SSL_REDIRECT = env.bool("SECURE_SSL_REDIRECT", default=not DEBUG)
+# Behind a proxy that terminates TLS, the proxy says whether the browser's request
+# was HTTPS in X-Forwarded-Proto. Django needs to know: allauth builds the links
+# in its emails and the OAuth callback address from it. Turn this on ONLY behind a
+# proxy that sets the header itself (Traefik does), because a client that could
+# send it directly could claim HTTPS on a plain request.
+if env.bool("TRUST_PROXY_SSL_HEADER", default=False):
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 SECURE_HSTS_SECONDS = 0 if DEBUG else 31536000
 SECURE_HSTS_INCLUDE_SUBDOMAINS = not DEBUG
 SECURE_HSTS_PRELOAD = not DEBUG
@@ -247,24 +255,72 @@ CSRF_COOKIE_SAMESITE = "Lax"
 # HttpOnly (see frontend/src/lib/api/http.ts).
 CSRF_COOKIE_HTTPONLY = False
 
-# Run processing jobs on the request thread instead of a worker thread. Off in
-# real use (the point of a job is that the request returns immediately); tests
-# turn it on so a POST settles before it returns, keeping them deterministic and
-# free of cross-thread DB visibility problems. See api/services/jobs.py.
+# --- Jobs ----------------------------------------------------------------
+# A processing run is a job: a ProcessJob row that something runs outside the
+# request. See api/services/jobs/__init__.py for the flow.
+
+#: Who runs a job (api/services/jobs/dispatch.py):
+#:   celery   a Celery worker. Needs Redis and a running worker. The run survives
+#:            a restart of the web process. The compose files set this.
+#:   thread   a thread of the web process. No extra service: the default, so a
+#:            bare checkout runs without Redis.
+#:   inline   the request itself. For the tests and the debug commands.
+JOB_RUNNER = env("JOB_RUNNER", default="thread")
+
+# Run every job inside its request, whatever JOB_RUNNER says. Off in real use: the
+# point of a job is that the request returns at once. Tests turn it on, so that a
+# POST has settled before it returns and nothing depends on a second thread seeing
+# the first one's rows.
 PROCESS_JOBS_INLINE = False
 
-# --- Processing concurrency ----------------------------------------------
-# Detection is CPU-bound OpenCV work, so these are about protecting the box
-# rather than the database. Without them ten people pressing Process at once
-# means ten heavy threads competing, and everyone's run crawls.
-MAX_CONCURRENT_JOBS = env.int("MAX_CONCURRENT_JOBS", default=2)
-MAX_CONCURRENT_JOBS_PER_USER = env.int("MAX_CONCURRENT_JOBS_PER_USER", default=1)
+# The engines are CPU-bound OpenCV work, so these three are about protecting the
+# box rather than the database. Without them ten people pressing Process at once
+# means ten heavy runs competing, and everyone's run crawls. See
+# api/services/jobs/admission.py. A limit set to 0 is switched off.
 
-#: How long a job may go without a heartbeat before another process may declare
-#: its worker dead. Must comfortably exceed the slowest single page, since the
-#: worker only reports between pages — too low and a live run gets settled out
-#: from under itself.
+#: Jobs running at once. It is also the Celery worker's --concurrency (the start
+#: scripts under compose/ read it), so a job over this number waits in the queue.
+#: Where nothing can wait (JOB_RUNNER thread or inline) such a job is refused, 429.
+JOB_WORKER_SLOTS = env.int("JOB_WORKER_SLOTS", default=2)
+#: Jobs one user may have queued or running. One more is refused, 429.
+MAX_ACTIVE_JOBS_PER_USER = env.int("MAX_ACTIVE_JOBS_PER_USER", default=1)
+#: Jobs that may wait in the queue. One more is refused, 429 "the queue is full".
+MAX_QUEUED_JOBS = env.int("MAX_QUEUED_JOBS", default=20)
+
+#: How long a running job may go without a heartbeat before another process may
+#: declare its worker dead. Must comfortably exceed the slowest single page, since
+#: the worker only reports between pages. Too low, and a live run is marked
+#: interrupted out from under itself.
 JOB_HEARTBEAT_TIMEOUT_SECONDS = env.int("JOB_HEARTBEAT_TIMEOUT_SECONDS", default=300)
+
+#: How long a queued job may wait, while a worker slot stands free, before it is
+#: declared dead: no worker is listening, or its message was lost. A job that
+#: waits behind running jobs is never affected.
+JOB_QUEUE_TIMEOUT_SECONDS = env.int("JOB_QUEUE_TIMEOUT_SECONDS", default=600)
+
+
+# --- Celery --------------------------------------------------------------
+# Used only when JOB_RUNNER is "celery". config/celery.py reads every CELERY_…
+# name below.
+CELERY_BROKER_URL = env("CELERY_BROKER_URL", default="redis://localhost:6379/0")
+# The job's row is the result, so there is no result backend.
+CELERY_TASK_IGNORE_RESULT = True
+# A message is acknowledged when its job starts, not when it ends. With Redis, an
+# unacknowledged task that runs for over an hour is delivered again, and a
+# whole-mushaf run takes longer than that.
+CELERY_TASK_ACKS_LATE = False
+# A busy worker child must not hold back jobs that another child could start.
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1
+# Celery would otherwise replace the handlers of LOGGING below with its own.
+CELERY_WORKER_HIJACK_ROOT_LOGGER = False
+# A message is a job id. Nothing else is ever accepted.
+CELERY_ACCEPT_CONTENT = ["json"]
+CELERY_TASK_SERIALIZER = "json"
+# A worker that starts before Redis is up keeps trying, and does not exit.
+CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
+# A request that cannot reach Redis gives up on each attempt after 5 seconds, and
+# answers 503. Without this it would wait for the system's own connect timeout.
+CELERY_BROKER_TRANSPORT_OPTIONS = {"socket_connect_timeout": 5}
 
 
 LANGUAGE_CODE = "en-us"
@@ -284,6 +340,17 @@ USE_TZ = True
 
 
 STATIC_URL = "static/"
+# Where `collectstatic` gathers the admin's CSS and JavaScript. With DEBUG on,
+# runserver serves static files itself. With DEBUG off nothing did, and the admin
+# had no CSS: WhiteNoise now serves this folder from inside Django, compressed.
+# The production start script runs `collectstatic` (compose/production/django/start).
+STATIC_ROOT = BASE_DIR / "staticfiles"
+if not DEBUG:
+    MIDDLEWARE.insert(1, "whitenoise.middleware.WhiteNoiseMiddleware")
+    STORAGES = {
+        "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+        "staticfiles": {"BACKEND": "whitenoise.storage.CompressedStaticFilesStorage"},
+    }
 
 MEDIA_URL = "media/"
 MEDIA_ROOT = BASE_DIR / "media"
@@ -295,6 +362,11 @@ MEDIA_ROOT = BASE_DIR / "media"
 # which is what the in-app log viewer tails.
 LOG_DIR = BASE_DIR / "logs"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
+
+#: The name of this process's own log file under LOG_DIR. The web process and the
+#: Celery worker each write and rotate their own: the worker's compose service sets
+#: LOG_FILE=worker.log. Run logs under LOG_DIR/runs are separate, one file per run.
+LOG_FILE = env("LOG_FILE", default="quran.log")
 
 #: Per-run log files kept under ``LOG_DIR/runs``; the oldest beyond this are
 #: deleted when a new run starts. A run whose log has been pruned still lists
@@ -348,7 +420,7 @@ LOGGING = {
         # its own retention. Warnings and errors still land here.
         "file": {
             "class": "config.logging_handlers.SharedRotatingFileHandler",
-            "filename": str(LOG_DIR / "quran.log"),
+            "filename": str(LOG_DIR / LOG_FILE),
             "maxBytes": 5 * 1024 * 1024,
             "backupCount": 3,
             "encoding": "utf-8",

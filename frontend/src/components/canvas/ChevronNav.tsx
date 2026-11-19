@@ -35,7 +35,7 @@ function Chevron({
       disabled={disabled}
       aria-label={side === "left" ? t("canvas.nextPage") : t("canvas.prevPage")}
       className={[
-        "absolute top-1/2 z-10 flex h-10 w-10 -translate-y-1/2 items-center justify-center cursor-pointer rounded-full border border-border bg-white/90 text-text-secondary shadow-[var(--shadow-md)] backdrop-blur transition hover:text-orange disabled:cursor-not-allowed disabled:opacity-30",
+        "absolute top-1/2 z-10 flex h-10 w-10 -translate-y-1/2 items-center justify-center cursor-pointer rounded-full border border-rule bg-card/90 text-ink-2 shadow-[var(--shadow-lift)] backdrop-blur transition hover:text-lapis-text disabled:cursor-not-allowed disabled:opacity-30",
         side === "left" ? "left-3" : "right-3",
       ].join(" ")}
     >

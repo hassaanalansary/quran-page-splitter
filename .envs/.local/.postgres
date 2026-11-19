@@ -1,0 +1,14 @@
+# The database of docker-compose.local.yml. Throwaway values, so this file is tracked.
+#
+# The postgres container creates this database and this user on its first start.
+# The django container builds its DATABASE_URL from the same values
+# (compose/production/django/entrypoint).
+#
+# From the host, the same database answers on localhost:5433 with this user,
+# password and database name.
+
+POSTGRES_HOST=postgres
+POSTGRES_PORT=5432
+POSTGRES_DB=quran
+POSTGRES_USER=quran
+POSTGRES_PASSWORD=quran-local-password

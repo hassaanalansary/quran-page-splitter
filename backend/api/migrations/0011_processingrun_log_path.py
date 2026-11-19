@@ -4,15 +4,19 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('api', '0010_alter_line_options_alter_segment_options'),
+        ("api", "0010_alter_line_options_alter_segment_options"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='processingrun',
-            name='log_path',
-            field=models.CharField(blank=True, default='', help_text="Path (relative to settings.LOG_DIR) of this run's detailed log file.", max_length=255),
+            model_name="processingrun",
+            name="log_path",
+            field=models.CharField(
+                blank=True,
+                default="",
+                help_text="Path (relative to settings.LOG_DIR) of this run's detailed log file.",
+                max_length=255,
+            ),
         ),
     ]

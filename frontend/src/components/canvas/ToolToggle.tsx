@@ -12,7 +12,7 @@ type Props = {
 export function ToolToggle({ value, onChange }: Props) {
   const { t } = useTranslation();
   return (
-    <div className="flex items-center gap-1">
+    <div className="inline-flex items-center gap-1 rounded-lg border border-rule bg-sheet p-[3px]">
       <ToolButton
         active={value === "select"}
         onClick={() => onChange("select")}
@@ -54,11 +54,9 @@ export function ToolButton({
       title={title}
       {...rest}
       className={[
-        "flex h-8 w-8 cursor-pointer items-center justify-center rounded-sm transition-colors",
+        "flex h-[30px] w-[34px] cursor-pointer items-center justify-center rounded-[6px] transition-colors",
         "disabled:cursor-not-allowed disabled:opacity-30",
-        active
-          ? "bg-navy text-white"
-          : "bg-transparent text-text-secondary hover:bg-bg-surface hover:text-text-primary",
+        active ? "bg-ink text-paper" : "bg-transparent text-ink-2 hover:bg-sunk hover:text-ink",
       ].join(" ")}
     >
       {children}

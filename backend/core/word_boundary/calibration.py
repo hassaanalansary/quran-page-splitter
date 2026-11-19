@@ -12,6 +12,16 @@ from __future__ import annotations
 #: not being parsed, it is being searched, so the segment gives up and says so
 #: rather than burning the run.
 MAX_LIVE_STATES = 4096
+#: With the fingerprint library's prices, a reading already this much dearer than the
+#: best one at the same point of the line is dropped: it could only win if every
+#: cheaper reading later paid that much more — three words off their count. Those
+#: prices make a role nearly fixed, so the one way left to absorb a PAW too few or too
+#: many is a word off its count, at the same 20 wherever it falls; the readings that
+#: put it in each word all tie, nothing prunes them, and pages 15-17 of the first
+#: mushaf needed up to 13,685 live states (the frozen prices: 5,869) — so lines hit the
+#: ceiling above and were committed early, mid-aya, in the wrong place. Applies only
+#: where the library prices a component; the frozen engine searches as it always has.
+PRICED_BEAM = 60
 
 # Every weight below is evidence that a component is a letter body rather than a
 # mark. Nothing here is a gate: a component can always be read either way, it
@@ -69,6 +79,33 @@ COUNT_SLACK = 2
 #: Blob.cost_as_mark — this is the calibration knob that decides how readily the
 #: parser tolerates a spurious stroke instead of inventing a word to absorb it.
 MAX_UNUSED_COMPONENT_COST = 6
+
+#: What it costs to read a blob against the fingerprint library's answer when the
+#: library is sure (``Blob.library_*``): dearer than a word one PAW off its count plus
+#: the mark cap (20 + 6), so two PAWs printed touching leave their word a PAW short —
+#: flagged — instead of promoting the nearest mark to make up the count, which the
+#: body score's prices (at most 14 against 20) always did.
+SURE_PRICE = 40
+#: The confidence from which the library counts as sure. Its confidence,
+#: (far - near) / (far + near), runs low even when it is right: over pages 15-17 of the
+#: first mushaf it was right on all 2,804 blobs, yet half its answers scored under
+#: 0.49 and a tenth of the marks under 0.37 — and priced in proportion to that, a
+#: right kasra at 0.36 still lost to a missing PAW and was promoted. 95% score 0.19 or
+#: more. Below this the price falls in proportion, so a truly torn answer — a
+#: letter's broken-off fragment, as like a mark as a letter — still bends cheaply.
+#: Replayed against the reviewed drafts: wl-out/shapes/REPORT.md §16.
+SURE_CONFIDENCE = 0.2
+#: The most a word's missing PAW is made cheaper by how likely its joins are to be
+#: printed touching (``WordInput.short_weight``): COUNT_WEIGHT - FUSION_DISCOUNT x the
+#: chance that one of them is. Every word of a stretch otherwise pays the same 20 for
+#: a missing PAW, and which one comes up short is a tie the search settles by reaching
+#: it first; the discount puts it where a touching pair is likely. The chance comes
+#: from the confirmed pages, join by join (``calibration._fusion_table``): on the first
+#: mushaf's pages 1-14 a ر touched the next piece of its word 9 times in 33 before a و,
+#: 13 in 194 overall, a و 3 in 557 — and no letter ever touched across the space
+#: between two words, in 1,493. Never below 8: a missing PAW stays dearer than any
+#: exact reading. Replayed against reviewed drafts: wl-out/shapes/REPORT.md §16.
+FUSION_DISCOUNT = 12
 
 #: Taken off a component that sits wholly inside a much larger one's box. Such a
 #: blob is almost always that letter's own diacritic lying in its sweep — the

@@ -1,6 +1,6 @@
 """Processing endpoints: start a detection run in the background, watch it, stop it.
 
-The run itself is owned by a job (see services/jobs.py), not by an HTTP request —
+The run itself is owned by a job (see ``api.services.jobs``), not by an HTTP request —
 ``POST /process`` returns as soon as the job is registered.
 """
 
@@ -14,9 +14,12 @@ from pydantic import Field
 from api.auth import current_user
 from api.common import RectSchema
 from api.models import ProcessJobKindChoices
-from api.services import jobs as jobs_service
 from api.services import mushaf as mushaf_service
 from api.services import processing as processing_service
+from api.services.jobs.cancellation import request_job_cancellation
+from api.services.jobs.kinds.detection import start_detection_job
+from api.services.jobs.queries import find_latest_job_of_mushaf
+from api.services.jobs.serializers import serialize_job
 
 router = Router(tags=["processing"])
 
@@ -42,9 +45,13 @@ class JobOut(Schema):
 
     id: uuid.UUID
     mushaf_id: uuid.UUID
-    #: ``running`` while working; then ``completed`` / ``aborted_line_detection``
-    #: / ``cancelled`` / ``error``.
+    #: ``queued`` until a worker claims it, ``running`` while it works; then
+    #: ``completed`` / ``aborted_line_detection`` / ``cancelled`` / ``error`` /
+    #: ``interrupted``.
     state: str
+    #: A queued job's place in the queue: how many queued jobs were requested
+    #: before it. Null once the job is no longer queued.
+    queue_position: int | None = None
     #: ``starting`` / ``rendering`` / ``detecting`` / ``saving`` / ``finished``.
     phase: str
     page_range_start: int
@@ -54,7 +61,11 @@ class JobOut(Schema):
     pages_saved: int
     current_page: int | None = None
     cancel_requested: bool = False
-    started_at: datetime
+    #: When the job was asked for.
+    requested_at: datetime
+    #: When a worker began it: null while the job is queued. An elapsed timer
+    #: counts from here, so the wait in the queue is not shown as work.
+    run_started_at: datetime | None = None
     ended_at: datetime | None = None
     run_id: uuid.UUID | None = None
     log_url: str | None = None
@@ -77,6 +88,9 @@ class JobOut(Schema):
     #: at zero. It is what the word run's progress bar and its cancel dialog read,
     #: and on a whole-mushaf run it is the only sign of life for twenty minutes.
     lines_done: int = 0
+    #: Calibration batches only: each page's outcome so far — processed, skipped and
+    #: why, or failed. See ``api.services.calibration_batch``.
+    report: dict | None = None
 
 
 class JobStatusOut(Schema):
@@ -114,18 +128,13 @@ class RunOut(Schema):
 def process(request: HttpRequest, mushaf_id: uuid.UUID, data: ProcessIn) -> tuple[int, dict]:
     """Start detection over a logical page range; returns at once with the job.
 
-    409 if this mushaf already has a run in flight — one at a time, since two
-    runs would fight over the same Page rows.
+    409 if this mushaf already has a job queued or running — one at a time, since
+    two runs would fight over the same Page rows. 429 if the user already has as
+    many jobs as one user may have, or the queue is full.
     """
     mushaf = mushaf_service.get_mushaf(mushaf_id, user=current_user(request))
-    params = data.model_dump()
-    # Busy first, then payload: "a run is already going" is the more useful answer
-    # even when the new request is also malformed. Both must be settled here —
-    # once the job is registered the response has gone and nothing can be rejected.
-    jobs_service.ensure_idle(mushaf.id)
-    processing_service.preflight(mushaf, params["page_range_start"], params["page_range_end"])
-    job = jobs_service.start(mushaf, params, user=current_user(request))
-    return 202, jobs_service.to_dict(job)
+    job = start_detection_job(mushaf, data.model_dump(), user=current_user(request))
+    return 202, serialize_job(job)
 
 
 @router.get("/{mushaf_id}/process/job", response=JobStatusOut)
@@ -135,8 +144,8 @@ def process_job(request: HttpRequest, mushaf_id: uuid.UUID) -> dict:
     Answers after a page reload too: the job is keyed by mushaf, not by a handle
     the browser had to keep.
     """
-    job = jobs_service.latest_for(mushaf_id, kind=ProcessJobKindChoices.DETECTION)
-    return {"job": jobs_service.to_dict(job) if job else None}
+    job = find_latest_job_of_mushaf(mushaf_id, kind=ProcessJobKindChoices.DETECTION)
+    return {"job": serialize_job(job) if job else None}
 
 
 @router.post("/{mushaf_id}/process/cancel", response=JobOut)
@@ -146,8 +155,8 @@ def cancel_process(request: HttpRequest, mushaf_id: uuid.UUID) -> dict:
     Returns immediately — the run stops at the next page boundary, so poll
     ``/process/job`` for the settled outcome. Pages already written stay written.
     """
-    job = jobs_service.request_cancel(mushaf_id, kind=ProcessJobKindChoices.DETECTION)
-    return jobs_service.to_dict(job)
+    job = request_job_cancellation(mushaf_id, kind=ProcessJobKindChoices.DETECTION)
+    return serialize_job(job)
 
 
 @router.get("/{mushaf_id}/runs", response=list[RunOut])

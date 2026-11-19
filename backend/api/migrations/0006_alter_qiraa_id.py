@@ -69,9 +69,7 @@ POSTGRES_STATEMENTS = [
 
 
 def rebuild_qiraa(apps, schema_editor):
-    statements = (
-        SQLITE_STATEMENTS if schema_editor.connection.vendor == "sqlite" else POSTGRES_STATEMENTS
-    )
+    statements = SQLITE_STATEMENTS if schema_editor.connection.vendor == "sqlite" else POSTGRES_STATEMENTS
     for statement in statements:
         schema_editor.execute(statement)
 

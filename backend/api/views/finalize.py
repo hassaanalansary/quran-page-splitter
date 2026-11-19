@@ -22,10 +22,17 @@ class LineFinalizeSchema(Schema):
     line_number: int
     bbox_override: RectSchema | None = None
     erase_strokes: list[EraseStrokeSchema] = Field(default_factory=list)
+    # None leaves the line's switch as it is.
+    erase_edge_ink: bool | None = None
 
 
 class FinalizeIn(Schema):
     lines: list[LineFinalizeSchema] = Field(default_factory=list)
+    # The padding most of the lines and of the sura headers now carry, and the
+    # checked mark: each left as it is when not given.
+    line_padding: int | None = None
+    sura_header_padding: int | None = None
+    lines_finalized: bool | None = None
 
 
 class ExportedLineSchema(Schema):
@@ -58,6 +65,26 @@ def finalize(request: HttpRequest, mushaf_id: uuid.UUID, page_number: int, data:
         mushaf_id=mushaf_id,
         page_number=page_number,
         line_edits=[line.model_dump() for line in data.lines],
+        line_padding=data.line_padding,
+        sura_header_padding=data.sura_header_padding,
+        lines_finalized=data.lines_finalized,
+    )
+
+
+class LinesFinalizedIn(Schema):
+    finalized: bool
+
+
+class LinesFinalizedOut(Schema):
+    page_number: int
+    lines_finalized: bool
+
+
+@router.put("/{mushaf_id}/pages/{page_number}/lines-finalized", response=LinesFinalizedOut)
+def mark_lines_finalized(request: HttpRequest, mushaf_id: uuid.UUID, page_number: int, data: LinesFinalizedIn) -> dict:
+    """Mark a page's line cuts finished, or not finished again — the Finalize tracker."""
+    return editing_service.mark_lines_finalized(
+        user=current_user(request), mushaf_id=mushaf_id, page_number=page_number, finalized=data.finalized
     )
 
 
@@ -84,7 +111,7 @@ def download_bundle(request: HttpRequest, mushaf_id: uuid.UUID) -> FileResponse:
     Carries the geometry and templates but not the PDF — it names the PDF by
     sha256 instead, and import refuses unless the target was built from it.
     """
-    filename, buffer = bundle_service.build(mushaf_id, user=current_user(request))
+    filename, buffer = bundle_service.build_mushaf_bundle(mushaf_id, user=current_user(request))
     return FileResponse(buffer, as_attachment=True, filename=filename, content_type="application/zip")
 
 

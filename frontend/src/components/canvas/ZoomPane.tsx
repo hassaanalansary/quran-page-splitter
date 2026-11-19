@@ -93,7 +93,7 @@ export function ZoomPane({ imageUrl, height, children }: Props) {
         >
           <Minus size={12} />
         </ZoomButton>
-        <span className="w-10 text-center text-[10.5px] font-medium tabular-nums text-text-secondary">
+        <span className="w-10 text-center text-[10.5px] font-medium tabular-nums text-ink-2">
           {Math.round(zoom * 100)}%
         </span>
         <ZoomButton
@@ -110,11 +110,11 @@ export function ZoomPane({ imageUrl, height, children }: Props) {
         >
           <Maximize2 size={11} />
         </ZoomButton>
-        <span className="ms-auto text-[10px] text-text-muted">{t("canvas.zoomHint")}</span>
+        <span className="ms-auto text-[10px] text-ink-3">{t("canvas.zoomHint")}</span>
       </div>
       <div
         ref={scrollRef}
-        className="raqam-canvas-grid overflow-auto rounded-md border border-border"
+        className="canvas-well overflow-auto rounded-md border border-rule"
         style={{ height }}
       >
         {/* `max-content` + `min-*: 100%`: centres the box while it is smaller
@@ -167,7 +167,7 @@ function ZoomButton({
       aria-label={label}
       disabled={disabled}
       onClick={onClick}
-      className="flex h-[22px] w-[22px] cursor-pointer items-center justify-center rounded-sm border border-border-strong bg-white text-text-secondary transition-colors hover:bg-bg-surface disabled:cursor-default disabled:opacity-40 disabled:hover:bg-white"
+      className="flex h-[22px] w-[22px] cursor-pointer items-center justify-center rounded-sm border border-rule-2 bg-card text-ink-2 transition-colors hover:bg-sheet disabled:cursor-default disabled:opacity-40 disabled:hover:bg-card"
     >
       {children}
     </button>

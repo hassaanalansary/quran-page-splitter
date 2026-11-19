@@ -51,6 +51,9 @@ def _with_work(owner, name, pdf_bytes=SHARED_PDF):
             bbox_w=505,
             bbox_h=707,
             reviewed=page_number == 1,
+            lines_finalized=page_number == 1,
+            line_padding=14 if page_number == 1 else None,
+            sura_header_padding=-6 if page_number == 1 else None,
         )
         for line_number in (1, 2, 3):
             line = Line.objects.create(
@@ -60,6 +63,7 @@ def _with_work(owner, name, pdf_bytes=SHARED_PDF):
                 bbox_y=30 * line_number,
                 bbox_w=480,
                 bbox_h=42,
+                erase_edge_ink=line_number == 2,
             )
             Segment.objects.create(
                 line=line,
@@ -84,7 +88,7 @@ def _with_work(owner, name, pdf_bytes=SHARED_PDF):
 
 
 def _export_bytes(mushaf, user):
-    _, buffer = bundle.build(mushaf.id, user=user)
+    _, buffer = bundle.build_mushaf_bundle(mushaf.id, user=user)
     data = buffer.read()
     buffer.close()
     return data
@@ -170,6 +174,11 @@ class RoundTripTests(MediaTestCase):
         self.assertEqual((page.bbox_x, page.bbox_y, page.bbox_w, page.bbox_h), (11, 22, 505, 707))
         self.assertFalse(page.reviewed)
         self.assertTrue(target.pages.get(page_number=1).reviewed)
+        self.assertFalse(page.lines_finalized)
+        self.assertTrue(target.pages.get(page_number=1).lines_finalized)
+        first = target.pages.get(page_number=1)
+        self.assertEqual((first.line_padding, first.sura_header_padding), (14, -6))
+        self.assertEqual((page.line_padding, page.sura_header_padding), (None, None))
 
         for line_number in (1, 2, 3):
             line = Line.objects.get(page=page, line_number=line_number)
@@ -180,6 +189,7 @@ class RoundTripTests(MediaTestCase):
                 f"line {line_number} kept the wrong segment",
             )
             self.assertEqual(line.erase_strokes.count(), 1)
+            self.assertEqual(line.erase_edge_ink, line_number == 2)
 
     def test_templates_survive_the_round_trip(self):
         source = _with_work(self.alice, "Source")

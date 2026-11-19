@@ -1,4 +1,4 @@
-# Quran Page Splitter
+# Quran Page Splitter (SATR)
 
 Digital Quran applications that render text with fonts cannot fully reproduce
 the experience of reading a printed Mushaf. The core problem is that the written
@@ -12,9 +12,9 @@ still falls short of the original.
 The image-based approach sidesteps this entirely: applications display scanned
 or photographed pages as-is, preserving every calligraphic detail and the exact
 visual layout the reader knows from the printed copy. To make those images
-interactive — highlighting an aya, jumping to a verse, playing audio in sync
-with the text — the application needs two things: the bounding box of each aya
-on each page, and the page cut into individual line images.
+interactive (highlighting an aya or a word, jumping to a verse, playing audio in
+sync with the text) the application needs to know where everything is on the
+page, and it needs the page cut into individual line images.
 
 Serving whole page images also creates a responsive layout problem. If the page
 is a single image, resizing the application window either stretches it or leaves
@@ -24,198 +24,182 @@ lines themselves scale uniformly to the window width, and the vertical gaps
 absorb the remaining space, so the page always fills the screen without
 distortion at any window size.
 
-Quran Page Splitter produces both. It ingests a Mushaf **PDF**, renders pages on
-demand, automatically detects lines and aya boundaries, lets the user review and
-correct the output, and exports per-aya coordinates and transparent line PNGs
-ready to be consumed by a Mushaf application. Every processed Mushaf is **stored
-in a database**, so results accumulate instead of being overwritten.
+Quran Page Splitter produces all of that. It ingests a Mushaf **PDF**, renders
+pages on demand, detects the lines and the aya boundaries, then the words, their
+letter pieces and their marks, lets a person review and correct every step, and
+exports the coordinates and transparent line PNGs ready for a Mushaf application.
+In its interface the tool is called **SATR** (سَطْر).
 
-## What It Does
+## What it does
 
-- Stores an uploaded Mushaf **PDF** once and renders any page on demand by number.
-- Processes a chosen **range of pages** with template + tuning settings.
-- Crops each page to the main Mushaf text region.
-- Detects line bands using horizontal projection valleys.
-- Protects detected sura headers before line splitting so ornamental headers are
-  not split as ordinary text.
-- Detects aya separator ornaments inside text lines using template matching.
-- Tracks sura and aya numbering across pages.
-- Persists every page's lines/segments as queryable rows (no flat files).
-- Lets the user review and correct coordinates per page; aya numbering is
-  recomputed automatically.
-- Lets the user paint eraser masks and export transparent line PNGs.
+- Stores an uploaded Mushaf PDF once and renders any page on demand.
+- **Line engine:** crops each page to its text, protects the sura headers, splits
+  the rest into lines, finds the aya-end ornaments in each line and numbers every
+  sura and aya across pages.
+- **Word engine:** splits each line into its connected pieces of ink, decides which
+  are letters and which are marks, and aligns them to the words of the Quran text
+  by counting the pieces each word must print. The first pages are reviewed and
+  confirmed by hand; every confirmed page feeds a library of shapes that improves
+  the pages after it, and the rest of the mushaf can then be processed in one batch.
+- Types every mark (fatha, kasra, shadda, sukun, dots, pause signs, ...) from the
+  Quran text and from the shapes already confirmed.
+- Lets the user trim and erase each line and export transparent line PNGs.
+- Exports aya coordinates (`aya-bbox/v1`), the line PNGs (`lines.zip`), and a full
+  data export with every word, blob and per-line pixel map
+  (`mushaf-export/v2`, see [docs/EXPORT_FORMAT.md](docs/EXPORT_FORMAT.md)).
+- Accounts (email and password, or Google), private mushafs per user, and a public
+  gallery where a published mushaf can be browsed, downloaded and duplicated.
+- A portable work bundle to move a mushaf's work between installs.
+- English and Arabic interface, light and dark themes.
+
+## The steps
+
+Each mushaf goes through six steps, in this order:
+
+1. **Setup**: mark the PDF pages where the Quran starts and ends.
+2. **Templates**: cut a sura header and an aya-end ornament from the pages (and,
+   optionally, the sajda and rub' al-hizb signs).
+3. **Process**: run the line engine over a page range, as a background job.
+4. **Review**: correct the lines, the aya separators and the sura headers.
+5. **Lines**: trim and erase each line, and export the line PNGs.
+6. **Ink**: run the word engine. Process a page, review it, confirm it, and go to
+   the next; once the learning has settled, process the rest in one batch.
+
+How both engines work, step by step, is in [docs/ENGINES_FLOW.md](docs/ENGINES_FLOW.md).
 
 ## Architecture
 
-- **`backend/core/`** — the pure detection engine (binarize, crop, line
-  detection, header protection, aya-separator matching, sura/aya tracking). No
-  web framework, no database; operates on PIL images and returns plain dicts.
-- **`backend/api/`** — a Django app exposing a **Django Ninja** API. Thin views
-  call **service functions**, which are the only layer that touches the ORM and
-  wires the engine to stored data (`api/services/`).
-- **Database** — SQLite by default. Each Mushaf, its templates, processing runs,
-  pages, lines, segments, and erase strokes are rows.
-- **Media** — the source PDF, template crops, and exported line PNGs live under
-  `MEDIA_ROOT` (`backend/media/`); the DB stores their paths. Page images are
-  **rendered on demand** from the PDF and never stored.
+- **`backend/`**: Django 6 with a **Django Ninja** API.
+  - `config/`: settings (read from `.env`), URLs, and the view that serves the built SPA.
+  - `accounts/`: the user model (the email is the identifier).
+  - `quran/`: the Quran text and reference data (counting systems, qiraat, rawis,
+    suras, ayat, words) and its read-only API.
+  - `api/`: mushafs, pages, processing, calibration, exports, gallery. Thin views
+    call service functions (`api/services/`), the only layer that touches the ORM.
+  - `core/`: the engines, with no Django in them: `page_detection/` (lines and
+    ayat), `word_boundary/` (words, letters and marks), `text/` (what the Quran
+    text says each word prints), `imaging/`.
+- **`frontend/`**: React 19, Vite 7, TanStack Router and React Query, Tailwind 4.
+- **Database**: PostgreSQL through `DATABASE_URL` (SQLite when it is not set).
+- **Media**: the PDFs, template crops, snapshots and exported PNGs live under
+  `backend/media/`. Page images are rendered from the PDF on demand.
+- **Jobs**: line processing and word processing run as background jobs that the
+  browser polls. A **Celery worker** runs them, with Redis as the queue; without
+  Redis they run on a thread of the web process. When every worker slot is busy, a
+  job waits its turn and the screen says how many are ahead of it. One job per
+  mushaf at a time, and a job whose worker stops reporting is marked interrupted.
+  See `backend/api/services/jobs/__init__.py` for the flow.
 
-> The React frontend in `frontend/` is currently being rewired to this API; for
-> now the backend is consumed directly (e.g. via the interactive docs at
-> `/api/docs`).
+In development Vite (`:5173`) proxies `/api`, `/media` and the sign-in paths to
+Django (`:8000`). In production nginx serves the built SPA and `/media`, and passes
+the rest to Django, behind Traefik for HTTPS: see [DEPLOY.md](DEPLOY.md).
 
-## Requirements
+## Run it with Docker (Linux)
 
-- Python `>= 3.13`
-- [`uv`](https://docs.astral.sh/uv/)
-- (Frontend, pending) Node.js
+The usual way. Docker runs Django, the Celery worker, Postgres 18 and Redis; Vite
+runs on your machine.
 
-## Install & Run
+You need Docker Engine with the Compose plugin, [`just`](https://just.systems),
+and Node.js with npm.
+
+```bash
+just build                   # once, and again when backend/uv.lock changes
+just up                      # starts everything; Django migrates on start
+just manage seed_quran       # once: reference data, the word list, the aya maps
+just manage createsuperuser  # once, for /admin
+```
+
+```bash
+cd frontend
+npm install
+npm run dev                  # http://localhost:5173
+```
+
+| Command | What it does |
+| --- | --- |
+| `just` | lists every recipe |
+| `just logs` / `just logs celeryworker` | follow the logs |
+| `just psql` | `psql` on the database, inside its container |
+| `just redis-cli` | `redis-cli`, inside its container |
+| `just manage <command>` | a `manage.py` command, such as `shell` or `migrate` |
+| `just shell` | bash in the Django container |
+| `just test` | the backend tests, in the container |
+| `just check` | ruff and mypy, in the container |
+| `just dump-db quran.dump` | dump the database to a file |
+| `just restore-db quran.dump` | **replace** the database with a dump (`pg_dump -Fc`), then migrate |
+| `just flower` | a page showing the worker and its tasks, on `:5555` |
+| `just down` | stop everything; `just prune` also deletes the database |
+
+- The database also answers on `localhost:5433`, and Redis on `localhost:6380`,
+  for any client you like. The user, password and database are in
+  `.envs/.local/.postgres`.
+- Values in `.envs/.local/` win over `backend/.env` inside the containers.
+- The containers run as you, so files under `backend/media` and `backend/logs`
+  belong to you.
+- The worker restarts when you save a `.py` file. A job it was running stops at
+  its next page and can be resumed from there.
+
+To bring an existing database across, dump it where it lives with
+`pg_dump -Fc -d <database> -f quran.dump`, then run `just restore-db quran.dump`.
+Copy `backend/media/` across by hand: git does not carry it.
+
+Production is a separate stack: [DEPLOY.md](DEPLOY.md).
+
+## Run it without Docker
+
+You need Python `>= 3.13` with [`uv`](https://docs.astral.sh/uv/), Node.js and
+npm, and PostgreSQL (recommended; SQLite works without it).
 
 ```bash
 cd backend
 uv sync
-
-# Configure environment (SECRET_KEY etc.). A safe dev default is built in.
-cp .env.dist .env            # then edit as needed
-
+cp .env.dist .env            # then set SECRET_KEY (required) and DATABASE_URL
 uv run python manage.py migrate
-uv run python manage.py seed_suras      # qiraat, suras, per-qiraa aya counts
-uv run python manage.py runserver
+uv run python manage.py seed_quran   # reference data, the word list, the aya maps
+uv run python manage.py runserver 8000
 ```
 
-- API root: `http://localhost:8000/api/`
-- Interactive docs (OpenAPI): `http://localhost:8000/api/docs`
+```bash
+cd frontend
+npm install
+npm run dev                  # http://localhost:5173
+```
 
-## Workflow (via the API)
+Jobs then run on a thread of the web process, so there is no queue: a job that
+finds every slot busy is refused. To run them in a worker as Docker does, start
+Redis, set `JOB_RUNNER=celery` and `CELERY_BROKER_URL` in `backend/.env`, and
+start a worker beside `runserver`:
 
-1. **Create a Mushaf** — `POST /api/mushafs` (multipart) with the PDF, a unique
-   `name`, the qiraa, and the PDF page where the Quran starts/ends
-   (`first_quran_pdf_page` / `last_quran_pdf_page`). Logical page 1 maps to
-   `first_quran_pdf_page`; front/back matter falls outside the bounds.
-2. **Set templates** — `PUT /api/mushafs/{id}/templates/{type}` for both
-   `sura_header` and `aya_separator` (a cropped image, plus an optional ignore
-   rectangle). These are stored and reused across runs.
-3. **Preview pages** — `GET /api/mushafs/{id}/pages/{n}/image` renders logical
-   page `n` from the PDF.
-4. **Process** — `POST /api/mushafs/{id}/process` with a page range, the
-   starting `sura`/`aya`, the crop `bounds`, and detection settings. The engine
-   runs and the resulting lines/segments are persisted; a `ProcessingRun` logs
-   the settings. A line-count mismatch aborts the batch at that page.
-5. **Review** — `GET /api/mushafs/{id}/pages/{n}` returns a page's coordinates
-   (empty if not yet processed); `POST` the edited page back to save it. Aya
-   numbers are **derived** and recomputed forward across pages on save.
-6. **Finalize & export** — `POST /api/mushafs/{id}/pages/{n}/finalize` stores
-   line bbox overrides + eraser strokes; `POST …/export-lines` writes the final
-   transparent line PNGs and records their paths.
+```bash
+cd backend
+uv run celery -A config worker --loglevel info --concurrency 2
+```
 
-Tip: a full Mushaf is processed in chunks (e.g. 50 pages at a time) since
-processing is synchronous.
-
-## API Reference
-
-| Endpoint                                          | Method     | Purpose                                            |
-| ------------------------------------------------- | ---------- | -------------------------------------------------- |
-| `/api/suras?qiraa=hafs`                           | GET        | Canonical suras + aya counts for a qiraa.          |
-| `/api/mushafs`                                    | GET / POST | List / create (upload PDF; name collision → 409).  |
-| `/api/mushafs/{id}`                               | GET / DELETE | Detail / delete (cascades).                      |
-| `/api/mushafs/{id}/templates/{type}`              | PUT        | Upsert a `sura_header` or `aya_separator` template.|
-| `/api/mushafs/{id}/pages/{n}/image`               | GET        | Render logical page `n` (PNG).                     |
-| `/api/mushafs/{id}/process`                       | POST       | Process a page range and persist rows.             |
-| `/api/mushafs/{id}/pages/{n}`                     | GET / POST | Read / save page coordinates.                      |
-| `/api/mushafs/{id}/pages/{n}/finalize`            | POST       | Save bbox overrides + erase strokes.               |
-| `/api/mushafs/{id}/pages/{n}/export-lines`        | POST       | Export transparent line PNGs.                      |
-
-## Processing Inputs
-
-The `/process` body carries the crop, templates (already stored), and tuning.
-
-| Crop target            | Required | Meaning                                                                            |
-| ---------------------- | -------- | ---------------------------------------------------------------------------------- |
-| `bounds`               | Yes      | The main text area; the detector ignores margins outside it.                       |
-| `sura_header`          | Yes      | Template crop of a sura header ornament (a stored template).                       |
-| `aya_separator`        | Yes      | Template crop of one aya separator ornament (a stored template).                   |
-| `*_ignore`             | No       | A rectangle inside a template to ignore during matching (e.g. a variable number).  |
-
-| Setting                     | Default | Meaning                                                                 |
-| --------------------------- | ------- | ----------------------------------------------------------------------- |
-| `padding`                   | `4`     | Extra pixels above/below detected line boxes.                           |
-| `expected_lines`            | `15`    | Expected line slots per page; a mismatch aborts the batch.              |
-| `sura_header_slots`         | `1`     | Line slots a sura header occupies.                                      |
-| `sura_header_threshold`     | `0.60`  | Template-match threshold for sura headers.                              |
-| `max_sura_headers`          | `3`     | Maximum sura headers expected on a page.                                |
-| `match_threshold`           | `0.35`  | Template-match threshold for aya separators.                            |
-| `alternate_horizontal_margin` | `false` | Mirror the `bounds` crop on alternate (facing) pages.                 |
-| `prefer_acceleration`       | `true`  | Use OpenCL-accelerated matching when available.                         |
-| `start_sura` / `start_aya`  | —       | Sura/aya at the first processed page (edition-specific).                |
-
-## How Detection Works
-
-1. Binarize the page.
-2. Crop to `bounds`.
-3. Find protected sura header bands using the `sura_header` template.
-4. Split remaining regions into the expected number of line slots via valley
-   detection over the horizontal ink projection.
-5. Detect aya separator positions inside non-header lines using the
-   `aya_separator` template.
-6. Split text lines right-to-left at separator cuts.
-7. Track sura and aya numbers.
-
-Aya separator semantics: segment order is right-to-left; a separator belongs to
-the aya on its right; a segment with a separator **completes** the current aya,
-one without is a **continuation**.
-
-## Data Model
-
-`mushaf` → `page` → `line` → `segment`, plus `template`, `processing_run`,
-`erase_stroke`, and the reference tables `sura` / `sura_aya_count` (keyed by
-`qiraa`). Highlights:
-
-- `page.page_number` is the **logical** Quran page; the PDF page is
-  `source_pdf_page` or `first_quran_pdf_page + page_number - 1`.
-- A `page` row exists **iff** the page has data ("processed").
-- `segment` stores only `bbox_x` / `bbox_w` (vertical extent is inherited from
-  the line) plus `has_separator` and a derived `aya_number`.
-- Line type is `text`, `sura_header`, or `besmella` (the engine's `besmella` is
-  translated to this canonical spelling on persistence).
-- Detection settings are **not** authoritative config — they are pipeline inputs,
-  logged per run in `processing_run.settings` for audit.
-
-## Numbering & Editing
-
-Segments are edited **directly** (no separator-cut or anchor layer). Aya numbers
-are derived from the segment structure and recomputed forward across consecutive
-pages whenever a page is saved, seeded from the previous page's end or the run's
-`start_sura`/`start_aya`. To revert a page to the machine output, reprocess it —
-the stored PDF + settings make it reproducible.
-
-## Tuning Guide
-
-- **Wrong line count** — confirm `expected_lines`, raise `sura_header_slots` if a
-  header spans multiple rows, and check `bounds`.
-- **Missed / false sura headers** — adjust `sura_header_threshold`, crop the
-  template more tightly, or define a `sura_header` ignore rectangle.
-- **Missed / false aya separators** — adjust `match_threshold`, crop the
-  separator template tightly, or ignore the inner aya number.
-- **Empty horizontal margins** — text line boxes use the union of segment boxes;
-  adjust line `bbox` in review if needed.
+- Interactive API docs: `http://localhost:8000/api/docs`
+- Google sign-in needs `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in `.env`.
 
 ## Development
 
 ```bash
 cd backend
 uv run ruff check .
-uv run python -m mypy .            # invoke via `python -m` to avoid launcher issues
-uv run python manage.py test api   # builds the schema from the models
+uv run python -m mypy .                          # through python -m: the path has spaces
+uv run python manage.py test --parallel 4        # Postgres test database
 ```
 
-The test suite disables migrations for the `api` app (`MIGRATION_MODULES` under
-`if "test" in sys.argv`), so tests run from the models directly and don't depend
-on migration files. mypy uses the `django-stubs` plugin.
+```bash
+cd frontend
+npx tsc --noEmit
+npm run lint
+npm run build                # → frontend/dist, which Django serves without Docker
+```
 
-## Status / Roadmap
+## Documentation
 
-- Backend + API: **done** (mushaf management, PDF rendering, processing,
-  review, finalize, export).
-- Frontend: being rewired from the old image-upload SPA to this PDF-based API.
-- Possible future work: background processing for full-Mushaf runs;
-  per-mushaf qiraa aya-count overrides; manual aya anchors.
+- [docs/ENGINES_FLOW.md](docs/ENGINES_FLOW.md): the line engine and the word
+  engine, step by step, on a real page.
+- [docs/EXPORT_FORMAT.md](docs/EXPORT_FORMAT.md): the full data export
+  (`mushaf-export/v2`).
+- [docs/PROJECT_HANDOFF.md](docs/PROJECT_HANDOFF.md): the developer reference
+  (layout, data model, API, conventions).
+- [DEPLOY.md](DEPLOY.md): running the production stack on a server.

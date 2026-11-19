@@ -8,12 +8,14 @@ import json
 import uuid
 from datetime import datetime
 
-from django.http import HttpRequest, HttpResponse
+from django.http import HttpRequest, HttpResponse, StreamingHttpResponse
+from django.utils.http import content_disposition_header
 from ninja import File, Form, Router, Schema
 from ninja.files import UploadedFile
 
 from api.auth import current_user
 from api.services import activity as activity_service
+from api.services import data_export as data_export_service
 from api.services import export as export_service
 from api.services import gallery as gallery_service
 from api.services import mushaf as mushaf_service
@@ -51,6 +53,13 @@ class CountingSystemOut(Schema):
     total_ayat: int
 
 
+class UsualSuraHeaderOut(Schema):
+    #: The padding the latest checked pages all gave their sura headers; null when they differ.
+    padding: int | None = None
+    #: Whether they all had their headers' edge ink erased; null when they differ.
+    erase_edge_ink: bool | None = None
+
+
 class MushafDetailOut(MushafOut):
     """MushafOut plus the extra fields the detail page needs (never on the list)."""
 
@@ -60,7 +69,16 @@ class MushafDetailOut(MushafOut):
     pdf_original_name: str = ""
     published_at: datetime | None = None
     description: str = ""
-    export_uniform_size: bool = False
+    #: "box" | "uniform" | "tight" | "tight_uniform" — how tall each exported line PNG is.
+    line_png_size: str = "box"
+    #: Pages whose line cuts a person marked checked in Finalize.
+    finalized_page_count: int = 0
+    #: The padding the latest checked pages agree on (``find_usual_line_padding``),
+    #: applied to a page that opens in Finalize with none yet; null when they differ.
+    usual_line_padding: int | None = None
+    #: How the latest checked pages finished their sura headers
+    #: (find_usual_sura_header_edits), for the headers of a page opening unpadded.
+    usual_sura_header: UsualSuraHeaderOut | None = None
     #: "report" | "ignore" — whether word detection checks a word against the dots
     #: its spelling expects. A fact about the printing, not about the text.
     ijam_mode: str = "report"
@@ -96,7 +114,7 @@ class MushafPatchIn(Schema):
     qiraa: str | None = None
     first_quran_pdf_page: int | None = None
     last_quran_pdf_page: int | None = None
-    export_uniform_size: bool | None = None
+    line_png_size: str | None = None
     ijam_mode: str | None = None
 
 
@@ -163,6 +181,24 @@ def download_coordinates(request: HttpRequest, mushaf_id: uuid.UUID) -> HttpResp
         content_type="application/json; charset=utf-8",
     )
     response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response
+
+
+@router.get("/{mushaf_id}/export.zip")
+def download_export(
+    request: HttpRequest, mushaf_id: uuid.UUID, page: int | None = None, images: bool = True, maps: bool = True
+) -> StreamingHttpResponse:
+    """The full data export (schema mushaf-export/v2): every line, aya, word and blob,
+    in page and line-PNG pixels, with each line's word and blob maps — the whole mushaf,
+    or one page. Streamed as it is made. See ``api.services.data_export``.
+    """
+    filename, chunks = data_export_service.archive(
+        mushaf_id, user=current_user(request), page_number=page, images=images, maps=maps
+    )
+    response = StreamingHttpResponse(chunks, content_type="application/zip")
+    # Through Django's helper: a mushaf's name is often Arabic, which a plain
+    # ``filename="…"`` cannot carry in a header.
+    response["Content-Disposition"] = content_disposition_header(as_attachment=True, filename=filename)
     return response
 
 

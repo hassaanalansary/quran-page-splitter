@@ -1,0 +1,21 @@
+#!/bin/bash
+# Starts the web server of the production image.
+
+set -o errexit
+set -o pipefail
+set -o nounset
+
+# Migrations are not run here: a deploy runs `migrate` before `up -d` (DEPLOY.md).
+# The admin's CSS and JavaScript go to STATIC_ROOT, where WhiteNoise serves them.
+python /app/manage.py collectstatic --noinput
+
+# --no-control-socket: gunicorn would otherwise open a control socket in the home
+# folder of the user it runs as, and the image's `django` user has none.
+exec gunicorn config.wsgi \
+  --bind 0.0.0.0:5000 \
+  --chdir=/app \
+  --workers "${GUNICORN_WORKERS:-3}" \
+  --threads "${GUNICORN_THREADS:-4}" \
+  --timeout 120 \
+  --access-logfile - \
+  --no-control-socket

@@ -24,12 +24,29 @@ export function savePage(id: string, pageNumber: number, data: PageSave): Promis
   return apiJson<PageData>("POST", `/api/mushafs/${id}/pages/${pageNumber}`, data);
 }
 
+/** Save a page's cuts. `page` carries what goes with them, each left as it is
+ * when not given: the padding most lines and most sura headers now carry, and the
+ * checked mark. */
 export function finalizePage(
   id: string,
   pageNumber: number,
   lines: FinalizeLine[],
+  page: { line_padding?: number; sura_header_padding?: number; lines_finalized?: boolean } = {},
 ): Promise<PageData> {
-  return apiJson<PageData>("POST", `/api/mushafs/${id}/pages/${pageNumber}/finalize`, { lines });
+  return apiJson<PageData>("POST", `/api/mushafs/${id}/pages/${pageNumber}/finalize`, {
+    lines,
+    ...page,
+  });
+}
+
+/** Mark a page's line cuts finished in Finalize, or not finished again. Only this
+ * sets it — exporting never does. */
+export function markLinesFinalized(
+  id: string,
+  pageNumber: number,
+  finalized: boolean,
+): Promise<{ page_number: number; lines_finalized: boolean }> {
+  return apiJson("PUT", `/api/mushafs/${id}/pages/${pageNumber}/lines-finalized`, { finalized });
 }
 
 export function exportLines(id: string, pageNumber: number): Promise<ExportResult> {
@@ -41,6 +58,30 @@ export function exportLines(id: string, pageNumber: number): Promise<ExportResul
 export function linesZipUrl(id: string, pageNumber?: number): string {
   const query = pageNumber != null ? `?page=${pageNumber}` : "";
   return `${API_BASE}/api/mushafs/${id}/lines.zip${query}`;
+}
+
+/** What the full data export carries beside its JSON — both on unless turned off. */
+export type ExportOptions = { page?: number; images?: boolean; maps?: boolean };
+
+function exportQuery({ page, images = true, maps = true }: ExportOptions): string {
+  const query = new URLSearchParams();
+  if (page != null) query.set("page", String(page));
+  if (!images) query.set("images", "false");
+  if (!maps) query.set("maps", "false");
+  const text = query.toString();
+  return text ? `?${text}` : "";
+}
+
+/** Download URL for the full data export (schema mushaf-export/v2): every line, aya,
+ * word and blob in page and line-PNG pixels, with each line's word and blob maps —
+ * the whole mushaf, or one page. See backend/api/services/data_export.py. */
+export function exportUrl(id: string, options: ExportOptions = {}): string {
+  return `${API_BASE}/api/mushafs/${id}/export.zip${exportQuery(options)}`;
+}
+
+/** The same export of a published mushaf, open to everyone. */
+export function galleryExportUrl(id: string, options: ExportOptions = {}): string {
+  return `${API_BASE}/api/gallery/${id}/export.zip${exportQuery(options)}`;
 }
 
 export function getReviewData(id: string, signal?: AbortSignal): Promise<ReviewData> {

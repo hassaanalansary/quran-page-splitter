@@ -39,17 +39,17 @@ export function EvaluationPanel({ mushafId }: { mushafId: string }) {
   const { data, isLoading, error } = useCalibrationEvaluation(mushafId, true);
 
   if (isLoading) {
-    return <p className="text-[11.5px] text-text-muted">{t("calibration.evaluationLoading")}</p>;
+    return <p className="text-[11.5px] text-ink-3">{t("calibration.evaluationLoading")}</p>;
   }
   if (error) {
     return (
-      <p className="text-[11.5px] text-error">
+      <p className="text-[11.5px] text-stop-text">
         {error instanceof ApiError ? error.message : t("calibration.requestFailed")}
       </p>
     );
   }
   if (!data?.confirmed_pages) {
-    return <p className="text-[11.5px] text-text-muted">{t("calibration.evaluationEmpty")}</p>;
+    return <p className="text-[11.5px] text-ink-3">{t("calibration.evaluationEmpty")}</p>;
   }
 
   const engineLabel = (engine: Engine) => t(`calibration.engine.${engine}`);
@@ -59,13 +59,13 @@ export function EvaluationPanel({ mushafId }: { mushafId: string }) {
 
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-[10.5px] leading-snug text-text-muted">
+      <p className="text-[10.5px] leading-snug text-ink-3">
         {t("calibration.evaluationIntro", { count: data.confirmed_pages })}
       </p>
 
       <table className="w-full border-collapse text-[11px] tabular-nums">
         <thead>
-          <tr className="text-text-muted">
+          <tr className="text-ink-3">
             <th />
             {ENGINES.map((engine) => (
               <th key={engine} className="px-1 pb-1 text-end font-semibold">
@@ -76,10 +76,8 @@ export function EvaluationPanel({ mushafId }: { mushafId: string }) {
         </thead>
         <tbody>
           {METRICS.map((metric) => (
-            <tr key={metric} className="border-t border-border">
-              <th className="py-1 pe-2 text-start font-normal text-text-secondary">
-                {metricLabel(metric)}
-              </th>
+            <tr key={metric} className="border-t border-rule">
+              <th className="py-1 pe-2 text-start font-normal text-ink-2">{metricLabel(metric)}</th>
               {ENGINES.map((engine) => (
                 <td key={engine} className="px-1 py-1 text-end">
                   {count(data.totals[engine], metric)}
@@ -91,31 +89,31 @@ export function EvaluationPanel({ mushafId }: { mushafId: string }) {
       </table>
 
       <dl className="grid grid-cols-[1fr_auto] gap-x-2 gap-y-0.5 text-[11px] tabular-nums">
-        <dt className="text-text-secondary">{t("calibration.proposedBody")}</dt>
+        <dt className="text-ink-2">{t("calibration.proposedBody")}</dt>
         <dd>
           {t("calibration.proposalScore", {
             made: proposals.body.made,
             wrong: proposals.body.wrong,
           })}
         </dd>
-        <dt className="text-text-secondary">{t("calibration.proposedMark")}</dt>
+        <dt className="text-ink-2">{t("calibration.proposedMark")}</dt>
         <dd>
           {t("calibration.proposalScore", {
             made: proposals.mark.made,
             wrong: proposals.mark.wrong,
           })}
         </dd>
-        <dt className="text-text-secondary">{t("calibration.releasedLocks")}</dt>
+        <dt className="text-ink-2">{t("calibration.releasedLocks")}</dt>
         <dd>{released}</dd>
       </dl>
 
       <details className="text-[11px]">
-        <summary className="cursor-pointer text-text-secondary">
+        <summary className="cursor-pointer text-ink-2">
           {t("calibration.evaluationPages", { count: data.pages.length })}
         </summary>
         <table className="mt-1 w-full border-collapse tabular-nums">
           <thead>
-            <tr className="text-text-muted">
+            <tr className="text-ink-3">
               <th className="text-start font-semibold">{t("calibration.evaluationPage")}</th>
               {ENGINES.map((engine) => (
                 <th key={engine} className="px-1 text-end font-semibold">
@@ -126,11 +124,11 @@ export function EvaluationPanel({ mushafId }: { mushafId: string }) {
           </thead>
           <tbody>
             {data.pages.map((entry) => (
-              <tr key={entry.page} className="border-t border-border">
+              <tr key={entry.page} className="border-t border-rule">
                 <td className="py-0.5">
                   <button
                     type="button"
-                    className="inline-flex cursor-pointer items-center gap-1 text-orange"
+                    className="inline-flex cursor-pointer items-center gap-1 text-lapis-text"
                     title={t("calibration.comparePage", { page: entry.page })}
                     onClick={() => setComparisonPage(entry.page)}
                   >
@@ -153,7 +151,7 @@ export function EvaluationPanel({ mushafId }: { mushafId: string }) {
         </table>
       </details>
 
-      <p className="text-[10.5px] leading-snug text-text-muted">
+      <p className="text-[10.5px] leading-snug text-ink-3">
         {data.activation_allowed ? t("calibration.gateOpen") : t("calibration.gateShadow")}
       </p>
       <EvaluationComparison

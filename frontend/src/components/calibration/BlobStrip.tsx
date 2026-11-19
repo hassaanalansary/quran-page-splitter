@@ -7,41 +7,75 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 
+import { BusyLabel } from "@/components/app/SatrLoader";
 import { mediaUrl } from "@/lib/api";
+import {
+  cutBlobInRaster,
+  cutFitsBlob,
+  judgeKnifeLine,
+  pieceAt,
+  type BlobPieces,
+  type KnifeOutcome,
+  type KnifeState,
+} from "@/lib/calibration/blobCuts";
 import {
   decodeLabels,
   doubtOf,
+  expectationKey,
   expectedType,
   highlights,
+  isFusedBody,
   isSelected,
   isTyped,
   labelAt,
   labelsInRect,
+  markCheckOf,
   needsLook,
+  noiseFor,
   passesFilter,
   selectIds,
+  subtypeParts,
+  typedByText,
   wordCount,
   type BlobFilter,
   type BlobSelection,
   type Doubts,
   type Expectations,
+  type MarkChecks,
+  type NoiseSuspects,
 } from "@/lib/calibration/model";
-import type { CalibrationLine } from "@/lib/calibration/types";
+import type { CalibrationBlob, CalibrationLine, CutLine } from "@/lib/calibration/types";
 
-import { HIGHLIGHT_RGB, ROLE_RGB } from "./colors";
-import { subtypeKey } from "./labels";
-import { SUBTYPE_MARKS, type Subtype } from "./subtypes";
+import { HIGHLIGHT_RGB, PIECE_RGB, ROLE_RGB, UNSETTLED_RGB } from "./colors";
+import { exceptionKey, useTypeName } from "./labels";
+import { TANWEEN_MARKS, subtypeGlyph } from "./subtypes";
 
 const SELECTED_RGB: [number, number, number] = [234, 88, 12];
-/** Screen px of grab band either side of a word's edge. */
-const EDGE_GRAB = 6;
+/** Erased ink is hatched in this, over white: still there to pick, plainly not text. */
+const ERASED_RGB: [number, number, number] = [201, 42, 42];
+/** Screen px the ring around a mark that may be noise is at the least — a speck is a
+ * pixel or two. A flagged blob's frame is at least as big, for the same reason. */
+const NOISE_RING = 14;
+/** Screen px the ring around a mark whose type is not settled is at the least. */
+const UNSETTLED_RING = 18;
+/** The overlay language's warn, as a wash: a word whose PAWs do not close. */
+const WARN_WASH = "rgba(154, 91, 0, 0.12)";
 /** A pointer that moves further than this between down and up drew a rectangle. */
 const CLICK_SLOP = 4;
 /** Screen px each mark's slot in the type lane takes, and each lane row's height. */
 const SLOT = 15;
-const ROW = 16;
+const ROW = 17;
+/** Screen px of page around the ink, inside the line's box. */
+const INSET = 12;
+/** Screen px of the line-number gutter beside the box, and of the gap before it. */
+const GUTTER = 34;
+const GUTTER_GAP = 10;
+/** Screen px a strip adds to the width of its text column: the box's inset on both
+ * sides and the number gutter. What Fit leaves room for. */
+export const STRIP_CHROME = INSET * 2 + GUTTER_GAP + GUTTER;
 
 type Raster = { source: ImageBitmap; ids: Uint32Array; width: number; height: number };
+type FlagKind = "mixed" | "broken" | "fused" | "uncertain";
 type Point = { x: number; y: number };
 
 /**
@@ -53,38 +87,48 @@ type Point = { x: number; y: number };
  * line's label raster says which blob every pixel belongs to, so a click resolves
  * to the blob actually under the pointer and the tint follows the ink exactly.
  *
- * Page pixels throughout, like the word cuts: the raster is the line's own crop of
- * the page at native size, and `scale` is the only conversion.
+ * Page pixels throughout: the raster is the line's own crop of the page at native
+ * size, and `scale` is the only conversion.
+ *
+ * The line sits in a white box as wide as the page's text column, its number in a
+ * gutter at the end, so every line's box and number line up. The colours inside
+ * are the overlay language's and fixed: a page stays light in dark mode.
  */
 export function BlobStrip({
   line,
   scale,
   marginLeft,
+  columnWidth,
   label,
   focused = false,
   selection,
   onSelect,
-  mode,
   dim,
   disabled,
   selectable = !disabled,
   selectionFilter = "all",
+  pickAll = false,
+  movedWords,
   expectations,
   doubts,
+  tanween,
+  noise,
+  checks,
   showTypes = false,
-  onWordEdge,
-  onWordEdgeCommit,
+  knife = null,
+  onKnifeLine,
+  onSwapPiece,
 }: {
   line: CalibrationLine;
   scale: number;
   marginLeft: number;
+  /** Screen px of the page's text column: the box's width, whatever the line's. */
+  columnWidth?: number;
   label: string;
   /** The line the panel is showing. */
   focused?: boolean;
   selection: BlobSelection;
   onSelect: (selection: BlobSelection) => void;
-  /** Blobs: select and label ink. Words: drag word edges. */
-  mode: "blobs" | "words";
   /** Fade every blob that is not asking for a look. */
   dim: boolean;
   /** Read-only: a neighbouring page's line, a stale draft, or a preview on show. */
@@ -98,12 +142,25 @@ export function BlobStrip({
   expectations?: Expectations;
   /** Typed marks the other pages take for another type. */
   doubts?: Doubts;
+  /** Strokes of a tanween, by `snapshot:blob`: shown as the tanween they make. */
+  tanween?: Set<string>;
+  /** Marks that may be noise: ringed, to be found and erased or not. */
+  noise?: NoiseSuspects;
+  /** Every word's marks against its text's: a word they do not fit is outlined. */
+  checks?: MarkChecks;
+  /** Let a click or a drag pick the faded ink too — to fix a mark the filter missed. */
+  pickAll?: boolean;
+  /** The words a preview's reading moved, by id: outlined so they are looked at. */
+  movedWords?: Set<number>;
   /** Label every mark with its type in a lane under the line. */
   showTypes?: boolean;
-  /** Live, during a drag — no history entry. */
-  onWordEdge?: (index: number, start: number, end: number) => void;
-  /** The pointer-up ending a drag. */
-  onWordEdgeCommit?: () => void;
+  /** The knife, when it is out on a blob of this line: a drag draws a line across
+   * that blob instead of a selection rectangle. */
+  knife?: KnifeState | null;
+  /** A knife line was drawn: what it did, measured on this line's raster. */
+  onKnifeLine?: (outcome: KnifeOutcome) => void;
+  /** A click on a piece of the selected cut blob: give that piece the other word. */
+  onSwapPiece?: (blobId: number, piece: number) => void;
 }) {
   const { t } = useTranslation();
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -111,7 +168,9 @@ export function BlobStrip({
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
   const [rectangle, setRectangle] = useState<{ from: Point; to: Point } | null>(null);
+  const [knifeDrag, setKnifeDrag] = useState<{ from: Point; to: Point } | null>(null);
   const drag = useRef<{ from: Point; client: Point; additive: boolean } | null>(null);
+  const knifeHere = knife && knife.snapshot === line.snapshot_id ? knife : null;
 
   // Load the line image and its label raster once per snapshot — they never change.
   useEffect(() => {
@@ -170,6 +229,35 @@ export function BlobStrip({
         .map((blob) => blob.id),
     );
   }, [line.blobs, line.snapshot_id, selectionFilter, guesses, doubted]);
+  // Marks whose type is not settled: no type and no sure guess, or a type the other
+  // pages doubt. With the types shown, their ink is painted to stand out, and ringed.
+  const unsettled = useMemo(() => {
+    if (!showTypes || line.readonly) return new Set<number>();
+    return new Set(
+      line.blobs
+        .filter(
+          (blob) =>
+            blob.role === "mark" &&
+            !blob.erased &&
+            (!!doubtOf(blob, line.snapshot_id, doubted) ||
+              (!isTyped(blob) && !expectedType(blob, line.snapshot_id, guesses)?.sure)),
+        )
+        .map((blob) => blob.id),
+    );
+  }, [showTypes, line.readonly, line.blobs, line.snapshot_id, guesses, doubted]);
+  // The pieces of every blob cut with the knife, measured on this raster — and, while
+  // the knife is out, of its blob as the lines drawn so far cut it.
+  const pieces = useMemo(() => {
+    const found = new Map<number, BlobPieces>();
+    if (!raster) return found;
+    const measure = (blob: CalibrationBlob, lines: CutLine[]) =>
+      cutBlobInRaster(raster.ids, raster.width, raster.height, line.bbox, blob, lines);
+    for (const blob of line.blobs)
+      if (cutFitsBlob(blob)) found.set(blob.id, measure(blob, blob.cut.lines));
+    const target = knifeHere ? line.blobs.find((blob) => blob.id === knifeHere.blobId) : undefined;
+    if (target && knifeHere?.lines.length) found.set(target.id, measure(target, knifeHere.lines));
+    return found;
+  }, [raster, line.blobs, line.bbox, knifeHere]);
   useEffect(() => {
     const context = canvas.current?.getContext("2d");
     if (!context || !raster) return;
@@ -183,24 +271,71 @@ export function BlobStrip({
       const blob = blobs.get(id);
       if (!blob) continue;
       const chosen = isSelected(selection, line.snapshot_id, id);
+      const p = i * 4;
+      if (blob.erased) {
+        // Diagonal stripes, so erased ink reads as struck out at any zoom.
+        const stripe = (((i % raster.width) + Math.floor(i / raster.width)) >> 2) % 2 === 0;
+        const colour = chosen ? SELECTED_RGB : stripe ? ERASED_RGB : ([255, 255, 255] as const);
+        const alpha = stripe ? 0.6 : 0.85;
+        data[p] = Math.round(data[p] * (1 - alpha) + colour[0] * alpha);
+        data[p + 1] = Math.round(data[p + 1] * (1 - alpha) + colour[1] * alpha);
+        data[p + 2] = Math.round(data[p + 2] * (1 - alpha) + colour[2] * alpha);
+        data[p + 3] = 255;
+        continue;
+      }
       const picked = shown?.has(id) ?? false;
       const faded = !chosen && ((shown !== null && !picked) || (dim && !needsLook(blob)));
-      const colour = chosen
-        ? SELECTED_RGB
-        : faded
-          ? ([255, 255, 255] as const)
-          : picked
-            ? HIGHLIGHT_RGB
-            : ROLE_RGB[blob.role];
-      const alpha = faded ? 0.8 : chosen || picked ? 0.92 : 0.7;
-      const p = i * 4;
+      // A selected blob cut with the knife shows its pieces, each in its colour.
+      const cut = chosen ? pieces.get(id) : undefined;
+      const piece = cut
+        ? pieceAt(
+            cut,
+            blob,
+            line.bbox.x + (i % raster.width),
+            line.bbox.y + Math.floor(i / raster.width),
+          )
+        : -1;
+      const colour =
+        piece >= 0
+          ? PIECE_RGB[piece % PIECE_RGB.length]
+          : chosen
+            ? SELECTED_RGB
+            : faded
+              ? ([255, 255, 255] as const)
+              : picked
+                ? HIGHLIGHT_RGB
+                : unsettled.has(id)
+                  ? UNSETTLED_RGB
+                  : ROLE_RGB[blob.role];
+      const alpha = faded ? 0.8 : chosen || picked || unsettled.has(id) ? 0.92 : 0.7;
       data[p] = Math.round(data[p] * (1 - alpha) + colour[0] * alpha);
       data[p + 1] = Math.round(data[p + 1] * (1 - alpha) + colour[1] * alpha);
       data[p + 2] = Math.round(data[p + 2] * (1 - alpha) + colour[2] * alpha);
       data[p + 3] = 255;
     }
     context.putImageData(pixels, 0, 0);
-  }, [raster, line.blobs, line.snapshot_id, selection, dim, shown]);
+  }, [
+    raster,
+    line.blobs,
+    line.snapshot_id,
+    line.bbox.x,
+    line.bbox.y,
+    selection,
+    dim,
+    shown,
+    unsettled,
+    pieces,
+  ]);
+
+  const selectedWords = useMemo(() => {
+    if (selection.snapshot !== line.snapshot_id) return new Set<number>();
+    const chosen = new Set(selection.ids);
+    return new Set(
+      line.blobs
+        .filter((blob) => chosen.has(blob.id))
+        .flatMap((blob) => blob.allocations.map((allocation) => allocation.word_id)),
+    );
+  }, [selection, line.snapshot_id, line.blobs]);
 
   const width = (raster?.width ?? line.bbox.w) * scale;
   const height = (raster?.height ?? line.bbox.h) * scale;
@@ -211,7 +346,7 @@ export function BlobStrip({
     return { x: (event.clientX - bounds.left) / scale, y: (event.clientY - bounds.top) / scale };
   };
 
-  const canSelect = selectable && mode === "blobs" && raster !== null;
+  const canSelect = selectable && raster !== null;
 
   // One slot per mark, where it sits: its type if a person gave one, else the type
   // it is expected to be, else a dot saying nothing knows yet. Two rows, so marks
@@ -220,13 +355,15 @@ export function BlobStrip({
     if (!showTypes) return { slots: [], rows: 0 };
     const ends = [-Infinity, -Infinity];
     const slots = line.blobs
-      .filter((blob) => blob.role === "mark")
+      .filter((blob) => blob.role === "mark" && !blob.erased)
       .map((blob) => {
         const typed = isTyped(blob);
         const guess = typed ? null : expectedType(blob, line.snapshot_id, guesses);
         return {
           blob,
           typed,
+          byText: typedByText(blob),
+          stroke: tanween?.has(expectationKey(line.snapshot_id, blob.id)) ?? false,
           subtype: typed ? blob.subtype : (guess?.subtype ?? ""),
           sure: guess?.sure ?? false,
           doubt: doubtOf(blob, line.snapshot_id, doubted),
@@ -241,11 +378,35 @@ export function BlobStrip({
         return { ...slot, row };
       });
     return { slots, rows: slots.some((slot) => slot.row === 1) ? 2 : slots.length ? 1 : 0 };
-  }, [showTypes, guesses, doubted, line.blobs, line.snapshot_id, line.bbox.x, scale]);
+  }, [showTypes, guesses, doubted, tanween, line.blobs, line.snapshot_id, line.bbox.x, scale]);
 
-  const typeName = (subtype: string) => {
-    const key = subtypeKey(subtype);
-    return key ? t(key) : subtype;
+  const typeName = useTypeName();
+
+  /** A raster point as a whole page pixel inside the line's box — where a knife line
+   * may start or end. */
+  const toPagePixel = (point: Point): [number, number] => {
+    const width = raster?.width ?? line.bbox.w;
+    const height = raster?.height ?? line.bbox.h;
+    return [
+      line.bbox.x + Math.max(0, Math.min(width - 1, Math.floor(point.x))),
+      line.bbox.y + Math.max(0, Math.min(height - 1, Math.floor(point.y))),
+    ];
+  };
+
+  /** The knife line from `from` to `to` (raster points), measured against the lines
+   * drawn before it, and said to the editor. */
+  const drawKnifeLine = (from: Point, to: Point) => {
+    const blob = knifeHere ? line.blobs.find((b) => b.id === knifeHere.blobId) : undefined;
+    if (!knifeHere || !blob || !raster || !onKnifeLine) return;
+    const drawn: CutLine = [...toPagePixel(from), ...toPagePixel(to)];
+    const lines = [...knifeHere.lines, drawn];
+    const before = knifeHere.lines.length ? (pieces.get(blob.id)?.boxes.length ?? 1) : 1;
+    const after = cutBlobInRaster(raster.ids, raster.width, raster.height, line.bbox, blob, lines);
+    onKnifeLine({
+      verdict: judgeKnifeLine(before, after.boxes.length, blob.allocations.length),
+      lines,
+      pieces: after.boxes,
+    });
   };
 
   const onPointerDown = (event: ReactPointerEvent<HTMLCanvasElement>) => {
@@ -263,17 +424,44 @@ export function BlobStrip({
       event.clientX - drag.current.client.x,
       event.clientY - drag.current.client.y,
     );
-    if (moved > CLICK_SLOP)
-      setRectangle({ from: drag.current.from, to: toRaster(event, event.currentTarget) });
+    if (moved <= CLICK_SLOP) return;
+    const to = toRaster(event, event.currentTarget);
+    if (knifeHere) setKnifeDrag({ from: drag.current.from, to });
+    else setRectangle({ from: drag.current.from, to });
   };
   const onPointerUp = (event: ReactPointerEvent<HTMLCanvasElement>) => {
     const start = drag.current;
     drag.current = null;
     setRectangle(null);
+    setKnifeDrag(null);
     if (!start || !raster) return;
     const to = toRaster(event, event.currentTarget);
     const isRectangle =
       Math.hypot(event.clientX - start.client.x, event.clientY - start.client.y) > CLICK_SLOP;
+    if (knifeHere) {
+      // The knife is out: a drag is a cut, and a click does nothing.
+      if (isRectangle) drawKnifeLine(start.from, to);
+      if (event.currentTarget.hasPointerCapture(event.pointerId))
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      return;
+    }
+    if (!isRectangle && !start.additive && onSwapPiece && !disabled) {
+      // A click on a piece of the one selected cut blob gives that piece the other word.
+      const hit = labelAt(raster.ids, raster.width, raster.height, to.x, to.y);
+      const only = selection.snapshot === line.snapshot_id && selection.ids.length === 1;
+      const cut = only && hit === selection.ids[0] ? pieces.get(hit) : undefined;
+      const blob = cut ? line.blobs.find((b) => b.id === hit) : undefined;
+      if (cut && blob) {
+        const [pageX, pageY] = toPagePixel(to);
+        const piece = pieceAt(cut, blob, pageX, pageY);
+        if (piece >= 0) {
+          onSwapPiece(hit, piece);
+          if (event.currentTarget.hasPointerCapture(event.pointerId))
+            event.currentTarget.releasePointerCapture(event.pointerId);
+          return;
+        }
+      }
+    }
     const hits = isRectangle
       ? labelsInRect(
           raster.ids,
@@ -286,10 +474,12 @@ export function BlobStrip({
         )
       : [labelAt(raster.ids, raster.width, raster.height, to.x, to.y)].filter(Boolean);
     // Only text blobs are labelled — an ornament or a symbol is structure — and only
-    // the ones the filter lets through.
+    // the ones the filter lets through, unless the faded ones may be picked too.
     const text = new Set(
       line.blobs
-        .filter((b) => passesFilter(b, line.snapshot_id, selectionFilter, guesses, doubted))
+        .filter((b) =>
+          passesFilter(b, line.snapshot_id, pickAll ? "all" : selectionFilter, guesses, doubted),
+        )
         .map((b) => b.id),
     );
     const chosen = hits.filter((id) => text.has(id));
@@ -303,255 +493,457 @@ export function BlobStrip({
     }
   };
 
-  /** Drag one edge of a word; listeners on the window for the length of the drag. */
-  const beginEdgeDrag = (index: number, handle: "start" | "end", event: ReactPointerEvent) => {
-    if (disabled || mode !== "words" || !onWordEdge) return;
-    event.stopPropagation();
-    event.preventDefault();
-    const word = line.words[index];
-    const strip = (event.currentTarget as HTMLElement).closest("[data-strip]");
-    if (!strip) return;
-    let moved = false;
-    const move = (e: PointerEvent) => {
-      const x = line.bbox.x + (e.clientX - strip.getBoundingClientRect().left) / scale;
-      moved = true;
-      if (handle === "start") onWordEdge(index, x, word.end_x);
-      else onWordEdge(index, word.start_x, x);
-    };
-    const up = () => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-      window.removeEventListener("pointercancel", up);
-      if (moved) onWordEdgeCommit?.();
-    };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
-    window.addEventListener("pointercancel", up);
-  };
+  const boxWidth = Math.max(columnWidth ?? 0, marginLeft + width) + INSET * 2;
 
   return (
-    <div className="flex flex-col" style={{ marginLeft }} data-line={line.snapshot_id}>
-      <div className="flex items-center gap-2 text-[10.5px] text-text-muted">
-        <span className={`font-semibold tabular-nums ${focused ? "text-orange" : ""}`}>
-          {label}
-        </span>
-        {line.readonly && (
-          <span className="rounded-sm bg-bg-surface px-1.5 py-px">
-            {line.approved ? t("calibration.contextConfirmed") : t("calibration.context")}
-          </span>
-        )}
-        {line.status && line.status !== "exact" && !line.readonly && (
-          <span className="text-warning" title={line.reason ?? undefined}>
-            {t(`words.status_${line.status}`)}
-          </span>
-        )}
-      </div>
-
-      {/* One count per word — the PAWs its ink gives it against what its spelling
-          needs — over the word's right edge, where it starts. A lane of its own,
-          so a count never covers ink or the line's label. */}
-      <div className="relative h-4 flex-none" style={{ width }}>
-        {line.words.map((word, index) => {
-          const count = wordCount(line, word);
-          return (
-            <span
-              key={`${word.word_id ?? "u"}-${index}`}
-              className={`absolute bottom-0.5 -translate-x-full select-none whitespace-nowrap rounded-sm px-[3px] text-[9px] font-semibold leading-[11px] tabular-nums ${
-                count.ok ? "text-orange" : "bg-warning text-white"
-              }`}
-              style={{ left: (word.start_x - line.bbox.x) * scale }}
-              title={word.text}
-            >
-              {word.word_id === null ? "∅" : `${count.got}/${count.want}`}
-              {word.override ? " ✎" : ""}
-            </span>
-          );
-        })}
-      </div>
-
+    <div className="flex items-stretch" style={{ gap: GUTTER_GAP }} data-line={line.snapshot_id}>
       <div
-        data-strip
-        className={`relative bg-white shadow-[0_0_0_1px_var(--border)] ${line.readonly ? "opacity-60" : ""}`}
-        style={{ width, height }}
+        className={`flex flex-col bg-white py-2 ${line.readonly ? "opacity-60" : ""}`}
+        style={{
+          width: boxWidth,
+          paddingInline: INSET,
+          boxShadow: focused ? "0 0 0 2px var(--lapis)" : "0 0 0 1px var(--rule)",
+        }}
       >
-        <canvas
-          ref={canvas}
-          width={raster?.width ?? 1}
-          height={raster?.height ?? 1}
-          aria-label={label}
-          className={`block ${canSelect ? "cursor-crosshair" : ""}`}
-          style={{
-            width,
-            height,
-            touchAction: "none",
-            visibility: raster ? "visible" : "hidden",
-            imageRendering: scale > 1.6 ? "pixelated" : undefined,
-          }}
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={onPointerUp}
-          onPointerCancel={() => {
-            drag.current = null;
-            setRectangle(null);
-          }}
-        />
+        <div className="flex flex-col" style={{ marginLeft }}>
+          {(line.readonly || (line.status && line.status !== "exact")) && (
+            <div className="flex items-center gap-2 pb-1 text-[10.5px]">
+              {line.readonly && (
+                <span
+                  className="rounded-sm px-1.5 py-px"
+                  style={{ background: "#efe8dc", color: "var(--ov-text-quiet)" }}
+                >
+                  {line.approved ? t("calibration.contextConfirmed") : t("calibration.context")}
+                </span>
+              )}
+              {line.status && line.status !== "exact" && !line.readonly && (
+                <span style={{ color: "var(--ov-warn)" }} title={line.reason ?? undefined}>
+                  {t(`words.status_${line.status}`)}
+                </span>
+              )}
+            </div>
+          )}
 
-        {/* Words: a thin outline from where each starts to where it ends — solid
-            once dragged by hand. Draggable edges in Words mode; in Blobs mode they
-            stay out of the pointer's way. */}
-        {line.words.map((word, index) => (
-          <div
-            key={`${word.word_id ?? "u"}-${index}`}
-            className="pointer-events-none absolute top-0"
-            style={{
-              left: (word.end_x - line.bbox.x) * scale,
-              width: Math.max(1, (word.start_x - word.end_x) * scale),
-              height,
-              outline: `1px ${word.override ? "solid" : "dashed"} color-mix(in oklab, var(--orange) 70%, transparent)`,
-              outlineOffset: -1,
-            }}
-          >
-            {mode === "words" && !disabled && (
-              <>
-                <div
-                  className="pointer-events-auto absolute top-0 cursor-ew-resize"
-                  style={{ left: -EDGE_GRAB / 2, width: EDGE_GRAB, height }}
-                  onPointerDown={(event) => beginEdgeDrag(index, "end", event)}
-                />
-                <div
-                  className="pointer-events-auto absolute top-0 cursor-ew-resize"
-                  style={{ right: -EDGE_GRAB / 2, width: EDGE_GRAB, height }}
-                  onPointerDown={(event) => beginEdgeDrag(index, "start", event)}
-                />
-              </>
-            )}
+          {/* One count per word — the PAWs its ink gives it against what its spelling
+              needs — over the word's right edge, where it starts. A lane of its own,
+              so a count never covers ink. */}
+          <div className="relative h-[18px] flex-none" style={{ width }}>
+            {line.words.map((word, index) => {
+              const count = wordCount(line, word);
+              return (
+                <span
+                  key={`${word.word_id ?? "u"}-${index}`}
+                  className="absolute bottom-[3px] -translate-x-full select-none whitespace-nowrap rounded-[3px] px-1 font-mono text-[10px] font-semibold leading-[13px]"
+                  style={{
+                    left: (word.start_x - line.bbox.x) * scale,
+                    background: count.ok ? undefined : "var(--ov-warn)",
+                    color: count.ok ? "var(--ov-text-quiet)" : "#ffffff",
+                  }}
+                  title={word.text}
+                >
+                  {word.word_id === null ? "∅" : `${count.got}/${count.want}`}
+                </span>
+              );
+            })}
           </div>
-        ))}
 
-        {/* A dot over every blob asking for a look — findable at any zoom. */}
-        {mode === "blobs" &&
-          line.blobs
-            .filter((blob) => isSelected(selection, line.snapshot_id, blob.id))
-            .map((blob) => (
-              <span
-                key={`selected-${blob.id}`}
-                data-blob-outline={`${line.snapshot_id}:${blob.id}`}
-                className="pointer-events-none absolute border-2 border-black"
+          <div data-strip className="relative bg-white" style={{ width, height }}>
+            <canvas
+              ref={canvas}
+              width={raster?.width ?? 1}
+              height={raster?.height ?? 1}
+              aria-label={label}
+              className={`block ${canSelect ? "cursor-crosshair" : ""}`}
+              style={{
+                width,
+                height,
+                touchAction: "none",
+                visibility: raster ? "visible" : "hidden",
+                imageRendering: scale > 1.6 ? "pixelated" : undefined,
+              }}
+              onPointerDown={onPointerDown}
+              onPointerMove={onPointerMove}
+              onPointerUp={onPointerUp}
+              onPointerCancel={() => {
+                drag.current = null;
+                setRectangle(null);
+                setKnifeDrag(null);
+              }}
+            />
+
+            {/* Words: a thin dashed outline from where each starts to where it ends —
+            the extent of its ink — out of the pointer's way. The word the selection
+            is in is solid; a word a preview moved is lapis. */}
+            {line.words.map((word, index) => {
+              const moved = word.word_id !== null && !!movedWords?.has(word.word_id);
+              const chosen = word.word_id !== null && selectedWords.has(word.word_id);
+              // What a confirmation asks about, seen from across the page: a word whose
+              // PAWs do not close is outlined solid in warn and washed; one whose marks
+              // do not fit its text, dashed.
+              const short = !line.readonly && word.word_id !== null && !wordCount(line, word).ok;
+              const check =
+                !line.readonly && word.word_id !== null && checks
+                  ? markCheckOf(line.snapshot_id, word.word_id, checks)
+                  : null;
+              const unfit = !!check && !check.ok;
+              return (
+                <div
+                  key={`${word.word_id ?? "u"}-${index}`}
+                  data-word={`${line.snapshot_id}:${index}`}
+                  className="pointer-events-none absolute top-0 rounded-[2px]"
+                  style={{
+                    left: (word.end_x - line.bbox.x) * scale,
+                    width: Math.max(1, (word.start_x - word.end_x) * scale),
+                    height,
+                    outline: moved
+                      ? "2px solid var(--ov-line-selected)"
+                      : short
+                        ? "2px solid var(--ov-warn)"
+                        : chosen
+                          ? "1.5px solid var(--ov-word)"
+                          : unfit
+                            ? "1.5px dashed var(--ov-warn)"
+                            : "1px dashed color-mix(in oklab, var(--ov-word) 70%, transparent)",
+                    background: moved ? "rgba(30, 78, 140, 0.12)" : short ? WARN_WASH : undefined,
+                    outlineOffset: -1,
+                  }}
+                />
+              );
+            })}
+
+            {/* A dot over every blob asking for a look — findable at any zoom. */}
+            {line.blobs
+              .filter((blob) => isSelected(selection, line.snapshot_id, blob.id))
+              .map((blob) => (
+                <span
+                  key={`selected-${blob.id}`}
+                  data-blob-outline={`${line.snapshot_id}:${blob.id}`}
+                  className={`pointer-events-none absolute border-2 ${
+                    blob.role === "mark" ? "rounded-full border-dashed" : "rounded-[3px]"
+                  }`}
+                  style={{
+                    left: (blob.x - line.bbox.x) * scale - 3,
+                    top: (blob.y - line.bbox.y) * scale - 3,
+                    width: blob.w * scale + 6,
+                    height: blob.h * scale + 6,
+                    borderColor: "var(--ov-selected)",
+                  }}
+                />
+              ))}
+            {!line.readonly &&
+              line.blobs.filter(needsLook).map((blob) => (
+                <span
+                  key={`look-${blob.id}`}
+                  className="pointer-events-none absolute h-[9px] w-[9px] -translate-x-1/2 rounded-full shadow-[0_0_0_2px_#ffffff]"
+                  style={{
+                    background: "var(--ov-line-selected)",
+                    left: (blob.x - line.bbox.x + blob.w / 2) * scale,
+                    top: Math.max(0, (blob.y - line.bbox.y) * scale - 10),
+                  }}
+                  data-blob={`${line.snapshot_id}:${blob.id}`}
+                />
+              ))}
+
+            {/* Marks whose type is not settled, ringed in their own colour. */}
+            {line.blobs
+              .filter((blob) => unsettled.has(blob.id))
+              .map((blob) => {
+                const size = Math.max(UNSETTLED_RING, Math.max(blob.w, blob.h) * scale + 10);
+                return (
+                  <span
+                    key={`unsettled-${blob.id}`}
+                    className="pointer-events-none absolute rounded-full border-2"
+                    style={{
+                      borderColor: `rgb(${UNSETTLED_RGB.join(",")})`,
+                      left: (blob.x - line.bbox.x + blob.w / 2) * scale - size / 2,
+                      top: (blob.y - line.bbox.y + blob.h / 2) * scale - size / 2,
+                      width: size,
+                      height: size,
+                    }}
+                  />
+                );
+              })}
+
+            {/* Ink you flagged as out of the ordinary: framed solid in warn, with its
+                flag on the frame — at least a ring's size, so a speck still shows. */}
+            {!line.readonly &&
+              line.blobs
+                .filter((blob) => blob.exception && !blob.erased)
+                .map((blob) => {
+                  const width = Math.max(NOISE_RING, blob.w * scale + 8);
+                  const height = Math.max(NOISE_RING, blob.h * scale + 8);
+                  const key = exceptionKey(blob.exception);
+                  return (
+                    <span
+                      key={`flag-${blob.id}`}
+                      className="pointer-events-none absolute rounded-[3px] border-2 shadow-[0_0_0_1px_#ffffff]"
+                      style={{
+                        borderColor: "var(--ov-warn)",
+                        left: (blob.x - line.bbox.x + blob.w / 2) * scale - width / 2,
+                        top: (blob.y - line.bbox.y + blob.h / 2) * scale - height / 2,
+                        width,
+                        height,
+                      }}
+                    >
+                      <span
+                        className="absolute -top-[9px] start-[-2px] whitespace-nowrap rounded-[3px] px-1 text-[9.5px] font-bold leading-[13px] text-white"
+                        style={{ background: "var(--ov-warn)" }}
+                      >
+                        ⚑ {key ? t(`calibration.flagShort.${blob.exception as FlagKind}`) : ""}
+                        {isFusedBody(blob) && blob.subtype && (
+                          <span dir="rtl" className="ms-1 font-quran text-[12px]">
+                            {subtypeParts(blob.subtype).map(subtypeGlyph).join(" ")}
+                          </span>
+                        )}
+                      </span>
+                    </span>
+                  );
+                })}
+
+            {!line.readonly &&
+              noise &&
+              line.blobs
+                .filter((blob) => noiseFor(blob, line.snapshot_id, noise))
+                .map((blob) => {
+                  const width = Math.max(NOISE_RING, blob.w * scale + 8);
+                  const height = Math.max(NOISE_RING, blob.h * scale + 8);
+                  return (
+                    <span
+                      key={`noise-${blob.id}`}
+                      className="pointer-events-none absolute rounded-full border-[1.5px] border-dashed"
+                      style={{
+                        borderColor: "var(--ov-warn)",
+                        left: (blob.x - line.bbox.x + blob.w / 2) * scale - width / 2,
+                        top: (blob.y - line.bbox.y + blob.h / 2) * scale - height / 2,
+                        width,
+                        height,
+                      }}
+                    />
+                  );
+                })}
+
+            {/* The knife's lines: the selected cut blob's, dashed; the ones drawn
+                while the knife is out, solid; the one being dragged, live. Each piece
+                of the selected cut blob carries its word's name, in its colour. */}
+            {(() => {
+              const selectedCut = line.blobs.find(
+                (blob) =>
+                  cutFitsBlob(blob) &&
+                  selection.snapshot === line.snapshot_id &&
+                  selection.ids.length === 1 &&
+                  selection.ids[0] === blob.id,
+              );
+              const kept = knifeHere?.lines ?? [];
+              const settled = selectedCut?.cut?.lines ?? [];
+              if (!kept.length && !settled.length && !knifeDrag) return null;
+              const toScreen = ([x1, y1, x2, y2]: CutLine) => ({
+                x1: (x1 - line.bbox.x + 0.5) * scale,
+                y1: (y1 - line.bbox.y + 0.5) * scale,
+                x2: (x2 - line.bbox.x + 0.5) * scale,
+                y2: (y2 - line.bbox.y + 0.5) * scale,
+              });
+              return (
+                <svg
+                  className="pointer-events-none absolute left-0 top-0 overflow-visible"
+                  width={width}
+                  height={height}
+                  aria-hidden="true"
+                >
+                  {!knifeHere &&
+                    settled.map((cutLine, index) => (
+                      <line
+                        key={`settled-${index}`}
+                        {...toScreen(cutLine)}
+                        stroke="var(--ov-warn)"
+                        strokeWidth={1.5}
+                        strokeDasharray="4 3"
+                      />
+                    ))}
+                  {kept.map((cutLine, index) => (
+                    <line
+                      key={`kept-${index}`}
+                      {...toScreen(cutLine)}
+                      stroke="var(--ov-warn)"
+                      strokeWidth={2}
+                    />
+                  ))}
+                  {knifeDrag && (
+                    <line
+                      x1={knifeDrag.from.x * scale}
+                      y1={knifeDrag.from.y * scale}
+                      x2={knifeDrag.to.x * scale}
+                      y2={knifeDrag.to.y * scale}
+                      stroke="var(--ov-warn)"
+                      strokeWidth={2}
+                      strokeLinecap="round"
+                    />
+                  )}
+                </svg>
+              );
+            })()}
+            {line.blobs
+              .filter(
+                (blob) =>
+                  !knifeHere &&
+                  cutFitsBlob(blob) &&
+                  isSelected(selection, line.snapshot_id, blob.id) &&
+                  selection.ids.length === 1,
+              )
+              .flatMap((blob) =>
+                (blob.cut?.pieces ?? []).map((piece, index) => {
+                  const owner = blob.cut?.owners[index];
+                  const text = line.words.find((word) => word.word_id === owner)?.text ?? "";
+                  const colour = PIECE_RGB[index % PIECE_RGB.length];
+                  return (
+                    <span
+                      key={`piece-${blob.id}-${index}`}
+                      dir="rtl"
+                      className="pointer-events-none absolute -translate-x-full -translate-y-full whitespace-nowrap rounded-[3px] px-1 font-quran text-[13px] leading-[17px] text-white shadow-[0_0_0_1px_#ffffff]"
+                      style={{
+                        background: `rgb(${colour.join(",")})`,
+                        left: (piece.x - line.bbox.x + piece.w) * scale,
+                        top: Math.max(17, (piece.y - line.bbox.y) * scale - 2),
+                      }}
+                    >
+                      {text}
+                    </span>
+                  );
+                }),
+              )}
+
+            {rectangle && (
+              <div
+                className="pointer-events-none absolute bg-[rgba(30,78,140,0.14)] outline outline-1 outline-[color:var(--ov-line-selected)]"
                 style={{
-                  left: (blob.x - line.bbox.x) * scale - 2,
-                  top: (blob.y - line.bbox.y) * scale - 2,
-                  width: blob.w * scale + 4,
-                  height: blob.h * scale + 4,
-                  borderStyle: blob.role === "mark" ? "dashed" : "solid",
+                  left: Math.min(rectangle.from.x, rectangle.to.x) * scale,
+                  top: Math.min(rectangle.from.y, rectangle.to.y) * scale,
+                  width: Math.abs(rectangle.from.x - rectangle.to.x) * scale,
+                  height: Math.abs(rectangle.from.y - rectangle.to.y) * scale,
                 }}
               />
-            ))}
-        {!line.readonly &&
-          line.blobs.filter(needsLook).map((blob) => (
-            <span
-              key={`look-${blob.id}`}
-              className="pointer-events-none absolute h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-orange shadow-[0_0_0_1.5px_var(--white)]"
-              style={{
-                left: (blob.x - line.bbox.x + blob.w / 2) * scale,
-                top: Math.max(0, (blob.y - line.bbox.y) * scale - 6),
-              }}
-              data-blob={`${line.snapshot_id}:${blob.id}`}
-            />
-          ))}
+            )}
 
-        {rectangle && (
-          <div
-            className="pointer-events-none absolute bg-[color:color-mix(in_oklab,var(--info)_14%,transparent)] outline outline-1 outline-[color:var(--info)]"
-            style={{
-              left: Math.min(rectangle.from.x, rectangle.to.x) * scale,
-              top: Math.min(rectangle.from.y, rectangle.to.y) * scale,
-              width: Math.abs(rectangle.from.x - rectangle.to.x) * scale,
-              height: Math.abs(rectangle.from.y - rectangle.to.y) * scale,
-            }}
-          />
-        )}
-
-        {!raster && (
-          <div
-            className="absolute inset-0 flex items-center justify-center gap-2 text-[11px] text-text-muted"
-            role={error ? "alert" : "status"}
-          >
-            {error ? (
-              <>
-                <span>{t("calibration.maskError", { error })}</span>
-                <button
-                  type="button"
-                  className="cursor-pointer underline"
-                  onClick={() => setAttempt((n) => n + 1)}
-                >
-                  {t("calibration.retry")}
-                </button>
-              </>
-            ) : (
-              t("calibration.loadingLine")
+            {!raster && (
+              <div
+                className="absolute inset-0 flex items-center justify-center gap-2 text-[11px]"
+                style={{ color: "var(--ov-text-quiet)" }}
+                role={error ? "alert" : "status"}
+              >
+                {error ? (
+                  <>
+                    <span>{t("calibration.maskError", { error })}</span>
+                    <button
+                      type="button"
+                      className="cursor-pointer underline"
+                      onClick={() => setAttempt((n) => n + 1)}
+                    >
+                      {t("calibration.retry")}
+                    </button>
+                  </>
+                ) : (
+                  <BusyLabel>{t("calibration.loadingLine")}</BusyLabel>
+                )}
+              </div>
             )}
           </div>
-        )}
+
+          {lane.rows > 0 && (
+            <div className="relative mt-1 flex-none" style={{ width, height: lane.rows * ROW + 2 }}>
+              {lane.slots.map(({ blob, typed, byText, stroke, subtype, sure, doubt, x, row }) => {
+                const chosen = isSelected(selection, line.snapshot_id, blob.id);
+                const outside = shown !== null && !shown.has(blob.id);
+                const named = doubt
+                  ? t("calibration.types.doubtTitle", {
+                      type: typeName(subtype),
+                      other: typeName(doubt.subtype),
+                    })
+                  : !subtype
+                    ? t("calibration.types.untyped")
+                    : typed
+                      ? t(byText ? "calibration.types.textTitle" : "calibration.types.typedTitle", {
+                          type: typeName(subtype),
+                        })
+                      : t(sure ? "calibration.types.sureTitle" : "calibration.types.likelyTitle", {
+                          type: typeName(subtype),
+                        });
+                const title = stroke ? `${named} · ${t("calibration.types.tanweenStroke")}` : named;
+                return (
+                  <button
+                    key={blob.id}
+                    type="button"
+                    dir="rtl"
+                    title={title}
+                    aria-label={title}
+                    disabled={!canSelect}
+                    onClick={(event) => {
+                      const additive = event.shiftKey || event.ctrlKey || event.metaKey;
+                      const current = selection.snapshot === line.snapshot_id ? selection.ids : [];
+                      onSelect({
+                        snapshot: line.snapshot_id,
+                        ids: selectIds(current, [blob.id], additive, additive),
+                      });
+                    }}
+                    className={`absolute flex -translate-x-1/2 items-center justify-center rounded-[4px] text-[13px] leading-none disabled:cursor-default ${
+                      typed ? "font-semibold" : ""
+                    } ${canSelect ? "cursor-pointer" : ""}`}
+                    style={{
+                      left: x,
+                      top: row * ROW + 1,
+                      width: SLOT - 1,
+                      height: ROW - 2,
+                      opacity: outside ? 0.2 : !subtype ? 0.45 : typed || sure || chosen ? 1 : 0.6,
+                      // Typed: solid, in the colour marks are painted in. Expected: dashed.
+                      // The selection is gold; a doubted type is ringed in warn.
+                      border: chosen
+                        ? "1px solid var(--ov-selected)"
+                        : typed
+                          ? "1px solid rgba(40, 180, 200, 0.6)"
+                          : subtype
+                            ? "1px dashed var(--ov-mark)"
+                            : undefined,
+                      background: chosen
+                        ? "rgba(201, 150, 46, 0.25)"
+                        : typed
+                          ? "rgba(40, 180, 200, 0.12)"
+                          : undefined,
+                      color: typed
+                        ? "var(--satr-mark)"
+                        : subtype
+                          ? "var(--ov-text)"
+                          : "var(--ov-text-quiet)",
+                      outline: doubt && !chosen ? "2px solid var(--ov-warn)" : undefined,
+                    }}
+                  >
+                    {subtype
+                      ? stroke
+                        ? (TANWEEN_MARKS[subtype] ?? subtypeGlyph(subtype))
+                        : subtypeGlyph(subtype)
+                      : "·"}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
 
-      {lane.rows > 0 && (
-        <div className="relative flex-none" style={{ width, height: lane.rows * ROW + 2 }}>
-          {lane.slots.map(({ blob, typed, subtype, sure, doubt, x, row }) => {
-            const chosen = isSelected(selection, line.snapshot_id, blob.id);
-            const outside = shown !== null && !shown.has(blob.id);
-            const title = doubt
-              ? t("calibration.types.doubtTitle", {
-                  type: typeName(subtype),
-                  other: typeName(doubt.subtype),
-                })
-              : !subtype
-                ? t("calibration.types.untyped")
-                : typed
-                  ? t("calibration.types.typedTitle", { type: typeName(subtype) })
-                  : t(sure ? "calibration.types.sureTitle" : "calibration.types.likelyTitle", {
-                      type: typeName(subtype),
-                    });
-            return (
-              <button
-                key={blob.id}
-                type="button"
-                dir="rtl"
-                title={title}
-                aria-label={title}
-                disabled={!canSelect}
-                onClick={(event) => {
-                  const additive = event.shiftKey || event.ctrlKey || event.metaKey;
-                  const current = selection.snapshot === line.snapshot_id ? selection.ids : [];
-                  onSelect({
-                    snapshot: line.snapshot_id,
-                    ids: selectIds(current, [blob.id], additive, additive),
-                  });
-                }}
-                className={`absolute flex -translate-x-1/2 items-center justify-center rounded-sm text-[13px] leading-none disabled:cursor-default ${
-                  chosen
-                    ? "bg-orange text-white"
-                    : typed
-                      ? "font-semibold"
-                      : subtype
-                        ? "border border-dashed border-border-strong bg-white text-text-secondary"
-                        : "text-text-muted"
-                } ${doubt && !chosen ? "outline outline-2 outline-warning" : ""} ${canSelect ? "cursor-pointer" : ""}`}
-                style={{
-                  left: x,
-                  top: row * ROW + 1,
-                  width: SLOT - 1,
-                  height: ROW - 2,
-                  opacity: outside ? 0.2 : !subtype ? 0.45 : typed || sure || chosen ? 1 : 0.6,
-                  // A typed mark reads in the colour marks are painted in.
-                  color: typed && !chosen ? `rgb(${ROLE_RGB.mark.join(",")})` : undefined,
-                }}
-              >
-                {subtype ? (SUBTYPE_MARKS[subtype as Subtype] ?? "?") : "·"}
-              </button>
-            );
-          })}
-        </div>
-      )}
+      {/* The line's number, in the gutter at the end. */}
+      <div
+        className={`flex flex-none flex-col items-center justify-center gap-0.5 rounded border font-mono ${
+          focused
+            ? "border-lapis/40 bg-lapis-wash text-lapis-text"
+            : "border-rule bg-card text-ink-3"
+        }`}
+        style={{ width: GUTTER }}
+        title={label}
+      >
+        {line.readonly && (
+          <span className="text-[9.5px] leading-none">
+            {t("calibration.gutterPage", { page: line.page_number })}
+          </span>
+        )}
+        <span className="text-[11.5px] font-semibold">{line.line_number}</span>
+      </div>
     </div>
   );
 }

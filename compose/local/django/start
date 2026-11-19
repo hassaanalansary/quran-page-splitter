@@ -1,0 +1,10 @@
+#!/bin/bash
+# Starts the web server of the local image: migrations first, then runserver,
+# which reloads when a file of the mounted checkout changes.
+
+set -o errexit
+set -o pipefail
+set -o nounset
+
+python manage.py migrate
+exec python manage.py runserver 0.0.0.0:8000

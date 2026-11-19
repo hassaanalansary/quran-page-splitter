@@ -25,6 +25,27 @@ class LineTypeChoices(models.TextChoices):
     TEXT = "text", "Text"
 
 
+class LinePngSizeChoices(models.TextChoices):
+    """How big an exported line PNG is. Height is what differs: every line keeps the
+    page column's width whichever is chosen."""
+
+    #: The line's own box, as cut in Finalize.
+    BOX = "box", "Each line's own box"
+    #: Centred on a canvas the size of the page's largest line — nothing cropped.
+    UNIFORM = "uniform", "Same size across the page"
+    #: Cut down to the line's first and last inked row, after every erase.
+    TIGHT = "tight", "Tight to the ink"
+    #: Cut tight first, then centred on a canvas the size of the page's tallest
+    #: tight line: one size across the page, with no more space than the ink needs.
+    TIGHT_UNIFORM = "tight_uniform", "Tight, then same size across the page"
+
+
+#: The sizes that cut each line down to its first and last inked row.
+INK_CROPPED_PNG_SIZES = frozenset({LinePngSizeChoices.TIGHT, LinePngSizeChoices.TIGHT_UNIFORM})
+#: The sizes that centre every line of a page on one canvas, its largest line's size.
+PAGE_SIZED_PNG_SIZES = frozenset({LinePngSizeChoices.UNIFORM, LinePngSizeChoices.TIGHT_UNIFORM})
+
+
 class RunStatusChoices(models.TextChoices):
     # Set when the run row is created and kept until the run settles. A row left
     # in this state belongs to a run whose process died; the next run on the same
@@ -172,11 +193,15 @@ class Mushaf(BaseModel):
             "is not guessed."
         ),
     )
-    export_uniform_size = models.BooleanField(
-        default=False,
+    line_png_size = models.CharField(
+        max_length=16,
+        choices=LinePngSizeChoices.choices,
+        default=LinePngSizeChoices.BOX,
         help_text=(
-            "Pad every exported line PNG on a page out to the size of that page's "
-            "largest line, with transparent space. Nothing is ever cropped."
+            "How tall each exported line PNG is: the line's own box; padded with "
+            "transparent space to the page's largest line; cut to its first and "
+            "last inked row; or cut so, then padded to the page's tallest cut line. "
+            "Only future exports follow a change."
         ),
     )
     description = models.TextField(
@@ -272,6 +297,9 @@ class ProcessingRun(BaseModel):
 
 
 class ProcessJobStateChoices(models.TextChoices):
+    #: Requested, and waiting for a worker to claim it. Not final: a queued job
+    #: holds its mushaf exactly as a running one does.
+    QUEUED = "queued", "Queued"
     RUNNING = "running", "Running"
     COMPLETED = "completed", "Completed"
     ABORTED_LINE_DETECTION = "aborted_line_detection", "Aborted (line detection)"
@@ -288,6 +316,11 @@ class ProcessJobKindChoices(models.TextChoices):
     #: One page processed for calibration review. Its own kind so the word-run
     #: screen, which polls the latest ``words`` job, never mistakes it for a run.
     CALIBRATION = "calibration", "Calibration page"
+    #: Many pages processed for calibration review, one after another. It counts
+    #: pages, where a one-page job counts that page's lines — hence a kind of its own.
+    CALIBRATION_BATCH = "calibration_batch", "Calibration pages"
+    #: The mushaf's fingerprint set regrouped from its confirmed pages.
+    LIBRARY_REBUILD = "library_rebuild", "Library rebuild"
 
 
 class ProcessJob(BaseModel):
@@ -302,29 +335,40 @@ class ProcessJob(BaseModel):
     The row is written by the worker and read by pollers, so it is deliberately
     small and its updates are single-column where possible.
 
+    **The row describes the whole job.** ``kind`` says which runner does the work
+    and ``params`` holds that runner's inputs, so a worker needs nothing but the
+    job's id to run it. A job starts ``queued`` and becomes ``running`` when a
+    worker claims it (``api.services.jobs.claiming``).
+
     **Both kinds of run share this table on purpose.** Word detection could have had
     its own, and then two things would break: the concurrency caps count CPU-bound
     work, and two tables would let a box run twice what it was configured for; and
-    ``ensure_idle`` would stop guarding the case that matters most — a *detection*
-    run overlapping a *word* run on one mushaf, where ``write_coords_to_page`` deletes
-    the page's ``Line`` rows and takes every ``LineWord`` with them by cascade.
+    ``refuse_if_mushaf_has_active_job`` would stop guarding the case that matters most —
+    a *detection* run overlapping a *word* run on one mushaf, where
+    ``write_coords_to_page`` deletes the page's ``Line`` rows and takes every
+    ``LineWord`` with them by cascade.
     """
 
     kind = models.CharField(
-        max_length=16,
+        max_length=32,
         choices=ProcessJobKindChoices.choices,
         default=ProcessJobKindChoices.DETECTION,
         help_text="Which engine this run drives. Detection walks pages; words walks lines.",
     )
     mushaf = models.ForeignKey(Mushaf, on_delete=models.CASCADE, related_name="process_jobs")
     run = models.ForeignKey(ProcessingRun, null=True, blank=True, on_delete=models.SET_NULL, related_name="jobs")
-    started_by = models.ForeignKey(
+    requested_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         null=True,
         blank=True,
         on_delete=models.SET_NULL,
         related_name="process_jobs",
-        help_text="Who asked for this run; used for the per-user concurrency cap.",
+        help_text="Who asked for this job. The per-user limit counts by it, and the runner acts as this user.",
+    )
+    params = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="The runner's inputs, as the request gave them. What they are depends on the kind.",
     )
 
     page_range_start = models.PositiveSmallIntegerField()
@@ -332,7 +376,7 @@ class ProcessJob(BaseModel):
     total = models.PositiveSmallIntegerField(default=0, help_text="Pages in the requested range.")
 
     state = models.CharField(
-        max_length=32, choices=ProcessJobStateChoices.choices, default=ProcessJobStateChoices.RUNNING
+        max_length=32, choices=ProcessJobStateChoices.choices, default=ProcessJobStateChoices.QUEUED
     )
     phase = models.CharField(
         max_length=16, default="starting", help_text="starting/rendering/detecting/saving/finished."
@@ -354,7 +398,18 @@ class ProcessJob(BaseModel):
             "long page apart from a worker that died."
         ),
     )
-    started_at = models.DateTimeField(default=timezone.now)
+    requested_at = models.DateTimeField(
+        default=timezone.now, help_text="When the job was asked for. A queued job has been requested, not started."
+    )
+    run_started_at = models.DateTimeField(
+        null=True, blank=True, help_text="When a worker claimed the job and began. Null while it is queued."
+    )
+    claimed_by_worker = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text="The name of the worker that claimed the job. A stopping worker flags its own jobs by it.",
+    )
     ended_at = models.DateTimeField(null=True, blank=True)
 
     stopped_on_page = models.PositiveSmallIntegerField(
@@ -372,22 +427,20 @@ class ProcessJob(BaseModel):
         null=True, blank=True, help_text="Word runs only: lines written so far. Detection counts pages instead."
     )
     log_url = models.CharField(max_length=255, blank=True, default="")
-    #: Word runs only. Detection hangs its log off the ``ProcessingRun`` it
-    #: creates; a word run creates no such row — it writes ``LineWord`` rows
-    #: directly — so the job itself is what points at the file. Same directory,
-    #: same format, same viewer; see ``services.run_logs``.
-    log_path = models.CharField(
-        max_length=255,
+    report = models.JSONField(
+        null=True,
         blank=True,
-        default="",
-        help_text="Path (relative to settings.LOG_DIR) of this run's detailed log file.",
+        help_text=(
+            "Calibration batches only: what happened to each page of the range — processed, "
+            "skipped and why, or failed. Written as the run goes, so a poll can show it."
+        ),
     )
 
     class Meta:
         db_table = "process_job"
         verbose_name = "Process Job"
         verbose_name_plural = "Process Jobs"
-        indexes = (models.Index(fields=["mushaf", "-started_at"], name="process_job_mushaf_recent"),)
+        indexes = (models.Index(fields=["mushaf", "-requested_at"], name="process_job_mushaf_recent"),)
 
     def __str__(self) -> str:
         return f"{self.state} job for {self.mushaf_id} ({self.page_range_start}-{self.page_range_end})"
@@ -409,6 +462,32 @@ class Page(BaseModel):
     reviewed = models.BooleanField(
         default=False,
         help_text="True once a user has saved this page in review; reset to False on (re)process.",
+    )
+    lines_finalized = models.BooleanField(
+        default=False,
+        help_text=(
+            "True once a user has marked this page's line cuts finished in Finalize. "
+            "Reset to False whenever the page's lines are rebuilt: (re)process or a review save."
+        ),
+    )
+    line_padding = models.SmallIntegerField(
+        null=True,
+        help_text=(
+            "The padding the page's lines were given in Finalize, in px above and below, as "
+            "of its last save there (the value most of its lines share). Null until then, "
+            "and again whenever the lines are rebuilt. The latest checked pages' agreeing "
+            "value is applied to a page still null when it opens."
+        ),
+    )
+    sura_header_padding = models.SmallIntegerField(
+        null=True,
+        help_text=(
+            "The padding the page's sura headers were given in Finalize, in px above and "
+            "below, as of its last save there (the value most of them share). Null on a page "
+            "without one, until then, and again whenever the lines are rebuilt. The latest "
+            "checked pages' agreeing value — and whether their headers' edge ink was erased — "
+            "is applied to the headers of a page opening with its lines unpadded."
+        ),
     )
 
     class Meta:
@@ -435,10 +514,28 @@ class Line(BaseModel):
     line_png = models.ImageField(
         upload_to=line_png_path, null=True, help_text="Final PNG path after coordinates + erase; set on export"
     )
+    line_png_trim_top = models.PositiveIntegerField(
+        default=0,
+        help_text=(
+            "Rows a tight export cut off the top of the line's box, so the PNG's place "
+            "on the page can still be told (data export). 0 for any other size."
+        ),
+    )
+    line_png_trim_bottom = models.PositiveIntegerField(
+        default=0, help_text="Rows a tight export cut off the bottom of the line's box. 0 for any other size."
+    )
     bbox_x = models.PositiveIntegerField(help_text="The x coordinate of the bounding box.")
     bbox_y = models.PositiveIntegerField(help_text="The y coordinate of the bounding box.")
     bbox_w = models.PositiveIntegerField(help_text="The width of the bounding box.")
     bbox_h = models.PositiveIntegerField(help_text="The height of the bounding box.")
+    erase_edge_ink = models.BooleanField(
+        default=False,
+        help_text=(
+            "Cut from the exported PNG every piece of ink touching the line's top or "
+            "bottom edge: a neighbouring line showing through. A rule, not a mask, so "
+            "it is worked out again whenever the line's box changes."
+        ),
+    )
 
     class Meta:
         db_table = "line"
@@ -522,8 +619,9 @@ class LineWord(BaseModel):
     label. That argument only holds while the engine's x is right, and the engine is
     predicted to be wrong — a badly read line comes back with its words out of
     order along the page, and sorting by geometry then reports the mushaf as reading
-    in an order it does not. So ``position`` carries the sequence, the engine's x is
-    a suggestion about placement, and a human's correction is the final word on both.
+    in an order it does not. So ``position`` carries the sequence, and the edges are
+    the extent of the ink a reviewer confirmed for the word — rows are written only
+    when a page is confirmed in calibration.
     """
 
     line = models.ForeignKey(Line, on_delete=models.CASCADE, related_name="words")
@@ -574,46 +672,6 @@ class LineWord(BaseModel):
 
     def __str__(self) -> str:
         return f"word {self.word_id or '?'} ends at x={self.end_x}"
-
-
-class LineWordStatusChoices(models.TextChoices):
-    EXACT = "exact", "Exact"
-    SCORED = "scored", "Scored"
-    PARTIAL = "partial", "Partial"
-    UNRESOLVED = "unresolved", "Unresolved"
-
-
-class LineWordStatus(BaseModel):
-    """How much the boundary engine trusted its own reading of one line.
-
-    Its own table rather than columns on :class:`Line`, because ``Line`` belongs to
-    the detection pipeline and this is a different engine's opinion of it.
-
-    The point is triage. A sura-7 run comes back with 136 of 388 lines ``scored``, so
-    a reviewer who can see this checks 136 lines instead of eyeballing 3,320 words.
-    """
-
-    line = models.OneToOneField(Line, on_delete=models.CASCADE, related_name="word_status")
-    status = models.CharField(max_length=16, choices=LineWordStatusChoices.choices)
-    reason = models.TextField(
-        blank=True, default="", help_text="Why it is not exact, e.g. '2 word(s) off-count; 3 equal-cost readings'."
-    )
-    deviations = models.PositiveSmallIntegerField(
-        default=0, help_text="Words that closed on more or fewer ink blobs than their spelling demands."
-    )
-    ties = models.PositiveSmallIntegerField(default=0, help_text="Equal-cost readings the parser could not separate.")
-    edited = models.BooleanField(
-        default=False,
-        help_text="A human has corrected this line since; the engine's verdict is no longer the truth about it.",
-    )
-
-    class Meta:
-        db_table = "line_word_status"
-        verbose_name = "Line Word Status"
-        verbose_name_plural = "Line Word Statuses"
-
-    def __str__(self) -> str:
-        return f"line {self.line_id}: {self.status}"
 
 
 class CalibrationSnapshot(BaseModel):
@@ -729,41 +787,123 @@ class CalibrationRevision(BaseModel):
 
 
 class CalibrationSettings(BaseModel):
-    """Local opt-in, deliberately absent from copied/imported calibration data."""
+    """How the mushaf's fingerprint library compares shapes: local, never carried by a
+    copy or an import."""
 
     mushaf = models.OneToOneField(Mushaf, on_delete=models.CASCADE, related_name="calibration_settings")
     revision = models.PositiveIntegerField(default=0)
-    experimental = models.BooleanField(default=False)
+    #: How the fingerprint library compares two blobs (``core.word_boundary.library.COMPARISONS``).
+    comparison = models.CharField(max_length=32, default="descriptor32")
+    #: The library's LIMIT, in the comparison's own units; null means its default.
+    library_limit = models.FloatField(null=True, blank=True)
 
     class Meta:
         db_table = "calibration_settings"
 
 
-class CalibrationProfile(BaseModel):
-    """Which approved revisions a set of predictions was made from, and how.
+class FingerprintLibrary(BaseModel):
+    """A mushaf's one stored fingerprint set: what every page's lookups read.
 
-    Small by design: ``payload`` holds the matcher settings, the feature version and
-    the ids of the approved revisions — never the examples themselves, which are
-    rebuilt from those revisions' snapshots when needed. ``signature`` hashes the
-    three, so the same inputs always name the same profile.
-
-    ``mode`` is ``shadow`` until a person approves an evaluation: predictions are
-    recorded and shown, never applied. Copies and imports always arrive in shadow.
+    Updated at every Confirm (``api.services.fingerprint_updates``), regrouped only on a
+    Rebuild (``api.services.fingerprint_rebuild``). ``version`` counts every change, so a
+    server process holding an older copy knows to reload it; 0 means never built.
+    ``comparison`` and ``limit`` are what the set was grouped with, which may trail the
+    settings while a Rebuild after a new LIMIT is still running. ``needs_rebuild`` is
+    set when a check found the set disagreeing with the confirmed pages.
     """
 
-    mushaf = models.ForeignKey(Mushaf, on_delete=models.CASCADE, related_name="calibration_profiles")
-    signature = models.CharField(max_length=64)
-    payload = models.JSONField(default=dict)
-    mode = models.CharField(max_length=16, default="shadow")
+    mushaf = models.OneToOneField(Mushaf, on_delete=models.CASCADE, related_name="fingerprint_library")
+    version = models.PositiveIntegerField(default=0)
+    comparison = models.CharField(max_length=32, default="descriptor32")
+    limit = models.FloatField()
+    feature_version = models.PositiveIntegerField(default=0)
+    library_version = models.PositiveIntegerField(default=0)
+    needs_rebuild = models.BooleanField(default=False)
 
     class Meta:
-        db_table = "calibration_profile"
-        verbose_name = "Calibration Profile"
-        verbose_name_plural = "Calibration Profiles"
-        constraints = (models.UniqueConstraint(fields=["mushaf", "signature"], name="unique_calibration_profile"),)
+        db_table = "fingerprint_library"
+        verbose_name = "Fingerprint Library"
+        verbose_name_plural = "Fingerprint Libraries"
 
     def __str__(self) -> str:
-        return f"{self.mode} profile {self.signature[:8]} of {self.mushaf_id}"
+        return f"fingerprint set v{self.version} of {self.mushaf_id}"
+
+
+class FingerprintGroup(BaseModel):
+    """One fingerprint of a kind (a role, and a mark's type) and the shapes kept beside it."""
+
+    library = models.ForeignKey(FingerprintLibrary, on_delete=models.CASCADE, related_name="groups")
+    #: body | mark.
+    role = models.CharField(max_length=8)
+    #: A mark's type; "" for a body and an untyped mark.
+    subtype = models.CharField(max_length=32, blank=True, default="")
+
+    class Meta:
+        db_table = "fingerprint_group"
+        verbose_name = "Fingerprint Group"
+        verbose_name_plural = "Fingerprint Groups"
+
+    def __str__(self) -> str:
+        return f"{self.role} {self.subtype} group of {self.library_id}"
+
+
+class FingerprintShape(BaseModel):
+    """One confirmed blob the set keeps: a group's fingerprint, or one of the up to 11
+    shapes kept beside it.
+
+    There is no blob table: a blob is a snapshot and a blob id, its geometry in the
+    snapshot's metadata and its label in its page's confirmed revision. ``features``
+    holds its raw descriptor (``examples.feature_vector``, 1,030 float64 numbers), so a
+    lookup never measures anything.
+    """
+
+    library = models.ForeignKey(FingerprintLibrary, on_delete=models.CASCADE, related_name="shapes")
+    group = models.ForeignKey(FingerprintGroup, on_delete=models.CASCADE, related_name="shapes")
+    snapshot = models.ForeignKey(CalibrationSnapshot, on_delete=models.CASCADE, related_name="fingerprint_shapes")
+    blob_id = models.PositiveIntegerField()
+    #: The confirmation it was learned from, while that revision lasts.
+    revision = models.ForeignKey(
+        CalibrationRevision, on_delete=models.SET_NULL, null=True, blank=True, related_name="fingerprint_shapes"
+    )
+    is_fingerprint = models.BooleanField(default=False)
+    #: To its group's fingerprint, in the comparison's units.
+    distance = models.FloatField(default=0.0)
+    #: A person found it right: never dropped by the spread rule, and a looks-right
+    #: fingerprint stays a fingerprint through a Rebuild.
+    looks_right = models.BooleanField(default=False)
+    features = models.BinaryField()
+
+    class Meta:
+        db_table = "fingerprint_shape"
+        verbose_name = "Fingerprint Shape"
+        verbose_name_plural = "Fingerprint Shapes"
+        constraints = (
+            models.UniqueConstraint(fields=["library", "snapshot", "blob_id"], name="unique_fingerprint_shape"),
+        )
+
+    def __str__(self) -> str:
+        return f"blob {self.blob_id} of {self.snapshot_id} in {self.group_id}"
+
+
+class RemovedShape(BaseModel):
+    """A confirmed blob a person took out of the fingerprint set, so a Rebuild never
+    brings it back and Restore is possible. It counts while the blob is still confirmed
+    as the role and type it was removed as."""
+
+    mushaf = models.ForeignKey(Mushaf, on_delete=models.CASCADE, related_name="removed_shapes")
+    snapshot = models.ForeignKey(CalibrationSnapshot, on_delete=models.CASCADE, related_name="removed_shapes")
+    blob_id = models.PositiveIntegerField()
+    role = models.CharField(max_length=8)
+    subtype = models.CharField(max_length=32, blank=True, default="")
+
+    class Meta:
+        db_table = "removed_shape"
+        verbose_name = "Removed Shape"
+        verbose_name_plural = "Removed Shapes"
+        constraints = (models.UniqueConstraint(fields=["mushaf", "snapshot", "blob_id"], name="unique_removed_shape"),)
+
+    def __str__(self) -> str:
+        return f"removed: {self.role} {self.subtype} blob {self.blob_id} of {self.snapshot_id}"
 
 
 class ActivityEvent(BaseModel):

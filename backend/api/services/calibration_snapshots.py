@@ -33,13 +33,15 @@ from PIL import Image
 
 from api.models import CalibrationSnapshot, Line, Mushaf, Template
 from api.services import line_images
+from api.services.calibration_feature_files import read_saved_features, save_features
 from core.word_boundary import LineImage
 from core.word_boundary.examples import FEATURE_VERSION, feature_vector
 from core.word_boundary.ink import Blob, LineInk, analyse_line
 from core.word_boundary.separators import prepare_template, split_separators, split_symbols
 
 #: Bump when measurement changes in a way that should make new snapshots.
-EXTRACTION_VERSION = "full-line-v1"
+#: v2 (2026-10-27): an ornament keeps only the ink within its ring's width.
+EXTRACTION_VERSION = "full-line-v2"
 
 #: Templates whose pictures change what a line measures as. The aya ornament sets
 #: each supplied span's width; the symbols are matched and removed. A sura-header
@@ -187,7 +189,7 @@ def extract_line(line: Line, rendered_page: Image.Image, templates: Templates) -
         spans,
         ayat,
     )
-    ink = analyse_line(source)
+    ink = analyse_line(source)  # This is the core engine
     # Every blob, taken before the partition: ornaments and symbols keep their ids
     # and their geometry, so the reviewer can see them on the raster.
     all_blobs = list(ink.components)
@@ -344,23 +346,37 @@ def select_span(ink: LineInk, metadata: dict, start: tuple[int, int], end: tuple
 # What the matcher compares
 # ---------------------------------------------------------------------------
 #: Per-snapshot descriptors, by snapshot id. A snapshot never changes, so neither
-#: do its descriptors; bounded because a line's are ~270 KB.
-_FEATURES: OrderedDict[tuple[str, int], dict[int, np.ndarray]] = OrderedDict()
-_FEATURES_MAX = 256
+#: do its descriptors; bounded because a line's are ~270 KB. Behind it, a file per
+#: snapshot (:mod:`api.services.calibration_feature_files`) keeps every line ever
+#: measured, across restarts.
+FEATURES_CACHE: OrderedDict[tuple[str, int], dict[int, np.ndarray]] = OrderedDict()
+FEATURES_CACHE_MAX = 256
 
 
 def blob_features(snapshot: CalibrationSnapshot) -> dict[int, np.ndarray]:
     """Every text blob's matcher descriptor, by blob id.
 
-    Computed from the stored raster rather than stored itself: a descriptor is 1,030
-    numbers, a page holds ~1,000 blobs, and it is fully determined by pixels the
-    snapshot already keeps.
+    Determined by pixels the snapshot already keeps: measured from its raster once,
+    then read from the file saved beside it, and held in memory for the lines in use.
     """
     key = (str(snapshot.pk), FEATURE_VERSION)
-    cached = _FEATURES.get(key)
+    cached = FEATURES_CACHE.get(key)
     if cached is not None:
-        _FEATURES.move_to_end(key)
+        FEATURES_CACHE.move_to_end(key)
         return cached
+    found = read_saved_features(snapshot)
+    if found is None:
+        found = measure_blob_features(snapshot)
+        save_features(snapshot, found)
+    FEATURES_CACHE[key] = found
+    while len(FEATURES_CACHE) > FEATURES_CACHE_MAX:
+        FEATURES_CACHE.popitem(last=False)
+    return found
+
+
+def measure_blob_features(snapshot: CalibrationSnapshot) -> dict[int, np.ndarray]:
+    """Every text blob's matcher descriptor, measured from the snapshot's raster:
+    1,030 numbers per blob."""
     data = snapshot.metadata
     raster = read_raster(snapshot)
     dx, dy = data["offset_x"], data["offset_y"]
@@ -383,7 +399,4 @@ def blob_features(snapshot: CalibrationSnapshot) -> dict[int, np.ndarray]:
             ),
             dtype=np.float32,
         )
-    _FEATURES[key] = found
-    while len(_FEATURES) > _FEATURES_MAX:
-        _FEATURES.popitem(last=False)
     return found

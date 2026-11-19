@@ -40,8 +40,15 @@ def write_coords_to_page(*, mushaf: Mushaf, page_number: int, run: ProcessingRun
     Replaces any existing rows for that logical page (reprocessing overwrites it).
     """
     crop = coord_page.get("crop_box")
-    # Machine output is unreviewed; (re)processing clears any prior review flag.
-    defaults: dict = {"last_run": run, "reviewed": False}
+    # Machine output is unreviewed; (re)processing clears any prior review flag, and
+    # the finalized one with it: the lines it was given for are rebuilt below.
+    defaults: dict = {
+        "last_run": run,
+        "reviewed": False,
+        "lines_finalized": False,
+        "line_padding": None,
+        "sura_header_padding": None,
+    }
     if crop:
         defaults |= {
             "bbox_x": crop["x"],
@@ -105,6 +112,9 @@ def page_to_dict(page: Page) -> dict:
     return {
         "page_number": page.page_number,
         "bbox": page_column(page),
+        "lines_finalized": page.lines_finalized,
+        "line_padding": page.line_padding,
+        "sura_header_padding": page.sura_header_padding,
         "lines": [_line_to_dict(line) for line in _ordered_lines(page)],
     }
 
@@ -165,9 +175,9 @@ def _line_to_dict(line: Line) -> dict:
             for segment in line.segments.all()
         ],
         "erase_strokes": [
-            {"brush_size": stroke.brush_size, "points": stroke.points}
-            for stroke in line.erase_strokes.all()
+            {"brush_size": stroke.brush_size, "points": stroke.points} for stroke in line.erase_strokes.all()
         ],
+        "erase_edge_ink": line.erase_edge_ink,
         "line_png": _line_png_url(line),
     }
 
@@ -299,9 +309,7 @@ def plan_renumber(mushaf: Mushaf) -> RenumberPlan:
     counting_system = mushaf.rawi.counting_system if mushaf.rawi else None
     expected: dict[int, int] = {}
     if counting_system is not None:
-        expected = dict(
-            SuraAyaCount.objects.filter(counting_system=counting_system).values_list("sura_id", "count")
-        )
+        expected = dict(SuraAyaCount.objects.filter(counting_system=counting_system).values_list("sura_id", "count"))
 
     pages = list(
         Page.objects.filter(mushaf=mushaf)

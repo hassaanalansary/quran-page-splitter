@@ -170,6 +170,8 @@ export type AyaGroup = {
   sura: number;
   aya: number;
   rects: Rect[];
+  /** The page's line numbers it runs over, in order. */
+  lines: number[];
 };
 
 /** Group a derived page's segments into ayat, in reading order. An aya that
@@ -183,11 +185,12 @@ export function ayaGroups(page: DerivedPage | null | undefined): AyaGroup[] {
       const key = `${segment.sura}:${segment.aya}`;
       let group = byKey.get(key);
       if (!group) {
-        group = { key, sura: segment.sura, aya: segment.aya, rects: [] };
+        group = { key, sura: segment.sura, aya: segment.aya, rects: [], lines: [] };
         byKey.set(key, group);
         ordered.push(group);
       }
       group.rects.push(segment.bbox);
+      if (!group.lines.includes(line.line_number)) group.lines.push(line.line_number);
     }
   }
   return ordered;

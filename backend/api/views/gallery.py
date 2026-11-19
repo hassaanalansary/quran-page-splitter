@@ -10,12 +10,14 @@ import json
 import uuid
 from datetime import datetime
 
-from django.http import FileResponse, HttpRequest, HttpResponse
+from django.http import FileResponse, HttpRequest, HttpResponse, StreamingHttpResponse
+from django.utils.http import content_disposition_header
 from ninja import Router, Schema
 from ninja.security import django_auth
 
 from api.auth import current_user, optional_user
 from api.services import cloning as cloning_service
+from api.services import data_export as data_export_service
 from api.services import export as export_service
 from api.services import gallery as gallery_service
 
@@ -48,9 +50,22 @@ class GalleryDetailOut(GalleryItemOut):
     exported_line_count: int
 
 
+class QiraaFacetOut(Schema):
+    name: str
+    name_arabic: str
+    count: int
+
+
+class GalleryFacetsOut(Schema):
+    #: Entries under the search and completed filters, whatever the qiraa.
+    all: int
+    qiraat: list[QiraaFacetOut]
+
+
 class GalleryListOut(Schema):
     total: int
     items: list[GalleryItemOut]
+    facets: GalleryFacetsOut
 
 
 class PublishIn(Schema):
@@ -66,12 +81,25 @@ class DuplicateOut(Schema):
 def list_gallery(
     request: HttpRequest,
     qiraa: str | None = None,
+    q: str | None = None,
+    completed: bool = False,
+    sort: gallery_service.GallerySort = "published",
     limit: int = 24,
     offset: int = 0,
 ) -> dict:
-    """Published mushafs, newest first. Open to everyone."""
+    """Published mushafs. Open to everyone.
+
+    ``q`` searches the name, qiraa and author; ``completed`` keeps the fully
+    reviewed ones; ``sort`` is newest first, the most complete first, or by name.
+    """
     return gallery_service.list_published(
-        user=optional_user(request), qiraa=qiraa, limit=limit, offset=offset
+        user=optional_user(request),
+        qiraa=qiraa,
+        search=q,
+        completed=completed,
+        sort=sort,
+        limit=limit,
+        offset=offset,
     )
 
 
@@ -97,6 +125,21 @@ def gallery_lines_zip(request: HttpRequest, mushaf_id: uuid.UUID, page: int | No
     """The exported line PNGs of a published mushaf, as a zip."""
     filename, buffer = export_service.lines_zip(user=optional_user(request), mushaf_id=mushaf_id, page_number=page)
     return FileResponse(buffer, as_attachment=True, filename=filename, content_type="application/zip")
+
+
+@router.get("/{mushaf_id}/export.zip", auth=None)
+def gallery_export(
+    request: HttpRequest, mushaf_id: uuid.UUID, page: int | None = None, images: bool = True, maps: bool = True
+) -> StreamingHttpResponse:
+    """The full data export (schema mushaf-export/v2) of a published mushaf."""
+    filename, chunks = data_export_service.archive(
+        mushaf_id, user=optional_user(request), page_number=page, images=images, maps=maps
+    )
+    response = StreamingHttpResponse(chunks, content_type="application/zip")
+    # Through Django's helper: a mushaf's name is often Arabic, which a plain
+    # ``filename="…"`` cannot carry in a header.
+    response["Content-Disposition"] = content_disposition_header(as_attachment=True, filename=filename)
+    return response
 
 
 @router.post("/{mushaf_id}/duplicate", response={201: DuplicateOut}, auth=django_auth)

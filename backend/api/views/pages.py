@@ -37,12 +37,16 @@ class LineSchema(Schema):
     # by ``page_to_dict`` so the Finalize editor can round-trip saved erases,
     # and knows which lines already have an exported PNG.
     erase_strokes: list[EraseStrokeSchema] = Field(default_factory=list)
+    erase_edge_ink: bool = False
     line_png: str | None = None
 
 
 class PageDataOut(Schema):
     page_number: int
     bbox: RectSchema | None = None
+    lines_finalized: bool = False
+    line_padding: int | None = None
+    sura_header_padding: int | None = None
     lines: list[LineSchema]
 
 
@@ -60,6 +64,7 @@ class PageSuraOut(Schema):
 class PageSummaryOut(Schema):
     page_number: int
     reviewed: bool
+    lines_finalized: bool = False
     source_pdf_page: int
     lines: int
     ayat: int

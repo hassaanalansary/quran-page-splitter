@@ -35,19 +35,42 @@ export interface GalleryDetail extends GalleryItem {
   exported_line_count: number;
 }
 
+export interface QiraaFacet {
+  name: string;
+  name_arabic: string;
+  count: number;
+}
+
 export interface GalleryPage {
   total: number;
   items: GalleryItem[];
+  /** Counted under the search and completed filters but not the qiraa one, so the
+   * chips can offer every qiraa there is something in, and "All" its count. */
+  facets: { all: number; qiraat: QiraaFacet[] };
+}
+
+/** Newest first, the most reviewed first, or by name. */
+export type GallerySort = "published" | "complete" | "name";
+
+export interface GalleryQuery {
+  qiraa: string | null;
+  /** Matches the name, qiraa or author. */
+  search: string;
+  completed: boolean;
+  sort: GallerySort;
 }
 
 export const GALLERY_PAGE_SIZE = 24;
 
 export function listGallery(
-  params: { qiraa?: string | null; limit?: number; offset?: number } = {},
+  params: Partial<GalleryQuery> & { limit?: number; offset?: number } = {},
   signal?: AbortSignal,
 ): Promise<GalleryPage> {
   const query = new URLSearchParams();
   if (params.qiraa) query.set("qiraa", params.qiraa);
+  if (params.search?.trim()) query.set("q", params.search.trim());
+  if (params.completed) query.set("completed", "true");
+  if (params.sort && params.sort !== "published") query.set("sort", params.sort);
   query.set("limit", String(params.limit ?? GALLERY_PAGE_SIZE));
   query.set("offset", String(params.offset ?? 0));
   return apiGet<GalleryPage>(`/api/gallery?${query.toString()}`, signal);

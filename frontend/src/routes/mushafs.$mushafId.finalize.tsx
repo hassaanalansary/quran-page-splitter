@@ -1,23 +1,26 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute, useBlocker, useNavigate, useParams } from "@tanstack/react-router";
+import { createFileRoute, useNavigate, useParams } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
-import { Aside, Field, Hint, PanelCard, Section, StatusLine } from "@/components/app/Panel";
+import { Aside, Hint, StatusLine, StepBody } from "@/components/app/Panel";
 import { CanvasHelp } from "@/components/app/CanvasHelp";
+import { useLeaveGuard } from "@/components/app/LeaveGuard";
+import { InfoTip } from "@/components/app/InfoTip";
 import { ExportedLineDialog, type ExportedLine } from "@/components/app/ExportedLineDialog";
 import { LineNavigator } from "@/components/app/LineNavigator";
+import { BusyLabel } from "@/components/app/SatrLoader";
 import { TourOverlay } from "@/components/app/tour/TourOverlay";
 import { useStepTour, type TourStep } from "@/components/app/tour/useStepTour";
 import { FinalizeCanvas, type CanvasLine } from "@/components/canvas/FinalizeCanvas";
-import { Button } from "@/components/ui/button";
 import {
   API_BASE,
   ApiError,
   exportLines,
   finalizePage,
   linesZipUrl,
+  markLinesFinalized,
   pageImageUrl,
   queryKeys,
   useMushaf,
@@ -28,7 +31,19 @@ import {
   type LineType,
   type PageData,
   type Rect,
+  type UsualSuraHeader,
 } from "@/lib/api";
+
+/** Where this browser remembers whether erased edge ink is shown. */
+const SHOW_ERASED_EDGE_INK_KEY = "qps.finalize.showErasedEdgeInk";
+
+function readShowErasedEdgeInk(): boolean {
+  try {
+    return localStorage.getItem(SHOW_ERASED_EDGE_INK_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
 
 export const Route = createFileRoute("/mushafs/$mushafId/finalize")({
   validateSearch: (s: Record<string, unknown>) => ({ page: Math.max(1, Number(s.page) || 1) }),
@@ -40,6 +55,11 @@ type EditLine = {
   type: LineType;
   bbox: Rect;
   strokes: EraseStroke[];
+  /** Cut the ink reaching over the line's top or bottom edge (a neighbour's). */
+  eraseEdgeInk: boolean;
+  /** Padding added to this line since the page was loaded (see `growLine`). Kept
+   * on the line so undo and redo carry the number back with the box. */
+  pad: number;
 };
 
 /** Ceiling for the page-wide padding field (px above and below each line). */
@@ -62,14 +82,81 @@ function fromPageData(data: PageData | undefined): EditLine[] {
       h: l.bbox_h,
     },
     strokes: (l.erase_strokes ?? []).map((s) => ({ brush_size: s.brush_size, points: s.points })),
+    eraseEdgeInk: l.erase_edge_ink ?? false,
+    pad: 0,
   }));
+}
+
+/** Grow (negative: shrink) a line by `delta` px on its top AND bottom edge, and
+ * count it in the line's padding. Applied over the current box, so a trim made
+ * in between survives; a line pinned at the page's top edge still grows
+ * downward, and none grows past the page's bottom (`pageHeight`, once known). */
+function growLine(line: EditLine, delta: number, pageHeight: number | null): EditLine {
+  const y = Math.max(0, line.bbox.y - delta);
+  const grewTop = line.bbox.y - y;
+  const maxH = pageHeight != null ? pageHeight - y : Number.MAX_SAFE_INTEGER;
+  const h = Math.min(maxH, Math.max(1, line.bbox.h + grewTop + delta));
+  return { ...line, pad: line.pad + delta, bbox: { ...line.bbox, y, h } };
 }
 
 function lineSig(l: EditLine): string {
   const strokes = l.strokes
     .map((s) => `${s.brush_size}#${s.points.map((p) => `${p[0]},${p[1]}`).join(";")}`)
     .join("~");
-  return `${l.bbox.x},${l.bbox.y},${l.bbox.w},${l.bbox.h}|${strokes}`;
+  return `${l.bbox.x},${l.bbox.y},${l.bbox.w},${l.bbox.h}|${strokes}|${l.eraseEdgeInk ? 1 : 0}`;
+}
+
+function signLines(lines: EditLine[]): Map<number, string> {
+  return new Map(lines.map((l) => [l.line_number, lineSig(l)] as const));
+}
+
+/** The padding most of a page's lines were given since it loaded: what the page
+ * as a whole got, a line or two padded apart aside. */
+function findCommonPad(lines: EditLine[]): number {
+  const counts = new Map<number, number>();
+  for (const l of lines) counts.set(l.pad, (counts.get(l.pad) ?? 0) + 1);
+  let common = 0;
+  let most = 0;
+  for (const [pad, count] of counts) {
+    if (count > most) {
+      common = pad;
+      most = count;
+    }
+  }
+  return common;
+}
+
+/** Sura headers are finished apart: the page-wide edge-ink press leaves them out
+ * (a header's frame can reach its box's edges, and would go with the rule), and
+ * they keep a usual padding of their own. */
+function isSuraHeader(line: EditLine): boolean {
+  return line.type === "sura_header";
+}
+
+/** The edits a page opening with its lines unpadded gets, as the latest checked
+ * pages were finished: the usual padding (the sura headers their own, when they
+ * have one), then the edge ink erased — on the lines when they got the usual
+ * padding, on the headers when the latest pages erased theirs. Each step is an
+ * edit of its own, so the first Ctrl+Z brings the ink back and the next takes the
+ * padding off. Returns the history, starting with the page as it loaded. */
+function applyUsualEdits(
+  loaded: EditLine[],
+  linePad: number | null,
+  header: UsualSuraHeader | null,
+): EditLine[][] {
+  const headerPad = header?.padding ?? linePad;
+  const padded = loaded.map((l) => {
+    const pad = isSuraHeader(l) ? headerPad : linePad;
+    return pad ? growLine(l, pad, null) : l;
+  });
+  const erased = padded.map((l) => {
+    const erases = isSuraHeader(l) ? header?.erase_edge_ink === true : linePad != null;
+    return erases && !l.eraseEdgeInk ? { ...l, eraseEdgeInk: true } : l;
+  });
+  const stack = [loaded];
+  if (padded.some((l, i) => l !== loaded[i])) stack.push(padded);
+  if (erased.some((l, i) => l !== padded[i])) stack.push(erased);
+  return stack;
 }
 
 /** Prefix media paths (relative from the export endpoint) with a leading slash. */
@@ -82,7 +169,7 @@ function FinalizePage() {
   const { page } = Route.useSearch();
   const navigate = useNavigate({ from: "/mushafs/$mushafId/finalize" });
   const queryClient = useQueryClient();
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
 
   const { data: mushaf } = useMushaf(mushafId);
   const { data: pages } = useProcessedPages(mushafId);
@@ -90,15 +177,38 @@ function FinalizePage() {
 
   const [model, setModel] = useState<EditLine[]>([]);
   const [baseline, setBaseline] = useState<Map<number, string>>(new Map());
+  // What leaving the step would lose: the saved page, or — when the usual padding
+  // was put on as it opened — the page with it. Moving on unpadded is no loss.
+  const [guardBaseline, setGuardBaseline] = useState<Map<number, string>>(new Map());
+  // The padding the page's lines already had when it loaded (saved with it), and
+  // the usual padding put on as it opened, if it was.
+  const [padBase, setPadBase] = useState(0);
+  const [autoPadded, setAutoPadded] = useState<number | null>(null);
+  // Whether the edge ink was erased page-wide as it opened, after the usual padding.
+  const [autoErased, setAutoErased] = useState(false);
+  // The same for the sura headers: the padding they already had when the page
+  // loaded — null when not known, on a page padded before it was recorded — and
+  // how they were finished as it opened, if they were.
+  const [headerPadBase, setHeaderPadBase] = useState<number | null>(0);
+  const [autoHeader, setAutoHeader] = useState<UsualSuraHeader | null>(null);
   const [selected, setSelected] = useState<number | null>(null);
   const [brushSize, setBrushSize] = useState(16);
+  // Whether the canvas shows what edge-ink erasing cut, dimmed. A view only, kept in
+  // this browser so it stays on page after page while checking.
+  const [showErasedEdgeInk, setShowErasedEdgeInk] = useState(readShowErasedEdgeInk);
+  const changeShowErasedEdgeInk = (shown: boolean) => {
+    setShowErasedEdgeInk(shown);
+    try {
+      localStorage.setItem(SHOW_ERASED_EDGE_INK_KEY, shown ? "1" : "0");
+    } catch {
+      // Private window or blocked storage: the choice lasts until the page reloads.
+    }
+  };
   const [builtFor, setBuiltFor] = useState<number | null>(null);
   // Exported PNGs keep their filename when re-exported, so the browser would
   // serve the previous cut — this stamp busts that cache.
   const [pngVersion, setPngVersion] = useState(0);
   const [viewing, setViewing] = useState<number | null>(null);
-  // Padding added to every line of this page since it was loaded (see `padded`).
-  const [pad, setPad] = useState(0);
   const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);
 
   // ── undo/redo history (one entry per committed edit) ─────────────────────────
@@ -132,21 +242,41 @@ function FinalizePage() {
     forceHist();
   }, []);
 
+  // The padding the latest checked pages agree on; null until the mushaf loads.
+  const usualPadding = mushaf ? (mushaf.usual_line_padding ?? 0) : null;
+  // How they finished their sura headers; null while there is no habit yet.
+  const usualSuraHeader = mushaf?.usual_sura_header ?? null;
+
   // Build the model once per page (a save patches the cache in place, guarded by
   // the page number so it never clobbers in-flight edits).
   useEffect(() => {
-    if (!pageData || builtFor === page) return;
-    const next = fromPageData(pageData);
+    if (!pageData || usualPadding === null || builtFor === page) return;
+    const loaded = fromPageData(pageData);
+    // A page whose lines were never padded here, nor checked, opens as the latest
+    // checked pages were finished — as edits of their own, so they are unsaved and
+    // Ctrl+Z takes them off.
+    const fresh = pageData.line_padding == null && !pageData.lines_finalized;
+    const linePad = fresh && usualPadding !== 0 ? usualPadding : null;
+    const headerHabit = fresh && loaded.some(isSuraHeader) ? usualSuraHeader : null;
+    const stack = applyUsualEdits(loaded, linePad, headerHabit);
+    const next = stack[stack.length - 1];
     setModel(next);
-    historyRef.current = { stack: [next], index: 0 };
+    historyRef.current = { stack, index: stack.length - 1 };
     forceHist();
-    setBaseline(new Map(next.map((l) => [l.line_number, lineSig(l)] as const)));
-    setSelected(next[0]?.line_number ?? null);
-    setPad(0);
+    setBaseline(signLines(loaded));
+    setGuardBaseline(signLines(next));
+    setPadBase(pageData.line_padding ?? 0);
+    setHeaderPadBase(pageData.sura_header_padding ?? (fresh ? 0 : null));
+    setAutoPadded(linePad);
+    setAutoErased(linePad != null);
+    setAutoHeader(headerHabit);
+    // Nothing selected: the padding field then acts on the whole page. The view
+    // still opens fitted on the first line — the canvas resets it per image.
+    setSelected(null);
     setPngVersion(0);
     setViewing(null);
     setBuiltFor(page);
-  }, [pageData, page, builtFor]);
+  }, [pageData, usualPadding, usualSuraHeader, page, builtFor]);
 
   // The page's exported PNGs, from the server — so lines exported in an earlier
   // session show up as soon as the page opens, not only after a fresh export.
@@ -178,6 +308,31 @@ function FinalizePage() {
     () => model.some((l) => baseline.get(l.line_number) !== lineSig(l)),
     [model, baseline],
   );
+  const leavingLoses = useMemo(
+    () => model.some((l) => guardBaseline.get(l.line_number) !== lineSig(l)),
+    [model, guardBaseline],
+  );
+  // The padding the page's lines carry now, saved with them: what they had when
+  // the page loaded, plus what most of them were given since. The sura headers'
+  // the same way, apart — sent only on a page that has one and when it is known.
+  const textLines = model.filter((l) => !isSuraHeader(l));
+  const headerLines = model.filter(isSuraHeader);
+  const linePadding = padBase + findCommonPad(textLines);
+  const suraHeaderPadding =
+    headerPadBase != null && headerLines.length > 0
+      ? headerPadBase + findCommonPad(headerLines)
+      : undefined;
+  // Said only while the lines still carry it: Ctrl+Z takes the note off with it.
+  const usualPaddingOn = autoPadded != null && findCommonPad(textLines) === autoPadded;
+  const usualHeaderPadding = autoHeader?.padding ? autoHeader.padding : null;
+  const usualHeaderPaddingOn =
+    usualHeaderPadding != null &&
+    headerLines.length > 0 &&
+    headerLines.every((l) => l.pad === usualHeaderPadding);
+  const usualHeaderErasedOn =
+    autoHeader?.erase_edge_ink === true &&
+    headerLines.length > 0 &&
+    headerLines.every((l) => l.eraseEdgeInk);
 
   // Save the whole page so every line's x/w lands uniformly in the DB (and export).
   const buildPayload = (): FinalizeLine[] =>
@@ -185,25 +340,24 @@ function FinalizePage() {
       line_number: l.line_number,
       bbox_override: { ...l.bbox },
       erase_strokes: l.strokes,
+      erase_edge_ink: l.eraseEdgeInk,
     }));
 
   const markSaved = (fresh: PageData) => {
     queryClient.setQueryData(queryKeys.page(mushafId, page), fresh);
-    setBaseline(new Map(model.map((l) => [l.line_number, lineSig(l)] as const)));
+    const saved = signLines(model);
+    setBaseline(saved);
+    setGuardBaseline(saved);
   };
-
-  const saveMutation = useMutation({
-    mutationFn: () => finalizePage(mushafId, page, buildPayload()),
-    onSuccess: (fresh) => {
-      markSaved(fresh);
-      toast.success(t("finalize.cutsSaved"));
-    },
-    onError: (e) => toast.error(e instanceof ApiError ? e.message : t("finalize.saveFailed")),
-  });
 
   const exportMutation = useMutation({
     mutationFn: async () => {
-      const fresh = dirty ? await finalizePage(mushafId, page, buildPayload()) : null;
+      const fresh = dirty
+        ? await finalizePage(mushafId, page, buildPayload(), {
+            line_padding: linePadding,
+            sura_header_padding: suraHeaderPadding,
+          })
+        : null;
       const res = await exportLines(mushafId, page);
       return { fresh, res };
     },
@@ -231,15 +385,48 @@ function FinalizePage() {
     onError: (e) => toast.error(e instanceof ApiError ? e.message : t("finalize.exportFailed")),
   });
 
-  const busy = saveMutation.isPending || exportMutation.isPending;
-
-  useBlocker({
-    enableBeforeUnload: () => dirty,
-    shouldBlockFn: ({ current, next }) => {
-      if (current.pathname === next.pathname) return false;
-      if (!dirty) return false;
-      return !window.confirm(t("finalize.leaveConfirm"));
+  // The tracker. Marking a page's cuts checked saves them with it, in one request,
+  // and opens the next page — as Review's "Mark reviewed → next" does.
+  const checked = pageData?.lines_finalized ?? false;
+  const invalidateTracker = () => {
+    queryClient.invalidateQueries({ queryKey: queryKeys.processedPages(mushafId) });
+    // The detail carries the checked count and the usual lines' and headers' edits.
+    queryClient.invalidateQueries({ queryKey: queryKeys.mushaf(mushafId), exact: true });
+  };
+  const checkAndNextMutation = useMutation({
+    mutationFn: () =>
+      finalizePage(mushafId, page, buildPayload(), {
+        line_padding: linePadding,
+        sura_header_padding: suraHeaderPadding,
+        lines_finalized: true,
+      }),
+    onSuccess: (fresh) => {
+      markSaved(fresh);
+      invalidateTracker();
+      const last = mushaf?.logical_page_count ?? page;
+      if (page < last) navigate({ search: { page: page + 1 } });
+      else toast.success(t("finalize.checkedLast", { page }));
     },
+    onError: (e) => toast.error(e instanceof ApiError ? e.message : t("finalize.checkFailed")),
+  });
+  const clearCheckMutation = useMutation({
+    mutationFn: () => markLinesFinalized(mushafId, page, false),
+    onSuccess: (res) => {
+      queryClient.setQueryData<PageData>(queryKeys.page(mushafId, page), (prev) =>
+        prev ? { ...prev, lines_finalized: res.lines_finalized } : prev,
+      );
+      invalidateTracker();
+      toast.success(t("finalize.uncheckedToast", { page }));
+    },
+    onError: (e) => toast.error(e instanceof ApiError ? e.message : t("finalize.checkFailed")),
+  });
+
+  const busy =
+    exportMutation.isPending || checkAndNextMutation.isPending || clearCheckMutation.isPending;
+
+  const leaveDialog = useLeaveGuard({
+    dirty: () => leavingLoses,
+    body: t("finalize.leaveBody", { page }),
   });
 
   const tourSteps: TourStep[] = [
@@ -289,7 +476,9 @@ function FinalizePage() {
   ) : dirty ? (
     <StatusLine>{t("finalize.unsavedStatus")}</StatusLine>
   ) : (
-    <StatusLine tone="success">{t("finalize.savedStatus")}</StatusLine>
+    <StatusLine tone="success">
+      {checked ? t("finalize.checkedStatus") : t("finalize.savedStatus")}
+    </StatusLine>
   );
 
   // live (no history) — used during an edge-drag
@@ -298,31 +487,31 @@ function FinalizePage() {
       m.map((l) => (l.line_number === n ? { ...l, bbox: { ...l.bbox, ...box } } : l)),
     );
 
-  /** Grow (negative: shrink) every line by `delta` px on its top AND bottom
-   * edge. Applied as a delta over the current boxes, so per-line trims made in
-   * between survive; a line pinned at the page edge still grows downward. */
-  const padded = (m: EditLine[], delta: number): EditLine[] =>
-    m.map((l) => {
-      const y = Math.max(0, l.bbox.y - delta);
-      const grewTop = l.bbox.y - y;
-      const maxH = natural ? natural.h - y : Number.MAX_SAFE_INTEGER;
-      const h = Math.min(maxH, Math.max(1, l.bbox.h + grewTop + delta));
-      return { ...l, bbox: { ...l.bbox, y, h } };
-    });
-  // typing in the field: preview only (history lands on blur, like Y/H)
-  const livePadding = (next: number) => {
-    const delta = next - pad;
-    if (!delta) return;
-    setPad(next);
-    setModel((m) => padded(m, delta));
-  };
-  // −/+ buttons: one discrete step, one history entry
-  const stepPadding = (next: number) => {
-    const delta = next - pad;
-    if (!delta) return;
-    setPad(next);
-    commit(padded(model, delta));
-  };
+  // The padding field acts on the selected line, or on every line when none is.
+  const padsLine = (l: EditLine) => selected == null || l.line_number === selected;
+  const padTargets = model.filter(padsLine);
+  // What the field shows: the one padding its lines share — none when they differ.
+  const padShown =
+    padTargets.length > 0 && padTargets.every((l) => l.pad === padTargets[0].pad)
+      ? padTargets[0].pad
+      : null;
+  const pageHeight = natural?.h ?? null;
+  // typing in the field: preview only (history lands on blur, like Y/H). Sets
+  // every line it acts on to that padding, even lines that differed before.
+  const livePadding = (next: number) =>
+    setModel((m) =>
+      m.map((l) => (padsLine(l) && l.pad !== next ? growLine(l, next - l.pad, pageHeight) : l)),
+    );
+  // −/+ buttons: one step on each line it acts on, keeping their differences;
+  // one history entry
+  const stepPadding = (step: number) =>
+    commit(
+      model.map((l) => {
+        if (!padsLine(l)) return l;
+        const next = Math.max(PAD_MIN, Math.min(PAD_MAX, l.pad + step));
+        return next === l.pad ? l : growLine(l, next - l.pad, pageHeight);
+      }),
+    );
   // discrete (pushes history)
   const commitLine = (n: number, fn: (l: EditLine) => EditLine) =>
     commit(model.map((l) => (l.line_number === n ? fn(l) : l)));
@@ -344,7 +533,19 @@ function FinalizePage() {
         brush_size: s.brush_size,
         points: s.points,
       })),
+      eraseEdgeInk: src.erase_edge_ink ?? false,
+      pad: 0,
     }));
+  };
+
+  // Edge ink acts on the selected line, or on every line but the sura headers.
+  const edgeTargets = sel ? [sel] : textLines;
+  const edgeAllOn = edgeTargets.length > 0 && edgeTargets.every((l) => l.eraseEdgeInk);
+  // Said only while the page still has it: Ctrl+Z takes the note off with it.
+  const autoErasedOn = autoErased && textLines.length > 0 && textLines.every((l) => l.eraseEdgeInk);
+  const toggleEdgeInk = () => {
+    const targets = new Set(edgeTargets.map((l) => l.line_number));
+    commit(model.map((l) => (targets.has(l.line_number) ? { ...l, eraseEdgeInk: !edgeAllOn } : l)));
   };
 
   const canvasLines: CanvasLine[] = model.map((l) => ({
@@ -352,13 +553,12 @@ function FinalizePage() {
     type: l.type,
     bbox: l.bbox,
     strokes: l.strokes,
+    eraseEdgeInk: l.eraseEdgeInk,
     edited: baseline.get(l.line_number) !== lineSig(l),
   }));
 
   return (
-    <div
-      className={`flex ${i18n.language === "ar" ? "flex-row-reverse" : "flex-row"} flex-1 overflow-hidden`}
-    >
+    <StepBody>
       <div data-tour="finalize-canvas" className="relative flex flex-1 overflow-hidden">
         <FinalizeCanvas
           imageUrl={pageImageUrl(mushafId, page, mushaf.updated_at)}
@@ -372,7 +572,8 @@ function FinalizePage() {
           }
           processed={pages?.processed}
           reviewed={pages?.reviewed}
-          label={t("finalize.pdfPage", { pdf: mushaf.first_quran_pdf_page + page - 1 })}
+          finalized={pages?.finalized}
+          label={t("canvas.pdfShort", { page: mushaf.first_quran_pdf_page + page - 1 })}
           onSelectLine={setSelected}
           onResizeLine={liveLine}
           onResizeCommit={(n, box) => commitLine(n, (l) => ({ ...l, bbox: { ...l.bbox, ...box } }))}
@@ -384,6 +585,7 @@ function FinalizePage() {
           canUndo={historyRef.current.index > 0}
           canRedo={historyRef.current.index < historyRef.current.stack.length - 1}
           onNatural={setNatural}
+          showErasedEdgeInk={showErasedEdgeInk}
         />
         <CanvasHelp
           guideItems={guideItems}
@@ -393,38 +595,63 @@ function FinalizePage() {
       </div>
 
       <Aside
+        meta={t("finalize.meta", { page, count: model.length })}
         status={status}
         footer={
-          <div data-tour="finalize-export" className="flex flex-col gap-2">
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                className="flex-1"
-                onClick={() => saveMutation.mutate()}
-                disabled={!dirty || busy}
+          <div data-tour="finalize-export" className="flex flex-col gap-2.5">
+            {/* The tracker. Checking is a person's word that the cuts are right; it
+                saves them and opens the next page. Exporting never sets it, so an
+                export to look at a result is free. */}
+            <button
+              type="button"
+              onClick={() => checkAndNextMutation.mutate()}
+              disabled={!hasLines || busy}
+              className="inline-flex h-11 cursor-pointer items-center justify-center rounded-control bg-lapis text-[14px] font-semibold text-on-lapis transition-colors hover:bg-lapis/90 disabled:cursor-default disabled:opacity-50"
+            >
+              {checkAndNextMutation.isPending ? (
+                <BusyLabel>{t("common.saving")}</BusyLabel>
+              ) : checked ? (
+                t("finalize.checkedNext")
+              ) : (
+                t("finalize.checkNext")
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => exportMutation.mutate()}
+              disabled={!hasLines || busy}
+              className="inline-flex h-11 cursor-pointer items-center justify-center rounded-control border border-ink bg-transparent text-[14px] font-semibold text-ink transition-colors hover:bg-sunk disabled:cursor-default disabled:opacity-50"
+            >
+              {exportMutation.isPending ? (
+                <BusyLabel>{t("finalize.exporting")}</BusyLabel>
+              ) : (
+                t("finalize.exportPage")
+              )}
+            </button>
+            {checked && (
+              <button
+                type="button"
+                onClick={() => clearCheckMutation.mutate()}
+                disabled={busy}
+                className="cursor-pointer border-0 bg-transparent p-0 text-center text-[13px] font-semibold text-ink-2 hover:underline disabled:cursor-default disabled:opacity-50"
               >
-                {saveMutation.isPending ? t("common.saving") : t("finalize.saveCuts")}
-              </Button>
-              <Button
-                className="flex-1"
-                onClick={() => exportMutation.mutate()}
-                disabled={!hasLines || busy}
-              >
-                {exportMutation.isPending ? t("finalize.exporting") : t("finalize.exportPage")}
-              </Button>
-            </div>
+                {t("finalize.clearCheck")}
+              </button>
+            )}
             {/* The PNGs live under media/ until they're pulled out — this is how
                 they leave the tool, saved wherever the browser asks. */}
             {exported.size > 0 ? (
-              <Button asChild variant="outline" className="w-full">
-                <a href={linesZipUrl(mushafId, page)} download>
-                  {t("finalize.downloadZip", { count: exported.size })}
-                </a>
-              </Button>
+              <a
+                href={linesZipUrl(mushafId, page)}
+                download
+                className="text-center text-[13px] font-semibold text-lapis-text no-underline hover:underline"
+              >
+                {t("finalize.downloadZip", { count: exported.size })}
+              </a>
             ) : (
-              <Button variant="outline" className="w-full" disabled title={t("finalize.zipHint")}>
+              <span className="text-center text-[13px] text-ink-3" title={t("finalize.zipHint")}>
                 {t("finalize.downloadZipEmpty")}
-              </Button>
+              </span>
             )}
           </div>
         }
@@ -434,7 +661,6 @@ function FinalizePage() {
         ) : (
           <>
             <LineNavigator
-              title={t("finalize.linesTitle", { count: model.length })}
               lines={canvasLines.map((l) => ({
                 key: String(l.line_number),
                 line_number: l.line_number,
@@ -446,12 +672,17 @@ function FinalizePage() {
                 badges: (
                   <>
                     {l.edited && (
-                      <span className="rounded-pill bg-orange px-1.5 text-[9px] font-bold text-white">
+                      <span className="rounded-pill bg-gold px-1.5 text-[10.5px] font-semibold text-on-gold">
                         {t("finalize.edited")}
                       </span>
                     )}
+                    {l.eraseEdgeInk && (
+                      <span className="rounded-pill bg-sunk px-1.5 text-[10.5px] font-semibold text-ink-2">
+                        {t("finalize.edgeInkBadge")}
+                      </span>
+                    )}
                     {exported.has(l.line_number) && (
-                      <span className="rounded-pill bg-navy px-1.5 text-[9px] font-bold text-white">
+                      <span className="rounded-pill bg-lapis-wash px-1.5 text-[10.5px] font-semibold text-lapis-text">
                         {t("finalize.png")}
                       </span>
                     )}
@@ -461,59 +692,135 @@ function FinalizePage() {
               selectedKey={selected != null ? String(selected) : null}
               onSelect={(key) => setSelected(Number(key))}
               emptyText={t("finalize.noLines", { page })}
+              noneText={t("finalize.noLineSelected")}
             />
 
-            <div data-tour="finalize-tools" className="flex flex-col gap-4">
-              <Section title={t("finalize.paddingTitle")}>
-                <Field label={t("finalize.paddingLabel")} info={t("tips.linePadding")}>
-                  <div className="flex items-center justify-center gap-2 mt-2">
-                    <PadStep
-                      label="−"
-                      title={t("finalize.paddingLess")}
-                      disabled={pad <= PAD_MIN}
-                      onClick={() => stepPadding(Math.max(PAD_MIN, pad - PAD_STEP))}
-                    />
-                    <input
-                      type="number"
-                      min={PAD_MIN}
-                      max={PAD_MAX}
-                      value={pad}
-                      onChange={(e) =>
-                        livePadding(
-                          Math.max(
-                            PAD_MIN,
-                            Math.min(PAD_MAX, Math.round(Number(e.target.value) || 0)),
-                          ),
-                        )
-                      }
-                      onBlur={() => commit(model)}
-                      className="h-8 w-32 rounded border-[1.5px] border-border-strong px-2 text-center text-[12px] tabular-nums outline-none [appearance:textfield] focus:border-orange [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                    />
-                    <PadStep
-                      label="+"
-                      title={t("finalize.paddingMore")}
-                      disabled={pad >= PAD_MAX}
-                      onClick={() => stepPadding(Math.min(PAD_MAX, pad + PAD_STEP))}
-                    />
-                  </div>
-                </Field>
-              </Section>
-
-              <Section title={t("finalize.eraser")}>
-                <Field label={t("finalize.brushSize", { size: brushSize })} info={t("tips.brush")}>
-                  <input
-                    type="range"
-                    min={2}
-                    max={120}
-                    value={brushSize}
-                    onChange={(e) => setBrushSize(Number(e.target.value))}
-                    className="w-full"
+            <div data-tour="finalize-tools" className="flex flex-col gap-3.5">
+              <Card
+                title={
+                  sel
+                    ? t("finalize.paddingTitleLine", { n: sel.line_number })
+                    : t("finalize.paddingTitle")
+                }
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  <PadStep
+                    label="−"
+                    title={t("finalize.paddingLess")}
+                    disabled={padTargets.every((l) => l.pad <= PAD_MIN)}
+                    onClick={() => stepPadding(-PAD_STEP)}
                   />
-                </Field>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    className="h-8 flex-1 text-[11px]"
+                  <input
+                    type="number"
+                    min={PAD_MIN}
+                    max={PAD_MAX}
+                    value={padShown ?? ""}
+                    placeholder="—"
+                    aria-label={t("finalize.paddingLabel")}
+                    onChange={(e) =>
+                      livePadding(
+                        Math.max(
+                          PAD_MIN,
+                          Math.min(PAD_MAX, Math.round(Number(e.target.value) || 0)),
+                        ),
+                      )
+                    }
+                    onBlur={() => commit(model)}
+                    className="h-9 w-16 rounded-control border border-rule-2 bg-card text-center font-mono text-[14px] font-medium text-ink outline-none [appearance:textfield] focus:border-lapis focus:shadow-[inset_0_0_0_1px_var(--lapis)] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                  />
+                  <PadStep
+                    label="+"
+                    title={t("finalize.paddingMore")}
+                    disabled={padTargets.every((l) => l.pad >= PAD_MAX)}
+                    onClick={() => stepPadding(PAD_STEP)}
+                  />
+                  <span className="flex items-center gap-1 text-[12.5px] text-ink-3">
+                    {sel ? t("finalize.paddingNoteLine") : t("finalize.paddingNote")}
+                    <InfoTip text={t("tips.linePadding")} />
+                  </span>
+                </div>
+                {usualPaddingOn && (
+                  <span className="text-[12.5px] leading-normal text-ink-2">
+                    {t("finalize.usualPaddingApplied", { px: autoPadded })}
+                  </span>
+                )}
+                {usualHeaderPaddingOn && (
+                  <span className="text-[12.5px] leading-normal text-ink-2">
+                    {t("finalize.usualHeaderPaddingApplied", { px: usualHeaderPadding })}
+                  </span>
+                )}
+              </Card>
+
+              <Card title={t("finalize.edgeInk")} end={<InfoTip text={t("tips.edgeInk")} />}>
+                <div className="flex">
+                  <button
+                    type="button"
+                    disabled={edgeTargets.length === 0}
+                    onClick={toggleEdgeInk}
+                    className={`${SMALL} ${edgeAllOn ? "text-ink" : "text-stop-text"}`}
+                  >
+                    {edgeAllOn ? t("finalize.edgeInkRestore") : t("finalize.edgeInkErase")}
+                  </button>
+                </div>
+                <span className="text-[12.5px] leading-normal text-ink-2">
+                  {sel
+                    ? t("finalize.edgeInkScopeLine", { n: sel.line_number })
+                    : t("finalize.edgeInkScopePage")}
+                </span>
+                <label className="flex cursor-pointer items-start gap-2.5 text-[13px] leading-snug">
+                  <input
+                    type="checkbox"
+                    checked={showErasedEdgeInk}
+                    onChange={(event) => changeShowErasedEdgeInk(event.target.checked)}
+                    className="mt-0.5 h-[17px] w-[17px] flex-none cursor-pointer accent-lapis"
+                  />
+                  <span className="flex flex-col gap-0.5">
+                    <span>{t("finalize.edgeInkShowErased")}</span>
+                    <span className="text-[12px] text-ink-3">
+                      {t("finalize.edgeInkShowErasedHint")}
+                    </span>
+                  </span>
+                </label>
+                {autoErasedOn && (
+                  <span className="text-[12.5px] leading-normal text-ink-2">
+                    {t("finalize.edgeInkAutoApplied")}
+                  </span>
+                )}
+                {usualHeaderErasedOn && (
+                  <span className="text-[12.5px] leading-normal text-ink-2">
+                    {t("finalize.edgeInkHeaderAutoApplied")}
+                  </span>
+                )}
+              </Card>
+
+              <Card
+                title={t("finalize.eraser")}
+                end={
+                  <span className="flex items-center gap-1">
+                    <span className="font-mono text-[12.5px]">
+                      {t("finalize.brushPx", { size: brushSize })}
+                    </span>
+                    <InfoTip text={t("tips.brush")} />
+                  </span>
+                }
+              >
+                <input
+                  type="range"
+                  min={2}
+                  max={120}
+                  value={brushSize}
+                  aria-label={t("finalize.brushSize", { size: brushSize })}
+                  onChange={(e) => setBrushSize(Number(e.target.value))}
+                  className="w-full cursor-pointer accent-stop"
+                />
+                <span className="text-[12.5px] leading-normal text-ink-2">
+                  {sel
+                    ? t("finalize.strokeInfo", { line: sel.line_number, count: sel.strokes.length })
+                    : t("finalize.selectLineShort")}
+                </span>
+                <div className="flex gap-1.5">
+                  <button
+                    type="button"
                     disabled={!sel || sel.strokes.length === 0}
                     onClick={() =>
                       sel &&
@@ -522,31 +829,27 @@ function FinalizePage() {
                         strokes: l.strokes.slice(0, -1),
                       }))
                     }
+                    className={`${SMALL} text-ink`}
                   >
                     {t("finalize.undoStroke")}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="h-8 flex-1 text-[11px]"
+                  </button>
+                  <button
+                    type="button"
                     disabled={!sel || sel.strokes.length === 0}
                     onClick={() =>
                       sel && commitLine(sel.line_number, (l) => ({ ...l, strokes: [] }))
                     }
+                    className={`${SMALL} text-stop-text`}
                   >
                     {t("finalize.clearLine")}
-                  </Button>
+                  </button>
                 </div>
-                <p className="text-[10.5px] leading-snug text-text-muted">
-                  {sel
-                    ? t("finalize.strokeInfo", { line: sel.line_number, count: sel.strokes.length })
-                    : t("finalize.selectLineShort")}
-                </p>
-              </Section>
+              </Card>
 
-              <Section title={t("finalize.lineBox")}>
+              <Card title={t("finalize.lineBox")}>
                 {sel ? (
                   <>
-                    <div className="grid grid-cols-2 gap-2">
+                    <div dir="ltr" className="grid grid-cols-2 gap-2">
                       <EditNum
                         label="Y"
                         value={sel.bbox.y}
@@ -564,58 +867,88 @@ function FinalizePage() {
                         onCommit={() => commit(model)}
                       />
                     </div>
-                    <Button
-                      variant="outline"
-                      className="h-8 w-full text-[11px]"
+                    <span className="text-[12px] leading-[1.45] text-ink-3">
+                      {t("finalize.lockNote")}
+                    </span>
+                    <button
+                      type="button"
                       onClick={() => revertLine(sel.line_number)}
+                      className={`${SMALL} text-ink`}
                     >
                       {t("finalize.revertLine")}
-                    </Button>
-                    <p className="text-[10.5px] leading-snug text-text-muted">
-                      {t("finalize.lockNote")}
-                    </p>
+                    </button>
                   </>
                 ) : (
-                  <p className="text-[12px] text-text-muted">{t("finalize.selectLineBox")}</p>
+                  <p className="m-0 text-[12.5px] text-ink-3">{t("finalize.selectLineBox")}</p>
                 )}
-              </Section>
+              </Card>
             </div>
 
             {exportedLines.length > 0 && (
-              <PanelCard title={t("finalize.exportedTitle", { count: exportedLines.length })}>
-                <p className="-mt-1 text-[10.5px] leading-snug text-text-muted">
-                  {t("finalize.exportedNote")}
-                </p>
-                <div className="flex flex-col gap-2">
+              <section className="flex flex-col gap-2">
+                <div className="flex items-baseline justify-between gap-2">
+                  <h2 className="m-0 text-[12px] font-semibold uppercase tracking-[0.08em] text-ink-3">
+                    {t("finalize.exportedTitle", { count: exportedLines.length })}
+                  </h2>
+                  <span className="text-[12px] text-ink-3">{t("finalize.exportedNote")}</span>
+                </div>
+                <div dir="ltr" className="grid grid-cols-7 gap-[5px]">
                   {exportedLines.map((l) => (
                     <button
                       key={l.line_number}
                       type="button"
                       onClick={() => setViewing(l.line_number)}
                       title={t("finalize.viewerOpen", { n: l.line_number })}
-                      className="flex cursor-pointer items-center gap-2 rounded border border-border p-1.5 transition-colors hover:border-orange hover:bg-orange-tint"
+                      aria-label={t("finalize.viewerOpen", { n: l.line_number })}
+                      className="flex h-[22px] cursor-pointer items-center overflow-hidden rounded border border-rule bg-page px-[3px] transition-colors hover:border-lapis"
                     >
-                      <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded bg-bg-muted text-[10px] font-semibold text-text-secondary">
-                        {l.line_number}
-                      </span>
                       <img
                         src={l.src}
-                        alt={t("finalize.lineAlt", { n: l.line_number })}
-                        className="max-h-8 min-w-0 flex-1 bg-[repeating-conic-gradient(#eee_0_25%,transparent_0_50%)] bg-[length:10px_10px] object-contain"
+                        alt=""
+                        className="max-h-full min-w-0 flex-1 object-contain"
                       />
                     </button>
                   ))}
                 </div>
-              </PanelCard>
+              </section>
             )}
           </>
         )}
       </Aside>
 
       <ExportedLineDialog lines={exportedLines} current={viewing} onCurrentChange={setViewing} />
+      {leaveDialog}
 
       <TourOverlay tour={tour} />
-    </div>
+    </StepBody>
+  );
+}
+
+/** A small outlined button in an inspector card. */
+const SMALL =
+  "inline-flex h-[34px] flex-1 cursor-pointer items-center justify-center rounded-control border border-rule-2 bg-card text-[12.5px] font-semibold transition-colors hover:bg-sheet disabled:cursor-default disabled:opacity-50";
+
+/** A card of the inspector: the small uppercase title (with anything at its end),
+ * then the controls. */
+function Card({
+  title,
+  end,
+  children,
+}: {
+  title: string;
+  end?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="flex flex-col gap-2.5 rounded-card border border-rule bg-card p-3.5">
+      <div className="flex items-baseline justify-between gap-2">
+        <h2 className="m-0 text-[12px] font-semibold uppercase tracking-[0.08em] text-ink-3">
+          {title}
+        </h2>
+        {end}
+      </div>
+      {children}
+    </section>
   );
 }
 
@@ -637,7 +970,7 @@ function PadStep({
       aria-label={title}
       disabled={disabled}
       onClick={onClick}
-      className="h-8 w-8 flex-none cursor-pointer rounded border-[1.5px] border-border-strong bg-white text-[14px] font-semibold text-text-secondary transition-colors hover:bg-bg-surface disabled:cursor-not-allowed disabled:opacity-40"
+      className="h-9 w-9 flex-none cursor-pointer rounded-control border border-rule-2 bg-card font-mono text-[18px] font-semibold text-ink transition-colors hover:bg-sheet disabled:cursor-not-allowed disabled:opacity-40"
     >
       {label}
     </button>
@@ -656,14 +989,14 @@ function EditNum({
   onCommit: () => void;
 }) {
   return (
-    <label className="flex items-center gap-1.5">
-      <span className="w-3 text-[11px] font-semibold text-text-muted">{label}</span>
+    <label className="flex min-w-0 flex-col gap-1">
+      <span className="text-[12px] text-ink-3">{label}</span>
       <input
         type="number"
         value={Math.round(value)}
         onChange={(e) => onChange(Math.round(Number(e.target.value) || 0))}
         onBlur={onCommit}
-        className="h-8 w-full rounded border-[1.5px] border-border-strong px-2 text-right text-[12px] tabular-nums outline-none [appearance:textfield] focus:border-orange [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+        className="h-[34px] w-full min-w-0 rounded-control border border-rule-2 bg-card px-2.5 font-mono text-[13.5px] font-medium text-ink outline-none [appearance:textfield] focus:border-lapis focus:shadow-[inset_0_0_0_1px_var(--lapis)] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
       />
     </label>
   );
