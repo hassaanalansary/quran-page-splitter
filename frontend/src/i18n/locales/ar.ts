@@ -772,6 +772,9 @@ export const ar: typeof en = {
     edgeInkHeaderAutoApplied:
       "مُحي مِداد حواف عناوين السور عند فتح الصفحة، كما في آخر الصفحات المُدقَّقة.",
     edgeInkBadge: "حواف",
+    edgeInkShowErased: "أظهر الحبر الممحوّ باهتًا",
+    edgeInkShowErasedHint:
+      "لتتحقق مما أخذه المحو، كعلامة وقف مرتفعة. يظهر هنا فقط: يبقى مقطوعًا في التصدير.",
     paddingLabel: "الهامش · بكسل",
     paddingLess: "تقليل الهامش",
     paddingMore: "زيادة الهامش",

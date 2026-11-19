@@ -799,6 +799,9 @@ export const en = {
     edgeInkHeaderAutoApplied:
       "The sura headers' edge ink was erased as the page opened, as on the latest checked pages.",
     edgeInkBadge: "edge",
+    edgeInkShowErased: "Show the erased ink, dimmed",
+    edgeInkShowErasedHint:
+      "To check what erasing took, such as a pause sign floating high. Only shown here: the export still cuts it.",
     paddingLabel: "Padding · px",
     paddingLess: "Less padding",
     paddingMore: "More padding",

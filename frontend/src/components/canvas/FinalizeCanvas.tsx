@@ -52,6 +52,9 @@ type Props = {
   label?: string;
   /** Natural size of the rendered page, once loaded (for clamping edits). */
   onNatural?: (n: { w: number; h: number }) => void;
+  /** Draw the edge ink an erasing line cuts, dimmed, so what it took can be checked.
+   * A view only: the export still cuts it. */
+  showErasedEdgeInk?: boolean;
 };
 
 const PAD = 20;
@@ -65,6 +68,9 @@ const EDGE_TOL = 8; // screen px for grabbing a line's top/bottom edge
 function accent(bg: FinalizeBg, alpha = 1): string {
   return bg === "dark" ? `rgba(110,155,219,${alpha})` : `rgba(30,78,140,${alpha})`;
 }
+/** How strongly erased edge ink shows when it is revealed: faint enough to tell it
+ * from the ink the line keeps. */
+const ERASED_EDGE_ALPHA = 0.3;
 /** Gold marks a line edited since it was saved, as everywhere. */
 const EDITED = "#c9962e";
 /** The eraser's ring, in --stop for the backdrop. */
@@ -107,17 +113,26 @@ export function FinalizeCanvas({
   canRedo,
   label,
   onNatural,
+  showErasedEdgeInk = false,
 }: Props) {
   const { t } = useTranslation();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const transparentRef = useRef<HTMLCanvasElement | null>(null); // page: white→transparent
   const whiteInkRef = useRef<HTMLCanvasElement | null>(null); // page: ink recolored white
-  const scratchRef = useRef<HTMLCanvasElement | null>(null); // reused per-line offscreen
   // Each line's edge-ink mask, kept until its box changes: finding it walks every
   // pixel of the crop, far too slow to redo on each pan or hover.
-  const edgeMasksRef = useRef<Map<number, { box: string; mask: HTMLCanvasElement | null }>>(
-    new Map(),
-  );
+  const edgeMasksRef = useRef<Map<number, EdgeMask>>(new Map());
+  // Each line as it is drawn — crop, strokes and edge ink cut — kept until one of
+  // them changes, so a pan, a zoom or a hover only draws finished images.
+  const compositesRef = useRef<Map<number, LineComposite>>(new Map());
+  // The line under an eraser stroke being drawn: its image with the stroke so far,
+  // which each frame only adds the newest points to.
+  const activeCompositeRef = useRef<ActiveComposite | null>(null);
+  // One frame at a time: every request before the frame paints shares it.
+  const frameRef = useRef<number | null>(null);
+  const renderRef = useRef<() => void>(() => undefined);
+  // A resize drag tells the page its box at most once a frame.
+  const resizeFrameRef = useRef<number | null>(null);
   const rectsRef = useRef<LineRect[]>([]);
   const [ready, setReady] = useState(false);
   const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);
@@ -161,6 +176,8 @@ export function FinalizeCanvas({
     transparentRef.current = null;
     whiteInkRef.current = null;
     edgeMasksRef.current.clear();
+    compositesRef.current.clear();
+    activeCompositeRef.current = null;
     if (!imageUrl) return;
     const img = new Image();
     img.crossOrigin = "anonymous";
@@ -293,8 +310,8 @@ export function FinalizeCanvas({
     const centerX = cssW / 2 + pan.x;
     let cursorY = PAD + pan.y;
 
-    const scratch = ensureCanvas(scratchRef);
-    const sctx = scratch.getContext("2d");
+    const dark = bg === "dark";
+    const transparentPage = transparentRef.current;
 
     for (const line of lines) {
       const b = line.bbox;
@@ -329,31 +346,27 @@ export function FinalizeCanvas({
         ctx.fillRect(dx, dy, dispW, dispH);
       }
 
-      if (sctx && b.w > 0 && b.h > 0) {
-        scratch.width = b.w;
-        scratch.height = b.h;
-        sctx.clearRect(0, 0, b.w, b.h);
-        sctx.drawImage(srcLayer, b.x, b.y, b.w, b.h, 0, 0, b.w, b.h);
-        sctx.save();
-        sctx.globalCompositeOperation = "destination-out";
-        sctx.lineCap = "round";
-        sctx.lineJoin = "round";
-        applyStrokes(sctx, line.strokes, b.x, b.y);
+      if (b.w > 0 && b.h > 0 && transparentPage) {
+        const composite = composeLine(line, {
+          source: srcLayer,
+          transparentPage,
+          dark,
+          showErased: showErasedEdgeInk,
+          composites: compositesRef.current,
+          edgeMasks: edgeMasksRef.current,
+        });
         const act = activeRef.current;
-        if (act && act.lineNumber === line.line_number) applyStrokes(sctx, [act.stroke], b.x, b.y);
-        const transparentPage = transparentRef.current;
-        if (line.eraseEdgeInk && transparentPage) {
-          const box = `${b.x},${b.y},${b.w},${b.h}`;
-          let cached = edgeMasksRef.current.get(line.line_number);
-          if (!cached || cached.box !== box) {
-            cached = { box, mask: drawEdgeInkMask(transparentPage, b) };
-            edgeMasksRef.current.set(line.line_number, cached);
-          }
-          if (cached.mask) sctx.drawImage(cached.mask, 0, 0);
-        }
-        sctx.restore();
+        const image =
+          act && act.lineNumber === line.line_number
+            ? drawActiveStroke(activeCompositeRef, composite.canvas, act, b)
+            : composite.canvas;
         ctx.imageSmoothingEnabled = false;
-        ctx.drawImage(scratch, dx, dy, dispW, dispH);
+        ctx.drawImage(image, dx, dy, dispW, dispH);
+        if (composite.erased) {
+          ctx.globalAlpha = ERASED_EDGE_ALPHA;
+          ctx.drawImage(composite.erased, dx, dy, dispW, dispH);
+          ctx.globalAlpha = 1;
+        }
         ctx.imageSmoothingEnabled = true;
       }
 
@@ -408,6 +421,7 @@ export function FinalizeCanvas({
       cursorY = (topAnchor !== null ? topAnchor : dy + dispH) + GAP;
     }
     ctx.textBaseline = "alphabetic";
+    forgetLinesNotShown(lines, compositesRef.current, edgeMasksRef.current);
 
     if (effectiveTool === "erase" && mouseRef.current) {
       const r = Math.max(2, (brushSize / 2) * scale);
@@ -440,18 +454,39 @@ export function FinalizeCanvas({
     hoverLine,
     effectiveTool,
     brushSize,
+    showErasedEdgeInk,
     t,
   ]);
 
-  useEffect(() => render(), [render]);
+  /** Draw on the next frame — once, however many times it is asked before then. */
+  const scheduleRender = useCallback(() => {
+    if (frameRef.current !== null) return;
+    frameRef.current = requestAnimationFrame(() => {
+      frameRef.current = null;
+      renderRef.current();
+    });
+  }, []);
+
+  useEffect(() => {
+    renderRef.current = render;
+    scheduleRender();
+  }, [render, scheduleRender]);
 
   useEffect(() => {
     const c = canvasRef.current;
     if (!c) return;
-    const ro = new ResizeObserver(() => render());
+    const ro = new ResizeObserver(() => scheduleRender());
     ro.observe(c);
-    return () => ro.disconnect();
-  }, [render]);
+    return () => {
+      ro.disconnect();
+      // Forget a cancelled frame too: one still on record would read as already
+      // coming, and nothing would ever draw again (StrictMode unmounts once).
+      if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
+      frameRef.current = null;
+      if (resizeFrameRef.current !== null) cancelAnimationFrame(resizeFrameRef.current);
+      resizeFrameRef.current = null;
+    };
+  }, [scheduleRender]);
 
   /** Number of inter-line GAPs above `cy` — the part of the stack's y-mapping
    * that is constant in screen px (see `zoomAt`). */
@@ -566,7 +601,7 @@ export function FinalizeCanvas({
         lineNumber: r.line_number,
         stroke: { brush_size: brushSize, points: [[px, py]] },
       };
-      render();
+      scheduleRender();
       return;
     }
     // select + resize
@@ -609,7 +644,13 @@ export function FinalizeCanvas({
         box = { y: d.start.y, h: Math.max(1, Math.round(d.start.h + deltaPage)) };
       }
       d.current = box;
-      onResizeLine(d.lineNumber, box);
+      if (resizeFrameRef.current === null) {
+        resizeFrameRef.current = requestAnimationFrame(() => {
+          resizeFrameRef.current = null;
+          const drag = edgeRef.current;
+          if (drag) onResizeLine(drag.lineNumber, drag.current);
+        });
+      }
       return;
     }
     if (activeRef.current) {
@@ -621,7 +662,7 @@ export function FinalizeCanvas({
       const last = pts[pts.length - 1];
       if (!last || Math.hypot(px - last[0], py - last[1]) >= 1) {
         pts.push([px, py]);
-        render();
+        scheduleRender();
       }
       return;
     }
@@ -640,7 +681,7 @@ export function FinalizeCanvas({
       if (hoverEdge) setHoverEdge(null);
       if (hoverLine !== null) setHoverLine(null);
     }
-    if (effectiveTool === "erase") render();
+    if (effectiveTool === "erase") scheduleRender();
   };
 
   const onPointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -649,7 +690,12 @@ export function FinalizeCanvas({
     if (act && act.stroke.points.length > 0) onStroke(act.lineNumber, act.stroke);
     const edge = edgeRef.current;
     if (edge) onResizeCommit(edge.lineNumber, edge.current);
+    if (resizeFrameRef.current !== null) {
+      cancelAnimationFrame(resizeFrameRef.current);
+      resizeFrameRef.current = null;
+    }
     activeRef.current = null;
+    activeCompositeRef.current = null;
     edgeRef.current = null;
     panRef.current = null;
   };
@@ -748,7 +794,7 @@ export function FinalizeCanvas({
               mouseRef.current = null;
               setHoverEdge(null);
               setHoverLine(null);
-              render();
+              scheduleRender();
             }}
             className="h-full w-full"
             style={{ display: "block", cursor, touchAction: "none" }}
@@ -775,9 +821,162 @@ export function FinalizeCanvas({
 
 // ── helpers ────────────────────────────────────────────────────────────────────
 
-function ensureCanvas(ref: React.MutableRefObject<HTMLCanvasElement | null>) {
-  if (!ref.current) ref.current = document.createElement("canvas");
-  return ref.current;
+type EdgeMask = { box: string; mask: HTMLCanvasElement | null };
+
+/** One line drawn as it exports, and what it was drawn from: a change to any of
+ * those draws it again. */
+type LineComposite = {
+  box: string;
+  strokes: EraseStroke[];
+  eraseEdgeInk: boolean;
+  dark: boolean;
+  showErased: boolean;
+  canvas: HTMLCanvasElement;
+  /** The edge ink the line cuts, alone — only while it is shown. */
+  erased: HTMLCanvasElement | null;
+};
+
+/** The line under an eraser stroke being drawn, the stroke's points so far on it. */
+type ActiveComposite = {
+  stroke: EraseStroke;
+  base: HTMLCanvasElement;
+  canvas: HTMLCanvasElement;
+  applied: number;
+};
+
+type CompositeSources = {
+  /** The page as the backdrop shows it: ink white on dark, as printed otherwise. */
+  source: HTMLCanvasElement;
+  /** The page with its paper transparent: what the edge-ink rule reads. */
+  transparentPage: HTMLCanvasElement;
+  dark: boolean;
+  showErased: boolean;
+  composites: Map<number, LineComposite>;
+  edgeMasks: Map<number, EdgeMask>;
+};
+
+/** The line as it exports — its crop, its eraser strokes and its edge ink cut —
+ * drawn again only when one of those changed. */
+function composeLine(line: CanvasLine, sources: CompositeSources): LineComposite {
+  const b = line.bbox;
+  const box = `${b.x},${b.y},${b.w},${b.h}`;
+  const eraseEdgeInk = !!line.eraseEdgeInk;
+  const cached = sources.composites.get(line.line_number);
+  if (
+    cached &&
+    cached.box === box &&
+    cached.strokes === line.strokes &&
+    cached.eraseEdgeInk === eraseEdgeInk &&
+    cached.dark === sources.dark &&
+    cached.showErased === sources.showErased
+  ) {
+    return cached;
+  }
+  const canvas = createCanvas(b.w, b.h);
+  const ctx = canvas.getContext("2d");
+  let erased: HTMLCanvasElement | null = null;
+  if (ctx) {
+    ctx.drawImage(sources.source, b.x, b.y, b.w, b.h, 0, 0, b.w, b.h);
+    ctx.globalCompositeOperation = "destination-out";
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    applyStrokes(ctx, line.strokes, b.x, b.y);
+    const mask = eraseEdgeInk ? findEdgeMask(line.line_number, b, box, sources) : null;
+    if (mask) {
+      // Before it is cut: the edge ink alone, eraser strokes already taken out.
+      if (sources.showErased) erased = cutOutEdgeInk(canvas, mask);
+      ctx.drawImage(mask, 0, 0);
+    }
+    ctx.globalCompositeOperation = "source-over";
+  }
+  const composite = {
+    box,
+    strokes: line.strokes,
+    eraseEdgeInk,
+    dark: sources.dark,
+    showErased: sources.showErased,
+    canvas,
+    erased,
+  };
+  sources.composites.set(line.line_number, composite);
+  return composite;
+}
+
+/** The line's edge-ink mask, found again only when its box changed. */
+function findEdgeMask(
+  lineNumber: number,
+  b: Rect,
+  box: string,
+  sources: CompositeSources,
+): HTMLCanvasElement | null {
+  let cached = sources.edgeMasks.get(lineNumber);
+  if (!cached || cached.box !== box) {
+    cached = { box, mask: drawEdgeInkMask(sources.transparentPage, b) };
+    sources.edgeMasks.set(lineNumber, cached);
+  }
+  return cached.mask;
+}
+
+/** The ink a mask covers, alone, on a canvas of its own. */
+function cutOutEdgeInk(crop: HTMLCanvasElement, mask: HTMLCanvasElement): HTMLCanvasElement | null {
+  const erased = createCanvas(crop.width, crop.height);
+  const ectx = erased.getContext("2d");
+  if (!ectx) return null;
+  ectx.drawImage(crop, 0, 0);
+  ectx.globalCompositeOperation = "destination-in";
+  ectx.drawImage(mask, 0, 0);
+  return erased;
+}
+
+/** The line with the stroke being drawn on it: copied once from the line's image
+ * when the stroke starts, then only the points added since the last frame. */
+function drawActiveStroke(
+  ref: { current: ActiveComposite | null },
+  base: HTMLCanvasElement,
+  act: { stroke: EraseStroke },
+  b: Rect,
+): HTMLCanvasElement {
+  let active = ref.current;
+  if (!active || active.stroke !== act.stroke || active.base !== base) {
+    const canvas = createCanvas(base.width, base.height);
+    canvas.getContext("2d")?.drawImage(base, 0, 0);
+    active = { stroke: act.stroke, base, canvas, applied: 0 };
+    ref.current = active;
+  }
+  const points = act.stroke.points;
+  const ctx = active.canvas.getContext("2d");
+  if (ctx && points.length > active.applied) {
+    const from = Math.max(0, active.applied - 1);
+    ctx.save();
+    ctx.globalCompositeOperation = "destination-out";
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    applyStrokes(ctx, [{ ...act.stroke, points: points.slice(from) }], b.x, b.y);
+    ctx.restore();
+    active.applied = points.length;
+  }
+  return active.canvas;
+}
+
+/** Drop what is kept for lines no longer on the canvas. */
+function forgetLinesNotShown(
+  lines: CanvasLine[],
+  composites: Map<number, LineComposite>,
+  edgeMasks: Map<number, EdgeMask>,
+) {
+  if (composites.size <= lines.length && edgeMasks.size <= lines.length) return;
+  const shown = new Set(lines.map((line) => line.line_number));
+  for (const lineNumber of [...composites.keys()])
+    if (!shown.has(lineNumber)) composites.delete(lineNumber);
+  for (const lineNumber of [...edgeMasks.keys()])
+    if (!shown.has(lineNumber)) edgeMasks.delete(lineNumber);
+}
+
+function createCanvas(w: number, h: number): HTMLCanvasElement {
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(w));
+  canvas.height = Math.max(1, Math.round(h));
+  return canvas;
 }
 
 function applyStrokes(

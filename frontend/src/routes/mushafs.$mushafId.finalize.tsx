@@ -34,6 +34,17 @@ import {
   type UsualSuraHeader,
 } from "@/lib/api";
 
+/** Where this browser remembers whether erased edge ink is shown. */
+const SHOW_ERASED_EDGE_INK_KEY = "qps.finalize.showErasedEdgeInk";
+
+function readShowErasedEdgeInk(): boolean {
+  try {
+    return localStorage.getItem(SHOW_ERASED_EDGE_INK_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
 export const Route = createFileRoute("/mushafs/$mushafId/finalize")({
   validateSearch: (s: Record<string, unknown>) => ({ page: Math.max(1, Number(s.page) || 1) }),
   component: FinalizePage,
@@ -182,6 +193,17 @@ function FinalizePage() {
   const [autoHeader, setAutoHeader] = useState<UsualSuraHeader | null>(null);
   const [selected, setSelected] = useState<number | null>(null);
   const [brushSize, setBrushSize] = useState(16);
+  // Whether the canvas shows what edge-ink erasing cut, dimmed. A view only, kept in
+  // this browser so it stays on page after page while checking.
+  const [showErasedEdgeInk, setShowErasedEdgeInk] = useState(readShowErasedEdgeInk);
+  const changeShowErasedEdgeInk = (shown: boolean) => {
+    setShowErasedEdgeInk(shown);
+    try {
+      localStorage.setItem(SHOW_ERASED_EDGE_INK_KEY, shown ? "1" : "0");
+    } catch {
+      // Private window or blocked storage: the choice lasts until the page reloads.
+    }
+  };
   const [builtFor, setBuiltFor] = useState<number | null>(null);
   // Exported PNGs keep their filename when re-exported, so the browser would
   // serve the previous cut — this stamp busts that cache.
@@ -563,6 +585,7 @@ function FinalizePage() {
           canUndo={historyRef.current.index > 0}
           canRedo={historyRef.current.index < historyRef.current.stack.length - 1}
           onNatural={setNatural}
+          showErasedEdgeInk={showErasedEdgeInk}
         />
         <CanvasHelp
           guideItems={guideItems}
@@ -744,6 +767,20 @@ function FinalizePage() {
                     ? t("finalize.edgeInkScopeLine", { n: sel.line_number })
                     : t("finalize.edgeInkScopePage")}
                 </span>
+                <label className="flex cursor-pointer items-start gap-2.5 text-[13px] leading-snug">
+                  <input
+                    type="checkbox"
+                    checked={showErasedEdgeInk}
+                    onChange={(event) => changeShowErasedEdgeInk(event.target.checked)}
+                    className="mt-0.5 h-[17px] w-[17px] flex-none cursor-pointer accent-lapis"
+                  />
+                  <span className="flex flex-col gap-0.5">
+                    <span>{t("finalize.edgeInkShowErased")}</span>
+                    <span className="text-[12px] text-ink-3">
+                      {t("finalize.edgeInkShowErasedHint")}
+                    </span>
+                  </span>
+                </label>
                 {autoErasedOn && (
                   <span className="text-[12.5px] leading-normal text-ink-2">
                     {t("finalize.edgeInkAutoApplied")}
