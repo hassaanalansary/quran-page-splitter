@@ -283,6 +283,7 @@ def write_word_reading(blobs: list[Doc], reading: WordReading, word_id: int, wor
     check = reading.check
     word["gap"] = round(reading.gap, 4)
     word["unsure"] = reading.unsure
+    word["doubtful"] = sorted(reading.doubtful)
     word["check"] = {
         "missing": [mark.kind for mark in check.missing],
         "extra": check.extra,

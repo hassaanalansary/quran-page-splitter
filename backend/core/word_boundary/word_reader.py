@@ -56,6 +56,9 @@ MOST_PACKINGS = 5000
 UNSURE_GAP = 0.15
 #: The gap of a word with only one way to read it.
 NO_RIVAL_GAP = 1.0
+#: A body's choice between holding a mark of its letters and holding none, closer than
+#: this, is a doubt.
+CARRIER_MARGIN = 0.15
 
 
 @dataclass(frozen=True)
@@ -87,6 +90,8 @@ class WordReading:
     cost: float
     gap: float
     unsure: bool
+    #: Blobs whose reading was a close call (:func:`find_doubtful_blobs`).
+    doubtful: set[int] = field(default_factory=set)
 
 
 Packing = tuple[tuple[int, int], ...]
@@ -278,27 +283,70 @@ def read_word(
         key=lambda item: item[0],
     )[:PACKINGS_TRIED]
     prices = price_marks_by_habit(text, habits)
-    readings: list[tuple[float, Packing, WordCheck]] = []
+    readings: list[tuple[float, Packing, WordCheck, list[Carrier]]] = []
     for body_cost, packing in priced:
+        carriers = build_carriers(text, bodies, packing, habits)
         check = check_word(
             list(text.marks),
             place_letters(text, bodies, packing),
             width,
             marks,
-            carriers=build_carriers(text, bodies, packing, habits),
+            carriers=carriers,
             prices=prices,
         )
-        readings.append((body_cost + check.cost, packing, check))
+        readings.append((body_cost + check.cost, packing, check, carriers))
     readings.sort(key=lambda item: item[0])
-    cost, packing, check = readings[0]
+    cost, packing, check, carriers = readings[0]
     keys = write_word_keys(bodies, packing, text, marks, check)
     rivals = [
         total
-        for total, other, other_check in readings[1:]
+        for total, other, other_check, _ in readings[1:]
         if write_word_keys(bodies, other, text, marks, other_check) != keys
     ]
     gap = (rivals[0] - cost) if rivals else NO_RIVAL_GAP
-    return WordReading(keys=keys, check=check, cost=cost, gap=gap, unsure=gap < UNSURE_GAP or not check.clean)
+    doubtful = find_doubtful_blobs(text, check, carriers, prices, marks)
+    return WordReading(
+        keys=keys,
+        check=check,
+        cost=cost,
+        gap=gap,
+        unsure=gap < UNSURE_GAP or not check.clean or bool(doubtful),
+        doubtful=doubtful,
+    )
+
+
+def find_doubtful_blobs(
+    text: WordText, check: WordCheck, carriers: list[Carrier], prices: dict[int, SlotPrices], marks: list[FoundMark]
+) -> set[int]:
+    """The blobs whose reading was a close call:
+
+    * a mark the text types otherwise than the shape it looks most like — where two
+      marks over one letter swap, or a pause sign is read as a dot;
+    * a body whose choice between holding a mark of its letters and holding none was
+      within ``CARRIER_MARGIN`` — a round zero or a hamza touching its alef or not.
+
+    A person's decisions are never doubted here."""
+    doubtful: set[int] = set()
+    for mark in marks:
+        kind = check.types.get(mark.id)
+        if mark.typed or not kind or not mark.scores:
+            continue
+        if mark.likeliest and mark.likeliest not in parts_of(kind) and kind != mark.likeliest:
+            doubtful.add(mark.id)
+    for carrier in carriers:
+        if carrier.fixed or carrier.holds_nothing:
+            continue
+        held = set(check.inside.get(carrier.id, []))
+        for index, mark in enumerate(text.marks):
+            if mark.letter not in carrier.letters or mark.kind not in carrier.holds:
+                continue
+            price = prices.get(index, SlotPrices())
+            missing = price.missing if price.missing is not None else 0.0
+            hold = carrier.holds[mark.kind] + price.inside
+            apart = carrier.plain + (missing if mark.kind not in check.types.values() else price.alone)
+            if abs(hold - apart) < CARRIER_MARGIN and (mark.kind in held or mark.kind not in check.types.values()):
+                doubtful.add(carrier.id)
+    return doubtful
 
 
 def read_in_order(text: WordText, bodies: list[BodyPiece]) -> Packing:
