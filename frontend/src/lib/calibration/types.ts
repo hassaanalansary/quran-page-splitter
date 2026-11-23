@@ -77,6 +77,9 @@ export type CalibrationBlob = {
   /** Where a shared body divides between its words: a person's knife. Absent, the
    * words divide it at its middle. */
   cut?: BlobCut;
+  /** On an ornament's pieces: whether this one is its ring, which closes the aya and
+   * never becomes text. Absent on a draft made before rings were marked. */
+  ring?: boolean;
 };
 
 export type CalibrationWord = {

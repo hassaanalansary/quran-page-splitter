@@ -1037,6 +1037,14 @@ export const en = {
       erased: "erased",
       erasedHelp:
         "Erased: no ink of the text. It belongs to no word, teaches nothing, and the exported line image is cut without it.",
+      symbolHelp:
+        "Matched as a sajda or rub' al-hizb sign, so the reading leaves it out. If it is text, make it a body or a mark (B · M).",
+      symbolAgainHelp:
+        "A sajda or rub' al-hizb sign after all: the reading leaves it out, and its words lose it.",
+      ornamentPieceHelp:
+        "Grouped with the aya ornament, so the reading leaves it out. If it is text, make it a body or a mark (B · M). The ring itself always stays the ornament.",
+      ornamentAgainHelp:
+        "Part of the aya ornament after all: the reading leaves it out, and its words lose it.",
       keyLook: "the next thing to look at",
       keyClear: "clear the selection",
       keyOpen: "gallery: show the selected blob in its line",

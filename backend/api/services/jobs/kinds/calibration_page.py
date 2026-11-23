@@ -47,7 +47,7 @@ def start_calibration_page_job(
     nothing new to read. A page whose sources changed since may be processed again.
     Its sources are its own lines and the neighbouring lines its ayat cross onto, and
     they change when a page is processed again, reviewed again, or erased on. Every
-    decision on a line that did not change is kept (``calibration._carry_decisions``),
+    decision on a line that did not change is kept (``calibration.carry_decisions_to_draft``),
     and the old revisions stay in the history.
     """
     refuse_if_mushaf_has_active_job(mushaf.id)

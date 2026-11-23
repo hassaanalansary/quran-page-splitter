@@ -4,8 +4,8 @@ import numpy as np
 from django.test import SimpleTestCase
 from PIL import Image, ImageDraw
 
-from api.models import Line
-from api.services.export import cut_edge_ink, line_crop_box
+from api.models import EraseStroke, Line
+from api.services.export import cut_edge_ink, line_crop_box, render_line_image
 from core.imaging import find_edge_ink, find_ink, make_transparent
 
 
@@ -89,3 +89,28 @@ class CutEdgeInkTests(SimpleTestCase):
         self.assertFalse(alpha[0:4, 10:15].any())  # page rows 30 to 33: the tail, gone
         self.assertTrue(alpha[10:21, 30:51].all())  # the letters, kept
         self.assertTrue(alpha[2:5, 40:43].all())  # the dot, kept
+
+
+class RenderLineImageTests(SimpleTestCase):
+    """The one cut the export and the engine's snapshots share."""
+
+    def page_with_a_tail(self) -> Image.Image:
+        page = Image.new("RGB", (60, 100), (255, 255, 255))
+        draw = ImageDraw.Draw(page)
+        draw.rectangle((10, 20, 14, 33), fill=(0, 0, 0))  # a tail from the line above
+        draw.rectangle((30, 40, 50, 50), fill=(0, 0, 0))  # the line's own letters
+        return page
+
+    def cut(self, *, erase_edge_ink: bool) -> np.ndarray:
+        line = Line(bbox_x=0, bbox_y=30, bbox_w=60, bbox_h=30, erase_edge_ink=erase_edge_ink)
+        # No eraser strokes, and no database to ask for them.
+        line._prefetched_objects_cache = {"erase_strokes": EraseStroke.objects.none()}  # type: ignore[attr-defined]
+        return np.asarray(render_line_image(self.page_with_a_tail(), line, None).getchannel("A"))
+
+    def test_a_line_that_erases_its_edge_ink_is_cut_without_it(self):
+        alpha = self.cut(erase_edge_ink=True)
+        self.assertFalse(alpha[0:4, 10:15].any())  # the tail, gone wherever the line is cut
+        self.assertTrue(alpha[10:21, 30:51].all())  # the letters, kept
+
+    def test_a_line_that_keeps_its_edge_ink_is_cut_with_it(self):
+        self.assertTrue(self.cut(erase_edge_ink=False)[0:4, 10:15].all())

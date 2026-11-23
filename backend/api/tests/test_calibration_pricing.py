@@ -73,17 +73,19 @@ class HandOverTests(SimpleTestCase):
 
     def test_with_learning_on_the_answer_is_a_price_not_a_lock(self):
         blob = Blob(7, 0, 0, 10, 10, 100, body_score=12)
-        calibration._constrain(blob, self.edited(), {}, calibration_locks=True)
+        calibration.constrain_blob_to_decisions(blob, self.edited(), {}, calibration_locks=True)
         self.assertEqual((blob.library_role, blob.library_confidence, blob.locked_role), ("mark", 0.8, None))
 
     def test_with_learning_off_the_engine_prices_from_geometry(self):
         blob = Blob(7, 0, 0, 10, 10, 100, body_score=12)
-        calibration._constrain(blob, self.edited(), {}, calibration_locks=False)
+        calibration.constrain_blob_to_decisions(blob, self.edited(), {}, calibration_locks=False)
         self.assertIsNone(blob.library_role)
 
     def test_a_persons_decision_stays_a_hard_lock(self):
         blob = Blob(7, 0, 0, 10, 10, 100, body_score=12)
-        calibration._constrain(blob, self.edited(role="body", explicit=True), {}, calibration_locks=True)
+        calibration.constrain_blob_to_decisions(
+            blob, self.edited(role="body", explicit=True), {}, calibration_locks=True
+        )
         self.assertEqual((blob.locked_role, blob.lock_source), ("body", "human"))
 
 

@@ -127,7 +127,7 @@ def read_reviewer_edits(mushaf: Mushaf, page: int, data: Doc, *, confirm: bool) 
 
 
 def hash_save_request(data: Doc, confirm: bool) -> str:
-    return snapshots.digest({"data": {k: v for k, v in data.items() if k != "request_id"}, "confirm": confirm})
+    return snapshots.digest_json({"data": {k: v for k, v in data.items() if k != "request_id"}, "confirm": confirm})
 
 
 def has_request_landed(review: CalibrationReview, request: Doc) -> bool:

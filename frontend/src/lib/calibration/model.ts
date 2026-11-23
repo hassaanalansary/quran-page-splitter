@@ -384,11 +384,42 @@ function onLine(
 
 const isText = (blob: CalibrationBlob) => blob.role === "body" || blob.role === "mark";
 
+/** Structure a person may call text: a blob the symbol pass took for a sajda or rub'
+ * sign, or a piece grouped with an aya ornament — not its ring, which closes the aya.
+ * It is read as text while they say so, and they may take that back (the server's
+ * `calibration_structure`). */
+export const canBeCalledText = (blob: CalibrationBlob) =>
+  blob.initial_role === "symbol" || (blob.initial_role === "ornament" && blob.ring === false);
+
+/** Structure a person called text, made structure again: out of every word, with none
+ * of text's decisions. */
+function makeStructureAgain(blob: CalibrationBlob): CalibrationBlob {
+  return {
+    ...blob,
+    role: blob.initial_role,
+    explicit: false,
+    ownership_explicit: false,
+    allocations: [],
+    subtype: "",
+    subtype_explicit: false,
+    subtype_source: undefined,
+    text_role: undefined,
+    text_word: undefined,
+    exception: "",
+    attention: [],
+    decision_source: "search",
+    cut: undefined,
+    ...(blob.erased === undefined ? {} : { erased: false }),
+  };
+}
+
 // ── Edits ────────────────────────────────────────────────────────────────────
 
 /** Say what the selected blobs are. A decision, so it becomes a hard constraint.
  *
- * Ornaments and symbols are structure and keep their role. A blob becoming a mark
+ * An ornament's ring keeps its role. A symbol, or another piece of an ornament,
+ * becomes text, unowned until the next preview reads it with the rest of the line's
+ * ink. A blob becoming a mark
  * keeps its attachment but gives back its PAWs; a mark becoming a body is an
  * ordinary one-PAW letter piece until the reviewer says otherwise — left at the
  * mark's zero, it would read as a broken fragment. Either way, the words it
@@ -401,7 +432,7 @@ export function setRole(
   return onLine(lines, selection, (line, chosen) => {
     const affected = new Set<number>();
     const blobs = line.blobs.map((blob) => {
-      if (!chosen.has(blob.id) || !isText(blob)) return blob;
+      if (!chosen.has(blob.id) || !(isText(blob) || canBeCalledText(blob))) return blob;
       if (blob.role !== role) ownersOf(blob).forEach((id) => affected.add(id));
       const allocations =
         role === "mark"
@@ -625,24 +656,48 @@ export function unassignMarks(
 }
 
 /** Take the reviewer's decisions off the selected blobs: the next preview is free to
- * read them again. Their current role and allocations stay until it does. */
+ * read them again. Their current role and allocations stay until it does — except
+ * structure a person called text, which is text only while somebody says so: it is
+ * structure again at once, and its words lose it. */
 export function releaseDecisions(
   lines: CalibrationLine[],
   selection: BlobSelection,
 ): CalibrationLine[] {
-  return onLine(lines, selection, (line, chosen) => ({
-    ...line,
-    blobs: line.blobs.map((blob) =>
-      chosen.has(blob.id)
-        ? {
-            ...blob,
-            explicit: false,
-            ownership_explicit: false,
-            decision_source: "search" as const,
-          }
-        : blob,
-    ),
-  }));
+  return onLine(lines, selection, (line, chosen) => {
+    const affected = new Set<number>();
+    const blobs = line.blobs.map((blob) => {
+      if (!chosen.has(blob.id)) return blob;
+      if (canBeCalledText(blob) && isText(blob)) {
+        ownersOf(blob).forEach((id) => affected.add(id));
+        return makeStructureAgain(blob);
+      }
+      return {
+        ...blob,
+        explicit: false,
+        ownership_explicit: false,
+        decision_source: "search" as const,
+      };
+    });
+    return recalculate({ ...line, blobs }, affected);
+  });
+}
+
+/** Give the selected structure a person called text back to what measurement said
+ * it is — a symbol, or a piece of its ornament: the reading leaves it out, and the
+ * words it was given lose it. */
+export function giveBackToStructure(
+  lines: CalibrationLine[],
+  selection: BlobSelection,
+): CalibrationLine[] {
+  return onLine(lines, selection, (line, chosen) => {
+    const affected = new Set<number>();
+    const blobs = line.blobs.map((blob) => {
+      if (!chosen.has(blob.id) || !canBeCalledText(blob) || !isText(blob)) return blob;
+      ownersOf(blob).forEach((id) => affected.add(id));
+      return makeStructureAgain(blob);
+    });
+    return recalculate({ ...line, blobs }, affected);
+  });
 }
 
 /** Give the selected blobs to one word.
@@ -1003,7 +1058,9 @@ export const typeFilter = (subtype: string): BlobFilter => `type:${subtype}`;
 export const highlights = (filter: BlobFilter): boolean =>
   filter !== "all" && filter !== "body" && filter !== "mark";
 
-/** Whether a filter lets a blob through. Ornaments and symbols never pass. */
+/** Whether a filter lets a blob through. An ornament's ring never passes; a symbol,
+ * or another piece of an ornament, passes only the filter that shows everything, to
+ * be picked and called text. */
 export function passesFilter(
   blob: CalibrationBlob,
   snapshot: string,
@@ -1011,7 +1068,7 @@ export function passesFilter(
   expectations: Expectations,
   doubts: Doubts,
 ): boolean {
-  if (!isText(blob)) return false;
+  if (!isText(blob)) return canBeCalledText(blob) && filter === "all";
   if (filter === "all") return true;
   if (filter === "body" || filter === "mark") return blob.role === filter;
   // Erased ink is no kind of mark — but still picked by role, to be restored.

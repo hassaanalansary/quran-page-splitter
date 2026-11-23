@@ -68,6 +68,7 @@ import {
   markCheckOf,
   tanweenOf,
   highlights,
+  giveBackToStructure,
   historyOf,
   inkOf,
   newRequestId,
@@ -1815,6 +1816,7 @@ export function CalibrationEditor({
             onShare={(shares) => commit(shareBetween(lines, selection, shares))}
             onRelease={() => commit(releaseDecisions(lines, selection))}
             onUnassign={() => commit(unassignMarks(lines, selection))}
+            onGiveBack={() => commit(giveBackToStructure(lines, selection))}
             knife={knifeControls}
           />
         )}

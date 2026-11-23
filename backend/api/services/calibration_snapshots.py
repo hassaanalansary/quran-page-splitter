@@ -41,24 +41,26 @@ from core.word_boundary.separators import prepare_template, split_separators, sp
 
 #: Bump when measurement changes in a way that should make new snapshots.
 #: v2 (2026-10-27): an ornament keeps only the ink within its ring's width.
-EXTRACTION_VERSION = "full-line-v2"
+#: v3 (2026-11-19): a symbol takes only a sign of its own, not every blob in the
+#: template's column (``separators.find_pieces_of_sign``).
+EXTRACTION_VERSION = "full-line-v3"
 
 #: Templates whose pictures change what a line measures as. The aya ornament sets
 #: each supplied span's width; the symbols are matched and removed. A sura-header
 #: template touches no text line, so re-capturing it must not stale every review.
-_MEASURING_TEMPLATES = ("aya_separator", *line_images.SYMBOL_TEMPLATE_TYPES)
+MEASURING_TEMPLATES = ("aya_separator", *line_images.SYMBOL_TEMPLATE_TYPES)
 
 
-def digest(value: object) -> str:
+def digest_json(value: object) -> str:
     """A stable hash of JSON-able data — key order and spacing do not matter."""
     return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
 #: Template digests by (row, save, file): any save of the row changes the key.
-_TEMPLATE_DIGESTS: dict[tuple[str, str, str], str] = {}
+TEMPLATE_DIGESTS: dict[tuple[str, str, str], str] = {}
 
 
-def _template_digest(template: Template) -> str:
+def digest_template_pixels(template: Template) -> str:
     """A template's pixels, by content.
 
     Never by path. The path names the mushaf, so a copy's templates would never
@@ -68,11 +70,11 @@ def _template_digest(template: Template) -> str:
     snapshots measured with other pixels current.
     """
     key = (str(template.pk), template.updated_at.isoformat(), template.image.name or "")
-    found = _TEMPLATE_DIGESTS.get(key)
+    found = TEMPLATE_DIGESTS.get(key)
     if found is None:
         with template.image.open("rb") as stored:
             found = hashlib.sha256(stored.read()).hexdigest()
-        _TEMPLATE_DIGESTS[key] = found
+        TEMPLATE_DIGESTS[key] = found
     return found
 
 
@@ -84,7 +86,7 @@ def source_signature(line: Line) -> dict:
     from, and the reviews that travelled with them stay current.
     """
     mushaf = line.page.mushaf
-    return {
+    signature = {
         "version": EXTRACTION_VERSION,
         "pdf": mushaf.pdf_sha256,
         "pdf_page": line.page.source_pdf_page,
@@ -101,15 +103,21 @@ def source_signature(line: Line) -> dict:
         ),
         "erase": list(line.erase_strokes.order_by("id").values("brush_size", "points")),
         "templates": [
-            {"type": template.type, "pixels": _template_digest(template)}
-            for template in mushaf.templates.filter(type__in=_MEASURING_TEMPLATES).order_by("type")
+            {"type": template.type, "pixels": digest_template_pixels(template)}
+            for template in mushaf.templates.filter(type__in=MEASURING_TEMPLATES).order_by("type")
             if template.image
         ],
     }
+    # The edge ink a line cuts in Finalize is cut before it is measured. Signed only
+    # when on: a line that keeps its edge ink signs as it always did, so its snapshot
+    # (and every draft read from it) stays current.
+    if line.erase_edge_ink:
+        signature["erase_edge_ink"] = True
+    return signature
 
 
 def source_fingerprint(line: Line) -> str:
-    return digest(source_signature(line))
+    return digest_json(source_signature(line))
 
 
 # ---------------------------------------------------------------------------
@@ -149,13 +157,13 @@ class Templates:
     symbols: dict[str, np.ndarray]
 
     @classmethod
-    def of(cls, mushaf: Mushaf) -> Templates:
-        ornament = line_images.separator_template(mushaf)
+    def load_for_mushaf(cls, mushaf: Mushaf) -> Templates:
+        ornament = line_images.load_separator_template(mushaf)
         return cls(
             ornament=ornament,
             ornament_array=prepare_template(ornament) if ornament is not None else None,
             symbols={
-                name: prepare_template(image, name) for name, image in line_images.symbol_templates(mushaf).items()
+                name: prepare_template(image, name) for name, image in line_images.load_symbol_templates(mushaf).items()
             },
         )
 
@@ -176,12 +184,12 @@ def extract_line(line: Line, rendered_page: Image.Image, templates: Templates) -
 
     The ornament spans come from the reviewed segments, as on the word run's own
     database path; the symbols are matched here because nothing upstream looked for
-    them. What is kept is everything :func:`load` needs to rebuild the same
+    them. What is kept is everything :func:`load_measured_line` needs to rebuild the same
     ``LineInk`` without measuring again.
     """
-    image, origin = line_images._image_for(line, rendered_page, None)
+    image, origin = line_images.cut_line_image(line, rendered_page, None)
     width = templates.ornament.width if templates.ornament is not None else 0
-    spans, ayat = line_images._separators(line, origin, image.width, width)
+    spans, ayat = line_images.rebuild_separator_spans(line, origin, image.width, width)
     source = LineImage(
         image,
         f"page-{line.page.page_number:04d}/line-{line.line_number:02d}",
@@ -238,8 +246,8 @@ def snapshot_line(
     if existing:
         return existing
     if rendered_page is None:
-        rendered_page = line_images._render_page(mushaf, line.page)
-    extraction = extract_line(line, rendered_page, templates or Templates.of(mushaf))
+        rendered_page = line_images.render_mushaf_page(mushaf, line.page)
+    extraction = extract_line(line, rendered_page, templates or Templates.load_for_mushaf(mushaf))
     snapshot = CalibrationSnapshot(
         mushaf=mushaf,
         page_number=line.page.page_number,
@@ -257,13 +265,13 @@ def snapshot_line(
 # ---------------------------------------------------------------------------
 # Reading back
 # ---------------------------------------------------------------------------
-_BLOB_FIELDS = {f.name for f in fields(Blob)}
+BLOB_FIELDS = {f.name for f in fields(Blob)}
 
 
-def _blob(raw: dict[str, Any]) -> Blob:
+def restore_blob(raw: dict[str, Any]) -> Blob:
     # Fields added to Blob since the snapshot was taken take their defaults; ones
     # since removed are ignored, so an old snapshot never stops loading.
-    return Blob(**{key: value for key, value in raw.items() if key in _BLOB_FIELDS})
+    return Blob(**{key: value for key, value in raw.items() if key in BLOB_FIELDS})
 
 
 def read_raster(snapshot: CalibrationSnapshot) -> np.ndarray:
@@ -271,7 +279,7 @@ def read_raster(snapshot: CalibrationSnapshot) -> np.ndarray:
         return decode_labels(Image.open(io.BytesIO(handle.read())))
 
 
-def load(snapshot: CalibrationSnapshot) -> tuple[LineImage, LineInk]:
+def load_measured_line(snapshot: CalibrationSnapshot) -> tuple[LineImage, LineInk]:
     """Rebuild the measured ``LineInk`` from storage, without measuring anything.
 
     Fresh ``Blob`` objects every call: the engine writes roles and locks onto the
@@ -285,7 +293,7 @@ def load(snapshot: CalibrationSnapshot) -> tuple[LineImage, LineInk]:
     dx, dy = data["offset_x"], data["offset_y"]
     rows, cols = np.where(raster > 0)
     tight = raster[dy : int(rows.max()) + 1, dx : int(cols.max()) + 1] if rows.size else raster
-    blobs = {raw["label"]: _blob(raw) for raw in data["blobs"]}
+    blobs = {raw["label"]: restore_blob(raw) for raw in data["blobs"]}
     components = [blobs[ident] for ident in data["components"]]
     ink = LineInk(
         label=data["label"],
@@ -354,10 +362,12 @@ FEATURES_CACHE_MAX = 256
 
 
 def blob_features(snapshot: CalibrationSnapshot) -> dict[int, np.ndarray]:
-    """Every text blob's matcher descriptor, by blob id.
+    """Every text blob's matcher descriptor, and every structure blob's that may become
+    text, by blob id.
 
     Determined by pixels the snapshot already keeps: measured from its raster once,
     then read from the file saved beside it, and held in memory for the lines in use.
+    A file saved before structure was measured is measured again.
     """
     key = (str(snapshot.pk), FEATURE_VERSION)
     cached = FEATURES_CACHE.get(key)
@@ -365,7 +375,7 @@ def blob_features(snapshot: CalibrationSnapshot) -> dict[int, np.ndarray]:
         FEATURES_CACHE.move_to_end(key)
         return cached
     found = read_saved_features(snapshot)
-    if found is None:
+    if found is None or not find_measured_labels(snapshot) <= found.keys():
         found = measure_blob_features(snapshot)
         save_features(snapshot, found)
     FEATURES_CACHE[key] = found
@@ -374,17 +384,34 @@ def blob_features(snapshot: CalibrationSnapshot) -> dict[int, np.ndarray]:
     return found
 
 
+def find_ornament_rings(metadata: dict[str, Any]) -> set[int]:
+    """The ring of each of a snapshot's ornaments: its largest piece, as measurement
+    chose it (``separators.partition_ornament_pieces``)."""
+    area = {raw["label"]: raw["area"] for raw in metadata["blobs"]}
+    return {max(group, key=lambda ident: area[ident]) for group in metadata["separators"] if group}
+
+
+def find_measured_labels(snapshot: CalibrationSnapshot) -> set[int]:
+    """The blobs a snapshot's descriptors cover: its text, and the structure a person
+    may say is text — its symbols, and its ornaments' pieces but not their rings
+    (:mod:`api.services.calibration_structure`)."""
+    data = snapshot.metadata
+    symbols = {ident for _, group in data["symbols"] for ident in group}
+    pieces = {ident for group in data["separators"] for ident in group} - find_ornament_rings(data)
+    return set(data["components"]) | symbols | pieces
+
+
 def measure_blob_features(snapshot: CalibrationSnapshot) -> dict[int, np.ndarray]:
-    """Every text blob's matcher descriptor, measured from the snapshot's raster:
-    1,030 numbers per blob."""
+    """The descriptors :func:`find_measured_labels` names, measured from the snapshot's
+    raster: 1,030 numbers per blob."""
     data = snapshot.metadata
     raster = read_raster(snapshot)
     dx, dy = data["offset_x"], data["offset_y"]
     band_height = max(1, data["band"][1] - data["band"][0] + 1)
-    text = set(data["components"])
+    measured = find_measured_labels(snapshot)
     found: dict[int, np.ndarray] = {}
     for raw in data["blobs"]:
-        if raw["label"] not in text:
+        if raw["label"] not in measured:
             continue
         x, y = raw["x"] + dx, raw["y"] + dy
         mask = raster[y : y + raw["h"], x : x + raw["w"]] == raw["label"]

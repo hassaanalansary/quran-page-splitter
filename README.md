@@ -1,4 +1,4 @@
-# Quran Page Splitter (SATR)
+# SATR (Segmenting Ayat Through Rasm)
 
 Digital Quran applications that render text with fonts cannot fully reproduce
 the experience of reading a printed Mushaf. The core problem is that the written
@@ -24,7 +24,7 @@ lines themselves scale uniformly to the window width, and the vertical gaps
 absorb the remaining space, so the page always fills the screen without
 distortion at any window size.
 
-Quran Page Splitter produces all of that. It ingests a Mushaf **PDF**, renders
+SATR produces all of that. It ingests a Mushaf **PDF**, renders
 pages on demand, detects the lines and the aya boundaries, then the words, their
 letter pieces and their marks, lets a person review and correct every step, and
 exports the coordinates and transparent line PNGs ready for a Mushaf application.

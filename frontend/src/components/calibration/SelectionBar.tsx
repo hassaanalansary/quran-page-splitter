@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import {
   activeAttention,
   answeredBy,
+  canBeCalledText,
   doubtOf,
   expectationKey,
   markCheckOf,
@@ -73,6 +74,7 @@ export function SelectionBar({
   onShare,
   onRelease,
   onUnassign,
+  onGiveBack,
   knife,
 }: {
   line: CalibrationLine | null;
@@ -102,6 +104,8 @@ export function SelectionBar({
   onShare: (shares: Allocation[]) => void;
   onRelease: () => void;
   onUnassign: () => void;
+  /** Give the selected structure a person called text back to its symbol or ornament. */
+  onGiveBack: () => void;
   /** The knife on the one selected shared body. */
   knife: KnifeControls;
 }) {
@@ -166,6 +170,16 @@ export function SelectionBar({
     marks.length > 0 && choices.some((value) => typedAs(value)) ? marks[0].subtype : "";
   const oneText = single && (single.role === "body" || single.role === "mark") ? single : null;
   const texts = blobs.filter((blob) => blob.role === "body" || blob.role === "mark");
+  /** What measurement took every selected blob for, when that is one kind of structure
+   * a person may call text: the role the last button gives them back. */
+  const structure =
+    blobs.every(canBeCalledText) &&
+    blobs.every((blob) => blob.initial_role === blobs[0].initial_role)
+      ? (blobs[0].initial_role as "symbol" | "ornament")
+      : null;
+  /** Selected structure still out of the reading: a sign, or a piece of an ornament. */
+  const stillSymbols = blobs.some((blob) => blob.role === "symbol");
+  const stillPieces = blobs.some((blob) => blob.role === "ornament" && canBeCalledText(blob));
   /** Every text blob selected is erased: the button restores them. */
   const erased = texts.length > 0 && texts.every((blob) => blob.erased);
   const suspicion = single ? noiseFor(single, line.snapshot_id, noise) : null;
@@ -331,6 +345,26 @@ export function SelectionBar({
                     </button>
                   );
                 })}
+                {structure && (
+                  <button
+                    type="button"
+                    aria-pressed={blobs.every((blob) => blob.role === structure)}
+                    disabled={disabled}
+                    onClick={onGiveBack}
+                    title={t(
+                      structure === "symbol"
+                        ? "calibration.bar.symbolAgainHelp"
+                        : "calibration.bar.ornamentAgainHelp",
+                    )}
+                    className={`h-7 cursor-pointer rounded-control px-3 text-[13px] transition-colors disabled:cursor-default disabled:opacity-50 ${
+                      blobs.every((blob) => blob.role === structure)
+                        ? "bg-card font-semibold text-ink shadow-[0_1px_2px_rgba(0,0,0,0.08)]"
+                        : "font-medium text-ink-2 hover:text-ink"
+                    }`}
+                  >
+                    {t(`calibration.role.${structure}`)}
+                  </button>
+                )}
               </div>
               {texts.length > 0 && (
                 <button
@@ -414,6 +448,8 @@ export function SelectionBar({
             )}
 
             {single?.erased && <span className={quiet}>{t("calibration.bar.erasedHelp")}</span>}
+            {stillSymbols && <span className={quiet}>{t("calibration.bar.symbolHelp")}</span>}
+            {stillPieces && <span className={quiet}>{t("calibration.bar.ornamentPieceHelp")}</span>}
             {suspicion && (
               <div className={notice}>
                 {t(`calibration.noise.${suspicion.kind}Help`)}

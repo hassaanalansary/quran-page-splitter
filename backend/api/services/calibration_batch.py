@@ -21,7 +21,7 @@ What a batch does to each page of its range::
 **What a person decided is kept.** A draft someone worked on is processed again like
 any other: every word's box comes from the ink given to it, and the decisions on its
 blobs — roles, owners, types, erases — are put back on every line whose pixels did not
-change (``calibration._carry_decisions``). Only a confirmed page is never processed
+change (``calibration.carry_decisions_to_draft``). Only a confirmed page is never processed
 over. ``make_fresh_draft_of_page``'s revision check refuses a draft saved in the seconds between
 deciding a page and storing it.
 

@@ -45,7 +45,7 @@ def edit(blob: dict, **changes) -> dict:
 class MergeTests(SimpleTestCase):
     def test_an_erased_blob_belongs_to_no_word_has_no_type_and_keeps_its_role(self):
         blob = draft_blob()
-        calibration._merge_blob(blob, edit(blob, erased=True), {1: WORD})
+        calibration.merge_blob_edit(blob, edit(blob, erased=True), {1: WORD})
         self.assertEqual(
             (blob["erased"], blob["role"], blob["allocations"], blob["subtype"], blob["exception"], blob["attention"]),
             (True, "mark", [], "", "", []),
@@ -53,17 +53,17 @@ class MergeTests(SimpleTestCase):
 
     def test_a_restored_blob_is_ink_again_and_remembers_it_was_erased(self):
         blob = draft_blob()
-        calibration._merge_blob(blob, edit(blob, erased=True), {1: WORD})
-        calibration._merge_blob(blob, edit(blob, erased=False), {1: WORD})
+        calibration.merge_blob_edit(blob, edit(blob, erased=True), {1: WORD})
+        calibration.merge_blob_edit(blob, edit(blob, erased=False), {1: WORD})
         self.assertIs(blob["erased"], False)
         untouched = draft_blob()
-        calibration._merge_blob(untouched, edit(untouched), {1: WORD})
+        calibration.merge_blob_edit(untouched, edit(untouched), {1: WORD})
         self.assertNotIn("erased", untouched)
 
     def test_an_ornament_is_never_erased(self):
         ring = draft_blob(role="ornament", initial_role="ornament", allocations=[], exception="", subtype="")
         with self.assertRaises(HttpError):
-            calibration._merge_blob(ring, edit(ring, erased=True), {1: WORD})
+            calibration.merge_blob_edit(ring, edit(ring, erased=True), {1: WORD})
 
 
 class SkipTests(SimpleTestCase):
@@ -77,14 +77,14 @@ class SkipTests(SimpleTestCase):
     def test_the_engine_is_handed_the_ink_without_it(self):
         blobs = [Blob(label, 0, 0, 5, 5, 25, preferred="body" if label == 1 else "mark-only") for label in (1, 2, 3)]
         ink = SimpleNamespace(components=list(blobs), bodies=blobs[:1], marks=blobs[1:])
-        calibration._without(ink, {1, 3})
+        calibration.take_erased_blobs_out_of_ink(ink, {1, 3})
         self.assertEqual(([b.label for b in ink.components], ink.bodies, [b.label for b in ink.marks]), ([2], [], [2]))
 
     def test_an_erase_is_carried_to_the_same_blob_when_the_page_is_processed_again(self):
         fresh = draft_blob(exception="", allocations=[{"word_id": 1, "paws": 0}])
         earlier = draft_blob(erased=True, allocations=[], subtype="", exception="")
         document = {"stream": [WORD], "lines": [{"snapshot_id": "a", "blobs": [fresh], "words": []}]}
-        self.assertTrue(calibration._carry_decisions(document, {"a": {"blobs": [earlier], "words": []}}))
+        self.assertTrue(calibration.carry_decisions_to_draft(document, {"a": {"blobs": [earlier], "words": []}}))
         self.assertEqual((fresh["erased"], fresh["allocations"], fresh["subtype"]), (True, [], ""))
 
 

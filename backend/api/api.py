@@ -10,7 +10,7 @@ from quran.views import counting_systems, qiraat, suras
 # below. ``django_auth`` is a SessionAuth, which is an APIKeyCookie, and those
 # enforce CSRF on unsafe methods on their own — there is no csrf= argument on
 # NinjaAPI in this version.
-api = NinjaAPI(title="Quran Page Splitter API", auth=django_auth)
+api = NinjaAPI(title="SATR API", auth=django_auth)
 
 # Reference data: the same Quranic constants for everyone, and the sign-up and
 # create-mushaf screens need them before there is a session. The routers live in

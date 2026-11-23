@@ -129,7 +129,7 @@ def drawn_pages(
             small=small and page.page_number == 1,
         )
 
-    with mock.patch("api.services.line_images._render_page", side_effect=render):
+    with mock.patch("api.services.line_images.render_mushaf_page", side_effect=render):
         yield
 
 
@@ -332,6 +332,15 @@ class DraftTests(CalibrationApiTestCase):
         Segment.objects.filter(line__page__page_number=1, line__line_number=1).update(bbox_w=480)
         self.assertTrue(self.document(1)["stale"])
         self.assertEqual(self.put(1, self.draft(self.doc)).status_code, 409)
+
+    def test_erasing_a_lines_edge_ink_in_finalize_makes_the_draft_read_only(self):
+        # The snapshot is measured without the ink the line gives up, so it is a new one.
+        line = Line.objects.filter(page__mushaf=self.mushaf, page__page_number=1, line_number=1)
+        line.update(erase_edge_ink=True)
+        self.assertTrue(self.document(1)["stale"])
+        # A line that keeps its edge ink signs as it always did: nothing else goes stale.
+        line.update(erase_edge_ink=False)
+        self.assertFalse(self.document(1)["stale"])
 
 
 class PreviewTests(CalibrationApiTestCase):
@@ -619,7 +628,7 @@ class LearningTests(CalibrationApiTestCase):
             allocations=[{"word_id": 1, "paws": 1}], ownership_explicit=True
         )
         self.assertEqual(self.put(1, body).status_code, 200)
-        with mock.patch("api.services.line_images._render_page", side_effect=AssertionError("no PDF rendering")):
+        with mock.patch("api.services.line_images.render_mushaf_page", side_effect=AssertionError("no PDF rendering")):
             response = self.client.get(self.url(1, "/evaluation"))
         self.assertEqual(response.status_code, 200, response.content)
         row = response.json()["lines"][0]

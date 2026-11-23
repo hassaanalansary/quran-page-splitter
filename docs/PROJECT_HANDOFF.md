@@ -1,4 +1,4 @@
-# Quran Page Splitter — Project Handoff
+# SATR — Project Handoff
 
 The developer reference: how the project is laid out, what it stores, what the API
 offers and the conventions it follows. How the two engines work, step by step on a
@@ -195,11 +195,11 @@ npm run build          # → frontend/dist
 | model | what it is |
 | --- | --- |
 | `Mushaf` | `owner`, `rawi`, `name` (unique per owner), the PDF (stored once as `pdfs/<sha>.pdf`), the Quran's first and last PDF page, `thumbnail`, `visibility` (`private` / `published`) and `published_at`, `ijam_mode`, `line_png_size` (`box` / `uniform` / `tight` / `tight_uniform`), `description`, `duplicated_from` |
-| `Template` | one per mushaf and type: `sura_header`, `aya_separator`, `sajda`, `rub_hizb`; an image and optional ignore rectangles |
+| `Template` | one per mushaf and type: `sura_header`, `aya_separator`, `sajda`, `rub_hizb`; an image and optional ignore rectangles. The sajda and rub' pictures are matched on every text line (`separators.split_symbols`); a hit counts only when the ink in its box is a sign of its own, so a letter head that looks like a small solid star stays text. A symbol blob the match still gets wrong, or a piece an aya ornament took with its ring (a kasra under the last word), is called text in Ink (B or M): read with the line while that decision stands, structure again once it is released. The ring itself never changes (`api/services/calibration_structure.py`) |
 | `ProcessingRun` | one line-engine run: settings, page range, status, abort detail, log |
 | `ProcessJob` | one background job, and all a worker needs to run it: `kind` (`detection`, `calibration`, `calibration_batch`, `library_rebuild`; `words` only for history), `params` (the runner's inputs), `state` (`queued`, `running`, then a final state), `requested_by` and `requested_at`, `run_started_at` and `claimed_by_worker`, `phase`, progress, heartbeat, cancel flag |
 | `Page` | a logical page with data: its crop box, `reviewed`, `lines_finalized` (a person marked its cuts checked in Finalize), `line_padding` (the padding its lines got there; the latest three checked pages' agreeing value is put on each new page, and the edge ink erased page-wide after it), `sura_header_padding` (the same for its sura headers; with whether the latest checked pages erased their headers' edge ink, put on each new page's headers), the run that made it |
-| `Line` | `line_number`, `type` (`text` / `sura_header` / `besmella`), `sura`, its box, `erase_edge_ink`, its exported PNG and the rows a tight export cut off it |
+| `Line` | `line_number`, `type` (`text` / `sura_header` / `besmella`), `sura`, its box, `erase_edge_ink` (cut wherever the line is cut: its exported PNG and the snapshots Ink measures), its exported PNG and the rows a tight export cut off it |
 | `Segment` | a stretch of a line up to an aya ornament: `bbox_x`, `bbox_w`, `has_separator`, the derived `aya_number` |
 | `EraseStroke` | a brush stroke erased from a line's PNG |
 | `LineWord` | a confirmed word box on a line: `word_id`, `position` (reading order), `start_x` (right edge), `end_x` (left edge). Written when a page is confirmed (and by a bundle import); this is the product the exports read |

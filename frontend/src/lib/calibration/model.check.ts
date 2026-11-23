@@ -53,6 +53,7 @@ import {
   pageExceptions,
   pushHistory,
   releaseDecisions,
+  giveBackToStructure,
   requestIds,
   selectIds,
   setErased,
@@ -180,6 +181,68 @@ const sel = (ids: number[], snapshot = "s1") => ({ snapshot, ids });
   });
   const lines = setRole([withRing], sel([5]), "body");
   assert.equal(pick(lines, 5).role, "ornament");
+}
+
+// A blob matched as a sajda or rub' sign may be called text, and taken back.
+{
+  const withSign = line();
+  withSign.blobs.push({
+    ...blob(5, 200, "mark", null),
+    role: "symbol",
+    initial_role: "symbol",
+  });
+  // Picked only when the filter shows everything; never with a kind of mark chosen.
+  const sign = pick([withSign], 5);
+  assert.equal(passesFilter(sign, "s1", "all", new Map(), new Map()), true);
+  assert.equal(passesFilter(sign, "s1", "mark", new Map(), new Map()), false);
+  // A sign is not erased, nor given to a word, until it is text.
+  assert.equal(pick(setErased([withSign], sel([5]), true), 5).erased, undefined);
+  assert.deepEqual(pick(assignToWord([withSign], sel([5]), 3), 5).allocations, []);
+
+  const text = setRole([withSign], sel([5]), "body");
+  assert.deepEqual(
+    [pick(text, 5).role, pick(text, 5).explicit, pick(text, 5).allocations],
+    ["body", true, []],
+  );
+  const owned = assignToWord(text, sel([5]), 3);
+  assert.deepEqual(pick(owned, 5).allocations, [{ word_id: 3, paws: 1 }]);
+  assert.equal(owned[0].words[2].end_x, 200, "its word takes the ink in");
+
+  // Made a symbol again, by hand or by releasing the decision: out of its word.
+  for (const again of [giveBackToStructure(owned, sel([5])), releaseDecisions(owned, sel([5]))]) {
+    assert.deepEqual(
+      [pick(again, 5).role, pick(again, 5).explicit, pick(again, 5).allocations],
+      ["symbol", false, []],
+    );
+    assert.equal(again[0].words[2].end_x, 340, "its word lets the ink go");
+  }
+  // Text that was always text is no structure to go back to.
+  assert.equal(pick(giveBackToStructure([line()], sel([3])), 3).role, "body");
+}
+
+// A piece grouped with an aya ornament may be called text too; its ring never.
+{
+  const withOrnament = line();
+  withOrnament.blobs.push(
+    { ...blob(6, 150, "body", null), role: "ornament", initial_role: "ornament", ring: true },
+    { ...blob(7, 160, "mark", null), role: "ornament", initial_role: "ornament", ring: false },
+    // A draft made before rings were marked: no piece may be told apart from its ring.
+    { ...blob(8, 100, "mark", null), role: "ornament", initial_role: "ornament" },
+  );
+  const lines = [withOrnament];
+  assert.deepEqual(
+    [6, 7, 8].map((id) => passesFilter(pick(lines, id), "s1", "all", new Map(), new Map())),
+    [false, true, false],
+  );
+  const text = setRole(lines, sel([6, 7, 8]), "mark");
+  assert.deepEqual(
+    [6, 7, 8].map((id) => pick(text, id).role),
+    ["ornament", "mark", "ornament"],
+  );
+  assert.equal(pick(text, 7).explicit, true);
+  const back = giveBackToStructure(text, sel([7]));
+  assert.deepEqual([pick(back, 7).role, pick(back, 7).explicit], ["ornament", false]);
+  assert.equal(pick(releaseDecisions(text, sel([7])), 7).role, "ornament");
 }
 
 // Assigning a body moves the count and both words' edges.

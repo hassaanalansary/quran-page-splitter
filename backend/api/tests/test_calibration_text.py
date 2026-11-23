@@ -45,7 +45,7 @@ class AnsweredDoubtTests(SimpleTestCase):
 
     @staticmethod
     def flags(blob: dict, *, ambiguous: bool = False) -> list[str]:
-        return calibration_service._attention(blob, mock.Mock(ambiguous=ambiguous), set(), set(), set())
+        return calibration_service.find_reasons_to_look(blob, mock.Mock(ambiguous=ambiguous), set(), set(), set())
 
     def test_the_engines_own_doubts_are_raised_when_nothing_answered_them(self):
         self.assertEqual(self.flags(self.blob(), ambiguous=True), ["uncertain", "search-override", "ambiguous"])

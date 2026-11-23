@@ -16,7 +16,7 @@ already decided it:
 * **calibration** — the fingerprint library built from the confirmed pages answers
   body or mark for every blob, with how sure it is. Not a lock but a *price*: reading
   a blob against a sure answer costs more than leaving a word a PAW short (see
-  :func:`_constrain`). The engine's reading without it is kept beside, as the
+  :func:`constrain_blob_to_decisions`). The engine's reading without it is kept beside, as the
   prediction record — see :func:`evaluation`.
 
 Everything else keeps the frozen engine's scoring.
@@ -92,6 +92,11 @@ from api.services.calibration_examples import (
     load_revision_payloads,
 )
 from api.services.calibration_settings import serialize_calibration_settings
+from api.services.calibration_structure import (
+    find_roles_allowed_for_blob,
+    find_structure_taken_as_text,
+    put_structure_back_into_text,
+)
 from api.services.fingerprint_store import (
     describe_library_for_draft,
     load_current_library,
@@ -333,7 +338,7 @@ def _attach_urls(mushaf: Mushaf, document: Doc) -> None:
 def are_context_lines_current(mushaf: Mushaf, rows: list[Doc]) -> bool:
     if not are_line_snapshots_current(mushaf, rows):
         return False
-    approved = _approved_rows(mushaf, {row["page_number"] for row in rows})
+    approved = find_approved_context_rows(mushaf, {row["page_number"] for row in rows})
     return all(
         row.get("approval_fingerprint") == approved.get(row["snapshot_id"], {}).get("approval_fingerprint")
         for row in rows
@@ -408,8 +413,8 @@ def find_aya_span_of_page(mushaf: Mushaf, page_number: int) -> tuple[tuple[int, 
 
 
 def _span_lines(mushaf: Mushaf, start: tuple[int, int], end: tuple[int, int]) -> list[Line]:
-    first = line_images.locate(mushaf, *start).line
-    last = line_images.locate(mushaf, *end, last=True).line
+    first = line_images.locate_aya_segment(mushaf, *start).line
+    last = line_images.locate_aya_segment(mushaf, *end, last=True).line
     candidates = (
         Line.objects.filter(
             page__mushaf=mushaf,
@@ -425,19 +430,20 @@ def _span_lines(mushaf: Mushaf, start: tuple[int, int], end: tuple[int, int]) ->
     return [line for line in candidates if low <= (line.page.page_number, line.line_number) <= high]
 
 
-def _text_role(raw: Doc) -> str:
+def read_text_role(raw: Doc) -> str:
     return "body" if raw["preferred"] == "body" else "mark"
 
 
-def _blank_row(snapshot: CalibrationSnapshot, line: Line, library: Library, *, readonly: bool) -> Doc:
+def build_blank_row(snapshot: CalibrationSnapshot, line: Line, library: Library, *, readonly: bool) -> Doc:
     """A line as the engine first sees it: every blob with its evidence, nothing decided.
 
     Each text blob carries calibration's *proposal* — body or mark, from the library,
     with how sure it is; nothing when the library does not yet know both letters and
-    marks. The reading prices it (:func:`_constrain`).
+    marks. The reading prices it (:func:`constrain_blob_to_decisions`).
     """
     data = snapshot.metadata
     ornaments = {ident for group in data["separators"] for ident in group}
+    rings = snapshots.find_ornament_rings(data)
     symbols = {ident for _, group in data["symbols"] for ident in group}
     features = snapshots.blob_features(snapshot) if library.can_propose and not readonly else {}
     ox, oy = data["bbox"]["x"] + data["offset_x"], data["bbox"]["y"] + data["offset_y"]
@@ -450,7 +456,7 @@ def _blank_row(snapshot: CalibrationSnapshot, line: Line, library: Library, *, r
     blobs = []
     for raw in data["blobs"]:
         ident = raw["label"]
-        role = "ornament" if ident in ornaments else "symbol" if ident in symbols else _text_role(raw)
+        role = "ornament" if ident in ornaments else "symbol" if ident in symbols else read_text_role(raw)
         proposal: Doc = proposals.get(ident, {})
         blobs.append(
             {
@@ -473,6 +479,8 @@ def _blank_row(snapshot: CalibrationSnapshot, line: Line, library: Library, *, r
                 "decision_source": "search",
                 "proposed_role": proposal.get("role"),
                 "proposal": proposal,
+                # Which of an ornament's pieces is its ring, which never becomes text.
+                **({"ring": ident in rings} if ident in ornaments else {}),
             }
         )
     return {
@@ -491,7 +499,7 @@ def _blank_row(snapshot: CalibrationSnapshot, line: Line, library: Library, *, r
     }
 
 
-def _approved_rows(mushaf: Mushaf, pages: set[int]) -> dict[str, Doc]:
+def find_approved_context_rows(mushaf: Mushaf, pages: set[int]) -> dict[str, Doc]:
     """Rows of *confirmed* neighbouring pages, by snapshot id — the approved context.
 
     Only confirmed ones: a neighbour's draft is somebody's work in progress, and
@@ -508,7 +516,7 @@ def _approved_rows(mushaf: Mushaf, pages: set[int]) -> dict[str, Doc]:
             # Content-based so unchanged approvals and gallery copies stay valid. An
             # erase is named only where there is one, so approvals stored before it
             # existed keep their fingerprints.
-            fingerprint = snapshots.digest(
+            fingerprint = snapshots.digest_json(
                 {
                     "blobs": [
                         {key: blob.get(key) for key in ("id", "role", "allocations")}
@@ -552,8 +560,8 @@ def make_fresh_draft_of_page(
     hid_own_page = earlier is not None and earlier.confirmed_revision is not None
     current = load_current_set(mushaf, hiding_page=page if hid_own_page else None)
     library = current.library
-    templates = snapshots.Templates.of(mushaf)
-    approved = _approved_rows(mushaf, {line.page.page_number for line in lines} - {page})
+    templates = snapshots.Templates.load_for_mushaf(mushaf)
+    approved = find_approved_context_rows(mushaf, {line.page.page_number for line in lines} - {page})
     before = {row["snapshot_id"]: row for row in (earlier.payload.get("lines", []) if earlier else [])}
 
     rendered: dict[Any, Any] = {}
@@ -562,13 +570,13 @@ def make_fresh_draft_of_page(
         if cancelled is not None and cancelled():
             return False
         if line.page_id not in rendered:
-            rendered[line.page_id] = line_images._render_page(mushaf, line.page)
+            rendered[line.page_id] = line_images.render_mushaf_page(mushaf, line.page)
         snapshot = snapshots.snapshot_line(mushaf, line, rendered[line.page_id], templates)
         readonly = line.page.page_number != page
         if readonly and str(snapshot.pk) in approved:
-            row = _as_constraint(copy.deepcopy(approved[str(snapshot.pk)]))
+            row = make_row_a_constraint(copy.deepcopy(approved[str(snapshot.pk)]))
         else:
-            row = _blank_row(snapshot, line, library, readonly=readonly)
+            row = build_blank_row(snapshot, line, library, readonly=readonly)
         rows.append(row)
         if progress is not None:
             progress(index)
@@ -614,7 +622,7 @@ def make_fresh_draft_of_page(
     alive()
 
     # The draft: that reading, with what people already decided put back on it.
-    if _carry_decisions(document, before):
+    if carry_decisions_to_draft(document, before):
         document = align_document(mushaf, document, calibration_locks=True)
     apply_text_types_to_draft(mushaf, document)
     alive()
@@ -646,7 +654,7 @@ def make_fresh_draft_of_page(
     return True
 
 
-def _carry_decisions(document: Doc, before: dict[str, Doc]) -> bool:
+def carry_decisions_to_draft(document: Doc, before: dict[str, Doc]) -> bool:
     """Put an earlier draft's decisions back on the lines that did not change.
 
     A line whose sources are unchanged keeps its snapshot, and so its blob ids: what
@@ -673,11 +681,18 @@ def _carry_decisions(document: Doc, before: dict[str, Doc]) -> bool:
                 subtype=earlier.get("subtype", ""),
                 subtype_explicit=earlier.get("subtype_explicit", bool(earlier.get("subtype"))),
             )
-            if earlier.get("explicit") and earlier["role"] in TEXT_ROLES and blob["initial_role"] in TEXT_ROLES:
+            # A symbol a person called text is text again on the same pixels; an
+            # ornament never took a decision to carry.
+            allowed = find_roles_allowed_for_blob(blob)
+            if earlier.get("explicit") and earlier["role"] in TEXT_ROLES and earlier["role"] in allowed:
                 blob.update(role=earlier["role"], explicit=True, decision_source="human")
                 carried = True
             allocations = [a for a in earlier.get("allocations") or [] if a["word_id"] in stream]
-            if earlier.get("ownership_explicit") and (allocations or not earlier.get("allocations")):
+            if (
+                blob["role"] in TEXT_ROLES
+                and earlier.get("ownership_explicit")
+                and (allocations or not earlier.get("allocations"))
+            ):
                 blob.update(ownership_explicit=True, allocations=allocations)
                 carried = True
                 if earlier.get("cut"):
@@ -685,17 +700,17 @@ def _carry_decisions(document: Doc, before: dict[str, Doc]) -> bool:
                     # go into ends in ``_box_words``, which drops the cut if the span
                     # took one of its words away.
                     blob["cut"] = copy.deepcopy(earlier["cut"])
-            if "erased" in earlier and blob["initial_role"] in TEXT_ROLES:
+            if "erased" in earlier and blob["role"] in TEXT_ROLES:
                 # The same pixels, so the same noise: the erase holds, and so does the
                 # mark of a blob erased once and restored, which the export looks for.
                 blob["erased"] = bool(earlier["erased"])
                 if blob["erased"]:
-                    _erase(blob)
+                    erase_draft_blob(blob)
                     carried = True
     return carried
 
 
-def _as_constraint(row: Doc) -> Doc:
+def make_row_a_constraint(row: Doc) -> Doc:
     """An approved neighbouring row, as fixed context for this page's alignment.
 
     The page was confirmed whole, so every role on it is a human decision and every
@@ -818,7 +833,7 @@ def align_document(
 
     Human roles and assignments are hard constraints. With ``calibration_locks``,
     calibration's proposals price each blob's roles by how sure the library is (see
-    :func:`_constrain`) — as every draft is read; only the prediction record is read
+    :func:`constrain_blob_to_decisions`) — as every draft is read; only the prediction record is read
     without them.
 
     With ``text_locks`` the text's own word is added: the small waw and ya it puts on
@@ -828,7 +843,7 @@ def align_document(
     that follows the text (:func:`does_mushaf_follow_the_text`).
     """
     text_locks = text_locks and does_mushaf_follow_the_text(mushaf)
-    result = _read(
+    result = read_span_once(
         mushaf, document, calibration_locks=calibration_locks, affected_ayas=affected_ayas, text_locks=text_locks
     )
     if not text_locks or affected_ayas == set():
@@ -837,10 +852,10 @@ def align_document(
     if not moved:
         return result
     scope = None if affected_ayas is None else set(affected_ayas) | moved
-    return _read(mushaf, result, calibration_locks=calibration_locks, affected_ayas=scope, text_locks=True)
+    return read_span_once(mushaf, result, calibration_locks=calibration_locks, affected_ayas=scope, text_locks=True)
 
 
-def _read(
+def read_span_once(
     mushaf: Mushaf,
     document: Doc,
     *,
@@ -877,18 +892,21 @@ def _read(
 
     images, inks, cut_by_row = [], [], []
     for row in rows:
-        image, ink = snapshots.load(stored[row["snapshot_id"]])
+        image, ink = snapshots.load_measured_line(stored[row["snapshot_id"]])
+        put_structure_back_into_text(ink, find_structure_taken_as_text(row))
         cut = set(snapshots.select_span(ink, stored[row["snapshot_id"]].metadata, start, end))
         erased = {blob["id"] for blob in row["blobs"] if blob.get("erased")}
         if erased:
-            _without(ink, erased)
+            take_erased_blobs_out_of_ink(ink, erased)
             cut -= erased
         decided = {blob["id"]: blob for blob in row["blobs"]}
         for blob in ink.components:
             edited = decided.get(blob.label)
             if edited is None:
                 continue
-            _constrain(blob, edited, unit_of, calibration_locks=calibration_locks, text_locks=text_locks)
+            constrain_blob_to_decisions(
+                blob, edited, unit_of, calibration_locks=calibration_locks, text_locks=text_locks
+            )
         images.append(image)
         inks.append(ink)
         cut_by_row.append(cut)
@@ -921,7 +939,7 @@ def _read(
         if row.get("approved"):
             continue
         fresh = copy.deepcopy(row)
-        _apply_outcome(fresh, outcome, ink, cut, original, units, placed)
+        apply_reading_to_row(fresh, outcome, ink, cut, original, units, placed)
         readings.append((row, fresh, outcome))
 
     scope = None if affected_ayas is None else _changed_ayas(readings, affected_ayas, original)
@@ -940,7 +958,7 @@ def _read(
     return result
 
 
-def _without(ink: Any, erased: set[int]) -> None:
+def take_erased_blobs_out_of_ink(ink: Any, erased: set[int]) -> None:
     """Take the blobs a person erased off a line's ink, as ``select_span`` takes those
     outside the span: the engine reads the components it is handed and nothing else,
     so erased ink is never placed, counted or given to a word. In place."""
@@ -949,10 +967,10 @@ def _without(ink: Any, erased: set[int]) -> None:
     ink.marks = [blob for blob in ink.marks if blob.label not in erased]
 
 
-def _erase(blob: Doc) -> None:
+def erase_draft_blob(blob: Doc) -> None:
     """A draft blob a person erased: noise the line's cutting and cleaning left, not ink
     of the text. In place. It belongs to no word, has no type and asks for no look; the
-    reading never sees it (:func:`_without`) and the line PNG is exported without it
+    reading never sees it (:func:`take_erased_blobs_out_of_ink`) and the line PNG is exported without it
     (:func:`erased_ink`). Its role stays as it was, for a restore."""
     blob.update(
         erased=True,
@@ -1093,11 +1111,11 @@ def _fused_units(rows: list[Doc], stream: list[Doc]) -> dict[int, list[int]]:
     needs a body of its own — so a word whose whole ink is that shared blob (في, لا,
     any one-PAW word) could never be placed. The words a shared blob joins are read
     as a single *unit* instead, their PAWs and dots added up, and split again at the
-    shared blob afterwards (:func:`_apply_outcome`). Chains join: blobs shared by
+    shared blob afterwards (:func:`apply_reading_to_row`). Chains join: blobs shared by
     words 4-5 and by 5-6 make one unit of 4, 5 and 6.
 
     Only runs of consecutive words in one aya — the only ones ink can join — are
-    kept; ``_merge_blob`` refuses anything else before it gets here.
+    kept; ``merge_blob_edit`` refuses anything else before it gets here.
 
     Returns each unit's first word id → its word ids, in reading order.
     """
@@ -1147,7 +1165,7 @@ def _unit(members: list[Doc], short_weight: int = COUNT_WEIGHT) -> WordInput:
     )
 
 
-def _constrain(
+def constrain_blob_to_decisions(
     blob: Any, edited: Doc, unit_of: dict[int, int], *, calibration_locks: bool, text_locks: bool = True
 ) -> None:
     """Carry one blob's decisions onto the engine's ``Blob``.
@@ -1258,7 +1276,7 @@ def _box_words(row: Doc) -> None:
         )
 
 
-def _apply_outcome(
+def apply_reading_to_row(
     row: Doc,
     outcome: WordLine,
     ink: Any,
@@ -1308,7 +1326,7 @@ def _apply_outcome(
 
     for blob in row["blobs"]:
         if blob.get("erased"):
-            _erase(blob)  # the reading never saw it
+            erase_draft_blob(blob)  # the reading never saw it
             continue
         component = components.get(blob["id"])
         retained_missing = any(a["word_id"] in missing_ids for a in blob["allocations"])
@@ -1332,7 +1350,7 @@ def _apply_outcome(
         word_id = blob.get("text_word")
         if blob.get("text_role") and locked.get(blob["id"]) == "calibration" and word_id is not None:
             _finish_text_lock(blob, word_id if word_id in here else None)
-        blob["attention"] = _attention(blob, component, cut, conflicts, released)
+        blob["attention"] = find_reasons_to_look(blob, component, cut, conflicts, released)
 
     previous = {word["word_id"]: word for word in row["words"]}
     fresh_words: list[Doc] = []
@@ -1542,7 +1560,7 @@ def _in_reading_order(words: list[Doc]) -> list[Doc]:
     return sorted(words, key=lambda word: word["word_id"])
 
 
-def _attention(
+def find_reasons_to_look(
     blob: Doc, component: InkComponent | None, cut: set[int], conflicts: set[int], released: set[int]
 ) -> list[str]:
     """Why this blob deserves a look. Signals, never verdicts.
@@ -1595,9 +1613,11 @@ def apply_edits_to_draft(mushaf: Mushaf, review: CalibrationReview, data: Doc) -
     """The draft with the client's edits applied — validated, never trusted.
 
     The client sends every editable line whole: every blob's decisions, a shared
-    body's cut among them. Unknown blobs, words outside the span, a structural blob
+    body's cut among them. Unknown blobs, words outside the span, an ornament's ring
     given a text role, marks carrying PAWs, a cut that doesn't give each of its words
-    one piece — all refused as one invalid edit. Words are not sent: each box is
+    one piece — all refused as one invalid edit. A symbol, or an ornament's piece other
+    than its ring, may be given a text role and back
+    (:mod:`api.services.calibration_structure`). Words are not sent: each box is
     taken again from the ink its word now has, and an aya is read again only when
     its ink changed.
     """
@@ -1619,7 +1639,7 @@ def apply_edits_to_draft(mushaf: Mushaf, review: CalibrationReview, data: Doc) -
         raster = LineRaster(row["snapshot_id"])
         for blob in row["blobs"]:
             before = copy.deepcopy(blob)
-            _merge_blob(blob, blobs[blob["id"]], references)
+            merge_blob_edit(blob, blobs[blob["id"]], references)
             # A cut decides only which pixels are whose — no aya needs reading again.
             try:
                 set_cut_from_edit(blob, blobs[blob["id"]].get("cut"), row["bbox"], raster)
@@ -1635,14 +1655,17 @@ def apply_edits_to_draft(mushaf: Mushaf, review: CalibrationReview, data: Doc) -
     return document
 
 
-def _merge_blob(blob: Doc, new: Doc, references: dict[int, Doc]) -> None:
+def merge_blob_edit(blob: Doc, new: Doc, references: dict[int, Doc]) -> None:
     role = new["role"]
-    structural = blob["initial_role"] in ("ornament", "symbol")
-    if (structural and role != blob["initial_role"]) or (not structural and role not in TEXT_ROLES):
+    if role not in find_roles_allowed_for_blob(blob):
         refuse_request("invalid_edits", 422)
-    # Only text ink is erased: an ornament or a symbol is the page's structure.
+    # Only text ink is erased or given to words: an ornament or a symbol is the
+    # page's structure. Structure a person calls text is text, and may be both.
+    structural = role not in TEXT_ROLES
     erased = bool(new.get("erased"))
     if erased and structural:
+        refuse_request("invalid_edits", 422)
+    if structural and new.get("allocations"):
         refuse_request("invalid_edits", 422)
     if new.get("exception", "") not in EXCEPTIONS:
         refuse_request("invalid_edits", 422)
@@ -1685,7 +1708,7 @@ def _merge_blob(blob: Doc, new: Doc, references: dict[int, Doc]) -> None:
         # Released: nobody has decided it now, and the next reading says who does.
         blob["decision_source"] = "search"
     if erased:
-        _erase(blob)
+        erase_draft_blob(blob)
     elif blob.get("erased"):
         # Restored: ink of the text again, which the next reading places. The key
         # stays, false, so the export can tell a PNG cut before the restore.
@@ -2123,7 +2146,7 @@ def evaluation_page(mushaf: Mushaf, page: int) -> Doc:
     readings = {
         "frozen": canonical.get("frozen", {}),
         "canonical": canonical,
-        "calibrated": _calibrated(mushaf, canonical),
+        "calibrated": read_with_own_proposals(mushaf, canonical),
         "confirmed": confirmed.payload,
     }
     reference = copy.deepcopy(confirmed.payload)
@@ -2188,7 +2211,7 @@ def evaluation(mushaf: Mushaf) -> Doc:
         ).first()
         if processed is None:
             continue
-        pages.append(_evaluate_page(mushaf, review.page_number, processed.payload, confirmed.payload))
+        pages.append(evaluate_processed_page(mushaf, review.page_number, processed.payload, confirmed.payload))
     totals: Doc = {}
     for entry in pages:
         for name, counts in entry["results"].items():
@@ -2205,7 +2228,7 @@ def evaluation(mushaf: Mushaf) -> Doc:
     }
 
 
-def _evaluate_page(mushaf: Mushaf, page: int, processed: Doc, confirmed: Doc) -> Doc:
+def evaluate_processed_page(mushaf: Mushaf, page: int, processed: Doc, confirmed: Doc) -> Doc:
     truth = {
         (row["snapshot_id"], blob["id"]): blob["role"]
         for row in confirmed.get("lines", [])
@@ -2214,16 +2237,16 @@ def _evaluate_page(mushaf: Mushaf, page: int, processed: Doc, confirmed: Doc) ->
     }
     truth_words = _placements(confirmed.get("lines", []), page)
     canonical = processed
-    calibrated = _calibrated(mushaf, processed)
+    calibrated = read_with_own_proposals(mushaf, processed)
     frozen = _placements(processed.get("frozen", {}).get("lines", []), page)
     results = {
         "frozen": _word_errors(frozen, truth_words, page),
         "canonical": {
-            **_role_errors(canonical, truth),
+            **count_role_errors(canonical, truth),
             **_word_errors(_placements_of(canonical, page), truth_words, page),
         },
         "calibrated": {
-            **_role_errors(calibrated, truth),
+            **count_role_errors(calibrated, truth),
             **_word_errors(_placements_of(calibrated, page), truth_words, page),
         },
     }
@@ -2247,7 +2270,7 @@ def _evaluate_page(mushaf: Mushaf, page: int, processed: Doc, confirmed: Doc) ->
     }
 
 
-def _calibrated(mushaf: Mushaf, processed: Doc) -> Doc:
+def read_with_own_proposals(mushaf: Mushaf, processed: Doc) -> Doc:
     """The processed page re-read with its own proposals applied as locks."""
     document = copy.deepcopy(processed)
     document.pop("shown", None)
@@ -2289,12 +2312,14 @@ def _placements_of(document: Doc, page: int) -> dict[int, list[Placement]]:
     return _placements(document.get("lines", []) + document.get("context", []), page)
 
 
-def _role_errors(document: Doc, truth: dict[tuple[str, int], str]) -> Doc:
+def count_role_errors(document: Doc, truth: dict[tuple[str, int], str]) -> Doc:
     wrong = {"body_as_mark": 0, "mark_as_body": 0}
     for row in document.get("lines", []):
         for blob in row["blobs"]:
             expected = truth.get((row["snapshot_id"], blob["id"]))
-            if expected is None or blob["role"] == expected:
+            # Body read as mark, or mark as body: a symbol a person called text is
+            # neither, and counts in no column.
+            if expected is None or blob["role"] == expected or blob["role"] not in TEXT_ROLES:
                 continue
             wrong["body_as_mark" if expected == "body" else "mark_as_body"] += 1
     return wrong

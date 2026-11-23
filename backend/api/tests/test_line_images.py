@@ -44,7 +44,7 @@ class LineImageGeometryTests(TestCase):
         cls.line.save(update_fields=["sura"])
         # A short line inside the same column — the last line of a sura, or one of
         # al-Fatiha's. The column is as wide as the widest thing on the page; this
-        # line is not, and that difference is the whole point of _origin_x.
+        # line is not, and that difference is the whole point of find_line_origin_x.
         cls.short_line = Line.objects.create(
             page=cls.page, line_number=2, type=LineTypeChoices.TEXT, bbox_x=400, bbox_y=50, bbox_w=300, bbox_h=50
         )
@@ -56,11 +56,11 @@ class LineImageGeometryTests(TestCase):
         """Not the column's. A column spans the widest thing on the page — a sura
         header, and on a framed page the frame — so cutting a short line there hands
         the engine ink no word owns, and it reads the border as letters."""
-        self.assertEqual(line_images._origin_x(self.short_line), 400)
-        self.assertEqual(line_images._origin_x(self.line), 100)
+        self.assertEqual(line_images.find_line_origin_x(self.short_line), 400)
+        self.assertEqual(line_images.find_line_origin_x(self.line), 100)
 
     def test_a_line_that_already_starts_the_aya_is_not_cropped(self):
-        crop = line_images._crop_for(self.line, self.line, self.line, self._segment(1), self._segment(3))
+        crop = line_images.find_span_crop(self.line, self.line, self.line, self._segment(1), self._segment(3))
         self.assertIsNone(crop)
 
     def test_starting_mid_line_crops_away_the_words_to_the_right(self):
@@ -69,12 +69,12 @@ class LineImageGeometryTests(TestCase):
         Aya 5 sits to its right and is not ours, so the cut keeps image x up to
         that segment's right edge: 400 + 300 - 100 = 600.
         """
-        crop = line_images._crop_for(self.line, self.line, self.line, self._segment(2), self._segment(3))
+        crop = line_images.find_span_crop(self.line, self.line, self.line, self._segment(2), self._segment(3))
         self.assertEqual(crop, (0, 600))
 
     def test_ending_mid_line_crops_away_the_words_to_the_left(self):
         """End at aya 6: aya 7 lies to its left, so keep from x 400 - 100 = 300."""
-        crop = line_images._crop_for(self.line, self.line, self.line, self._segment(1), self._segment(2))
+        crop = line_images.find_span_crop(self.line, self.line, self.line, self._segment(1), self._segment(2))
         self.assertEqual(crop, (300, None))
 
     def test_ending_on_the_rightmost_aya_still_cuts_the_rest_of_the_line(self):
@@ -84,11 +84,11 @@ class LineImageGeometryTests(TestCase):
         go. This used to be skipped by a guard testing the wrong end of the line, and
         the engine was handed two ayat of ink it had no words for.
         """
-        crop = line_images._crop_for(self.line, self.line, self.line, self._segment(1), self._segment(1))
+        crop = line_images.find_span_crop(self.line, self.line, self.line, self._segment(1), self._segment(1))
         self.assertEqual(crop, (600, None))
 
     def test_both_ends_on_one_line(self):
-        crop = line_images._crop_for(self.line, self.line, self.line, self._segment(2), self._segment(2))
+        crop = line_images.find_span_crop(self.line, self.line, self.line, self._segment(2), self._segment(2))
         self.assertEqual(crop, (300, 600))
 
     def test_ornament_spans_come_from_the_segment_left_edge(self):
@@ -97,21 +97,23 @@ class LineImageGeometryTests(TestCase):
         The right edge is rebuilt from the template width, which is the only place
         it ever came from.
         """
-        spans, ayat = line_images._separators(self.line, origin_x=100, width=900, template_width=120)
+        spans, ayat = line_images.rebuild_separator_spans(self.line, origin_x=100, width=900, template_width=120)
         self.assertEqual(spans, [(600, 720), (300, 420)])
         self.assertEqual(ayat, ["2:5", "2:6"])
 
     def test_spans_shift_with_the_crop(self):
         """After cropping, image x 0 has moved, and the spans move with it."""
-        spans, ayat = line_images._separators(self.line, origin_x=400, width=600, template_width=120)
+        spans, ayat = line_images.rebuild_separator_spans(self.line, origin_x=400, width=600, template_width=120)
         self.assertEqual(spans, [(300, 420), (0, 120)])
         self.assertEqual(ayat, ["2:5", "2:6"])
 
     def test_no_template_means_find_them_yourself(self):
-        self.assertEqual(line_images._separators(self.line, origin_x=100, width=900, template_width=0), (None, None))
+        self.assertEqual(
+            line_images.rebuild_separator_spans(self.line, origin_x=100, width=900, template_width=0), (None, None)
+        )
 
     def test_cropping_out_an_ornament_also_removes_its_identity(self):
-        spans, ayat = line_images._separators(self.line, origin_x=400, width=300, template_width=120)
+        spans, ayat = line_images.rebuild_separator_spans(self.line, origin_x=400, width=300, template_width=120)
         self.assertEqual(spans, [(0, 120)])
         self.assertEqual(ayat, ["2:6"])
 
@@ -119,7 +121,7 @@ class LineImageGeometryTests(TestCase):
         segment = self._segment(1)
         segment.aya_number = None
         segment.save(update_fields=["aya_number"])
-        spans, ayat = line_images._separators(self.line, origin_x=100, width=900, template_width=120)
+        spans, ayat = line_images.rebuild_separator_spans(self.line, origin_x=100, width=900, template_width=120)
         self.assertEqual(len(spans), 2)
         self.assertEqual(ayat, ["", "2:6"])
 
@@ -159,16 +161,16 @@ class LocateTests(TestCase):
         )
 
     def test_finds_the_first_line_carrying_the_aya(self):
-        segment = line_images.locate(self.mushaf, 2, 5)
+        segment = line_images.locate_aya_segment(self.mushaf, 2, 5)
         self.assertEqual((segment.line.page.page_number, segment.line.line_number), (1, 1))
 
     def test_last_finds_the_far_end_of_the_aya(self):
-        segment = line_images.locate(self.mushaf, 2, 5, last=True)
+        segment = line_images.locate_aya_segment(self.mushaf, 2, 5, last=True)
         self.assertEqual((segment.line.page.page_number, segment.line.line_number), (2, 2))
 
     def test_an_aya_that_is_nowhere_says_so(self):
         with self.assertRaises(LookupError) as caught:
-            line_images.locate(self.mushaf, 2, 99)
+            line_images.locate_aya_segment(self.mushaf, 2, 99)
         self.assertIn("2:99", str(caught.exception))
 
 
@@ -242,7 +244,7 @@ class PlacedLineTests(MediaTestCase):
         printed frame, and handing it to the engine is what put al-Fatiha's words
         outside the lines they were on.
         """
-        placed = line_images.line_images(self.mushaf, start=(2, 5), end=(2, 6))
+        placed = line_images.cut_lines_of_span(self.mushaf, start=(2, 5), end=(2, 6))
         self.assertEqual([p.origin_x for p in placed], [200])
         self.assertEqual(placed[0].image.image.width, 600)
         self.assertEqual(placed[0].line.pk, self.line.pk)
@@ -254,7 +256,7 @@ class PlacedLineTests(MediaTestCase):
         own edge; the surviving image begins at page x 500. A word at image x 50 is
         page x 550.
         """
-        placed = line_images.line_images(self.mushaf, start=(2, 5), end=(2, 5))
+        placed = line_images.cut_lines_of_span(self.mushaf, start=(2, 5), end=(2, 5))
         self.assertEqual(placed[0].origin_x, 500)
         # And the picture really is the narrower one.
         self.assertEqual(placed[0].image.image.width, 300)
@@ -265,14 +267,14 @@ class PlacedLineTests(MediaTestCase):
         silently undo the crop above, so the line is always cut fresh."""
         self.line.line_png.name = "mushafs/x/lines/page-0001/line-01.png"
         self.line.save(update_fields=["line_png"])
-        placed = line_images.line_images(self.mushaf, start=(2, 5), end=(2, 6))
+        placed = line_images.cut_lines_of_span(self.mushaf, start=(2, 5), end=(2, 6))
         # The named file does not exist; had it been opened this would have raised.
         self.assertEqual(placed[0].origin_x, 200)
         self.assertEqual(placed[0].image.image.width, 600)
 
     def test_the_engine_still_sees_only_a_picture(self):
         """PlacedLine is the caller's bookkeeping; LineImage stays what it was."""
-        placed = line_images.line_images(self.mushaf, start=(2, 5), end=(2, 6))
+        placed = line_images.cut_lines_of_span(self.mushaf, start=(2, 5), end=(2, 6))
         image = placed[0].image
         self.assertEqual(image.label, "page-0001/line-01")
         self.assertFalse(hasattr(image, "origin_x"))

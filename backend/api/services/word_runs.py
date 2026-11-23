@@ -60,8 +60,8 @@ def preflight(mushaf: Mushaf, start: tuple[int, int], end: tuple[int, int | None
     end_aya = end[1] if end is not None and end[1] is not None else _last_aya_of(last_ayat, end_sura)
     span_end: tuple[int, int] = (end_sura, end_aya)
 
-    first_line = _locate(mushaf, start).line
-    last_line = _locate(mushaf, span_end, last=True).line
+    first_line = locate_segment_or_refuse(mushaf, start).line
+    last_line = locate_segment_or_refuse(mushaf, span_end, last=True).line
     if _key(last_line) < _key(first_line):
         raise HttpError(
             422,
@@ -91,9 +91,9 @@ def _last_aya_of(last_ayat: dict[int, int], sura: int) -> int:
     return last
 
 
-def _locate(mushaf: Mushaf, point: tuple[int, int], *, last: bool = False) -> Segment:
+def locate_segment_or_refuse(mushaf: Mushaf, point: tuple[int, int], *, last: bool = False) -> Segment:
     try:
-        return line_images_service.locate(mushaf, point[0], point[1], last=last)
+        return line_images_service.locate_aya_segment(mushaf, point[0], point[1], last=last)
     except LookupError as error:
         # The usual cause is not a typo but an unfinished pipeline: detection writes
         # ``Segment.aya_number`` as null on purpose and the renumber walk fills it, so

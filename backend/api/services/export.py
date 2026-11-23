@@ -1,9 +1,9 @@
 """Export final transparent line PNGs from a page's coordinates + erase strokes.
 
 Each line is cropped from the freshly rendered page, its white background is
-made transparent, eraser strokes are punched out of the alpha channel — and so,
-pixel for pixel, is every blob a person erased in Calibrate, and on a line with
-``erase_edge_ink`` every piece of ink reaching over its top or bottom edge — and the
+made transparent, on a line with ``erase_edge_ink`` every piece of ink reaching over
+its top or bottom edge is cut, eraser strokes are punched out of the alpha channel —
+and so, pixel for pixel, is every blob a person erased in Calibrate — and the
 PNG is saved under ``media/mushafs/<id>/lines/`` with its path recorded on
 the line. ``Mushaf.line_png_size`` then sets its height: the line's own box; or
 centred on a transparent canvas the size of that page's largest line, so the whole
@@ -63,8 +63,6 @@ def export_lines(*, user: User, mushaf_id: uuid.UUID, page_number: int) -> dict:
         rgba = render_line_image(image, line, column)
         if str(line.pk) in erased:
             cut_erased(rgba, _origin(line, column), erased[str(line.pk)])
-        if line.erase_edge_ink:
-            cut_edge_ink(rgba, image, line, column)
         trim_top = trim_bottom = 0
         if mushaf.line_png_size in INK_CROPPED_PNG_SIZES:
             rgba, trim_top, trim_bottom = crop_to_ink_rows(rgba)
@@ -239,14 +237,19 @@ def _to_png_bytes(rgba: Image.Image) -> bytes:
 
 
 def render_line_image(image: Image.Image, line: Line, column: dict | None) -> Image.Image:
-    """Crop one line out of a rendered page, make it transparent, punch the erasers out.
+    """Crop one line out of a rendered page, make it transparent, cut its edge ink when
+    the line asks for that, and punch the erasers out.
 
     Public because ``services.line_images`` needs the same crop to feed the
     word-boundary engine — a line whose PNG was never exported, or one that must
-    line up with page coordinates, is cut here rather than read from disk.
+    line up with page coordinates, is cut here rather than read from disk. So the
+    edge ink is cut here too, not only in the export: the snapshots Ink measures and
+    labels come through here, and must not hold ink the line gave up in Finalize.
     """
     left, top, right, bottom = line_crop_box(image, line, column)
     rgba = make_transparent(image.crop((left, top, right, bottom)))
+    if line.erase_edge_ink:
+        cut_edge_ink(rgba, image, line, column)
 
     strokes = list(line.erase_strokes.all())
     if strokes:
