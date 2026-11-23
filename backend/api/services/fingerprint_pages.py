@@ -43,7 +43,7 @@ def read_page_examples(mushaf: Mushaf, page_number: int, revision: CalibrationRe
     return PageExamples(
         page_number=page_number,
         revision_id=str(revision.pk),
-        labels={(sample["snapshot_id"], sample["blob_id"]): (sample["role"], sample["subtype"]) for sample in samples},
+        labels={(sample["snapshot_id"], sample["blob_id"]): (sample["role"], sample["key"]) for sample in samples},
         samples=samples,
     )
 

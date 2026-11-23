@@ -45,6 +45,7 @@ from api.services.fingerprint_rows import (
     lock_fingerprint_library,
     save_stored_groups,
 )
+from api.services.habit_counts import add_page_habits_to_set
 from core.word_boundary.library_updates import (
     drop_shape_from_group,
     find_group_of_shape,
@@ -72,12 +73,16 @@ def lock_current_set(mushaf: Mushaf) -> LockedSet | None:
 def commit_set_change(locked: LockedSet) -> FingerprintLibrary:
     save_stored_groups(locked.library_row, locked.stored)
     locked.library_row.version += 1
-    locked.library_row.save(update_fields=["version", "needs_rebuild", "updated_at"])
+    locked.library_row.save(update_fields=["version", "needs_rebuild", "habits", "updated_at"])
     return locked.library_row
 
 
-def add_confirmed_page_to_library(mushaf: Mushaf, page_number: int, revision: CalibrationRevision) -> None:
-    """Bring a page just confirmed into the set (``docs/plans/fingerprint-set.md`` §2).
+def add_confirmed_page_to_library(
+    mushaf: Mushaf, page_number: int, revision: CalibrationRevision, replaced: CalibrationRevision | None = None
+) -> None:
+    """Bring a page just confirmed into the set (``docs/plans/fingerprint-set.md`` §2):
+    its shapes into the groups, its habit counts into the set's — in place of those of
+    ``replaced``, the confirmation it supersedes.
 
     Runs inside the Confirm's transaction, so the page and the set land together or
     not at all. With no set yet, the set is built from every confirmed page instead —
@@ -93,6 +98,7 @@ def add_confirmed_page_to_library(mushaf: Mushaf, page_number: int, revision: Ca
     matches = bring_page_into_groups(locked.stored.groups, page, removed, method, locked.library_row.limit)
     if not matches:
         locked.library_row.needs_rebuild = True
+    add_page_habits_to_set(locked.library_row, revision, replaced)
     commit_set_change(locked)
 
 
@@ -110,7 +116,7 @@ def remove_shape_from_library(mushaf: Mushaf, snapshot_id: str, blob_id: int) ->
         mushaf=mushaf,
         snapshot=snapshot,
         blob_id=blob_id,
-        defaults={"role": group.role, "subtype": group.subtype},
+        defaults={"role": group.role, "key": group.key},
     )
     drop_shape_from_group(locked.stored.groups, group, key, comparison_of(locked.library_row))
     return commit_set_change(locked)
@@ -127,11 +133,11 @@ def restore_removed_shape(mushaf: Mushaf, snapshot_id: str, blob_id: int) -> Fin
         refuse_request("not_found", 404, page=0)
     removal.delete()
     sample = find_confirmed_example(mushaf, str(snapshot_id), int(blob_id))
-    if sample is not None and (sample["role"], sample["subtype"]) == (removal.role, removal.subtype):
+    if sample is not None and (sample["role"], sample["key"]) == (removal.role, removal.key):
         shape = shape_from_sample(sample, distance=0.0, looks_right_keys=frozenset())
         place_examples_in_groups(
             locked.stored.groups,
-            [(sample["role"], sample["subtype"], shape)],
+            [(sample["role"], sample["key"], shape)],
             comparison_of(locked.library_row),
             locked.library_row.limit,
         )
@@ -198,7 +204,7 @@ def check_every_shape_matches_labels(mushaf: Mushaf, *, flag: bool = True) -> Se
         library_row = lock_fingerprint_library(mushaf, comparison_name=settings["comparison"], limit=settings["limit"])
         groups = load_stored_groups(library_row).groups if library_row.version else []
         labels = {
-            (sample["snapshot_id"], sample["blob_id"]): (sample["role"], sample["subtype"])
+            (sample["snapshot_id"], sample["blob_id"]): (sample["role"], sample["key"])
             for sample in collect_library_examples(mushaf, load_revision_payloads(find_confirmed_revisions(mushaf)))
         }
         removed = load_removed_labels(mushaf)

@@ -1,8 +1,9 @@
 """Examples: what the fingerprint library is built from.
 
-Every blob on a confirmed page that may teach the library body-versus-mark, and a
-mark's type, read from the page's confirmed revision (never a draft) with its
-descriptor from the line's snapshot.
+Every blob on a confirmed page that may teach the library what it holds — its contents
+key (:mod:`core.text.contents`): letters, marks, or both printed touching — read from
+the page's confirmed revision (never a draft) with its descriptor from the line's
+snapshot.
 """
 
 from __future__ import annotations
@@ -13,13 +14,14 @@ from django.db.models import F
 
 from api.models import CalibrationReview, CalibrationRevision, CalibrationRevisionKind, CalibrationSnapshot, Mushaf
 from api.services import calibration_snapshots as snapshots
+from api.services.blob_contents import SOME_BODY, SOME_MARK, TEXT_ROLES, find_contents_of_blob
+from core.text.contents import find_role_of_key, format_contents_key, is_key_complete
 
 Doc = dict[str, Any]
 
-TEXT_ROLES = ("body", "mark")
 #: Which version of the grouping and the eligibility rules a stored fingerprint set
-#: was built by: a set built by another is regrouped at its first use.
-LIBRARY_VERSION = 1
+#: was built by: a set built by another is regrouped at its first use. 2: contents keys.
+LIBRARY_VERSION = 2
 
 
 def find_confirmed_revision_of_review(review: CalibrationReview) -> CalibrationRevision | None:
@@ -62,19 +64,24 @@ def load_revision_payloads(approved: list[CalibrationRevision]) -> list[Calibrat
 
 
 def is_blob_eligible_for_library(blob: Doc) -> bool:
-    """Whether a confirmed blob may teach the matcher body-versus-mark.
+    """Whether a confirmed blob may teach the library.
 
-    Not ornaments or symbols — they are structure, not text. Not anything flagged
-    as an exception, nor ink a person erased. And not a body standing for other than
-    exactly one PAW: a broken fragment (0) or fused pair (2) is letter ink whose
-    *count* is unusual, and teaching its shape as an ordinary body would teach the
-    wrong thing.
+    Not ornaments or symbols — they are structure, not text. Not ink a person flagged
+    (broken, uncertain) or erased. And not a blob nobody knows anything about: one
+    whose key says neither letters nor marks.
     """
-    if blob["role"] not in TEXT_ROLES or blob.get("exception") or blob.get("erased"):
+    if blob["role"] not in TEXT_ROLES or blob.get("flag") or blob.get("erased"):
         return False
-    if blob["role"] == "body" and blob.get("allocations"):
-        return bool(sum(allocation["paws"] for allocation in blob["allocations"]) == 1)
-    return True
+    return find_role_of_key(find_contents_of_blob(blob)) is not None
+
+
+def find_example_key(blob: Doc) -> str:
+    """The key a confirmed blob teaches under: what it holds when that is fully known,
+    its role alone ("?:", ":?") when its letters or type are not."""
+    key = find_contents_of_blob(blob)
+    if is_key_complete(key):
+        return format_contents_key(key)
+    return format_contents_key(SOME_BODY if find_role_of_key(key) == "body" else SOME_MARK)
 
 
 def collect_library_examples(mushaf: Mushaf, revisions: list[CalibrationRevision]) -> list[dict]:
@@ -98,26 +105,9 @@ def collect_library_examples(mushaf: Mushaf, revisions: list[CalibrationRevision
                         "page_number": snapshot.page_number,
                         "line_number": snapshot.line_number,
                         "role": blob["role"],
-                        "subtype": blob["subtype"] if is_mark_typed(blob) else "",
+                        "key": find_example_key(blob),
                         "revision_id": str(revision.pk),
                         "features": features[blob["id"]],
                     }
                 )
     return samples
-
-
-def is_mark_typed(blob: Doc) -> bool:
-    """A mark a person gave a type to — the only kind that may teach a type.
-
-    A type with no ``subtype_explicit`` predates the flag, and every type then was
-    set by hand. A type the text set (``subtype_source`` "text") counts as typed: the
-    text named that mark, and a person confirms the page it is on. Flagged ink and
-    erased ink teach nothing, as for roles.
-    """
-    return (
-        blob["role"] == "mark"
-        and bool(blob.get("subtype"))
-        and (bool(blob.get("subtype_explicit", True)) or blob.get("subtype_source") == "text")
-        and not blob.get("exception")
-        and not blob.get("erased")
-    )

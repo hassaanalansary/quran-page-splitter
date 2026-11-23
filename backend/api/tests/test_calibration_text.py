@@ -21,10 +21,8 @@ from api.management.commands import calibration_report
 from api.models import CalibrationRevision
 from api.services import calibration as calibration_service
 from api.services import calibration_marks
-from api.services.calibration_examples import is_mark_typed
-from api.tests.test_calibration_api import BODIES, DOT, SMALL, STRAY, CalibrationApiTestCase, drawn_pages
+from api.tests.test_calibration_api import BODIES, DOT, SMALL, CalibrationApiTestCase, drawn_pages
 from core.text import line_marks, text_marks
-from core.word_boundary.mark_check import WordCheck
 from quran.models import Word
 
 
@@ -116,7 +114,7 @@ def _blob(ident: int, x: int, w: int, *, role: str = "body", area: int = 720, ow
         "area": area,
         "role": role,
         "initial_role": "body",
-        "explicit": False,
+        "decided": None,
         "ownership_explicit": False,
         "allocations": [] if owner is None else [{"word_id": owner, "paws": 1 if role == "body" else 0}],
         **extra,
@@ -160,7 +158,7 @@ class SmallLetterTests(SimpleTestCase):
         found = self.found(
             _blob(1, 700, 30, owner=4),
             _blob(2, 600, 30, owner=5),
-            _blob(3, 590, 6, area=100, owner=6, explicit=True),
+            _blob(3, 590, 6, area=100, owner=6, decided={"paws": [None], "marks": None}),
             _blob(4, 500, 30, owner=6),
         )
         self.assertEqual(found, {})
@@ -174,11 +172,6 @@ class SmallLetterTests(SimpleTestCase):
             _blob(4, 500, 30, owner=6),
         )
         self.assertEqual(found, {3: (5, "smallYa")})
-
-    def test_a_type_the_text_set_teaches(self):
-        mark = {"role": "mark", "subtype": "smallLetter", "subtype_explicit": False, "subtype_source": "text"}
-        self.assertTrue(is_mark_typed(mark))
-        self.assertFalse(is_mark_typed({**mark, "subtype_source": ""}))
 
 
 class SmallLetterLockTests(CalibrationApiTestCase):
@@ -197,8 +190,8 @@ class SmallLetterLockTests(CalibrationApiTestCase):
     def test_the_text_makes_it_the_words_small_letter(self):
         small = self.small(self.doc["lines"][0])
         self.assertEqual(
-            (small["role"], small["decision_source"], small["subtype"], small.get("subtype_source")),
-            ("mark", "text", "smallYa", "text"),
+            (small["role"], small["decision_source"], small["contents"]),
+            ("mark", "text", {"paws": [], "marks": ["smallYa"]}),
         )
         self.assertEqual(small["allocations"], [{"word_id": 1, "paws": 0}])
         self.assertEqual(small["attention"], [])
@@ -214,7 +207,7 @@ class SmallLetterLockTests(CalibrationApiTestCase):
 
     def test_a_person_who_calls_it_a_letter_is_obeyed(self):
         body = self.draft(self.doc)
-        self.draft_blob(body, 0, SMALL[0]).update(role="body", explicit=True, allocations=[])
+        self.decide(self.draft_blob(body, 0, SMALL[0]), "body").update(allocations=[])
         response = self.client.post(self.url(1, "/preview"), body, content_type="application/json")
         self.assertEqual(response.status_code, 200, response.content)
         small = self.small(response.json()["lines"][0])
@@ -286,33 +279,6 @@ class SignPartTests(SimpleTestCase):
         self.assertEqual((expected[-1].kind, expected[-1].pieces), ("waqfJim", 2))
 
 
-class ApplyTextTypeTests(SimpleTestCase):
-    @staticmethod
-    def mark(ident: int, **extra) -> dict:
-        return {"id": ident, "role": "mark", "subtype": "", "subtype_explicit": False, **extra}
-
-    def test_the_text_types_what_it_surely_names_and_no_more(self):
-        blobs = [
-            self.mark(1),
-            self.mark(2, subtype="kasra", subtype_explicit=True),
-            self.mark(3, subtype="fatha", subtype_source="text"),
-            self.mark(4),
-        ]
-        check = WordCheck(types={1: "fatha", 2: "fatha", 4: "sukun"}, sure={1, 2})
-        rows = [{"snapshot_id": "s", "blobs": blobs}]
-        calibration_marks.apply_text_types(rows, {"s": {7: check}})
-        typed = {blob["id"]: (blob["subtype"], blob.get("subtype_source")) for blob in blobs}
-        self.assertEqual(
-            typed,
-            {
-                1: ("fatha", "text"),  # sure: typed by the text
-                2: ("kasra", None),  # a person's type stays
-                3: ("", None),  # no longer surely named: taken off
-                4: ("", None),  # named, but not surely
-            },
-        )
-
-
 class TextTypeTests(CalibrationApiTestCase):
     """Page 1's first word is ن: one piece and one dot above it — the drawn dot. Its
     second is نَ, whose dot and fatha the page does not print."""
@@ -324,79 +290,42 @@ class TextTypeTests(CalibrationApiTestCase):
         self.process(1)
         self.doc = self.document(1)
 
-    def suggest(self, body: dict) -> dict:
-        response = self.client.post(self.url(1, "/types"), body, content_type="application/json")
+    def words(self, document: dict) -> dict[int, dict]:
+        return {word["word_id"]: word for word in document["lines"][0]["words"]}
+
+    def preview(self, body: dict) -> dict:
+        response = self.client.post(self.url(1, "/preview"), body, content_type="application/json")
         self.assertEqual(response.status_code, 200, response.content)
         return response.json()
 
-    def test_a_mark_the_text_surely_names_is_typed_by_it(self):
+    def test_a_mark_the_text_names_is_read_by_it(self):
         dot = self.blob_at(self.doc["lines"][0], DOT[0])
-        self.assertEqual(
-            (dot["subtype"], dot.get("subtype_source"), dot["subtype_explicit"]), ("ijamDot", "text", False)
-        )
-        # Every other line's dot belongs to a word whose text names no mark: untyped.
-        self.assertEqual(self.blob_at(self.doc["lines"][1], DOT[0])["subtype"], "")
+        self.assertEqual(dot["reading"], {"paws": [], "marks": ["ijamDot"]})
+        self.assertIsNone(dot["decided"])
+        # Every other line's dot belongs to a word whose text names no mark: its type open.
+        self.assertEqual(self.blob_at(self.doc["lines"][1], DOT[0])["reading"], {"paws": [], "marks": [None]})
 
     def test_each_word_says_how_its_marks_fit_its_text(self):
-        answer = self.suggest(self.draft(self.doc))
-        words = {word["word_id"]: word for word in answer["words"]}
-        self.assertEqual((words[1]["ok"], words[1]["missing"]), (True, []))
-        self.assertEqual((words[2]["ok"], words[2]["missing"], words[2]["extra"]), (False, ["ijamDot", "fatha"], []))
+        words = self.words(self.doc)
+        self.assertEqual(words[1]["check"]["missing"], [])
+        self.assertEqual((words[2]["check"]["missing"], words[2]["check"]["extra"]), (["ijamDot", "fatha"], []))
+        self.assertTrue(words[2]["unsure"])
 
-    def test_the_marks_named_in_a_mixed_body_count_for_its_word(self):
+    def test_marks_a_person_says_a_letter_holds_count_for_its_word(self):
         # نَ's dot and fatha printed touching its letter: one blob with it.
         body = self.draft(self.doc)
-        letter = self.draft_blob(body, 0, BODIES[1][0])
-        letter.update(subtype="fatha+ijamDot", subtype_explicit=True)
-        words = {word["word_id"]: word for word in self.suggest(body)["words"]}
-        self.assertFalse(words[2]["ok"])  # named, but the body is not flagged mixed
-        letter["exception"] = "mixed"
-        words = {word["word_id"]: word for word in self.suggest(body)["words"]}
-        self.assertEqual((words[2]["ok"], words[2]["missing"], words[2]["extra"]), (True, [], []))
+        self.decide(self.draft_blob(body, 0, BODIES[1][0]), "body", marks=["fatha", "ijamDot"])
+        words = self.words(self.preview(body))
+        self.assertEqual((words[2]["check"]["missing"], words[2]["check"]["extra"]), ([], []))
 
-    def test_a_typed_mark_the_text_names_otherwise_is_doubted_by_it(self):
+    def test_a_typed_mark_the_text_names_otherwise_disagrees_with_it(self):
         body = self.draft(self.doc)
-        self.draft_blob(body, 0, DOT[0]).update(subtype="fatha", subtype_explicit=True, explicit=True)
-        answer = self.suggest(body)
-        dot = self.blob_at(self.doc["lines"][0], DOT[0])
-        doubts = [(d["blob_id"], d["typed"], d["subtype"], d["source"]) for d in answer["doubts"]]
-        self.assertIn((dot["id"], "fatha", "ijamDot", "text"), doubts)
-
-
-class RetypeFromTextTests(CalibrationApiTestCase):
-    """Page 1's first word is ن۟ — its dot, and a round zero over it — and page 1 is
-    confirmed with the zero typed sukun, as reviewers typed it before it had a type."""
-
-    def setUp(self):
-        super().setUp()
-        Word.objects.filter(id=1).update(text="ن۟")
-        with drawn_pages(stray=True):
-            self.assertEqual(self.client.post(self.url(1, "/process")).status_code, 202)
-        self.doc = self.document(1)
-        body = self.draft(self.doc)
-        for left, subtype in ((DOT[0], "ijamDot"), (STRAY[0], "sukun")):
-            self.draft_blob(body, 0, left).update(subtype=subtype, subtype_explicit=True, explicit=True)
-        self.assertEqual(self.confirm(1, body).status_code, 200)
-
-    def zero(self) -> dict:
-        return self.blob_at(self.document(1)["lines"][0], STRAY[0])
-
-    def test_a_dry_run_changes_nothing(self):
-        before = self.document(1)["confirmed_revision"]
-        call_command("retype_from_text", str(self.mushaf.id), stdout=io.StringIO())
-        self.assertEqual((self.zero()["subtype"], self.document(1)["confirmed_revision"]), ("sukun", before))
-
-    def test_applied_the_page_is_confirmed_again_with_the_zero_named(self):
-        before = self.document(1)["confirmed_revision"]
-        call_command("retype_from_text", str(self.mushaf.id), "--apply", stdout=io.StringIO())
-        after = self.document(1)
-        self.assertEqual(self.zero()["subtype"], "roundZero")
-        self.assertGreater(after["confirmed_revision"], before)
-        approvals = CalibrationRevision.objects.filter(review__mushaf=self.mushaf, review__page_number=1)
-        self.assertEqual(approvals.get(number=after["confirmed_revision"]).kind, "confirmed")
-        # The dot keeps its type, and the old confirmation stays in the page's history.
-        self.assertEqual(self.blob_at(after["lines"][0], DOT[0])["subtype"], "ijamDot")
-        self.assertTrue(CalibrationRevision.objects.filter(review__mushaf=self.mushaf, number=before).exists())
+        self.decide(self.draft_blob(body, 0, DOT[0]), "mark", marks=["fatha"])
+        shown = self.preview(body)
+        dot = self.blob_at(shown["lines"][0], DOT[0])
+        self.assertIn(dot["id"], self.words(shown)[1]["check"]["disagree"])
+        # A person's type is never renamed.
+        self.assertEqual(dot["contents"], {"paws": [], "marks": ["fatha"]})
 
 
 class CalibrationReportTests(CalibrationApiTestCase):
@@ -412,13 +341,13 @@ class CalibrationReportTests(CalibrationApiTestCase):
         processed = CalibrationRevision.objects.get(review__mushaf=self.mushaf, review__page_number=1, kind="processed")
         dot = self.blob_at(self.doc["lines"][0], DOT[0])
         first = processed.payload["shown"]["lines"][0]["blobs"][str(dot["id"])]
-        self.assertEqual((first["role"], first["subtype"], first["by_text"]), ("mark", "ijamDot", True))
-        # The prediction itself is still the engine's alone.
-        self.assertNotIn("subtype_source", self.blob_at(processed.payload["lines"][0], DOT[0]))
+        self.assertEqual((first["role"], first["contents"]), ("mark", {"paws": [], "marks": ["ijamDot"]}))
+        # The prediction itself is still the engine's alone: a mark, its type unread.
+        self.assertEqual(self.blob_at(processed.payload["lines"][0], DOT[0])["reading"], {"paws": [], "marks": [None]})
 
     def test_the_report_counts_what_the_reviewer_changed(self):
         body = self.draft(self.doc, acknowledge_exceptions=True)
-        self.draft_blob(body, 0, DOT[0]).update(subtype="fatha", subtype_explicit=True, explicit=True)
+        self.decide(self.draft_blob(body, 0, DOT[0]), "mark", marks=["fatha"])
         self.assertEqual(self.confirm(1, body).status_code, 200)
         [page] = calibration_report.measure(self.mushaf)
         self.assertEqual(

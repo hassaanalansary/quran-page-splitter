@@ -20,7 +20,7 @@ from api.auth import current_user
 from api.models import ProcessJobKindChoices
 from api.services import calibration as calibration_service
 from api.services import calibration_batch as batch_service
-from api.services import calibration_cuts, fingerprint_updates, library_settings
+from api.services import calibration_cuts, fingerprint_updates, library_keys, library_settings
 from api.services import calibration_library as library_service
 from api.services import calibration_progress as progress_service
 from api.services import calibration_saving as saving_service
@@ -65,18 +65,25 @@ class BlobCutIn(Schema):
     owners: list[int] = Field(min_length=2, max_length=calibration_service.MAX_PAWS)
 
 
+class ContentsPartsIn(Schema):
+    """What a person decided a blob holds, as the parts of a contents key
+    (``core.text.contents``): ``paws`` its letters, piece by piece, and ``marks`` the
+    marks touching it — ``null`` inside a list for an open element, ``null`` for the
+    whole list when undecided. The server checks every part."""
+
+    paws: list[str | None] | None = None
+    marks: list[str | None] | None = None
+
+
 class BlobEditIn(Schema):
     id: int
-    #: body | mark for text; an ornament or a symbol keeps its own role.
-    role: str
-    #: The reviewer decided this role: a hard constraint from now on.
-    explicit: bool = False
+    #: What the reviewer decided the blob holds — the role follows from it; null when
+    #: nothing is decided. A decided body or mark is a hard constraint from now on.
+    decided: ContentsPartsIn | None = None
     #: The reviewer decided these allocations. Omitted means "changed if different".
     ownership_explicit: bool | None = None
-    subtype: str = Field(default="", max_length=32)
-    subtype_explicit: bool | None = None
-    #: "" | mixed | broken | fused | uncertain.
-    exception: str = ""
+    #: "" | broken | uncertain.
+    flag: str = ""
     allocations: list[AllocationIn] = Field(default_factory=list)
     #: Not ink of the text — noise the line's cutting left. Text blobs only; read
     #: around, taught nothing, and cut out of the exported line image.
@@ -263,14 +270,6 @@ def confirm_calibration(request: HttpRequest, mushaf_id: uuid.UUID, page_number:
     )
 
 
-@router.post("/{mushaf_id}/pages/{page_number}/calibration/types")
-def calibration_types(request: HttpRequest, mushaf_id: uuid.UUID, page_number: int, data: DraftIn) -> JsonResponse:
-    """A type for every untyped mark, and a doubt on every typed one the other pages
-    disagree with — learned from typed marks. Stores nothing."""
-    mushaf = mushaf_service.get_mushaf(mushaf_id, user=current_user(request), write=False)
-    return _json(calibration_service.suggest_mark_types(mushaf, page_number, data.model_dump(mode="json")))
-
-
 # ---------------------------------------------------------------------------
 # The library, as Ink's Library mode shows it
 # ---------------------------------------------------------------------------
@@ -282,6 +281,34 @@ def get_calibration_library(
     confirmed page would make at that LIMIT. Stores nothing."""
     mushaf = mushaf_service.get_mushaf(mushaf_id, user=current_user(request), write=False)
     return _json(library_service.serialize_library_view(mushaf, page_number, limit=limit))
+
+
+@router.get("/{mushaf_id}/calibration/library/keys")
+def list_calibration_library_keys(
+    request: HttpRequest,
+    mushaf_id: uuid.UUID,
+    tab: str = "bodies",
+    letters: int | None = None,
+    first: str = "",
+    contains: str = "",
+    show: str = "all",
+    sort: str = "common",
+    page: int = 1,
+) -> JsonResponse:
+    """The set's keys that pass the filters, a page of them, no pictures."""
+    mushaf = mushaf_service.get_mushaf(mushaf_id, user=current_user(request), write=False)
+    return _json(
+        library_keys.list_library_keys(
+            mushaf, tab=tab, letters=letters, first=first, contains=contains, show=show, sort=sort, page=page
+        )
+    )
+
+
+@router.get("/{mushaf_id}/calibration/library/key")
+def describe_calibration_library_key(request: HttpRequest, mushaf_id: uuid.UUID, key: str) -> JsonResponse:
+    """One key's groups, with their pictures."""
+    mushaf = mushaf_service.get_mushaf(mushaf_id, user=current_user(request), write=False)
+    return _json(library_keys.describe_library_key(mushaf, key))
 
 
 class CompareIn(DraftIn):

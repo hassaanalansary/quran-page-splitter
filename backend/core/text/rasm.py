@@ -22,6 +22,8 @@ hamza, and ة is a heh with two dots.
 
 from __future__ import annotations
 
+from core.text.contents import ContentsKeyError, parse_contents_key
+
 #: Letters whose body is another letter's in every place.
 SAME_BODY = {
     "ت": "ب",
@@ -76,3 +78,15 @@ def find_body_shape_of_paw(paw: str) -> str:
 def find_body_shape_of_bodies(bodies: tuple[str, ...] | list[str]) -> str:
     """The body shape of a blob of one or more pieces printed touching, piece by piece."""
     return "+".join(find_body_shape_of_paw(paw) for paw in bodies)
+
+
+def find_body_shape_of_key(text: str) -> str:
+    """The body shape a plain body key borrows by — "تنا:" → "ببا"; "" for a key with
+    marks, open letters, or no letters (nothing to borrow)."""
+    try:
+        key = parse_contents_key(text)
+    except ContentsKeyError:
+        return ""
+    if not key.bodies or key.marks != () or None in key.bodies:
+        return ""
+    return find_body_shape_of_bodies([body for body in key.bodies if body is not None])

@@ -55,15 +55,19 @@ class ConfirmTests(FingerprintSetTestCase):
         self.assertEqual(self.confirm(2, body).status_code, 200)
         self.assertGreater(self.library_row().version, before)
         # Page 2 prints its shapes exactly like page 1's fingerprints: nothing new to keep.
-        self.assertEqual(sorted(self.kinds()), [("body", ""), ("mark", "fatha"), ("mark", "ijamDot")])
+        kinds = self.kinds()
+        self.assertEqual(
+            sorted(kind for kind in kinds if kind[0] == "mark"), [("mark", ":fatha"), ("mark", ":ijamDot")]
+        )
+        self.assertTrue(any(role == "body" for role, _ in kinds))
 
     def test_a_reconfirm_with_a_retyped_mark_moves_its_shape(self):
         body = self.draft(self.document(1))
         for index in (0, 1):
             self.type_mark(body, index, BAR[0], "kasra")
         self.assertEqual(self.confirm(1, body).status_code, 200)
-        self.assertIn(("mark", "kasra"), self.kinds())
-        self.assertNotIn(("mark", "fatha"), self.kinds())
+        self.assertIn(("mark", ":kasra"), self.kinds())
+        self.assertNotIn(("mark", ":fatha"), self.kinds())
         self.assertFalse(self.library_row().needs_rebuild)
 
 
@@ -93,18 +97,18 @@ class LookupTests(FingerprintSetTestCase):
 
 class RebuildTests(FingerprintSetTestCase):
     def test_a_rebuild_keeps_looks_right_and_leaves_removals_out(self):
-        fatha = FingerprintShape.objects.get(library=self.library_row(), group__subtype="fatha")
+        fatha = FingerprintShape.objects.get(library=self.library_row(), group__key=":fatha")
         fatha.looks_right = True
         fatha.save()
-        dot = FingerprintShape.objects.get(library=self.library_row(), group__subtype="ijamDot")
+        dot = FingerprintShape.objects.get(library=self.library_row(), group__key=":ijamDot")
         RemovedShape.objects.create(
-            mushaf=self.mushaf, snapshot=dot.snapshot, blob_id=dot.blob_id, role="mark", subtype="ijamDot"
+            mushaf=self.mushaf, snapshot=dot.snapshot, blob_id=dot.blob_id, role="mark", key=":ijamDot"
         )
         version = self.library_row().version
         fingerprint_rebuild.rebuild_fingerprint_set(self.mushaf)
         library_row = self.library_row()
         self.assertGreater(library_row.version, version)
-        kept = FingerprintShape.objects.get(library=library_row, group__subtype="fatha", is_fingerprint=True)
+        kept = FingerprintShape.objects.get(library=library_row, group__key=":fatha", is_fingerprint=True)
         self.assertEqual((kept.snapshot_id, kept.blob_id, kept.looks_right), (fatha.snapshot_id, fatha.blob_id, True))
         self.assertFalse(
             FingerprintShape.objects.filter(library=library_row, snapshot=dot.snapshot, blob_id=dot.blob_id).exists()
@@ -112,7 +116,7 @@ class RebuildTests(FingerprintSetTestCase):
 
     def test_a_failed_check_flags_the_set_for_a_rebuild(self):
         self.assertTrue(check_every_shape_matches_labels(self.mushaf).passed)
-        FingerprintShape.objects.filter(library=self.library_row(), group__subtype="fatha").update(blob_id=9999)
+        FingerprintShape.objects.filter(library=self.library_row(), group__key=":fatha").update(blob_id=9999)
         found = check_every_shape_matches_labels(self.mushaf)
         self.assertFalse(found.passed)
         self.assertTrue(self.library_row().needs_rebuild)
@@ -142,7 +146,7 @@ class TransferTests(FingerprintSetTestCase):
             snapshot_id=self.doc["lines"][0]["snapshot_id"],
             blob_id=1,
             role="mark",
-            subtype="fatha",
+            key=":fatha",
         )
         with TemporaryDirectory() as directory:
             call_command(
@@ -162,7 +166,7 @@ class RebuildJobTests(FingerprintSetTestCase):
         return f"/api/mushafs/{self.mushaf.id}/calibration/settings"
 
     def test_a_new_limit_rebuilds_the_set_in_the_background_keeping_looks_right(self):
-        fatha = FingerprintShape.objects.get(library=self.library_row(), group__subtype="fatha")
+        fatha = FingerprintShape.objects.get(library=self.library_row(), group__key=":fatha")
         fatha.looks_right = True
         fatha.save()
         version = self.library_row().version
@@ -173,7 +177,7 @@ class RebuildJobTests(FingerprintSetTestCase):
         library_row = self.library_row()
         self.assertEqual(library_row.limit, 0.5)
         self.assertGreater(library_row.version, version)
-        kept = FingerprintShape.objects.get(library=library_row, group__subtype="fatha", is_fingerprint=True)
+        kept = FingerprintShape.objects.get(library=library_row, group__key=":fatha", is_fingerprint=True)
         self.assertEqual((kept.blob_id, kept.looks_right), (fatha.blob_id, True))
 
     def test_the_same_limit_again_starts_nothing(self):

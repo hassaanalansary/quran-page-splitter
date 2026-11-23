@@ -32,7 +32,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from core.word_boundary.library import EXACT_DISTANCE, KEEP, Comparison, Library
+from core.word_boundary.library import EXACT_DISTANCE, KEEP, Comparison, Library, is_typed_mark_key
 
 #: Shapes a group keeps besides its fingerprint.
 KEPT_PER_GROUP = KEEP - 1
@@ -70,17 +70,18 @@ class KeptShape:
 
 @dataclass
 class ShapeGroup:
-    """One fingerprint of a kind (a role, and a mark's type) and the shapes kept beside
-    it, the nearest to it first."""
+    """One fingerprint of a kind — a role and a contents key — and the shapes kept
+    beside it, the nearest to it first."""
 
     role: str
-    subtype: str
+    #: What its blobs hold, as written ("لو:", ":fatha").
+    key: str
     fingerprint: KeptShape
     kept: list[KeptShape] = field(default_factory=list)
 
     @property
     def kind(self) -> tuple[str, str]:
-        return (self.role, self.subtype)
+        return (self.role, self.key)
 
     def shapes(self) -> list[KeptShape]:
         return [self.fingerprint, *self.kept]
@@ -106,7 +107,7 @@ def place_examples_in_groups(
     method: Comparison,
     limit: float,
 ) -> list[Placement]:
-    """Put each (role, subtype, example) into the nearest group of its kind within
+    """Put each (role, key, example) into the nearest group of its kind within
     ``limit``, or make it the fingerprint of a new group. In order: a fingerprint an
     example starts is a group the examples after it may join, as a whole page's blobs
     did when this was measured (page 27 onto pages 1 to 26: 1,112 joined, 3 started groups).
@@ -122,8 +123,8 @@ def place_examples_in_groups(
         return banks[kind]
 
     placements = []
-    for role, subtype, example in examples:
-        kind = (role, subtype)
+    for role, key, example in examples:
+        kind = (role, key)
         own, bank = bank_of(kind)
         if own:
             near = method.distances(bank, [method.describe(example.features)])[0]
@@ -134,7 +135,7 @@ def place_examples_in_groups(
                 placements.append(Placement(example, own[nearest], started_group=False, kept=kept))
                 continue
         example.distance = 0.0
-        group = ShapeGroup(role=role, subtype=subtype, fingerprint=example)
+        group = ShapeGroup(role=role, key=key, fingerprint=example)
         groups.append(group)
         own.append(group)
         banks[kind] = (own, stack_fingerprints(own, method))
@@ -231,13 +232,13 @@ def build_library_from_groups(groups: list[ShapeGroup], method: Comparison, limi
         method=method,
         limit=limit,
         roles=np.array([group.role for group, _, _ in shapes], dtype=str),
-        kinds=np.array([group.subtype if group.role == "mark" else "" for group, _, _ in shapes], dtype=str),
+        kinds=np.array([group.key for group, _, _ in shapes], dtype=str),
         refs=[shape.reference(fingerprint=is_fingerprint) for _, shape, is_fingerprint in shapes],
         copies=[1] * len(shapes),
         reps=list(matrix),
         bank=method.stack(matrix),
         examples=len(shapes),
-        typed_examples=sum(1 for group, _, _ in shapes if group.role == "mark" and group.subtype),
+        typed_examples=sum(1 for group, _, _ in shapes if is_typed_mark_key(group.role, group.key)),
         fingerprints=len(groups),
         groups=[describe_group(group) for group in groups],
     )
@@ -249,7 +250,7 @@ def describe_group(group: ShapeGroup) -> dict:
     members = group.shapes()
     return {
         "role": group.role,
-        "subtype": group.subtype,
+        "key": group.key,
         "centre": group.fingerprint.reference(fingerprint=True),
         "members": [shape.reference(fingerprint=index == 0) for index, shape in enumerate(members)],
         "distance": [shape.distance for shape in members],
@@ -290,7 +291,7 @@ def hide_shapes_of_page(library: Library, page_number: int) -> Library:
         reps=list(matrix),
         bank=library.method.stack(matrix) if keep else library.method.stack([]),
         examples=len(keep),
-        typed_examples=sum(1 for index in keep if library.roles[index] == "mark" and library.kinds[index]),
+        typed_examples=sum(1 for index in keep if is_typed_mark_key(library.roles[index], library.kinds[index])),
         fingerprints=len(groups),
         groups=groups,
     )
@@ -308,7 +309,7 @@ def convert_library_to_groups(
         centre = shape_from_sample(
             by_key[reference_key(item["centre"])], distance=0.0, looks_right_keys=looks_right_keys
         )
-        group = ShapeGroup(role=item["role"], subtype=item["subtype"], fingerprint=centre)
+        group = ShapeGroup(role=item["role"], key=item["key"], fingerprint=centre)
         members = list(zip(item["members"], item["distance"], strict=True))
         looks_right = [(ref, distance) for ref, distance in members if reference_key(ref) in looks_right_keys]
         picked = [members[index] for index in item["kept"]]

@@ -32,14 +32,8 @@ class LibraryTestCase(CalibrationApiTestCase):
         self.doc = self.document(2)
 
     def type_mark(self, body: dict, index: int, left: int, subtype: str) -> dict:
-        blob = self.draft_blob(body, index, left)
-        blob.update(
-            role="mark",
-            explicit=True,
-            subtype=subtype,
-            subtype_explicit=True,
-            allocations=[{**allocation, "paws": 0} for allocation in blob["allocations"]],
-        )
+        blob = self.decide(self.draft_blob(body, index, left), "mark", marks=[subtype])
+        blob["allocations"] = [{**allocation, "paws": 0} for allocation in blob["allocations"]]
         return blob
 
     def library(self, page: int, **query) -> dict:
@@ -70,9 +64,10 @@ class LibraryDocumentTests(LibraryTestCase):
         self.assertEqual((library["pages"], library["preview"], library["version"]), ([1], False, library_row.version))
         self.assertEqual(library["draft_version"], library_row.version)
         self.assertEqual((library["needs_rebuild"], library["rebuilding"], library["removed"]), (False, False, []))
-        kinds = [(kind["role"], kind["subtype"], len(kind["groups"])) for kind in library["kinds"]]
-        # The typed marks first, the letters last.
-        self.assertEqual(kinds, [("mark", "fatha", 1), ("mark", "ijamDot", 1), ("body", "", 1)])
+        kinds = [(kind["role"], kind["kind"], len(kind["groups"])) for kind in library["kinds"]]
+        # The typed marks, whole; the letters are listed on demand, key by key.
+        self.assertEqual(kinds, [("mark", "fatha", 1), ("mark", "ijamDot", 1)])
+        self.assertGreater(library["body_keys"], 0)
         fatha = library["kinds"][0]["groups"]
         self.assertEqual((fatha[0]["farthest"], fatha[0]["kept"]), (0.0, []))
         self.assertNotIn("count", fatha[0])
@@ -121,17 +116,44 @@ class PricingTests(LibraryTestCase):
         self.assertEqual(self.document(2)["library"]["mode"], "learned")
 
 
+class KeyListTests(LibraryTestCase):
+    def keys(self, **query) -> dict:
+        response = self.client.get(f"/api/mushafs/{self.mushaf.id}/calibration/library/keys", query)
+        self.assertEqual(response.status_code, 200, response.content)
+        return response.json()
+
+    def test_body_keys_come_a_page_at_a_time_with_their_shapes(self):
+        found = self.keys(show="has")
+        self.assertEqual(found["per_page"], 40)
+        self.assertTrue(found["keys"])
+        self.assertTrue(all(item["shapes"] > 0 for item in found["keys"]))
+        self.assertTrue(all(item["parts"]["paws"] for item in found["keys"]))
+
+    def test_none_yet_lists_the_texts_pieces_the_set_has_no_shape_of(self):
+        found = self.keys(show="none", letters=1)
+        self.assertGreater(found["total"], 0)
+        self.assertTrue(all(item["shapes"] == 0 for item in found["keys"]))
+        self.assertTrue(all(len("".join(item["parts"]["paws"])) == 1 for item in found["keys"]))
+
+    def test_one_key_opens_to_its_pictures(self):
+        first = self.keys(show="has")["keys"][0]["key"]
+        response = self.client.get(f"/api/mushafs/{self.mushaf.id}/calibration/library/key", {"key": first})
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertTrue(response.json()["groups"][0]["fingerprint"]["image_url"])
+
+
 class CompareTests(LibraryTestCase):
     def test_a_mark_is_answered_with_its_type_and_its_distance_to_every_kept_shape(self):
         line = self.doc["lines"][0]
         bar = self.blob_at(line, BAR[0])
         answer = self.compare(self.draft(self.doc), line, bar)
         self.assertEqual(answer["answer"]["role"], "mark")
-        self.assertEqual((answer["type"]["subtype"], answer["type"]["distance"]), ("fatha", 0.0))
+        self.assertEqual((answer["type"]["kind"], answer["type"]["distance"]), ("fatha", 0.0))
         self.assertEqual(answer["type"]["runner_up"], "ijamDot")
         library = self.library(2)
         fingerprints = {group["fingerprint"]["key"] for kind in library["kinds"] for group in kind["groups"]}
-        self.assertEqual(set(answer["distances"]), fingerprints)
+        # Every mark's fingerprint is measured — and every body's, which the view lists on demand.
+        self.assertLessEqual(fingerprints, set(answer["distances"]))
         bars = library["kinds"][0]["groups"][0]["fingerprint"]["key"]
         self.assertEqual(answer["distances"][bars], 0.0)
 
@@ -169,8 +191,8 @@ class LeverTests(LibraryTestCase):
         response = self.client.post(self.library_url("remove"), self.shape_body(shape), content_type="application/json")
         self.assertEqual(response.status_code, 200, response.content)
         library = self.library(2)
-        self.assertNotIn(("mark", "fatha"), [(kind["role"], kind["subtype"]) for kind in library["kinds"]])
-        self.assertEqual([(item["key"], item["subtype"]) for item in library["removed"]], [(shape["key"], "fatha")])
+        self.assertNotIn(("mark", "fatha"), [(kind["role"], kind["kind"]) for kind in library["kinds"]])
+        self.assertEqual([(item["key"], item["kind"]) for item in library["removed"]], [(":fatha", "fatha")])
         # A Rebuild never brings it back.
         fingerprint_rebuild.rebuild_fingerprint_set(self.mushaf)
         self.assertNotIn(
@@ -181,7 +203,7 @@ class LeverTests(LibraryTestCase):
         )
         self.assertEqual(response.status_code, 200, response.content)
         self.assertFalse(RemovedShape.objects.filter(mushaf=self.mushaf).exists())
-        self.assertEqual(self.library(2)["kinds"][0]["subtype"], "fatha")
+        self.assertEqual(self.library(2)["kinds"][0]["kind"], "fatha")
 
     def test_a_shape_outside_the_set_is_not_found(self):
         body = {"snapshot_id": self.doc["lines"][0]["snapshot_id"], "blob_id": 9999}

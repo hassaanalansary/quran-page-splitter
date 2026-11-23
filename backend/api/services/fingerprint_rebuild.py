@@ -43,6 +43,7 @@ from api.services.fingerprint_rows import (
     lock_fingerprint_library,
     replace_stored_groups,
 )
+from api.services.habit_counts import sum_confirmed_habits
 from core.word_boundary.examples import FEATURE_VERSION
 from core.word_boundary.library import Library, build_library, comparison
 from core.word_boundary.library_updates import ShapeGroup, convert_library_to_groups
@@ -123,13 +124,13 @@ def regroup_confirmed_pages(
     samples = [
         sample
         for sample in collect_library_examples(mushaf, load_revision_payloads(revisions))
-        if removed.get((sample["snapshot_id"], sample["blob_id"])) != (sample["role"], sample["subtype"])
+        if removed.get((sample["snapshot_id"], sample["blob_id"])) != (sample["role"], sample["key"])
     ]
     # A looks-right mark counts while its blob is still confirmed as what it was.
     still_looks_right = frozenset(
         key
         for sample in samples
-        if looks_right.get(key := (sample["snapshot_id"], sample["blob_id"])) == (sample["role"], sample["subtype"])
+        if looks_right.get(key := (sample["snapshot_id"], sample["blob_id"])) == (sample["role"], sample["key"])
     )
     method = comparison(settings["comparison"])
     library = build_library(
@@ -143,6 +144,7 @@ def regroup_confirmed_pages(
 
 def store_regrouped_set(library_row: FingerprintLibrary, groups: list[ShapeGroup], settings: dict) -> None:
     replace_stored_groups(library_row, groups)
+    library_row.habits = sum_confirmed_habits(find_confirmed_revisions(library_row.mushaf))
     library_row.comparison = settings["comparison"]
     library_row.limit = settings["limit"]
     library_row.feature_version = FEATURE_VERSION
@@ -170,7 +172,7 @@ def build_preview_library(mushaf: Mushaf, limit: float) -> Library:
             samples = [
                 sample
                 for sample in collect_library_examples(mushaf, load_revision_payloads(revisions))
-                if removed.get((sample["snapshot_id"], sample["blob_id"])) != (sample["role"], sample["subtype"])
+                if removed.get((sample["snapshot_id"], sample["blob_id"])) != (sample["role"], sample["key"])
             ]
             library = build_library(samples, method=method, limit=limit)
             PREVIEW_LIBRARIES.clear()

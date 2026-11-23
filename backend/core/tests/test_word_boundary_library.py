@@ -13,11 +13,19 @@ def descriptor(value=0.0):
     return [value / 32] * MASK_FEATURES + [value / math.sqrt(6)] * 6
 
 
+def key_of(role, kind):
+    """The contents key of a test example: a typed mark ":fatha", an untyped one ":?",
+    a body whose letters nobody named "?:"."""
+    if role == "body":
+        return kind or "?:"
+    return f":{kind}" if kind else ":?"
+
+
 def example(number, value, role="mark", subtype="", page=1):
     return {
         "features": descriptor(value),
         "role": role,
-        "subtype": subtype,
+        "key": key_of(role, subtype),
         "snapshot_id": f"snapshot-{number}",
         "blob_id": number,
         "page_number": page,
@@ -69,7 +77,7 @@ class GroupingTests(unittest.TestCase):
             self.assertNotIn("features", item["centre"])
             self.assertEqual(item["distance"], sorted(item["distance"]))  # nearest first
             self.assertTrue(all(0 <= index < len(item["members"]) for index in item["kept"]))
-        (kasra,) = [item for item in library.groups if item["subtype"] == "kasra"]
+        (kasra,) = [item for item in library.groups if item["key"] == ":kasra"]
         self.assertEqual((kasra["role"], len(kasra["members"]), kasra["kept"]), ("mark", 1, []))
 
     def test_the_limit_must_be_positive(self):
@@ -127,7 +135,7 @@ class TypeTests(unittest.TestCase):
 
     def test_a_clearly_nearer_type_with_support_is_sure(self):
         (found,) = self.library().predict_types([descriptor(0.0)])
-        self.assertEqual((found["subtype"], found["sure"], found["runner_up"]), ("fatha", True, "kasra"))
+        self.assertEqual((found["kind"], found["sure"], found["runner_up"]), ("fatha", True, "kasra"))
 
     def test_between_two_types_the_guess_is_unsure(self):
         (found,) = self.library().predict_types([descriptor(0.16)])
@@ -135,24 +143,54 @@ class TypeTests(unittest.TestCase):
 
     def test_nothing_close_is_no_guess(self):
         (found,) = self.library().predict_types([descriptor(2.0)])
-        self.assertEqual(found["subtype"], "")
+        self.assertEqual(found["kind"], "")
         self.assertIsNotNone(found["distance"])
 
     def test_this_pages_typing_teaches_without_changing_the_library(self):
         library = self.library()
-        here = library.with_typed(
-            [{"features": descriptor(1.0), "subtype": "damma", "snapshot_id": "here", "blob_id": 1}]
+        here = library.with_page_examples(
+            [{"features": descriptor(1.0), "role": "mark", "key": ":damma", "snapshot_id": "here", "blob_id": 1}]
         )
         self.assertEqual(here.types, ["damma", "fatha", "kasra"])
         self.assertEqual(library.types, ["fatha", "kasra"])
-        self.assertEqual(here.predict_types([descriptor(1.0)])[0]["subtype"], "damma")
+        self.assertEqual(here.predict_types([descriptor(1.0)])[0]["kind"], "damma")
 
     def test_the_evidence_lists_the_nearest_types_with_their_shapes(self):
         candidates = self.library().nearest_by_type(descriptor(0.0), types=2, per_type=2)
-        self.assertEqual([entry["subtype"] for entry in candidates], ["fatha", "kasra"])
+        self.assertEqual([entry["kind"] for entry in candidates], ["fatha", "kasra"])
         self.assertEqual(len(candidates[0]["examples"]), 2)
         self.assertEqual(candidates[0]["examples"][0]["distance"], candidates[0]["distance"])
         self.assertNotIn("features", candidates[0]["examples"][0])
+
+
+class KeyTests(unittest.TestCase):
+    """The word reader's question: how near each key its word allows."""
+
+    def test_a_blob_is_compared_with_the_keys_asked_for_and_no_others(self):
+        from core.text.contents import ContentsKey
+
+        library = build_library(
+            [example(1, 0.0, role="body", subtype="بنا:"), example(2, 5.0, role="body", subtype="لو:")]
+            + [example(3 + i, 0.1 * i, role="body", subtype="بنا:") for i in range(3)]
+        )
+        asked = [ContentsKey(("بنا",), ()), ContentsKey(("سو",), ())]
+        (found,) = library.compare_with_keys([descriptor(0.0)], asked)
+        self.assertEqual(set(found), {ContentsKey(("بنا",), ())})
+
+    def test_a_key_with_few_pictures_borrows_its_look_alikes(self):
+        from core.text.contents import ContentsKey
+
+        library = build_library([example(i, 0.05 * i, role="body", subtype="بنا:") for i in range(4)])
+        # تنا is never confirmed: the same body shape as بنا, its pictures are lent.
+        (found,) = library.compare_with_keys([descriptor(0.0)], [ContentsKey(("تنا",), ())])
+        self.assertAlmostEqual(found[ContentsKey(("تنا",), ())], 0.0, places=3)
+
+    def test_a_letter_with_its_mark_never_borrows_a_plain_one(self):
+        from core.text.contents import ContentsKey
+
+        library = build_library([example(i, 0.05 * i, role="body", subtype="ا:") for i in range(4)])
+        (found,) = library.compare_with_keys([descriptor(0.0)], [ContentsKey(("ا",), ("roundZero",))])
+        self.assertEqual(found, {})
 
 
 if __name__ == "__main__":

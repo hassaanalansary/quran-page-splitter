@@ -39,8 +39,10 @@ from api.models import (
     ProcessJobStateChoices,
 )
 from api.services import calibration
-from api.services.calibration_examples import TEXT_ROLES, find_confirmed_revision_of_review
+from api.services.blob_contents import TEXT_ROLES, find_contents_of_blob, find_mark_kind, read_stored_key
+from api.services.calibration_examples import find_confirmed_revision_of_review
 from core.text import SMALL_LETTERS
+from core.text.contents import is_key_complete
 
 Doc = dict[str, Any]
 
@@ -152,12 +154,14 @@ def _page(page: int, processed: CalibrationRevision, confirmed: CalibrationRevis
             blob = final.get((row["snapshot_id"], int(ident)))
             if blob is None or blob.get("erased"):
                 continue
-            small = blob["role"] == "mark" and blob.get("subtype") in SMALL_LETTERS
+            small = find_mark_kind(blob) in SMALL_LETTERS
             counts["looks"] += first["look"]
             counts["roles"] += first["role"] != blob["role"]
-            if first["by_text"]:
+            # The marks the first draft's reading typed, and whether the page kept them.
+            read = read_stored_key(first.get("contents"))
+            if first["role"] == "mark" and is_key_complete(read):
                 counts["by_text"] += 1
-                counts["text_changed"] += blob["role"] != "mark" or blob.get("subtype", "") != first["subtype"]
+                counts["text_changed"] += find_contents_of_blob(blob) != read
             if first["text_lock"]:
                 counts["locks"] += 1
                 counts["locks_undone"] += not small

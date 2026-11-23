@@ -50,16 +50,16 @@ def serialize_fingerprint_set(mushaf: Mushaf, *, with_features: bool = False) ->
         "groups": [
             {
                 "role": group.role,
-                "subtype": group.subtype,
+                "key": group.key,
                 "shapes": [serialize_shape(shape, with_features=with_features) for shape in group.shapes()],
             }
             for group in groups
         ],
         "removed": [
-            {"snapshot_id": str(snapshot_id), "blob_id": blob_id, "role": role, "subtype": subtype}
-            for snapshot_id, blob_id, role, subtype in RemovedShape.objects.filter(mushaf=mushaf)
+            {"snapshot_id": str(snapshot_id), "blob_id": blob_id, "role": role, "key": key}
+            for snapshot_id, blob_id, role, key in RemovedShape.objects.filter(mushaf=mushaf)
             .order_by("snapshot_id", "blob_id")
-            .values_list("snapshot_id", "blob_id", "role", "subtype")
+            .values_list("snapshot_id", "blob_id", "role", "key")
         ],
     }
 
@@ -109,7 +109,7 @@ def restore_group(target: Mushaf, entry: Doc, ids: dict[str, str]) -> ShapeGroup
     shapes = [shape for item in entry.get("shapes", []) if (shape := restore_shape(target, item, ids)) is not None]
     if not shapes:
         return None
-    return ShapeGroup(role=entry["role"], subtype=entry["subtype"], fingerprint=shapes[0], kept=shapes[1:])
+    return ShapeGroup(role=entry["role"], key=entry["key"], fingerprint=shapes[0], kept=shapes[1:])
 
 
 def restore_shape(target: Mushaf, item: Doc, ids: dict[str, str]) -> KeptShape | None:
@@ -155,5 +155,5 @@ def restore_removed_shapes(target: Mushaf, data: Doc, ids: dict[str, str]) -> No
             mushaf=target,
             snapshot_id=uuid.UUID(snapshot_id),
             blob_id=int(item["blob_id"]),
-            defaults={"role": item["role"], "subtype": item.get("subtype") or ""},
+            defaults={"role": item["role"], "key": item.get("key") or ""},
         )

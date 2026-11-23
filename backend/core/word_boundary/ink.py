@@ -68,6 +68,14 @@ class Blob:
     #: set, it prices the blob's roles instead of ``body_score``.
     library_role: str | None = None
     library_confidence: float = 0.0
+    #: How many pieces the library says the blob is, when its nearest key is pieces of
+    #: one word printed as one (إلا's ``إ+لا``): read as that many for free, as one
+    #: for ``library_paws_price``.
+    library_paws: int = 1
+    library_paws_price: int = 0
+    #: The word the library pins the blob to: its shape is a piece no other word of the
+    #: span has. Read in another word, it costs ``ANCHOR_PRICE``.
+    library_word_id: int | None = None
 
     @property
     def cost_as_body(self) -> int:

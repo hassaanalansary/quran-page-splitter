@@ -88,16 +88,17 @@ class RunTests(BatchTestCase):
         document = self.document(2)
         body = self.draft(document)
         dot = self.blob_at(document["lines"][0], DOT[0])["id"]
-        next(blob for blob in body["lines"][0]["blobs"] if blob["id"] == dot).update(
-            role="mark", explicit=True, subtype="ijamDot"
-        )
+        next(blob for blob in body["lines"][0]["blobs"] if blob["id"] == dot)["decided"] = {
+            "paws": [],
+            "marks": ["ijamDot"],
+        }
         self.assertEqual(self.put(2, body).status_code, 200)
         self.assertEqual(self.batch(dry_run=True).json()["pages"], {"confirmed": [1], "drafted": [2]})
         report = self.batch(refresh=True).json()["job"]["report"]
         self.assertEqual((report["processed"], report["skipped"]), ([2], {"confirmed": [1]}))
         self.assertEqual((self.processings(1), self.processings(2)), (1, 2))
         kept = self.blob_at(self.document(2)["lines"][0], DOT[0])
-        self.assertEqual((kept["explicit"], kept["subtype"], kept["decision_source"]), (True, "ijamDot", "human"))
+        self.assertEqual((kept["decided"], kept["decision_source"]), ({"paws": [], "marks": ["ijamDot"]}, "human"))
 
     def test_a_current_draft_is_kept_or_refreshed_on_request(self):
         self.process(1)

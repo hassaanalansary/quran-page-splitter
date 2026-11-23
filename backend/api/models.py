@@ -763,6 +763,9 @@ class CalibrationRevision(BaseModel):
     number = models.PositiveIntegerField()
     kind = models.CharField(max_length=16, choices=CalibrationRevisionKind.choices)
     payload = models.JSONField(default=dict)
+    #: A confirmation's own habit counts (``core.word_boundary.habits``): what the page
+    #: adds to its mushaf's, and takes off again when it is confirmed anew.
+    habits = models.JSONField(default=dict, blank=True)
     #: The client's id for the request that wrote this, so a retried confirmation
     #: returns the first answer instead of approving the page twice.
     request_id = models.UUIDField(null=True, blank=True)
@@ -819,6 +822,10 @@ class FingerprintLibrary(BaseModel):
     feature_version = models.PositiveIntegerField(default=0)
     library_version = models.PositiveIntegerField(default=0)
     needs_rebuild = models.BooleanField(default=False)
+    #: How the hand prints, summed over the confirmed pages' own counts
+    #: (``core.word_boundary.habits``): a quick copy of what they say, kept in step by
+    #: the same updates as the shapes.
+    habits = models.JSONField(default=dict, blank=True)
 
     class Meta:
         db_table = "fingerprint_library"
@@ -830,13 +837,16 @@ class FingerprintLibrary(BaseModel):
 
 
 class FingerprintGroup(BaseModel):
-    """One fingerprint of a kind (a role, and a mark's type) and the shapes kept beside it."""
+    """One fingerprint of a kind — a contents key — and the shapes kept beside it."""
 
     library = models.ForeignKey(FingerprintLibrary, on_delete=models.CASCADE, related_name="groups")
-    #: body | mark.
+    #: body | mark, as the key says.
     role = models.CharField(max_length=8)
-    #: A mark's type; "" for a body and an untyped mark.
-    subtype = models.CharField(max_length=32, blank=True, default="")
+    #: What its blobs hold (``core.text.contents``): "لو:", ":fatha", a letter with its mark.
+    key = models.TextField(db_index=True)
+    #: A plain body's shape with the dots off (``core.text.rasm``), what a key with few
+    #: shapes of its own borrows by; "" for anything else.
+    shape = models.TextField(blank=True, default="", db_index=True)
 
     class Meta:
         db_table = "fingerprint_group"
@@ -844,7 +854,7 @@ class FingerprintGroup(BaseModel):
         verbose_name_plural = "Fingerprint Groups"
 
     def __str__(self) -> str:
-        return f"{self.role} {self.subtype} group of {self.library_id}"
+        return f"{self.key} group of {self.library_id}"
 
 
 class FingerprintShape(BaseModel):
@@ -888,13 +898,13 @@ class FingerprintShape(BaseModel):
 class RemovedShape(BaseModel):
     """A confirmed blob a person took out of the fingerprint set, so a Rebuild never
     brings it back and Restore is possible. It counts while the blob is still confirmed
-    as the role and type it was removed as."""
+    as the key it was removed as."""
 
     mushaf = models.ForeignKey(Mushaf, on_delete=models.CASCADE, related_name="removed_shapes")
     snapshot = models.ForeignKey(CalibrationSnapshot, on_delete=models.CASCADE, related_name="removed_shapes")
     blob_id = models.PositiveIntegerField()
     role = models.CharField(max_length=8)
-    subtype = models.CharField(max_length=32, blank=True, default="")
+    key = models.TextField()
 
     class Meta:
         db_table = "removed_shape"
@@ -903,7 +913,7 @@ class RemovedShape(BaseModel):
         constraints = (models.UniqueConstraint(fields=["mushaf", "snapshot", "blob_id"], name="unique_removed_shape"),)
 
     def __str__(self) -> str:
-        return f"removed: {self.role} {self.subtype} blob {self.blob_id} of {self.snapshot_id}"
+        return f"removed: {self.key} blob {self.blob_id} of {self.snapshot_id}"
 
 
 class ActivityEvent(BaseModel):

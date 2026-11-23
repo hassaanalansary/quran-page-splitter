@@ -57,6 +57,8 @@ from api.models import (
     TemplateTypeChoices,
 )
 from api.services import activity
+from api.services.blob_contents import is_document_current
+from api.services.calibration_examples import LIBRARY_VERSION
 from api.services.fingerprint_transfer import restore_fingerprint_set, serialize_fingerprint_set
 
 logger = logging.getLogger(__name__)
@@ -386,6 +388,10 @@ def restore_calibration(target: Mushaf, data: dict, read_file: Callable[[str, st
             snapshot.save()
 
     for entry in data.get("reviews", []):
+        if entry.get("payload", {}).get("lines") and not is_document_current(entry["payload"]):
+            # Made before contents keys: its labels mean nothing to this code. The page
+            # is processed again here instead; the snapshots above are kept.
+            continue
         review, _ = CalibrationReview.objects.select_for_update().get_or_create(
             mushaf=target, page_number=entry["page_number"]
         )
@@ -415,7 +421,11 @@ def restore_calibration(target: Mushaf, data: dict, read_file: Callable[[str, st
 
     # A bundle from before the stored set carries ``profiles`` instead: ignored, and
     # the target's set is built from its confirmed pages at the next lookup.
-    restore_fingerprint_set(target, data.get("fingerprint_set"), ids, had_confirmed_pages=had_confirmed_pages)
+    carried = data.get("fingerprint_set")
+    if carried is not None and carried.get("library_version") != LIBRARY_VERSION:
+        # Grouped by other kinds: the target's set is built from its own pages instead.
+        carried = None
+    restore_fingerprint_set(target, carried, ids, had_confirmed_pages=had_confirmed_pages)
     return ids
 
 

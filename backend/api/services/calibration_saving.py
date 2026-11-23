@@ -49,14 +49,16 @@ from api.services import calibration_snapshots as snapshots
 from api.services.calibration import (
     align_document,
     apply_edits_to_draft,
-    apply_text_types_to_draft,
     build_revision_record,
     exceptions,
     page_document,
+    read_words_of_draft,
     refuse_if_context_lines_changed,
     refuse_request,
 )
+from api.services.calibration_examples import find_confirmed_revision_of_review
 from api.services.fingerprint_updates import add_confirmed_page_to_library
+from api.services.habit_counts import count_habits_of_page
 
 Doc = dict[str, Any]
 
@@ -94,9 +96,10 @@ def confirm_page(mushaf: Mushaf, page: int, data: Doc, *, user: User | None = No
         return page_document(mushaf, page)
     refuse_unacknowledged_exceptions(edits.document, data)
     write_confirmed_words(edits)
+    replaced = find_confirmed_revision_of_review(edits.review)
     bump_review_revision(edits)
-    revision = record_confirmed_revision(edits)
-    add_confirmed_page_to_library(mushaf, page, revision)
+    revision = record_confirmed_revision(edits, ijam=mushaf.ijam_mode != "ignore")
+    add_confirmed_page_to_library(mushaf, page, revision, replaced)
     store_review_payload(mushaf, page, edits, activity_type=ActivityTypeChoices.CALIBRATION_CONFIRMED, user=user)
     return page_document(mushaf, page)
 
@@ -121,7 +124,7 @@ def read_reviewer_edits(mushaf: Mushaf, page: int, data: Doc, *, confirm: bool) 
             affected_ayas=set(document.get("pending_ayas", [])),
             calibration_locks=True,
         )
-        apply_text_types_to_draft(mushaf, document)
+        read_words_of_draft(mushaf, document)
         document["pending_ayas"] = []
     return ReviewerEdits(page_row, review, document, request, already_landed=False)
 
@@ -168,8 +171,9 @@ def bump_review_revision(edits: ReviewerEdits) -> None:
     edits.document["request"] = edits.request
 
 
-def record_confirmed_revision(edits: ReviewerEdits) -> CalibrationRevision:
-    """The immutable ``confirmed`` revision: the only thing examples come from."""
+def record_confirmed_revision(edits: ReviewerEdits, *, ijam: bool) -> CalibrationRevision:
+    """The immutable ``confirmed`` revision: the only thing examples and habit counts
+    come from."""
     review = edits.review
     review.confirmed_revision = review.revision
     return CalibrationRevision.objects.create(
@@ -181,6 +185,7 @@ def record_confirmed_revision(edits: ReviewerEdits) -> CalibrationRevision:
             "request_hash": edits.request["hash"],
             "acknowledged": exceptions(edits.document),
         },
+        habits=count_habits_of_page(edits.document, ijam=ijam),
         request_id=edits.request["id"],
     )
 

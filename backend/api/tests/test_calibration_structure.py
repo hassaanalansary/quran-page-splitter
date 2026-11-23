@@ -94,34 +94,34 @@ class ReadingChecks:
         self.assertEqual(self.doc["lines"][0]["words"][0]["end_x"], BODIES[0][0])
 
     def test_called_text_it_is_read_with_the_line(self):
-        speck = self.speck_of(self.save(role="mark", explicit=True))
+        speck = self.speck_of(self.save(decided={"paws": [], "marks": [None]}))
         self.assertEqual((speck["role"], speck["allocations"]), ("mark", [{"word_id": 1, "paws": 0}]))
         self.assertEqual(self.doc["lines"][0]["words"][0]["end_x"], STRAY[0])
 
     def test_released_it_is_structure_again(self):
-        self.save(role="mark", explicit=True)
-        speck = self.speck_of(self.save(role="mark", explicit=False, allocations=[]))
+        self.save(decided={"paws": [], "marks": [None]})
+        speck = self.speck_of(self.save(decided=None, allocations=[]))
         self.assertEqual((speck["role"], speck["allocations"]), (self.kind, []))
         self.assertEqual(self.doc["lines"][0]["words"][0]["end_x"], BODIES[0][0])
 
     def test_given_back_to_structure_by_hand(self):
-        self.save(role="mark", explicit=True)
-        speck = self.speck_of(self.save(role=self.kind, explicit=False, allocations=[]))
-        self.assertEqual((speck["role"], speck["explicit"], speck["allocations"]), (self.kind, False, []))
+        self.save(decided={"paws": [], "marks": [None]})
+        speck = self.speck_of(self.save(decided=None, allocations=[]))
+        self.assertEqual((speck["role"], speck["decided"], speck["allocations"]), (self.kind, None, []))
 
     def test_the_decision_holds_when_the_page_is_processed_again(self):
-        self.save(role="mark", explicit=True)
+        self.save(decided={"paws": [], "marks": [None]})
         self.process_again()
         speck = self.speck_of(self.doc)
-        self.assertEqual((speck["role"], speck["explicit"]), ("mark", True))
+        self.assertEqual((speck["role"], speck["decided"]), ("mark", {"paws": [], "marks": [None]}))
         self.assertEqual(speck["allocations"], [{"word_id": 1, "paws": 0}])
 
     def test_structure_belongs_to_no_word(self):
-        self.assertEqual(self.refused(role=self.kind, allocations=[{"word_id": 1, "paws": 0}]), 422)
+        self.assertEqual(self.refused(decided=None, allocations=[{"word_id": 1, "paws": 0}]), 422)
 
     def test_it_is_erased_only_once_it_is_text(self):
         self.assertEqual(self.refused(erased=True), 422)
-        speck = self.speck_of(self.save(role="mark", explicit=True, erased=True))
+        speck = self.speck_of(self.save(decided={"paws": [], "marks": [None]}, erased=True))
         self.assertEqual((speck["role"], speck["erased"], speck["allocations"]), ("mark", True, []))
 
     def test_its_shape_is_measured(self):
@@ -136,7 +136,7 @@ class ReadingChecks:
         self.assertIn(self.speck, snapshots.blob_features(self.snapshot))
 
     def test_once_confirmed_as_text_it_teaches_the_library(self):
-        self.save(role="mark", explicit=True)
+        self.save(decided={"paws": [], "marks": [None]})
         self.assertEqual(self.confirm(1, self.draft(self.doc)).status_code, 200)
         examples = collect_library_examples(self.mushaf, load_revision_payloads(find_confirmed_revisions(self.mushaf)))
         here = (str(self.snapshot.pk), self.speck)
@@ -158,7 +158,10 @@ class OrnamentPieceTests(ReadingChecks, OrnamentTestCase):
     def test_the_ring_never_becomes_text(self):
         body = self.draft(self.doc)
         ring = self.ring_of(self.doc)["id"]
-        next(blob for blob in body["lines"][0]["blobs"] if blob["id"] == ring)["role"] = "body"
+        next(blob for blob in body["lines"][0]["blobs"] if blob["id"] == ring)["decided"] = {
+            "paws": [None],
+            "marks": None,
+        }
         self.assertEqual(self.put(1, body).status_code, 422)
 
     def test_the_rings_shape_is_not_measured(self):
@@ -170,11 +173,15 @@ class OrnamentPieceTests(ReadingChecks, OrnamentTestCase):
         for blob in review.payload["lines"][0]["blobs"]:
             blob.pop("ring", None)
         review.save(update_fields=["payload"])
-        self.assertEqual(self.refused(role="mark", explicit=True), 422)
+        self.assertEqual(self.refused(decided={"paws": [], "marks": [None]}), 422)
 
 
-def draft_blob(role: str, initial_role: str, **changes) -> dict:
-    return {"id": 1, "role": role, "initial_role": initial_role, "explicit": False, **changes}
+def draft_blob(role: str, initial_role: str, *, explicit: bool = False, **changes) -> dict:
+    """A draft blob; ``explicit``, a person decided its role."""
+    decided = None
+    if explicit:
+        decided = {"paws": [], "marks": [None]} if role == "mark" else {"paws": [None], "marks": None}
+    return {"id": 1, "role": role, "initial_role": initial_role, "decided": decided, **changes}
 
 
 def blob(label: int, x: int, w: int = 10) -> Blob:

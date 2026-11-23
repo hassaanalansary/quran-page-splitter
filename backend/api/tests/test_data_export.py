@@ -48,7 +48,7 @@ class ExportTestCase(CalibrationApiTestCase):
         self.process(1)
         body = self.draft(self.document(1))
         dot = self.draft_blob_of(body, DOT[0])
-        dot.update(subtype="fatha", subtype_explicit=True)
+        dot["decided"] = {"paws": [], "marks": ["fatha"]}
         self.assertEqual(self.confirm(1, body).status_code, 200)
 
     def draft_blob_of(self, body: dict, left: int) -> dict:
@@ -156,8 +156,7 @@ class SourceTests(ExportTestCase):
         body = self.draft(self.document(1))
         fused = self.draft_blob_of(body, FUSED[0])
         fused.update(
-            role="body",
-            explicit=True,
+            decided={"paws": [None, None], "marks": None},
             ownership_explicit=True,
             allocations=[{"word_id": 2, "paws": 1}, {"word_id": 3, "paws": 1}],
         )
@@ -179,8 +178,7 @@ class SourceTests(ExportTestCase):
         fused = self.draft_blob_of(body, FUSED[0])
         top = LINE_TOPS[0]
         fused.update(
-            role="body",
-            explicit=True,
+            decided={"paws": [None, None], "marks": None},
             ownership_explicit=True,
             allocations=[{"word_id": 2, "paws": 1}, {"word_id": 3, "paws": 1}],
             # Straight down at x 470: word 2 keeps only 470-489, far right of the middle.

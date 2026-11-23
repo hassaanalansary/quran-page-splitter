@@ -105,3 +105,58 @@ class ShortagePlacementTests(TestCase):
     def test_the_shortage_goes_where_a_join_is_likely_to_touch(self):
         self.assertEqual(self.bodies_per_word([17, COUNT_WEIGHT]), [1, 2])
         self.assertEqual(self.bodies_per_word([COUNT_WEIGHT, 17]), [2, 1])
+
+
+def read_with(lines, stream, set_blob):
+    """The engine's reading, ``set_blob(blob, place)`` called on every blob first —
+    ``place`` its index from the right (blobs are in the cropped line's pixels)."""
+    source = WordBoundaryInput(lines, stream, ijam="ignore")
+    inks = [analyse_line(item) for item in lines]
+    for ink in inks:
+        split_separators(ink, None)
+        for place, blob in enumerate(sorted(ink.components, key=lambda blob: -blob.x)):
+            set_blob(blob, place)
+    return detect_prepared(source, inks)
+
+
+class LibraryCountTests(TestCase):
+    """Two words of two pieces each, printed as three bodies: the first word's pieces
+    touch. Which word is short is anyone's guess — unless the library says."""
+
+    lines = (line([300, 200, 100]),)
+
+    def test_a_body_the_library_says_is_two_pieces_closes_its_word(self):
+        def two_pieces(blob, place):
+            if place == 0:
+                blob.library_paws, blob.library_paws_price = 2, SURE_PRICE
+
+        result = read_with(list(self.lines), words([2, 2]), two_pieces)
+        (outcome,) = result.lines
+        self.assertEqual(outcome.status, "exact")
+        boxes = [box for box in outcome.words if box.word_id is not None]
+        self.assertEqual([len(box.components) for box in boxes], [1, 2])
+
+    def test_without_it_the_count_cannot_close(self):
+        result = read_with(list(self.lines), words([2, 2]), lambda blob, place: None)
+        self.assertNotEqual(result.lines[0].status, "exact")
+
+
+class AnchorTests(TestCase):
+    """Three words of one piece, four bodies: one is extra. The anchor says where the
+    second word's piece is."""
+
+    def test_an_anchored_blob_stays_in_its_word(self):
+        lines = [line([330, 250, 170, 90])]
+        stream = words([1, 1, 1])
+
+        anchored: list[int] = []
+
+        def pinned(blob, place):
+            if place == 2:
+                blob.library_word_id = stream[1].id
+                anchored.append(blob.label)
+
+        result = read_with(lines, stream, pinned)
+        boxes = {box.word_id: box for box in result.lines[0].words if box.word_id is not None}
+        held = set(boxes[stream[1].id].components)
+        self.assertIn(anchored[0], held)

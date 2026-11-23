@@ -44,6 +44,7 @@ from api.services import calibration_snapshots as snapshots
 from api.services import mushaf as mushaf_service
 from api.services.calibration_examples import collect_library_examples, find_confirmed_revisions
 from api.tests.helpers import ApiTestCase, default_user, make_pdf_bytes
+from core.text.contents import find_role_of_key, parse_contents_key
 from quran.models import Aya, CountingSystem, Rawi, Word
 from quran.services import suras
 
@@ -206,11 +207,9 @@ class CalibrationApiTestCase(ApiTestCase):
                             key: blob[key]
                             for key in (
                                 "id",
-                                "role",
-                                "explicit",
+                                "decided",
                                 "ownership_explicit",
-                                "subtype",
-                                "exception",
+                                "flag",
                                 "allocations",
                             )
                         }
@@ -234,6 +233,22 @@ class CalibrationApiTestCase(ApiTestCase):
 
     def put(self, page: int, body: dict):
         return self.client.put(self.url(page), body, content_type="application/json")
+
+    @staticmethod
+    def decide(blob: dict, role: str, *, marks: list | None = None, letters: list | None = None) -> dict:
+        """Say what a PUT-body blob holds, as a person does in Ink: a body whose letters
+        may be left open, or a mark whose type may be."""
+        if role == "mark":
+            blob["decided"] = {"paws": [], "marks": marks if marks is not None else [None]}
+        else:
+            blob["decided"] = {"paws": letters if letters is not None else [None], "marks": marks}
+        return blob
+
+    @staticmethod
+    def ornament_of(document: dict, body: dict, index: int = 0) -> dict:
+        """A PUT body's ornament blob, found by the document's role for it."""
+        ident = next(blob["id"] for blob in document["lines"][index]["blobs"] if blob["role"] == "ornament")
+        return next(blob for blob in body["lines"][index]["blobs"] if blob["id"] == ident)
 
     def confirm(self, page: int, body: dict):
         return self.client.post(self.url(page, "/confirm"), body, content_type="application/json")
@@ -316,7 +331,7 @@ class DraftTests(CalibrationApiTestCase):
         again = self.put(1, self.draft(self.doc, request_id=request_id))
         self.assertEqual((first.json()["revision"], again.json()["revision"]), (2, 2))
         changed = self.draft(self.doc, request_id=request_id)
-        changed["lines"][0]["blobs"][0]["subtype"] = "fatha"
+        changed["lines"][0]["blobs"][0]["flag"] = "uncertain"
         self.assertEqual(self.put(1, changed).status_code, 409)
 
     def test_edits_that_do_not_match_the_page_are_refused(self):
@@ -324,8 +339,7 @@ class DraftTests(CalibrationApiTestCase):
         body["lines"][0]["blobs"].pop()
         self.assertEqual(self.put(1, body).status_code, 422)
         body = self.draft(self.doc)
-        ornament = next(b for b in body["lines"][0]["blobs"] if b["role"] == "ornament")
-        ornament["role"] = "body"
+        self.decide(self.ornament_of(self.doc, body), "body")
         self.assertEqual(self.put(1, body).status_code, 422)
 
     def test_a_changed_source_makes_the_draft_read_only(self):
@@ -344,6 +358,8 @@ class DraftTests(CalibrationApiTestCase):
 
 
 class PreviewTests(CalibrationApiTestCase):
+    maxDiff = None
+
     def setUp(self):
         super().setUp()
         self.process(1)
@@ -351,13 +367,8 @@ class PreviewTests(CalibrationApiTestCase):
 
     def test_explicitly_unattached_mark_survives_save_preview_and_reprocess(self):
         body = self.draft(self.doc)
-        self.draft_blob(body, 0, DOT[0]).update(
-            role="mark",
-            explicit=True,
-            ownership_explicit=True,
-            allocations=[],
-            subtype="fatha",
-            subtype_explicit=True,
+        self.decide(self.draft_blob(body, 0, DOT[0]), "mark", marks=["fatha"]).update(
+            ownership_explicit=True, allocations=[]
         )
         saved = self.put(1, body).json()
         shown = self.client.post(self.url(1, "/preview"), self.draft(saved), content_type="application/json")
@@ -370,11 +381,11 @@ class PreviewTests(CalibrationApiTestCase):
         blob = self.blob_at(self.document(1)["lines"][0], DOT[0])
         self.assertEqual(blob["allocations"], [])
         self.assertTrue(blob["ownership_explicit"])
-        self.assertEqual(blob["subtype"], "fatha")
+        self.assertEqual(blob["decided"], {"paws": [], "marks": ["fatha"]})
 
     def test_preview_leaves_an_unedited_aya_unchanged(self):
         body = self.draft(self.doc)
-        self.draft_blob(body, 0, BODIES[1][0]).update(role="mark", explicit=True, allocations=[])
+        self.decide(self.draft_blob(body, 0, BODIES[1][0]), "mark").update(allocations=[])
         shown = self.client.post(self.url(1, "/preview"), body, content_type="application/json")
         self.assertEqual(shown.status_code, 200, shown.content)
         self.assertEqual(shown.json()["lines"][1], self.doc["lines"][1])
@@ -385,7 +396,7 @@ class PreviewTests(CalibrationApiTestCase):
         from core.word_boundary.engine import detect_prepared
 
         body = self.draft(self.doc)
-        self.draft_blob(body, 0, DOT[0]).update(explicit=True)
+        self.decide(self.draft_blob(body, 0, DOT[0]), "mark")
 
         def unresolved(*args, **kwargs):
             result = detect_prepared(*args, **kwargs)
@@ -411,7 +422,7 @@ class PreviewTests(CalibrationApiTestCase):
         middle = self.draft_blob(body, 0, BODIES[1][0])
         # A mark carries no PAW, so the body's share of word 2 goes with its role —
         # the server refuses a mark that still claims one (see the next test).
-        middle.update(role="mark", explicit=True, allocations=[])
+        self.decide(middle, "mark").update(allocations=[])
         response = self.client.post(self.url(1, "/preview"), body, content_type="application/json")
         self.assertEqual(response.status_code, 200, response.content)
         line = response.json()["lines"][0]
@@ -428,7 +439,7 @@ class PreviewTests(CalibrationApiTestCase):
 
     def test_a_mark_that_still_claims_a_paw_is_refused(self):
         body = self.draft(self.doc)
-        self.draft_blob(body, 0, BODIES[1][0]).update(role="mark", explicit=True)
+        self.decide(self.draft_blob(body, 0, BODIES[1][0]), "mark")
         response = self.client.post(self.url(1, "/preview"), body, content_type="application/json")
         self.assertEqual(response.status_code, 422)
 
@@ -457,7 +468,7 @@ class PreviewTests(CalibrationApiTestCase):
 
     def test_accepting_a_preview_stores_what_it_showed(self):
         body = self.draft(self.doc)
-        self.draft_blob(body, 0, BODIES[1][0]).update(role="mark", explicit=True, allocations=[])
+        self.decide(self.draft_blob(body, 0, BODIES[1][0]), "mark").update(allocations=[])
         shown = self.client.post(self.url(1, "/preview"), body, content_type="application/json").json()
         # A plain save stores the decisions but keeps the old reading's verdicts:
         # the dot is still the mark the first reading made it.
@@ -497,7 +508,7 @@ class ConfirmTests(CalibrationApiTestCase):
 
     def test_exceptions_must_be_acknowledged(self):
         body = self.draft(self.doc)
-        body["lines"][0]["blobs"][0]["exception"] = "uncertain"
+        body["lines"][0]["blobs"][0]["flag"] = "uncertain"
         self.assertEqual(self.confirm(1, body).status_code, 422)
         body["acknowledge_exceptions"] = True
         response = self.confirm(1, body)
@@ -548,15 +559,13 @@ class SettingsTests(CalibrationApiTestCase):
         response = self.client.put(url, {"revision": 1, "limit": None}, content_type="application/json")
         self.assertEqual(response.json()["limit"], 0.27)
 
-    def test_predicted_subtypes_do_not_teach_without_explicit_confirmation(self):
+    def test_a_confirmed_page_teaches_each_blob_under_what_it_holds(self):
         self.process(1)
-        doc = self.document(1)
-        body = self.draft(doc)
-        mark = next(b for b in body["lines"][0]["blobs"] if b["role"] == "mark")
-        mark.update(subtype="fatha", subtype_explicit=False)
-        self.assertEqual(self.confirm(1, body).status_code, 200)
+        self.assertEqual(self.confirm(1, self.draft(self.document(1))).status_code, 200)
         samples = collect_library_examples(self.mushaf, find_confirmed_revisions(self.mushaf))
-        self.assertTrue(all(not s["subtype"] for s in samples))
+        self.assertTrue(samples)
+        for sample in samples:
+            self.assertEqual(find_role_of_key(parse_contents_key(sample["key"])), sample["role"])
 
 
 class RestartTests(CalibrationApiTestCase):
@@ -670,13 +679,8 @@ class FusionTestCase(CalibrationApiTestCase):
         self.doc = self.document(1)
 
     def share(self, body: dict, words: list[int]) -> dict:
-        blob = self.draft_blob(body, 0, FUSED[0])
-        blob.update(
-            role="body",
-            explicit=True,
-            ownership_explicit=True,
-            allocations=[{"word_id": word, "paws": 1} for word in words],
-        )
+        blob = self.decide(self.draft_blob(body, 0, FUSED[0]), "body")
+        blob.update(ownership_explicit=True, allocations=[{"word_id": word, "paws": 1} for word in words])
         return body
 
 
@@ -842,7 +846,7 @@ class ReprocessTests(CalibrationApiTestCase):
         self.process(1)
         self.doc = self.document(1)
         body = self.draft(self.doc)
-        self.draft_blob(body, 0, DOT[0]).update(role="mark", explicit=True, subtype="ijamDot")
+        self.decide(self.draft_blob(body, 0, DOT[0]), "mark", marks=["ijamDot"])
         self.assertEqual(self.put(1, body).status_code, 200)
         # Line 2 is re-reviewed: its snapshot, and so the page, goes stale.
         Segment.objects.filter(line__page__page_number=1, line__line_number=2).update(bbox_w=700 - RING[0] - 1)
@@ -851,7 +855,7 @@ class ReprocessTests(CalibrationApiTestCase):
         fresh = self.document(1)
         self.assertFalse(fresh["stale"])
         dot = self.blob_at(fresh["lines"][0], DOT[0])
-        self.assertEqual((dot["explicit"], dot["subtype"], dot["decision_source"]), (True, "ijamDot", "human"))
+        self.assertEqual((dot["decided"], dot["decision_source"]), ({"paws": [], "marks": ["ijamDot"]}, "human"))
         # The boxes are the new reading's, from the ink.
         words = fresh["lines"][0]["words"]
         self.assertEqual([(w["start_x"], w["end_x"]) for w in words], [(right, left) for left, right in BODIES])
@@ -860,7 +864,7 @@ class ReprocessTests(CalibrationApiTestCase):
             CalibrationRevision.objects.filter(review__page_number=1, kind="processed").order_by("number").last()
         )
         assert predicted is not None
-        self.assertFalse(any(blob["explicit"] for blob in predicted.payload["lines"][0]["blobs"]))
+        self.assertFalse(any(blob.get("decided") for blob in predicted.payload["lines"][0]["blobs"]))
 
 
 class CrossingTestCase(CalibrationApiTestCase):
@@ -888,7 +892,7 @@ class ContextTests(CrossingTestCase):
         self.assertEqual([(row["page_number"], row["line_number"]) for row in self.doc["context"]], [(2, 1)])
         self.assertEqual([row["status"] for row in self.doc["lines"]], ["exact", "exact"])
         body = self.draft(self.doc)
-        self.draft_blob(body, 0, DOT[0]).update(role="mark", explicit=True)
+        self.decide(self.draft_blob(body, 0, DOT[0]), "mark")
         self.assertEqual(self.put(1, body).status_code, 200)
         # The neighbouring line is re-reviewed.
         Segment.objects.filter(line__page__page_number=2, line__line_number=1).update(bbox_w=700 - RING[0] - 1)
@@ -902,7 +906,7 @@ class ContextTests(CrossingTestCase):
         self.assertEqual(self.process(1).status_code, 202)
         fresh = self.document(1)
         self.assertFalse(fresh["context_stale"])
-        self.assertTrue(self.blob_at(fresh["lines"][0], DOT[0])["explicit"])
+        self.assertTrue(self.blob_at(fresh["lines"][0], DOT[0])["decided"])
 
     def test_changed_confirmed_labels_in_context_require_reprocessing(self):
         self.process(2)
@@ -912,7 +916,7 @@ class ContextTests(CrossingTestCase):
         self.assertFalse(before["context_stale"])
         self.doc = self.document(2)
         body = self.draft(self.doc, acknowledge_exceptions=True)
-        self.draft_blob(body, 0, DOT[0]).update(role="body", explicit=True)
+        self.decide(self.draft_blob(body, 0, DOT[0]), "body")
         self.assertEqual(self.confirm(2, body).status_code, 200)
         after = self.document(1)
         self.assertTrue(after["context_stale"])
@@ -1005,14 +1009,20 @@ class DecisionTests(CalibrationApiTestCase):
         self.process(1)
         self.doc = self.document(1)
 
-    def test_a_role_sent_without_a_decision_is_no_lock(self):
+    def test_owners_sent_without_a_decision_are_no_lock(self):
         # What undoing an accepted preview sends: the reading from before it, with
         # nobody's decision on it. Stored as a reading, never as a hard lock.
         body = self.draft(self.doc)
-        self.draft_blob(body, 0, DOT[0]).update(role="body", allocations=[{"word_id": 1, "paws": 0}])
+        self.draft_blob(body, 0, DOT[0]).update(decided=None, allocations=[{"word_id": 1, "paws": 0}])
         stored = self.blob_at(self.put(1, body).json()["lines"][0], DOT[0])
-        self.assertEqual((stored["role"], stored["explicit"]), ("body", False))
+        self.assertIsNone(stored["decided"])
         self.assertNotEqual(stored["decision_source"], "human")
+
+    def test_letters_that_are_not_the_words_pieces_are_refused(self):
+        body = self.draft(self.doc)
+        first = self.draft_blob(body, 0, BODIES[0][0])
+        self.decide(first, "body", letters=["ظظظ"])
+        self.assertEqual(self.put(1, body).status_code, 422)
 
 
 class ScopedPreviewTests(CrossingTestCase):
@@ -1026,7 +1036,7 @@ class ScopedPreviewTests(CrossingTestCase):
         self.doc = self.document(1)
         body = self.draft(self.doc)
         # A decision on one of line 2's bodies puts aya 6 — and only aya 6 — in play.
-        self.draft_blob(body, 1, BODIES[1][0]).update(explicit=True)
+        self.decide(self.draft_blob(body, 1, BODIES[1][0]), "body")
         return body
 
     def preview_with(self, move) -> dict:
@@ -1094,66 +1104,43 @@ class ChangedAyaTests(SimpleTestCase):
         self.assertEqual(scope, {"2:5", "2:6"})
 
 
-class TypeSuggestionTests(CalibrationApiTestCase):
-    """Every line's dot is the same drawn glyph, so one typed dot names them all."""
+class PageLearningTests(CalibrationApiTestCase):
+    """Every line's dot is the same drawn glyph, so one decided dot names them all. The
+    mushaf is read for its letters alone (not Hafs), so only the shapes type a mark."""
 
-    def suggest(self, page: int, body: dict) -> dict:
-        response = self.client.post(self.url(page, "/types"), body, content_type="application/json")
-        self.assertEqual(response.status_code, 200, response.content)
-        return response.json()
+    def setUp(self):
+        super().setUp()
+        letters_alone = mock.patch.object(calibration_service, "does_mushaf_follow_the_text", return_value=False)
+        letters_alone.start()
+        self.addCleanup(letters_alone.stop)
 
-    def type_dots(self, body: dict, lines: tuple[int, ...], *, explicit: bool = True) -> dict:
+    def type_dots(self, body: dict, lines: tuple[int, ...]) -> dict:
         for index in lines:
-            self.draft_blob(body, index, DOT[0]).update(role="mark", subtype="ijamDot", subtype_explicit=explicit)
+            self.decide(self.draft_blob(body, index, DOT[0]), "mark", marks=["ijamDot"])
         return body
 
-    def test_a_type_confirmed_on_one_page_is_suggested_on_the_next(self):
+    def dot_reading(self, document: dict, index: int) -> dict | None:
+        return self.blob_at(document["lines"][index], DOT[0])["reading"]
+
+    def test_a_type_confirmed_on_one_page_is_read_on_the_next(self):
         self.process(1)
         self.doc = self.document(1)
         self.assertEqual(self.confirm(1, self.type_dots(self.draft(self.doc), (0, 1))).status_code, 200)
         self.process(2)
-        self.doc = self.document(2)
-        answer = self.suggest(2, self.draft(self.doc))
-        dots = {self.blob_at(line, DOT[0])["id"] for line in self.doc["lines"]}
-        found = [s for s in answer["suggestions"] if s["blob_id"] in dots]
-        self.assertEqual(len(found), 2)
-        self.assertTrue(all((s["subtype"], s["sure"]) == ("ijamDot", True) for s in found))
-        # The two dots are printed alike: the set keeps one, a copy shows nothing new.
-        self.assertEqual(answer["examples"], 1)
+        document = self.document(2)
+        for index in (0, 1):
+            self.assertEqual(self.dot_reading(document, index), {"paws": [], "marks": ["ijamDot"]})
 
-    def test_typing_a_mark_teaches_the_rest_of_the_page_at_once(self):
+    def test_saving_teaches_nothing_and_a_realign_teaches_the_page(self):
         self.process(1)
         self.doc = self.document(1)
-        before = self.doc["revision"]
-        answer = self.suggest(1, self.type_dots(self.draft(self.doc), (0,)))
-        self.assertEqual(answer["typed_here"], 1)
-        second = self.blob_at(self.doc["lines"][1], DOT[0])
-        self.assertIn(
-            ("ijamDot", True),
-            [
-                (s["subtype"], s["sure"])
-                for s in answer["suggestions"]
-                if s["snapshot_id"] == self.doc["lines"][1]["snapshot_id"] and s["blob_id"] == second["id"]
-            ],
-        )
-        # The typed dot asks for nothing, and nothing was stored.
-        first = self.blob_at(self.doc["lines"][0], DOT[0])
-        self.assertFalse(
-            any(
-                s["blob_id"] == first["id"] and s["snapshot_id"] == self.doc["lines"][0]["snapshot_id"]
-                for s in answer["suggestions"]
-            )
-        )
-        self.assertEqual(self.document(1)["revision"], before)
-
-    def test_a_guess_nobody_accepted_teaches_nothing(self):
-        self.process(1)
-        self.doc = self.document(1)
-        body = self.type_dots(self.draft(self.doc), (0, 1), explicit=False)
-        self.assertEqual(self.confirm(1, body).status_code, 200)
-        self.process(2)
-        answer = self.suggest(2, self.draft(self.document(2)))
-        self.assertEqual((answer["examples"], answer["suggestions"]), (0, []))
+        before = self.dot_reading(self.doc, 1)
+        self.assertNotEqual(before, {"paws": [], "marks": ["ijamDot"]})
+        saved = self.put(1, self.type_dots(self.draft(self.doc), (0,))).json()
+        self.assertEqual(self.dot_reading(saved, 1), before)
+        realigned = self.put(1, {**self.type_dots(self.draft(saved), (0,)), "realign": True})
+        self.assertEqual(realigned.status_code, 200, realigned.content)
+        self.assertEqual(self.dot_reading(realigned.json(), 1), {"paws": [], "marks": ["ijamDot"]})
 
 
 class TypeDoubtTests(CalibrationApiTestCase):
@@ -1174,25 +1161,20 @@ class TypeDoubtTests(CalibrationApiTestCase):
             self.client.post(self.url(2, "/process"))
         self.doc = self.document(2)
 
-    def type_mark(self, body: dict, index: int, left: int, subtype: str) -> dict:
-        blob = self.draft_blob(body, index, left)
-        blob.update(
-            role="mark",
-            explicit=True,
-            subtype=subtype,
-            subtype_explicit=True,
-            allocations=[{**allocation, "paws": 0} for allocation in blob["allocations"]],
-        )
+    def type_mark(self, body: dict, index: int, left: int, kind: str) -> dict:
+        blob = self.decide(self.draft_blob(body, index, left), "mark", marks=[kind])
+        blob["allocations"] = [{**allocation, "paws": 0} for allocation in blob["allocations"]]
         return blob
 
     def test_a_type_the_other_pages_disagree_with_is_doubted(self):
         body = self.draft(self.doc)
         slip = self.type_mark(body, 0, BAR[0], "ijamDot")
         self.type_mark(body, 0, DOT[0], "ijamDot")
-        response = self.client.post(self.url(2, "/types"), body, content_type="application/json")
+        response = self.client.post(self.url(2, "/preview"), body, content_type="application/json")
         self.assertEqual(response.status_code, 200, response.content)
-        doubts = [(d["blob_id"], d["typed"], d["subtype"], d["sure"]) for d in response.json()["doubts"]]
-        self.assertEqual(doubts, [(slip["id"], "ijamDot", "fatha", True)])
+        line = response.json()["lines"][0]
+        doubts = [(blob["id"], blob["doubt"]) for blob in line["blobs"] if blob.get("doubt")]
+        self.assertEqual(doubts, [(slip["id"], "fatha")])
 
 
 class EraseTests(CalibrationApiTestCase):
@@ -1249,7 +1231,7 @@ class EraseTests(CalibrationApiTestCase):
 
     def test_an_ornament_is_not_erased(self):
         body = self.draft(self.doc)
-        next(blob for blob in body["lines"][0]["blobs"] if blob["role"] == "ornament")["erased"] = True
+        self.ornament_of(self.doc, body)["erased"] = True
         self.assertEqual(self.put(1, body).status_code, 422)
 
     def test_the_line_image_is_exported_without_it(self):

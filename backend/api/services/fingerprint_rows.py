@@ -13,11 +13,12 @@ writes only what changed. A Rebuild replaces everything (:func:`replace_stored_g
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 
 from api.models import FingerprintGroup, FingerprintLibrary, FingerprintShape, Mushaf, RemovedShape
+from core.text.rasm import find_body_shape_of_key
 from core.word_boundary.library import Comparison, comparison
 from core.word_boundary.library_updates import KeptShape, ShapeGroup
 
@@ -36,11 +37,17 @@ class StoredShapeState:
 
 @dataclass
 class StoredGroups:
-    """The set's groups as loaded, and the rows they came from."""
+    """The set's groups as loaded, and the rows they came from.
+
+    ``group_ids`` goes by each group object's ``id()``. ``loaded`` holds every group as
+    it was loaded, so none is ever freed while this lives: a group dropped from
+    ``groups`` and freed would let a new group take its address — its ``id()`` — and be
+    saved into the dropped group's row."""
 
     groups: list[ShapeGroup]
     group_ids: dict[int, str]
     shapes: dict[tuple[str, int], StoredShapeState]
+    loaded: list[ShapeGroup] = field(default_factory=list)
 
     def group_id_of(self, group: ShapeGroup) -> str | None:
         return self.group_ids.get(id(group))
@@ -76,10 +83,10 @@ def load_stored_groups(library_row: FingerprintLibrary) -> StoredGroups:
     pending: dict[str, list[tuple[bool, KeptShape]]] = {}
     shapes: dict[tuple[str, int], StoredShapeState] = {}
     kinds: dict[str, tuple[str, str]] = {
-        str(pk): (role, subtype)
-        for pk, role, subtype in FingerprintGroup.objects.filter(library=library_row)
+        str(pk): (role, key)
+        for pk, role, key in FingerprintGroup.objects.filter(library=library_row)
         .order_by("created_at", "pk")
-        .values_list("pk", "role", "subtype")
+        .values_list("pk", "role", "key")
     }
     rows = FingerprintShape.objects.filter(library=library_row).values_list(
         "pk",
@@ -127,16 +134,16 @@ def load_stored_groups(library_row: FingerprintLibrary) -> StoredGroups:
             revision_id=shape.revision_id,
         )
     group_ids: dict[int, str] = {}
-    for kind_group_id, (role, subtype) in kinds.items():
+    for kind_group_id, (role, key) in kinds.items():
         members = pending.get(kind_group_id, [])
         fingerprints = [shape for is_fingerprint, shape in members if is_fingerprint]
         if not fingerprints:
             continue
         kept = sorted((shape for is_fingerprint, shape in members if not is_fingerprint), key=sort_key)
-        group = ShapeGroup(role=role, subtype=subtype, fingerprint=fingerprints[0], kept=kept)
+        group = ShapeGroup(role=role, key=key, fingerprint=fingerprints[0], kept=kept)
         groups[kind_group_id] = group
         group_ids[id(group)] = kind_group_id
-    return StoredGroups(groups=list(groups.values()), group_ids=group_ids, shapes=shapes)
+    return StoredGroups(groups=list(groups.values()), group_ids=group_ids, shapes=shapes, loaded=list(groups.values()))
 
 
 def sort_key(shape: KeptShape) -> tuple[float, tuple[str, int]]:
@@ -152,7 +159,9 @@ def save_stored_groups(library_row: FingerprintLibrary, stored: StoredGroups) ->
     for group in stored.groups:
         group_id = stored.group_id_of(group)
         if group_id is None:
-            row = FingerprintGroup.objects.create(library=library_row, role=group.role, subtype=group.subtype)
+            row = FingerprintGroup.objects.create(
+                library=library_row, role=group.role, key=group.key, shape=find_body_shape_of_key(group.key)
+            )
             group_id = str(row.pk)
             stored.group_ids[id(group)] = group_id
         for index, shape in enumerate(group.shapes()):
@@ -190,7 +199,9 @@ def replace_stored_groups(library_row: FingerprintLibrary, groups: list[ShapeGro
     FingerprintGroup.objects.filter(library=library_row).delete()
     created: list[FingerprintShape] = []
     for group in groups:
-        row = FingerprintGroup.objects.create(library=library_row, role=group.role, subtype=group.subtype)
+        row = FingerprintGroup.objects.create(
+            library=library_row, role=group.role, key=group.key, shape=find_body_shape_of_key(group.key)
+        )
         created += [
             new_shape_row(library_row, str(row.pk), shape, is_fingerprint=index == 0)
             for index, shape in enumerate(group.shapes())
@@ -218,9 +229,9 @@ def load_removed_labels(mushaf: Mushaf) -> dict[tuple[str, int], tuple[str, str]
     """Every removed blob and the label it was removed as. A removal counts while the
     blob is still confirmed as that role and type."""
     return {
-        (str(snapshot_id), int(blob_id)): (role, subtype)
-        for snapshot_id, blob_id, role, subtype in RemovedShape.objects.filter(mushaf=mushaf).values_list(
-            "snapshot_id", "blob_id", "role", "subtype"
+        (str(snapshot_id), int(blob_id)): (role, key)
+        for snapshot_id, blob_id, role, key in RemovedShape.objects.filter(mushaf=mushaf).values_list(
+            "snapshot_id", "blob_id", "role", "key"
         )
     }
 

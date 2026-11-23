@@ -1,8 +1,9 @@
 """The fingerprint library: confirmed examples, grouped by shape, that every new blob is
 compared with.
 
-Built from the blobs of confirmed pages, kind by kind — the letters (bodies) as one
-kind, and the marks as one kind per type, untyped marks as one more::
+Built from the blobs of confirmed pages, kind by kind — a kind is a contents key
+(:mod:`core.text.contents`), what the blob holds: "لو:", "ا:roundZero", ":fatha"; a blob
+whose letters or type nobody named is kept under its role alone, "?:" or ":?"::
 
     for each example, in page order:
         nearest fingerprint of its kind within LIMIT?  ── yes ─► joins that group
@@ -11,14 +12,18 @@ kind, and the marks as one kind per type, untyped marks as one more::
     kept: every fingerprint and up to 11 of its members, spread nearest to farthest
 
 A fingerprint is one distinct way a kind is written; the members kept beside it show how
-far it reaches. LIMIT is in the comparison's own units, a per-mushaf setting.
+far it reaches. A key keeps at most ``KEEP_PER_KEY`` shapes, its fingerprints first. LIMIT
+is in the comparison's own units, a per-mushaf setting.
 
 Asked about a new blob, the library always answers:
 
 * **body or mark** — whichever of the nearest kept letter and the nearest kept mark is
   nearer; ``confidence`` (0..1) says by how much: (far - near) / (far + near);
 * **its type** — each type's nearest kept shape, as :mod:`examples` answered it, so
-  the text check (:mod:`mark_check`) reads both the same way.
+  the text check (:mod:`mark_check`) reads both the same way;
+* **how near each key** the word reader asks about (:meth:`Library.compare_with_keys`) —
+  a key with fewer than ``BORROW_BELOW`` shapes of its own also measured against its
+  look-alikes' pictures (:mod:`core.text.rasm`): pictures lent, never names.
 
 Measured on the first mushaf (pages 3-14 learning, pages 15-17 tested, every
 disagreement checked by eye): 2 typing mistakes in 2,036 marks and 1 body/mark mistake in
@@ -39,6 +44,8 @@ from typing import Any, Protocol
 
 import numpy as np
 
+from core.text.contents import ContentsKey, find_mark_name_of_key, format_contents_key
+from core.text.rasm import find_body_shape_of_key
 from core.word_boundary.examples import (
     DEFAULT_CONFIG,
     FEATURE_COUNT,
@@ -49,6 +56,10 @@ from core.word_boundary.examples import (
 
 #: Shapes kept per group: the fingerprint and up to this many less one of its members.
 KEEP = 12
+#: Shapes kept per key, over all its groups: its fingerprints first.
+KEEP_PER_KEY = 12
+#: A key with fewer shapes of its own than this borrows its look-alikes' pictures.
+BORROW_BELOW = 3
 #: A group's fingerprint is re-chosen from at most this many of its members.
 MEDOID_SAMPLE = 60
 #: At or below this two descriptors are one bitmap: noise of the batched sums.
@@ -204,23 +215,31 @@ def group_examples(method: Comparison, reps: list[np.ndarray], limit: float, see
     return groups
 
 
-def pick_spread_members(item: dict) -> list[int]:
+def count_kept_per_group(groups: int) -> int:
+    """How many shapes each group of a key keeps, its fingerprint among them: the key's
+    ``KEEP_PER_KEY`` shared evenly, at least two each so every group keeps its reach."""
+    return max(2, min(KEEP, KEEP_PER_KEY // max(groups, 1)))
+
+
+def pick_spread_members(item: dict, keep: int = KEEP) -> list[int]:
     """Which of a group's members are kept beside its fingerprint, by their place in
-    ``members``: up to ``KEEP - 1``, spread from the nearest to the farthest, so they
+    ``members``: up to ``keep - 1``, spread from the nearest to the farthest, so they
     cover the group's whole reach. A member printed pixel for pixel like its
     fingerprint shows nothing new: skipped."""
     members, distance = item["members"], item["distance"]
-    picks = sorted(set(np.linspace(0, len(members) - 1, min(KEEP, len(members))).round().astype(int).tolist()))
+    picks = sorted(set(np.linspace(0, len(members) - 1, min(keep, len(members))).round().astype(int).tolist()))
     return [i for i in picks if members[i] != item["centre"] and distance[i] > EXACT_DISTANCE]
 
 
 def list_kept_shapes(groups: list[dict]) -> list[tuple[int, bool, int]]:
-    """(example, is the fingerprint, examples its group stands for) for every shape a
-    library keeps: each fingerprint, and the members :func:`pick_spread_members` keeps."""
+    """(example, is the fingerprint, examples its group stands for) for every shape one
+    key keeps: each fingerprint, and the members :func:`pick_spread_members` keeps of it
+    — ``KEEP_PER_KEY`` shared among the key's groups (:func:`count_kept_per_group`)."""
+    keep = count_kept_per_group(len(groups))
     found = []
     for item in groups:
         found.append((item["centre"], True, len(item["members"])))
-        found += [(item["members"][i], False, 1) for i in pick_spread_members(item)]
+        found += [(item["members"][i], False, 1) for i in pick_spread_members(item, keep)]
     return found
 
 
@@ -235,7 +254,7 @@ class Library:
     limit: float
     #: Per kept shape: "body" or "mark".
     roles: np.ndarray
-    #: Per kept shape: a mark's type ("" when untyped, and for every body).
+    #: Per kept shape: its contents key, as written ("لو:", ":fatha", "?:").
     kinds: np.ndarray
     #: Per kept shape: the example it is (everything but its descriptor).
     refs: list[dict]
@@ -250,24 +269,39 @@ class Library:
     examples: int = 0
     typed_examples: int = 0
     fingerprints: int = 0
-    #: Every group, kind by kind, as people look at it: ``role``, ``subtype``, its
+    #: Every group, kind by kind, as people look at it: ``role``, ``key``, its
     #: fingerprint's ``centre`` ref, every member's ref (the fingerprint among them,
     #: nearest first) and ``distance`` to the fingerprint, and the ``kept`` members'
     #: places among them. Refs only — no descriptors.
     groups: list[dict] = field(default_factory=list, repr=False)
-    #: Each typed kind's kept shapes, by position.
-    _by_type: dict[str, np.ndarray] = field(default_factory=dict, init=False, repr=False)
+    #: Each mark type's kept shapes, by position.
+    by_type: dict[str, np.ndarray] = field(default_factory=dict, init=False, repr=False)
+    #: Each key's kept shapes, by position.
+    by_key: dict[str, np.ndarray] = field(default_factory=dict, init=False, repr=False)
+    #: Each plain body shape's kept shapes, by position: what a key borrows.
+    by_shape: dict[str, np.ndarray] = field(default_factory=dict, init=False, repr=False)
 
     def __post_init__(self) -> None:
-        typed = (self.roles == "mark") & (self.kinds != "")
-        self._by_type = {
-            str(kind): np.flatnonzero(typed & (self.kinds == kind)) for kind in sorted(set(self.kinds[typed].tolist()))
-        }
+        names = [find_mark_name_of_key(str(key)) for key in self.kinds.tolist()]
+        positions: dict[str, list[int]] = {}
+        for index, name in enumerate(names):
+            if name:
+                positions.setdefault(name, []).append(index)
+        self.by_type = {name: np.array(found, dtype=int) for name, found in sorted(positions.items())}
+        keys: dict[str, list[int]] = {}
+        shapes: dict[str, list[int]] = {}
+        for index, key in enumerate(self.kinds.tolist()):
+            keys.setdefault(str(key), []).append(index)
+            shape = find_body_shape_of_key(str(key))
+            if shape:
+                shapes.setdefault(shape, []).append(index)
+        self.by_key = {key: np.array(found, dtype=int) for key, found in keys.items()}
+        self.by_shape = {shape: np.array(found, dtype=int) for shape, found in shapes.items()}
 
     @property
     def types(self) -> list[str]:
         """Every mark type the library knows."""
-        return list(self._by_type)
+        return list(self.by_type)
 
     @property
     def can_propose(self) -> bool:
@@ -284,7 +318,7 @@ class Library:
         """Body or mark for each blob: the nearer of its nearest kept letter and nearest
         kept mark, with how sure (see the module's docstring) and both shapes."""
         if not self.can_propose:
-            return [_no_role() for _ in features]
+            return [describe_no_role() for _ in features]
         distances = self.measure_distances(features)
         bodies, marks = np.flatnonzero(self.roles == "body"), np.flatnonzero(self.roles == "mark")
         answers = []
@@ -301,8 +335,8 @@ class Library:
                     "reasons": [],
                     "nearest_letter": round(near_letter, 4),
                     "nearest_mark": round(near_mark, 4),
-                    "letter": self._ref(letter),
-                    "mark": self._ref(mark),
+                    "letter": self.describe_kept_shape(letter),
+                    "mark": self.describe_kept_shape(mark),
                 }
             )
         return answers
@@ -316,17 +350,40 @@ class Library:
             return []
         row = self.measure_distances([features])[0]
         return [
-            {**self._ref(int(i)), "distance": round(float(row[i]), 4)} for i in np.argsort(row, kind="stable")[:count]
+            {**self.describe_kept_shape(int(i)), "distance": round(float(row[i]), 4)}
+            for i in np.argsort(row, kind="stable")[:count]
         ]
+
+    # ---- keys ------------------------------------------------------------------------
+    def compare_with_keys(
+        self, features: Sequence[Sequence[float] | np.ndarray], keys: Sequence[ContentsKey]
+    ) -> list[dict[ContentsKey, float]]:
+        """Each blob's distance to each of ``keys`` it can be compared with: its nearest
+        kept shape of that key — and, for a key with fewer than ``BORROW_BELOW`` of its
+        own, of its look-alikes too. A key with no shape, own or borrowed, is left out."""
+        where: dict[ContentsKey, np.ndarray] = {}
+        for key in keys:
+            written = format_contents_key(key)
+            own = self.by_key.get(written, np.zeros(0, dtype=int))
+            if len(own) < BORROW_BELOW:
+                shape = find_body_shape_of_key(written)
+                borrowed = self.by_shape.get(shape, np.zeros(0, dtype=int)) if shape else np.zeros(0, dtype=int)
+                own = np.union1d(own, borrowed)
+            if len(own):
+                where[key] = own
+        if not where or not len(features):
+            return [{} for _ in features]
+        distances = self.measure_distances(features)
+        return [{key: round(float(row[found].min()), 4) for key, found in where.items()} for row in distances]
 
     # ---- types -----------------------------------------------------------------------
     def type_scores(self, features: Sequence[Sequence[float] | np.ndarray]) -> list[dict[str, float]]:
         """Every known type's distance to each mark — its nearest kept shape of that
         type; nearer is likelier. Empty when the library knows no type."""
-        if not self._by_type:
+        if not self.by_type:
             return [{} for _ in features]
         distances = self.measure_distances(features)
-        return [{kind: round(float(row[where].min()), 4) for kind, where in self._by_type.items()} for row in distances]
+        return [{kind: round(float(row[where].min()), 4) for kind, where in self.by_type.items()} for row in distances]
 
     def predict_types(self, features: Sequence[Sequence[float] | np.ndarray]) -> list[dict]:
         """The likeliest type of each mark and how sure — answered as
@@ -336,7 +393,7 @@ class Library:
         or when it alone has an exact match."""
         settings = TYPE_CONFIG
         nothing: dict = {
-            "subtype": "",
+            "kind": "",
             "confidence": 0.0,
             "support": 0,
             "distance": None,
@@ -344,16 +401,14 @@ class Library:
             "runner_up": "",
             "runner_distance": None,
         }
-        if not self._by_type:
+        if not self.by_type:
             return [dict(nothing) for _ in features]
         distances = self.measure_distances(features)
-        names = list(self._by_type)
+        names = list(self.by_type)
         answers = []
         for row in distances:
-            nearest = {name: float(row[where].min()) for name, where in self._by_type.items()}
-            support = {
-                name: int((row[where] < settings["max_distance"]).sum()) for name, where in self._by_type.items()
-            }
+            nearest = {name: float(row[where].min()) for name, where in self.by_type.items()}
+            support = {name: int((row[where] < settings["max_distance"]).sum()) for name, where in self.by_type.items()}
             rank = sorted(names, key=lambda name: (nearest[name], -support[name], name))
             close = [name for name in rank if support[name] > 0]
             if not close:
@@ -371,7 +426,7 @@ class Library:
             clear = score <= settings["sure_ratio"] * runner
             answers.append(
                 {
-                    "subtype": winner,
+                    "kind": winner,
                     "confidence": round(confidence, 4),
                     "support": support[winner],
                     "distance": round(score, 4),
@@ -387,55 +442,56 @@ class Library:
     ) -> list[dict]:
         """The evidence behind one mark's guess: the ``types`` nearest types, each with
         its distance and its own ``per_type`` nearest kept shapes — nearest type first."""
-        if not self._by_type:
+        if not self.by_type:
             return []
         row = self.measure_distances([features])[0]
         found = []
-        for name, where in self._by_type.items():
+        for name, where in self.by_type.items():
             closest = where[np.lexsort((where, row[where]))][:per_type]
             found.append(
                 {
-                    "subtype": name,
+                    "kind": name,
                     "distance": round(float(row[closest[0]]), 4),
-                    "examples": [{**self._ref(int(i)), "distance": round(float(row[i]), 4)} for i in closest],
+                    "examples": [
+                        {**self.describe_kept_shape(int(i)), "distance": round(float(row[i]), 4)} for i in closest
+                    ],
                 }
             )
-        found.sort(key=lambda entry: (entry["distance"], entry["subtype"]))
+        found.sort(key=lambda entry: (entry["distance"], entry["kind"]))
         return found[:types]
 
-    # ---- this page's own typing ----------------------------------------------------
-    def with_typed(self, samples: list[dict]) -> Library:
-        """This library and the given typed marks besides — a page's own marks, kept
-        whole and ungrouped, so typing a few on a page teaches the rest at once.
+    # ---- this page's own decisions ---------------------------------------------------
+    def with_page_examples(self, samples: list[dict]) -> Library:
+        """This library and a page's own decided blobs besides, kept whole and ungrouped
+        — what a realign reads the page with, so deciding a few teaches the rest.
 
-        A mark the library already keeps as that same type (a confirmed page's own
-        shape) is not added again: counted twice, it would weigh twice in a type's
-        support."""
+        A blob the library already keeps under that same key (a confirmed page's own
+        shape) is not added again: counted twice, it would weigh twice."""
         kept = {(example_key(ref), str(self.kinds[index])) for index, ref in enumerate(self.refs)}
-        samples = [sample for sample in samples if (example_key(sample), sample["subtype"]) not in kept]
+        samples = [sample for sample in samples if (example_key(sample), sample["key"]) not in kept]
         if not samples:
             return self
         reps = [*self.reps, *(self.method.describe(sample["features"]) for sample in samples)]
         return replace(
             self,
-            roles=np.concatenate((self.roles, np.array(["mark"] * len(samples), dtype=str))),
-            kinds=np.concatenate((self.kinds, np.array([sample["subtype"] for sample in samples], dtype=str))),
+            roles=np.concatenate((self.roles, np.array([sample["role"] for sample in samples], dtype=str))),
+            kinds=np.concatenate((self.kinds, np.array([sample["key"] for sample in samples], dtype=str))),
             refs=[*self.refs, *(reference_of_example(sample, fingerprint=False) for sample in samples)],
             copies=[*self.copies, *([1] * len(samples))],
             reps=reps,
             bank=self.method.stack(reps),
         )
 
-    def _ref(self, position: int) -> dict:
+    def describe_kept_shape(self, position: int) -> dict:
         return {
             **self.refs[position],
             "role": str(self.roles[position]),
-            "subtype": str(self.kinds[position]),
+            "key": str(self.kinds[position]),
             "copies": self.copies[position],
         }
 
 
-def _no_role() -> dict:
+def describe_no_role() -> dict:
     return {"role": None, "confidence": 0.0, "reasons": ["no_examples"]}
 
 
@@ -447,9 +503,14 @@ def example_key(item: dict) -> tuple[str, int]:
 def reference_of_example(sample: dict, *, fingerprint: bool) -> dict:
     """What identifies an example — never its descriptor — and whether it is its
     group's fingerprint."""
-    ref = {key: value for key, value in sample.items() if key not in ("features", "role", "subtype")}
+    ref = {key: value for key, value in sample.items() if key not in ("features", "role", "key")}
     ref["fingerprint"] = fingerprint
     return ref
+
+
+def is_typed_mark_key(role: str, key: str) -> bool:
+    """A mark whose type is named — what counts as a typed example."""
+    return role == "mark" and bool(find_mark_name_of_key(key))
 
 
 def build_library(
@@ -460,12 +521,11 @@ def build_library(
     fingerprint_keys: frozenset[tuple[str, int]] = frozenset(),
 ) -> Library:
     """A library from confirmed examples — each ``features``, ``role`` ("body" or
-    "mark"), ``subtype`` (a mark's type, or "") and whatever identifies it
+    "mark"), ``key`` (what the blob holds, as written) and whatever identifies it
     (``snapshot_id``, ``blob_id``, ``page_number``, ``line_number`` …), in page order.
 
-    Grouped kind by kind: the letters, each mark type, and the untyped marks. The
-    examples named in ``fingerprint_keys`` (snapshot id, blob id) stay fingerprints:
-    a person found them right."""
+    Grouped key by key. The examples named in ``fingerprint_keys`` (snapshot id, blob
+    id) stay fingerprints: a person found them right."""
     method = method or comparison()
     limit = method.default_limit if limit is None else limit
     if limit <= 0:
@@ -475,8 +535,7 @@ def build_library(
         role = sample.get("role")
         if role not in ("body", "mark"):
             raise ValueError("role must be body or mark")
-        kind = (sample.get("subtype") or "") if role == "mark" else ""
-        kinds.setdefault((role, kind), []).append(sample)
+        kinds.setdefault((role, sample.get("key") or ""), []).append(sample)
     roles, names, refs, copies, reps, prints = [], [], [], [], [], 0
     shown: list[dict] = []
     for (role, kind), own in kinds.items():
@@ -493,13 +552,13 @@ def build_library(
         shown += [
             {
                 "role": role,
-                "subtype": kind,
+                "key": kind,
                 "centre": reference_of_example(own[item["centre"]], fingerprint=True),
                 "members": [
                     reference_of_example(own[index], fingerprint=index == item["centre"]) for index in item["members"]
                 ],
                 "distance": item["distance"],
-                "kept": pick_spread_members(item),
+                "kept": pick_spread_members(item, count_kept_per_group(len(groups))),
             }
             for item in groups
         ]
@@ -515,7 +574,7 @@ def build_library(
         reps=list(matrix),
         bank=method.stack(matrix) if reps else method.stack([]),
         examples=len(samples),
-        typed_examples=sum(1 for sample in samples if sample["role"] == "mark" and sample.get("subtype")),
+        typed_examples=sum(1 for sample in samples if is_typed_mark_key(sample["role"], sample.get("key") or "")),
         fingerprints=prints,
         groups=shown,
     )

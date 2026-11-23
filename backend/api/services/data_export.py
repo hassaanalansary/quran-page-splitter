@@ -78,11 +78,16 @@ from api.models import (
     Segment,
 )
 from api.services import calibration, coordinates, pdf, word_inputs
-from api.services import calibration_marks as text_marks
 from api.services import calibration_snapshots as snapshots
 from api.services import mushaf as mushaf_service
+from api.services.blob_contents import (
+    TEXT_ROLES,
+    find_contents_of_blob,
+    find_mark_kind,
+    find_touching_marks,
+    is_mark_named_by_person,
+)
 from api.services.calibration_cuts import cut_fits_blob, piece_of_word, word_of_each_cut_pixel
-from api.services.calibration_examples import TEXT_ROLES
 from api.services.export import _safe_filename
 from quran.models import Aya
 
@@ -264,16 +269,25 @@ def _calibration_state(mushaf: Mushaf, review: CalibrationReview | None, rows: l
     }
 
 
-def _type_of(blob: Doc) -> tuple[str, str] | None:
-    """A mark's type and who set it: a person, or the Quran text. A type only guessed
-    and never accepted is no type at all."""
-    if blob["role"] != "mark" or not blob.get("subtype"):
+def find_type_of_mark(blob: Doc) -> tuple[str, str] | None:
+    """A mark's type and who set it: a person, or the reading (by the Quran text and the
+    library). A mark whose type is open has none."""
+    kind = find_mark_kind(blob)
+    if not kind:
         return None
-    if text_marks.human_typed(blob):
-        return blob["subtype"], "person"
-    if blob.get("subtype_source") == "text":
-        return blob["subtype"], "text"
-    return None
+    return kind, "person" if is_mark_named_by_person(blob) else "text"
+
+
+def find_flag_of_blob(blob: Doc) -> str:
+    """The flag the export has always written: a person's (broken, uncertain), or what the
+    blob holds — marks touching its letter ("mixed"), or several pieces ("fused")."""
+    if blob.get("flag"):
+        return str(blob["flag"])
+    if blob["role"] != "body":
+        return ""
+    if find_touching_marks(blob):
+        return "mixed"
+    return "fused" if len(find_contents_of_blob(blob).bodies or ()) > 1 else ""
 
 
 def _structure(snapshot: CalibrationSnapshot | None) -> tuple[dict[int, str], dict[int, str]]:
@@ -303,17 +317,17 @@ def _blob(blob: Doc, place: _Placement, ornaments: dict[int, str], symbols: dict
         entry["words"] = [allocation["word_id"] for allocation in allocations]
         if role == "body":
             entry["paws"] = sum(allocation["paws"] for allocation in allocations)
-            if fused := text_marks.fused_marks(blob):
-                # Marks printed touching the letter, one blob with it, as a person named them.
-                entry["marks"] = fused
-        typed = _type_of(blob)
+            if touching := find_touching_marks(blob):
+                # Marks printed touching the letter, one blob with it.
+                entry["marks"] = touching
+        typed = find_type_of_mark(blob)
         if role == "mark":
             entry["type"], entry["type_by"] = typed if typed else (None, None)
             if typed:
                 types[typed[0]] += 1
         entry["set_by"] = SET_BY.get(blob.get("decision_source", "search"), "engine")
-        if blob.get("exception"):
-            entry["flag"] = blob["exception"]
+        if flag := find_flag_of_blob(blob):
+            entry["flag"] = flag
         if blob.get("erased"):
             entry["erased"] = True
     elif role == "ornament":

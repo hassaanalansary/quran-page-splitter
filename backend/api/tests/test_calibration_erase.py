@@ -9,7 +9,9 @@ from ninja.errors import HttpError
 from PIL import Image
 
 from api.services import calibration, export
-from api.services.calibration_examples import is_blob_eligible_for_library, is_mark_typed
+from api.services.blob_contents import find_mark_kind
+from api.services.calibration_examples import is_blob_eligible_for_library
+from api.services.mark_noise import find_noise_marks
 from core.word_boundary.ink import Blob
 
 WORD = {"id": 1, "text": "بِهِۦ", "paws": 1, "aya": "2:102"}
@@ -25,11 +27,10 @@ def draft_blob(ident: int = 5, **changes) -> dict:
         "area": 18,
         "role": "mark",
         "initial_role": "mark",
-        "explicit": False,
+        "decided": {"paws": [], "marks": ["ijamDot"]},
+        "reading": None,
         "ownership_explicit": False,
-        "subtype": "ijamDot",
-        "subtype_explicit": True,
-        "exception": "uncertain",
+        "flag": "uncertain",
         "allocations": [{"word_id": 1, "paws": 0}],
         "attention": ["ambiguous"],
         "decision_source": "search",
@@ -38,17 +39,17 @@ def draft_blob(ident: int = 5, **changes) -> dict:
 
 
 def edit(blob: dict, **changes) -> dict:
-    keys = ("id", "role", "explicit", "ownership_explicit", "subtype", "exception", "allocations")
+    keys = ("id", "decided", "ownership_explicit", "flag", "allocations")
     return {**{key: blob[key] for key in keys}, **changes}
 
 
 class MergeTests(SimpleTestCase):
-    def test_an_erased_blob_belongs_to_no_word_has_no_type_and_keeps_its_role(self):
+    def test_an_erased_blob_belongs_to_no_word_and_keeps_its_role(self):
         blob = draft_blob()
         calibration.merge_blob_edit(blob, edit(blob, erased=True), {1: WORD})
         self.assertEqual(
-            (blob["erased"], blob["role"], blob["allocations"], blob["subtype"], blob["exception"], blob["attention"]),
-            (True, "mark", [], "", "", []),
+            (blob["erased"], blob["role"], blob["allocations"], blob["flag"], blob["attention"]),
+            (True, "mark", [], "", []),
         )
 
     def test_a_restored_blob_is_ink_again_and_remembers_it_was_erased(self):
@@ -61,16 +62,15 @@ class MergeTests(SimpleTestCase):
         self.assertNotIn("erased", untouched)
 
     def test_an_ornament_is_never_erased(self):
-        ring = draft_blob(role="ornament", initial_role="ornament", allocations=[], exception="", subtype="")
+        ring = draft_blob(role="ornament", initial_role="ornament", allocations=[], flag="", decided=None)
         with self.assertRaises(HttpError):
             calibration.merge_blob_edit(ring, edit(ring, erased=True), {1: WORD})
 
 
 class SkipTests(SimpleTestCase):
     def test_erased_ink_teaches_nothing_and_asks_nothing(self):
-        erased = draft_blob(erased=True, exception="")
+        erased = draft_blob(erased=True, flag="")
         self.assertFalse(is_blob_eligible_for_library(erased))
-        self.assertFalse(is_mark_typed(erased))
         row = {"line_number": 1, "blobs": [draft_blob(erased=True)], "words": [], "status": "exact"}
         self.assertEqual(calibration.exceptions({"lines": [row]}), [])
 
@@ -81,11 +81,11 @@ class SkipTests(SimpleTestCase):
         self.assertEqual(([b.label for b in ink.components], ink.bodies, [b.label for b in ink.marks]), ([2], [], [2]))
 
     def test_an_erase_is_carried_to_the_same_blob_when_the_page_is_processed_again(self):
-        fresh = draft_blob(exception="", allocations=[{"word_id": 1, "paws": 0}])
-        earlier = draft_blob(erased=True, allocations=[], subtype="", exception="")
+        fresh = draft_blob(flag="", decided=None, allocations=[{"word_id": 1, "paws": 0}])
+        earlier = draft_blob(erased=True, allocations=[], decided=None, flag="")
         document = {"stream": [WORD], "lines": [{"snapshot_id": "a", "blobs": [fresh], "words": []}]}
         self.assertTrue(calibration.carry_decisions_to_draft(document, {"a": {"blobs": [earlier], "words": []}}))
-        self.assertEqual((fresh["erased"], fresh["allocations"], fresh["subtype"]), (True, [], ""))
+        self.assertEqual((fresh["erased"], fresh["allocations"], find_mark_kind(fresh)), (True, [], ""))
 
 
 class ExportCutTests(SimpleTestCase):
@@ -129,8 +129,7 @@ class NoiseTests(SimpleTestCase):
     def found(self, blobs: list[dict], distances: dict[int, float], extra: list[int]) -> list[tuple[int, str]]:
         self.row["blobs"] = blobs
         marks = [(self.row, blob, blob["id"]) for blob in blobs]
-        checks = {"a": {1: SimpleNamespace(extra=extra)}}
-        return [(f["blob_id"], f["kind"]) for f in calibration._noise(library(distances), marks, checks)]
+        return [(f["blob_id"], f["kind"]) for f in find_noise_marks(library(distances), marks, {"a": set(extra)})]
 
     def test_a_speck_is_noise_whatever_the_library_and_the_text_say(self):
         blobs = [mark(1, 150), mark(2, 160), mark(3, 140), mark(4, 3, y=0)]
@@ -144,8 +143,7 @@ class NoiseTests(SimpleTestCase):
         blobs = [mark(1, 150), mark(2, 160), mark(3, 3)]
         self.row["blobs"] = blobs
         unsure = SimpleNamespace(can_propose=False, limit=0.27, roles_of=lambda features: [])
-        checks = {"a": {1: SimpleNamespace(extra=[1, 3])}}
-        found = calibration._noise(unsure, [(self.row, blob, blob["id"]) for blob in blobs], checks)
+        found = find_noise_marks(unsure, [(self.row, blob, blob["id"]) for blob in blobs], {"a": {1, 3}})
         self.assertEqual([(f["blob_id"], f["kind"]) for f in found], [(3, "speck")])
 
     def test_a_stranger_is_noise_only_when_its_word_has_it_left_over(self):

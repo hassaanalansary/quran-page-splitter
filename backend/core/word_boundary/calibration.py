@@ -119,3 +119,8 @@ SCORE_NESTED_IN_A_BODY = 4
 #: How much smaller than its container a blob must be to count as nested. A
 #: letter under a tail is comparable in size; a diacritic is not.
 NESTED_AREA_FRACTION = 0.35
+
+#: What reading an anchored blob in another word costs (``Blob.library_word_id``): the
+#: library is sure of its shape, and only one word of the span has that piece. A count
+#: off by one, so an anchor bends where the counts cannot close otherwise.
+ANCHOR_PRICE = COUNT_WEIGHT

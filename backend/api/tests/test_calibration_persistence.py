@@ -55,6 +55,7 @@ class CalibrationPersistenceTests(MediaTestCase):
     def _calibration(self):
         snapshot = self._snapshot()
         payload = {
+            "format": 2,
             "lines": [{"snapshot_id": str(snapshot.pk)}],
             "baseline_lines": [{"snapshot_id": str(snapshot.pk)}],
             "context": {"reference": {"snapshot_id": str(snapshot.pk)}},
@@ -75,7 +76,7 @@ class CalibrationPersistenceTests(MediaTestCase):
             feature_version=FEATURE_VERSION,
             library_version=LIBRARY_VERSION,
         )
-        group = FingerprintGroup.objects.create(library=library_row, role="mark", subtype="fatha")
+        group = FingerprintGroup.objects.create(library=library_row, role="mark", key=":fatha")
         FingerprintShape.objects.create(
             library=library_row,
             group=group,
@@ -86,7 +87,7 @@ class CalibrationPersistenceTests(MediaTestCase):
             looks_right=True,
             features=np.arange(FEATURE_COUNT, dtype=np.float64).tobytes(),
         )
-        RemovedShape.objects.create(mushaf=self.mushaf, snapshot=snapshot, blob_id=5, role="mark", subtype="kasra")
+        RemovedShape.objects.create(mushaf=self.mushaf, snapshot=snapshot, blob_id=5, role="mark", key=":kasra")
         return snapshot, review
 
     def test_bulk_line_deletion_keeps_snapshots(self):
@@ -153,7 +154,7 @@ class CalibrationPersistenceTests(MediaTestCase):
         )
         self.assertGreaterEqual(library_row.version, 1)
         removed = target.removed_shapes.get()
-        self.assertEqual((removed.snapshot_id, removed.blob_id, removed.subtype), (snapshot.pk, 5, "kasra"))
+        self.assertEqual((removed.snapshot_id, removed.blob_id, removed.key), (snapshot.pk, 5, ":kasra"))
         if with_shapes:
             shape = library_row.shapes.get()
             self.assertEqual((shape.snapshot_id, shape.blob_id, shape.looks_right), (snapshot.pk, 3, True))

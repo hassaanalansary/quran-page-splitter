@@ -102,7 +102,7 @@ The services, grouped:
 | mushafs and pages | `mushaf`, `pdf`, `editing`, `coordinates`, `line_images`, `activity` |
 | line engine | `processing`, `run_logs` |
 | jobs | `jobs/` (a package: one module per step of a job, see its `__init__.py`), `jobs/kinds/` (`detection`, `calibration_page`, `calibration_batch`: each kind's `start_…_job` and `run_…_job`) |
-| word engine | `calibration` (process / save / confirm / preview), `calibration_snapshots`, `calibration_marks`, `calibration_library`, `calibration_batch`, `calibration_progress`, `word_inputs`, `word_runs` (preflight), `word_coordinates` (writes `LineWord`) |
+| word engine | `calibration` (process / save / confirm / preview), `blob_contents` (what a blob holds: its `decided` and `reading` keys), `page_reader` (the word reader over a draft), `habit_counts`, `calibration_snapshots`, `calibration_marks` (the ink's arrangements: ∴, a sign's dots), `mark_noise`, `calibration_library`, `library_keys` (the Library view's keys, on demand), `calibration_batch`, `calibration_progress`, `word_inputs`, `word_runs` (preflight), `word_coordinates` (writes `LineWord`) |
 | exports and sharing | `export` (line PNGs), `data_export` (`mushaf-export/v2`), `bundle` (`mushaf-work/v2`), `cloning`, `gallery` |
 
 ---
@@ -204,11 +204,11 @@ npm run build          # → frontend/dist
 | `EraseStroke` | a brush stroke erased from a line's PNG |
 | `LineWord` | a confirmed word box on a line: `word_id`, `position` (reading order), `start_x` (right edge), `end_x` (left edge). Written when a page is confirmed (and by a bundle import); this is the product the exports read |
 | `CalibrationSnapshot` | the immutable measurement of one line: its fingerprint, `image.png`, `labels.png` and the blobs' metadata. Reused while the line's sources are unchanged |
-| `CalibrationReview` | one per page in the word engine: the draft (`payload`), `revision`, `confirmed_revision` |
-| `CalibrationRevision` | immutable records of a page: `processed` (the engine's own reading, the prediction record) and `confirmed` (an approval, the only source of examples); `legacy` for history |
+| `CalibrationReview` | one per page in the word engine: the draft (`payload`, `"format": 2`), `revision`, `confirmed_revision`. Every text blob of a draft holds **contents keys** (`core/text/contents.py`, `bodies:marks` — "إ+لا:", "ا:roundZero", ":fatha"), stored as their parts: `decided` (a person's, may hold `?` and `*`), `reading` (the engine's), and `contents` (the two laid together, written by the server); its `role` follows from them. `flag` is `broken` or `uncertain`. A draft without format 2 is read-only until processed again |
+| `CalibrationRevision` | immutable records of a page: `processed` (the engine's own reading, the prediction record) and `confirmed` (an approval, the only source of examples and of `habits`, the page's own habit counts); `legacy` for history |
 | `CalibrationSettings` | per mushaf: the library's comparison and LIMIT |
-| `FingerprintLibrary` | the mushaf's one stored fingerprint set: its `version` (bumped by every change), the `comparison` and `limit` it was grouped with, `needs_rebuild` |
-| `FingerprintGroup` / `FingerprintShape` | a fingerprint of a kind and the up to 11 shapes kept beside it, each a snapshot + blob id with its raw features and a `looks_right` flag |
+| `FingerprintLibrary` | the mushaf's one stored fingerprint set: its `version` (bumped by every change), the `comparison` and `limit` it was grouped with, `needs_rebuild`, and `habits` — how the hand prints (joins touching or apart, marks alone, inside their letter, joined or missing), the sum of the confirmed pages' counts (`core/word_boundary/habits.py`) |
+| `FingerprintGroup` / `FingerprintShape` | a fingerprint of a kind — a contents `key`, with its dotless body `shape` for keys that borrow their look-alikes' pictures (`core/text/rasm.py`) — and the shapes kept beside it (at most 12 per key), each a snapshot + blob id with its raw features and a `looks_right` flag |
 | `RemovedShape` | a blob a person took out of the set, so a Rebuild never brings it back (and Restore can) |
 | `ActivityEvent` | the per-mushaf audit feed (created, bounds set, template saved, run finished, review saved, lines exported, calibration processed / saved / confirmed / evaluated, ...) |
 
@@ -265,9 +265,9 @@ logical page number.
 | POST | `/pages/{n}/calibration/process` | process the page (202, a job) |
 | POST | `/pages/{n}/calibration/preview` | the draft with these edits, read again; stores nothing |
 | POST | `/pages/{n}/calibration/confirm` | approve the page: writes its words, makes it an example |
-| POST | `/pages/{n}/calibration/types` | type suggestions and doubts for the marks; stores nothing |
 | GET | `/pages/{n}/calibration/evaluation` | the page's readings side by side |
-| GET / POST | `/pages/{n}/calibration/library`, `/library/compare` | the mushaf's fingerprint set, and one blob against it |
+| GET / POST | `/pages/{n}/calibration/library`, `/library/compare` | the mushaf's fingerprint set (its marks' kinds whole), and one blob against it |
+| GET | `/calibration/library/keys`, `/calibration/library/key` | the set's body keys that pass the Library view's filters, 40 a page; one key's pictures |
 | PUT / POST | `/calibration/library/looks-right`, `/library/remove`, `/library/restore` | Library mode's levers on the set |
 | POST | `/calibration/library/rebuild` | regroup the set from every confirmed page (a `library_rebuild` job); a new LIMIT in `/calibration/settings` starts one too |
 | POST | `/calibration/batch` | process a range of pages in one job |
@@ -368,6 +368,5 @@ page 2 with page 1 as the library.
 | `debug_process`, `debug_calibrate` | run the line engine / process one page in the foreground, for a debugger. They follow the app's rules: a mushaf with an unfinished job is refused |
 | `calibration_report` | how each confirmed page went (read-only) |
 | `restart_calibration` | start a mushaf's word-engine work again, after backing it up |
-| `retype_from_text` | retype marks typed by an old name (dry run unless `--apply`) |
 | `renumber_mushafs` | rewrite every line's sura and segment's aya from one forward walk |
 | `relayout_media` | move media into the per-mushaf layout |

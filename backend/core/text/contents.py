@@ -277,3 +277,15 @@ def is_key_complete(key: ContentsKey) -> bool:
 def find_letters_of_key(key: ContentsKey) -> str:
     """The key's letters run together, the open ones left out."""
     return "".join(body for body in key.bodies or () if body is not None)
+
+
+def find_mark_name_of_key(text: str) -> str:
+    """A mark key's type as one name — ":hamza+kasra" → "hamza+kasra"; "" for a key
+    that holds letters, or whose marks are open."""
+    try:
+        key = parse_contents_key(text)
+    except ContentsKeyError:
+        return ""
+    if key.bodies != () or not key.marks or None in key.marks:
+        return ""
+    return PART_SEPARATOR.join(mark for mark in key.marks if mark is not None)

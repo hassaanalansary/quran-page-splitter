@@ -13,7 +13,7 @@ the ring swallowed — the reviewer gives it a text role in Ink, and from then o
 text::
 
     measured line        structure, out of the line's ink
-    reviewer: B or M     the blob is a body or a mark, decided   (explicit)
+    reviewer: B or M     the blob is a body or a mark, decided   (its ``decided`` key)
     next reading         put back into the ink, read with the rest
     decision released    structure again at the next reading
 
@@ -26,7 +26,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from api.services.calibration_examples import TEXT_ROLES
+from api.services.blob_contents import TEXT_ROLES, is_role_decided
 from core.word_boundary.ink import Blob, LineInk
 
 Doc = dict[str, Any]
@@ -57,7 +57,7 @@ def is_structure_taken_as_text(blob: Doc) -> bool:
     return (
         blob["initial_role"] in STRUCTURE_ROLES
         and blob["role"] in TEXT_ROLES
-        and bool(blob.get("explicit") or blob.get("ownership_explicit"))
+        and bool(is_role_decided(blob) or blob.get("ownership_explicit"))
     )
 
 

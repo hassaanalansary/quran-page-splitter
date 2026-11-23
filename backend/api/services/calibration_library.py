@@ -39,12 +39,15 @@ from api.models import (
 )
 from api.services import calibration
 from api.services import calibration_snapshots as snapshots
+from api.services.blob_contents import is_mark_named_by_person
 from api.services.calibration_errors import refuse_request
-from api.services.calibration_examples import find_confirmed_revisions, is_mark_typed
+from api.services.calibration_examples import find_confirmed_revisions
 from api.services.calibration_settings import serialize_calibration_settings
 from api.services.fingerprint_rebuild import build_preview_library
 from api.services.fingerprint_store import load_current_library, load_current_set, read_library_record
 from api.services.jobs.queries import find_active_job_of_mushaf
+from api.services.page_reader import collect_page_examples
+from core.text.contents import find_mark_name_of_key
 from core.word_boundary.library import Library
 
 Doc = dict[str, Any]
@@ -60,7 +63,7 @@ def blob_key_of(ref: Doc) -> str:
 
 
 def group_id_of(item: Doc) -> str:
-    return f"{item['role']}:{item['subtype']}:{blob_key_of(item['centre'])}"
+    return f"{item['role']}:{item['key']}:{blob_key_of(item['centre'])}"
 
 
 def load_looks_right_keys(library_row: FingerprintLibrary) -> set[tuple[str, int]]:
@@ -135,12 +138,15 @@ def serialize_library_view(mushaf: Mushaf, page: int, *, limit: float | None = N
     review = calibration.find_review_of_page(mushaf, page)
     draft = read_library_record(review.payload) if review and review.payload.get("lines") else None
     removals = list(RemovedShape.objects.filter(mushaf=mushaf).order_by("created_at"))
-    refs = [ref for item in library.groups for ref in (item["centre"], *(item["members"][i] for i in item["kept"]))]
+    # Bodies are listed on demand (``library_keys``): one group per key, thousands of
+    # them by the end of a mushaf. The view shows the marks' kinds whole.
+    mark_groups = [item for item in library.groups if item["role"] == "mark"]
+    refs = [ref for item in mark_groups for ref in (item["centre"], *(item["members"][i] for i in item["kept"]))]
     refs += [{"snapshot_id": str(removal.snapshot_id), "blob_id": removal.blob_id} for removal in removals]
     shapes = ShapeImages(mushaf, refs, load_looks_right_keys(current.library_row))
 
     kinds: dict[tuple[str, str], list[Doc]] = {}
-    for item in library.groups:
+    for item in mark_groups:
         fingerprint = shapes.describe_shape(item["centre"])
         if fingerprint is None:
             continue
@@ -149,7 +155,7 @@ def serialize_library_view(mushaf: Mushaf, page: int, *, limit: float | None = N
             shape = shapes.describe_shape(item["members"][index])
             if shape is not None:
                 kept.append({**shape, "distance": round(item["distance"][index], 4)})
-        kinds.setdefault((item["role"], item["subtype"]), []).append(
+        kinds.setdefault((item["role"], item["key"]), []).append(
             {
                 "id": group_id_of(item),
                 "farthest": round(max((item["distance"][index] for index in item["kept"]), default=0.0), 4),
@@ -161,13 +167,15 @@ def serialize_library_view(mushaf: Mushaf, page: int, *, limit: float | None = N
     for removal in removals:
         shape = shapes.describe_shape({"snapshot_id": str(removal.snapshot_id), "blob_id": removal.blob_id})
         if shape is not None:
-            removed.append({**shape, "role": removal.role, "subtype": removal.subtype})
+            removed.append(
+                {**shape, "role": removal.role, "key": removal.key, "kind": find_mark_name_of_key(removal.key)}
+            )
     # Typed marks by how much they keep, then the untyped marks, then the letters.
     order = sorted(
         kinds,
         key=lambda kind: (
             kind[0] == "body",
-            kind[1] == "",
+            kind[1] in ("?:", ":?"),
             -sum(1 + len(group["kept"]) for group in kinds[kind]),
             kind[1],
         ),
@@ -186,10 +194,16 @@ def serialize_library_view(mushaf: Mushaf, page: int, *, limit: float | None = N
         "needs_rebuild": current.library_row.needs_rebuild,
         "rebuilding": is_library_rebuilding(mushaf),
         "fingerprints": library.fingerprints,
+        "body_keys": len({item["key"] for item in library.groups if item["role"] == "body"}),
         "removed": removed,
         "kinds": [
-            {"role": role, "subtype": subtype, "groups": order_groups_for_audit(kinds[(role, subtype)], role)}
-            for role, subtype in order
+            {
+                "role": role,
+                "key": key,
+                "kind": find_mark_name_of_key(key),
+                "groups": order_groups_for_audit(kinds[(role, key)], role),
+            }
+            for role, key in order
         ],
     }
 
@@ -234,31 +248,29 @@ def compare_blob_with_library(mushaf: Mushaf, page: int, data: Doc) -> Doc:
     row_distances = library.measure_distances([features])[0] if library.refs else np.zeros(0)
     distances = {blob_key_of(ref): round(float(row_distances[i]), 4) for i, ref in enumerate(library.refs)}
 
-    stored = {str(snapshot.pk): snapshot}
-    stored.update(
-        {
-            str(s.pk): s
-            for s in CalibrationSnapshot.objects.filter(mushaf=mushaf, pk__in=[r["snapshot_id"] for r in rows])
-        }
-    )
-    typed = is_mark_typed(blob)
+    stored = {
+        str(s.pk): s for s in CalibrationSnapshot.objects.filter(mushaf=mushaf, pk__in=[r["snapshot_id"] for r in rows])
+    }
+    features_of_rows = {snapshot_id: snapshots.blob_features(found) for snapshot_id, found in stored.items()}
+    typed = is_mark_named_by_person(blob)
     own_samples = [
         sample
-        for sample in calibration.collect_typed_marks_of_draft(stored, rows)
+        for sample in collect_page_examples(rows, features_of_rows)
         if (sample["snapshot_id"], sample["blob_id"]) != (data["snapshot_id"], data["blob_id"])
     ]
     kind = None
     if blob["role"] == "mark":
-        index = library if typed else library.with_typed(own_samples)
+        index = library if typed else library.with_page_examples(own_samples)
         guess = index.predict_types([features])[0]
-        if guess["subtype"]:
-            kind = {key: guess[key] for key in ("subtype", "distance", "sure", "runner_up", "runner_distance")}
+        if guess["kind"]:
+            kind = {key: guess[key] for key in ("kind", "distance", "sure", "runner_up", "runner_distance")}
 
     return {
         "snapshot_id": data["snapshot_id"],
         "blob_id": data["blob_id"],
         "role": blob["role"],
-        "subtype": blob.get("subtype", ""),
+        "decided": blob.get("decided"),
+        "reading": blob.get("reading"),
         "typed": typed,
         "answer": answer,
         "type": kind,
