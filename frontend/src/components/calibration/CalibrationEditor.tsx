@@ -81,6 +81,7 @@ import {
   setErased,
   setException,
   toggleFusedMark,
+  applyContentsChip,
   setRole,
   setSubtype,
   shareBetween,
@@ -1797,6 +1798,7 @@ export function CalibrationEditor({
             onAccept={() => commit(acceptExpected(lines, expectations, selection))}
             onException={(value) => commit(setException(lines, selection, value))}
             onFusedMark={(part) => commit(toggleFusedMark(lines, selection, part))}
+            onContentsChip={(chip) => commit(applyContentsChip(lines, selection, chip))}
             onErase={(erased) => commit(setErased(lines, selection, erased))}
             onAssign={(wordId, paws) => commit(assignToWord(lines, selection, wordId, paws))}
             onShare={(shares) => commit(shareBetween(lines, selection, shares))}

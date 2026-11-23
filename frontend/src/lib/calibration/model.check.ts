@@ -7,8 +7,10 @@
 // Silent on success, a stack trace on the first failure.
 import assert from "node:assert/strict";
 
+import { decidedOfBlob, readBlobFromServer } from "./contents.ts";
 import {
   NO_SELECTION,
+  applyContentsChip,
   acceptExpected,
   doubtsOf,
   expectationsOf,
@@ -834,4 +836,58 @@ assert.deepEqual(inkOf(line(), null), []);
     "only a mixed body",
   );
   assert.equal(pick(setException(named, sel([3]), "broken"), 3).subtype, "");
+}
+
+// ── The labeling bar, and what a draft sends ───────────────────────────────
+{
+  const [base] = [line()];
+  const body = (lines: CalibrationLine[]) => lines[0].blobs[0];
+  const one = { snapshot: "s1", ids: [1] };
+
+  // Two pieces: the body holds both, a person's decision; the draft says two pieces, letters open.
+  const fused = applyContentsChip([base], one, { kind: "pieces", count: 2, wordId: 1 });
+  assert.equal(body(fused).exception, "fused");
+  assert.deepEqual(body(fused).allocations, [{ word_id: 1, paws: 2 }]);
+  assert.deepEqual(decidedOfBlob(body(fused)), { paws: [null, null], marks: null });
+
+  // A mark touching its letter: mixed, named; untick it, and the body is decided to hold none.
+  const ringed = applyContentsChip([base], one, { kind: "mark", name: "roundZero" });
+  assert.equal(body(ringed).exception, "mixed");
+  assert.deepEqual(decidedOfBlob(body(ringed)), { paws: [null], marks: ["roundZero"] });
+  const bare = applyContentsChip(ringed, one, { kind: "mark", name: "roundZero" });
+  assert.equal(body(bare).exception, "");
+  assert.deepEqual(decidedOfBlob(body(bare)), { paws: [null], marks: [] });
+
+  // A mark chip on a mark types it.
+  const typed = applyContentsChip(
+    [base],
+    { snapshot: "s1", ids: [2] },
+    {
+      kind: "mark",
+      name: "fatha",
+    },
+  );
+  assert.deepEqual(decidedOfBlob(typed[0].blobs[1]), { paws: [], marks: ["fatha"] });
+
+  // Nothing decided sends nothing; and the editor's words come back from the server's parts.
+  assert.equal(decidedOfBlob(base.blobs[0]), null);
+  const arrived = readBlobFromServer({
+    ...base.blobs[0],
+    decided: { paws: [null], marks: [] },
+    reading: { paws: ["ا"], marks: ["roundZero"] },
+    contents: { paws: ["ا"], marks: [] },
+  });
+  assert.deepEqual(
+    [arrived.explicit, arrived.subtype, arrived.subtype_explicit, arrived.exception],
+    [true, "", true, ""],
+  );
+  const read = readBlobFromServer({
+    ...base.blobs[0],
+    reading: { paws: ["ا"], marks: ["roundZero"] },
+    contents: { paws: ["ا"], marks: ["roundZero"] },
+  });
+  assert.deepEqual(
+    [read.explicit, read.subtype, read.subtype_explicit, read.exception],
+    [false, "roundZero", false, "mixed"],
+  );
 }

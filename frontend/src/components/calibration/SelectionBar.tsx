@@ -17,6 +17,7 @@ import {
   type MarkChecks,
   type NoiseSuspects,
 } from "@/lib/calibration/model";
+import type { ContentsChip } from "@/lib/calibration/model";
 import type {
   Allocation,
   BlobException,
@@ -27,6 +28,7 @@ import type {
 } from "@/lib/calibration/types";
 
 import { BlobCrop, OwnershipControls, type KnifeControls } from "./BlobDetails";
+import { ContentsChips } from "./ContentsChips";
 import { ROLE_RGB } from "./colors";
 import { attentionHelpKey, attentionKey, useTypeName } from "./labels";
 import { HOTKEY_TYPES, SUBTYPES, SUBTYPE_GLYPHS, hotkeyOf, subtypeGlyph } from "./subtypes";
@@ -69,6 +71,7 @@ export function SelectionBar({
   onAccept,
   onException,
   onFusedMark,
+  onContentsChip,
   onErase,
   onAssign,
   onShare,
@@ -98,6 +101,8 @@ export function SelectionBar({
   onException: (exception: BlobException) => void;
   /** Name a mark printed in a mixed body, or take it off. */
   onFusedMark: (part: string) => void;
+  /** A labeling bar chip ticked or unticked on the one selected text blob. */
+  onContentsChip: (chip: ContentsChip) => void;
   /** Erase the selected ink, or restore it. */
   onErase: (erased: boolean) => void;
   onAssign: (wordId: number, paws: number) => void;
@@ -586,6 +591,14 @@ export function SelectionBar({
                 })
               )}
             </div>
+            {oneText && !oneText.erased && (
+              <ContentsChips
+                line={line}
+                blob={oneText}
+                disabled={disabled}
+                onChip={onContentsChip}
+              />
+            )}
             <OwnershipControls
               key={`${line.snapshot_id}:${blobs.map((blob) => blob.id).join(",")}`}
               line={line}

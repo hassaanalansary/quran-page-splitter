@@ -1039,6 +1039,12 @@ export const en = {
         "Its marks do not fit its text: {{missing}} missing, {{extra}} left over or typed otherwise",
     },
     bar: {
+      chips: {
+        letters: "Letters",
+        lettersHelp: "Click the piece beside the ticked ones to add it, an end one to take it off",
+        touching: "Touching",
+        marks: "Type",
+      },
       empty: "Nothing selected — click a blob, or press ← to begin.",
       keyBlob: "blob by blob — left is onward, as Arabic reads",
       keyLine: "line by line",

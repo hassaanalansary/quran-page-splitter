@@ -544,6 +544,74 @@ export function setSubtype(
   }));
 }
 
+// ── The labeling bar: what a blob holds, chip by chip ──────────────────────
+
+/** A chip of the labeling bar: a mark the blob holds, or how many of its word's pieces. */
+export type ContentsChip =
+  | { kind: "mark"; name: string }
+  | { kind: "pieces"; count: number; wordId: number };
+
+/** Tick or untick a chip on the selected text blob — one edit, a person's decision.
+ *
+ * A mark chip on a mark types it; on a body it names a mark printed touching its letter
+ * (the body is then "mixed"), or takes the name off — and a body whose marks were all
+ * taken off is decided to hold none, so the next reading does not claim one again. A
+ * pieces chip gives the body that many of its word's pieces ("fused" above one). */
+export function applyContentsChip(
+  lines: CalibrationLine[],
+  selection: BlobSelection,
+  chip: ContentsChip,
+): CalibrationLine[] {
+  return onLine(lines, selection, (line, chosen) => ({
+    ...line,
+    blobs: line.blobs.map((blob) => {
+      if (!chosen.has(blob.id) || !isText(blob) || blob.erased) return blob;
+      if (chip.kind === "pieces") {
+        if (blob.role !== "body") return blob;
+        const count = Math.max(1, chip.count);
+        const exception: BlobException =
+          blob.exception === "mixed" ? "mixed" : count > 1 ? "fused" : "";
+        return {
+          ...blob,
+          explicit: true,
+          decision_source: "human" as const,
+          ownership_explicit: true,
+          allocations: [{ word_id: chip.wordId, paws: count }],
+          exception,
+        };
+      }
+      if (blob.role === "mark") {
+        return {
+          ...blob,
+          subtype: chip.name,
+          subtype_explicit: true,
+          subtype_source: undefined,
+          explicit: true,
+          decision_source: "human" as const,
+        };
+      }
+      const parts = blob.exception === "mixed" ? subtypeParts(blob.subtype) : [];
+      const next = parts.includes(chip.name)
+        ? parts.filter((part) => part !== chip.name)
+        : [...parts, chip.name];
+      const subtype = composeSubtype(next);
+      return {
+        ...blob,
+        explicit: true,
+        decision_source: "human" as const,
+        exception: subtype
+          ? ("mixed" as const)
+          : blob.exception === "mixed"
+            ? ("" as const)
+            : blob.exception,
+        subtype,
+        subtype_explicit: true,
+        subtype_source: undefined,
+      };
+    }),
+  }));
+}
+
 // ── Pairs: marks printed as one ────────────────────────────────────────────
 
 /** The order a pair's names are written in — the server's `mark_check.COMPOUND_ORDER`,

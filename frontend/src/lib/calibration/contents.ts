@@ -51,7 +51,12 @@ export function readBlobFromServer(blob: CalibrationBlob): CalibrationBlob {
   const decided = blob.decided ?? null;
   const contents = blob.contents ?? null;
   const decidedRole = roleOfParts(decided);
-  const decidedMarks = named(decided?.marks);
+  // Marks a person decided: named ones, or none at all (a body said to hold nothing).
+  const decidedGroup = decided?.marks;
+  const decidedMarks =
+    Array.isArray(decidedGroup) && decidedGroup.every((mark) => mark !== null)
+      ? decidedGroup
+      : null;
   const type = markNameOfParts(contents);
   const paws = pawCountOfParts(contents);
   const isBody = blob.role === "body";
@@ -86,12 +91,14 @@ export function readDocumentFromServer(document: CalibrationDocument): Calibrati
  * nothing is decided. */
 export function decidedOfBlob(blob: CalibrationBlob): ContentsParts | null {
   const isText = blob.role === "body" || blob.role === "mark";
-  const typed = blob.subtype_explicit && blob.subtype ? blob.subtype.split("+") : null;
+  // Typed by a person: its marks — none at all, for a body whose marks were all
+  // taken off (the labeling bar), so the next reading does not claim one again.
+  const typed = blob.subtype_explicit ? (blob.subtype ? blob.subtype.split("+") : []) : null;
   if (!isText) return null;
   if (blob.role === "mark") {
-    if (blob.explicit) return { paws: [], marks: typed ?? [null] };
+    if (blob.explicit) return { paws: [], marks: typed && typed.length ? typed : [null] };
     // A type with no role decided: what the mark is, not whether it is one.
-    return typed ? { paws: null, marks: typed } : null;
+    return typed && typed.length ? { paws: null, marks: typed } : null;
   }
   const exception = blob.exception;
   const shares = blob.allocations ?? [];

@@ -111,6 +111,10 @@ export type CalibrationWord = {
   end_x: number;
   /** The word shares a blob with a neighbour, printed touching across the break. */
   shared: boolean;
+  /** The word's pieces, in reading order, and the marks its text names (each on its
+   * letter, `letters_of` order): what the labeling bar offers. */
+  pieces?: string[];
+  text_marks?: { letter: number; kind: string }[];
   /** How far the word reader's best reading stood from its runner-up. */
   gap?: number;
   /** The reader was not sure: two readings close, or marks that do not fit. */

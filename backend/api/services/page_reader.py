@@ -165,6 +165,9 @@ def read_words_of_row(
         first_letter = sum(len(piece) for piece in pieces[:right])
         last_letter = first_letter + sum(len(piece) for piece in kept)
         named = text_marks(text, pause=pauses.get(ident, ""), ijam=ijam) if follows_text else []
+        # What the labeling bar offers for the word's blobs: its pieces, and its marks.
+        word["pieces"] = pieces
+        word["text_marks"] = [{"letter": mark.letter, "kind": mark.kind} for mark in named]
         word_marks = tuple(
             replace(mark, letter=max(mark.letter - first_letter, 0))
             for mark in named
