@@ -4,7 +4,8 @@ from typing import ClassVar
 from unittest import TestCase
 
 from core.text import text_marks
-from core.word_boundary.mark_check import FoundMark, check_word, compound, parts_of
+from core.text.contents import compound, parts_of
+from core.word_boundary.mark_check import FoundMark, check_word
 
 
 def found(ident: int, x: float, lane: str, **scores: float) -> FoundMark:

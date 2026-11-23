@@ -62,6 +62,14 @@ known-first-party = ["api", "config", "core", "quran"]
 "quran/tests/test_arabic.py" = ["RUF001"]
 "quran/tests/test_quran_text.py" = ["RUF001"]
 "quran/management/commands/build_aya_boundaries.py" = ["RUF001"]
+# The contents keys and the body shapes are tables and examples of Arabic letters too,
+# in their docstrings and comments as much as in their code.
+"core/text/contents.py" = ["RUF001", "RUF002", "RUF003"]
+"core/text/rasm.py" = ["RUF001", "RUF002", "RUF003"]
+"core/text/paw_inventory.py" = ["RUF001", "RUF002", "RUF003"]
+"core/tests/test_contents_key.py" = ["RUF001", "RUF002", "RUF003"]
+"core/tests/test_rasm.py" = ["RUF001", "RUF002", "RUF003"]
+"core/tests/test_paw_inventory.py" = ["RUF001", "RUF002", "RUF003"]
 
 [tool.ruff.format]
 quote-style = "double"

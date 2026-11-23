@@ -33,39 +33,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from core.text.contents import compound, parts_of
 from core.text.marks import DOTTED_PAUSES, Lane, TextMark
 
 #: Pause signs: a reading's, not the text's alone, so never counted against a word.
 PAUSE_KINDS = frozenset({"waqfSili", "waqfQili", "waqfJim", "waqfMim", "waqfLa", "waqfMuanaqa"})
-#: The order a fused pair's names are written in — "hamza+kasra", never "kasra+hamza".
-COMPOUND_ORDER = (
-    "hamza",
-    "kafCurl",
-    "wasla",
-    "madda",
-    "daggerAlif",
-    "shadda",
-    "fatha",
-    "damma",
-    "kasra",
-    "sukun",
-    "roundZero",
-    "rectZero",
-    "tanween",
-    "smallWaw",
-    "smallYa",
-    "smallMeem",
-    "smallLetter",
-    "ijamDot",
-    "waqfSili",
-    "waqfQili",
-    "waqfJim",
-    "waqfMim",
-    "waqfLa",
-    "waqfMuanaqa",
-    "other",
-)
-
 #: Costs, in the type matcher's units: a close example lies about 0.1 away.
 W_POSITION = 0.6  # per word's width between the ink and its slot's letter
 LINE_LANE = 0.25  # ink on the line in a slot above or below it, or the other way round
@@ -77,17 +49,6 @@ UNKNOWN = 0.15  # the matcher has no example of the slot's type
 IMPOSSIBLE = 1e6  # above the line for below it, or the other way
 #: A type is sure only if the matcher does not prefer another by more than this.
 SURE_MARGIN = 0.2
-
-
-def compound(*parts: str) -> str:
-    """The name of marks printed as one blob, their parts in one fixed order."""
-    rank = {name: index for index, name in enumerate(COMPOUND_ORDER)}
-    return "+".join(sorted(parts, key=lambda part: (rank.get(part, len(rank)), part)))
-
-
-def parts_of(kind: str) -> list[str]:
-    """A type's parts: one for a single mark, two or more for marks printed as one."""
-    return kind.split("+") if kind else []
 
 
 @dataclass(frozen=True)
