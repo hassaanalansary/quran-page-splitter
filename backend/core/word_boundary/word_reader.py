@@ -337,14 +337,15 @@ def find_doubtful_blobs(
         if carrier.fixed or carrier.holds_nothing:
             continue
         held = set(check.inside.get(carrier.id, []))
-        for index, mark in enumerate(text.marks):
-            if mark.letter not in carrier.letters or mark.kind not in carrier.holds:
+        for index, named in enumerate(text.marks):
+            if named.letter not in carrier.letters or named.kind not in carrier.holds:
                 continue
             price = prices.get(index, SlotPrices())
             missing = price.missing if price.missing is not None else 0.0
-            hold = carrier.holds[mark.kind] + price.inside
-            apart = carrier.plain + (missing if mark.kind not in check.types.values() else price.alone)
-            if abs(hold - apart) < CARRIER_MARGIN and (mark.kind in held or mark.kind not in check.types.values()):
+            elsewhere = named.kind in check.types.values()
+            hold = carrier.holds[named.kind] + price.inside
+            apart = carrier.plain + (price.alone if elsewhere else missing)
+            if abs(hold - apart) < CARRIER_MARGIN and (named.kind in held or not elsewhere):
                 doubtful.add(carrier.id)
     return doubtful
 

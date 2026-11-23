@@ -37,7 +37,7 @@ from api.services.blob_contents import (
     write_reading,
 )
 from api.services.calibration_marks import embraced, lane_of, sign_parts
-from api.services.fingerprint_store import load_current_set
+from api.services.fingerprint_store import load_library_for_keys
 from api.services.habit_counts import load_mushaf_habits
 from api.services.mark_noise import find_noise_marks
 from core.text import letters_of, paws, text_marks
@@ -67,7 +67,7 @@ def read_words_of_document(mushaf: Mushaf, document: Doc, *, follows_text: bool)
         for row in rows
         if row["snapshot_id"] in stored
     }
-    current = load_current_set(mushaf)
+    current = load_library_for_keys(mushaf, list_page_keys(document["stream"], ijam=mushaf.ijam_mode != "ignore"))
     library = current.library.with_page_examples(collect_page_examples(rows, features))
     habits = load_mushaf_habits(current.library_row)
     references = {word["id"]: word for word in document["stream"]}
@@ -90,6 +90,26 @@ def read_words_of_document(mushaf: Mushaf, document: Doc, *, follows_text: bool)
             if blob["role"] == "mark" and not blob.get("erased") and blob["id"] in own
         ]
     document["noise"] = find_noise_marks(library, noise_marks, extra)
+
+
+def list_page_keys(stream: list[Doc], *, ijam: bool) -> set[str]:
+    """Every key the span's words allow a body: each run of a word's pieces, alone or
+    holding a mark its text names on those letters — what the page's reading may ask
+    the library about, and all it loads of the bodies."""
+    keys: set[str] = set()
+    for word in stream:
+        pieces = paws(word["text"])
+        named = text_marks(word["text"], ijam=ijam)
+        starts = [sum(len(piece) for piece in pieces[:index]) for index in range(len(pieces))]
+        for start in range(len(pieces)):
+            for end in range(start + 1, len(pieces) + 1):
+                run = tuple(pieces[start:end])
+                keys.add(format_contents_key(ContentsKey(run, ())))
+                first, last = starts[start], starts[start] + sum(len(piece) for piece in run)
+                keys |= {
+                    format_contents_key(ContentsKey(run, (mark.kind,))) for mark in named if first <= mark.letter < last
+                }
+    return keys
 
 
 def collect_page_examples(rows: list[Doc], features: dict[str, dict[int, Any]]) -> list[Doc]:

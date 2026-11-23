@@ -111,13 +111,14 @@ from api.services.fingerprint_store import (
     describe_library_for_draft,
     find_current_set,
     load_current_set,
+    load_library_for_keys,
     read_library_record,
 )
 from api.services.habit_counts import load_mushaf_habits
-from api.services.line_prices import price_blobs_by_library_keys
+from api.services.line_prices import list_span_keys, price_blobs_by_library_keys
 from api.services.page_reader import read_words_of_document
 from core.text import letters_of, line_marks, paws
-from core.text.contents import ContentsKey, ContentsKeyError, find_role_of_key
+from core.text.contents import ContentsKey, ContentsKeyError, find_role_of_key, format_contents_key
 from core.word_boundary import IjamMode, WordBoundaryInput, WordInput, detect_words
 from core.word_boundary.calibration import COUNT_WEIGHT, FUSION_DISCOUNT
 from core.word_boundary.engine import detect_prepared
@@ -811,8 +812,13 @@ def read_span_once(
         cut_by_row.append(cut)
     if calibration_locks:
         # Pieces printed as one, and anchors: what the library knows, as prices.
+        span_keys, _ = list_span_keys(result["stream"])
         price_blobs_by_library_keys(
-            list(zip(rows, inks, strict=True)), stored, result["stream"], load_current_set(mushaf).library, unit_of
+            list(zip(rows, inks, strict=True)),
+            stored,
+            result["stream"],
+            load_library_for_keys(mushaf, {format_contents_key(key) for key in span_keys}).library,
+            unit_of,
         )
 
     original = {word["id"]: word for word in result["stream"]}

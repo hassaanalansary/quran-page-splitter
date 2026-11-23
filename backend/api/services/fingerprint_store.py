@@ -27,7 +27,8 @@ from typing import Any
 from api.models import FingerprintLibrary, Mushaf
 from api.services.build_once import BuildOnce
 from api.services.fingerprint_rebuild import build_first_fingerprint_set, is_fingerprint_set_outdated
-from api.services.fingerprint_rows import comparison_of, load_stored_groups
+from api.services.fingerprint_rows import comparison_of, load_stored_groups, pick_groups_for_keys
+from core.text.rasm import find_body_shape_of_key
 from core.word_boundary.library import Library
 from core.word_boundary.library_updates import build_library_from_groups, hide_shapes_of_page
 
@@ -71,6 +72,17 @@ def load_current_set(mushaf: Mushaf, *, hiding_page: int | None = None) -> Curre
 def load_current_library(mushaf: Mushaf, *, hiding_page: int | None = None) -> Library:
     """The mushaf's fingerprint set as a Library, for a lookup."""
     return load_current_set(mushaf, hiding_page=hiding_page).library
+
+
+def load_library_for_keys(mushaf: Mushaf, keys: set[str]) -> CurrentSet:
+    """The set as a Library of only what a page's reading needs: every mark kind, and the
+    body keys of its text with their look-alikes (``fingerprint_rows.pick_groups_for_keys``).
+    Read from the rows each time — a page's keys are its own — so the whole set is never
+    held for a page however large it grows."""
+    library_row = find_current_set(mushaf)
+    shapes = {shape for key in keys if (shape := find_body_shape_of_key(key))}
+    groups = load_stored_groups(library_row, keys=pick_groups_for_keys(keys, shapes)).groups
+    return CurrentSet(library_row, build_library_from_groups(groups, comparison_of(library_row), library_row.limit))
 
 
 def load_library_version(

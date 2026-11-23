@@ -16,6 +16,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 import numpy as np
+from django.db.models import Q
 
 from api.models import FingerprintGroup, FingerprintLibrary, FingerprintShape, Mushaf, RemovedShape
 from core.text.rasm import find_body_shape_of_key
@@ -76,19 +77,20 @@ def decode_features(data: bytes | memoryview) -> np.ndarray:
     return np.frombuffer(bytes(data), dtype=np.float64)
 
 
-def load_stored_groups(library_row: FingerprintLibrary) -> StoredGroups:
+def load_stored_groups(library_row: FingerprintLibrary, *, keys: Q | None = None) -> StoredGroups:
     """Every group of the set with its kept shapes, the fingerprint first and the rest
-    nearest first, in the order the groups were made."""
+    nearest first, in the order the groups were made — or, with ``keys``, only the
+    groups that condition picks (:func:`pick_groups_for_keys`)."""
     groups: dict[str, ShapeGroup] = {}
     pending: dict[str, list[tuple[bool, KeptShape]]] = {}
     shapes: dict[tuple[str, int], StoredShapeState] = {}
+    chosen = FingerprintGroup.objects.filter(library=library_row)
+    if keys is not None:
+        chosen = chosen.filter(keys)
     kinds: dict[str, tuple[str, str]] = {
-        str(pk): (role, key)
-        for pk, role, key in FingerprintGroup.objects.filter(library=library_row)
-        .order_by("created_at", "pk")
-        .values_list("pk", "role", "key")
+        str(pk): (role, key) for pk, role, key in chosen.order_by("created_at", "pk").values_list("pk", "role", "key")
     }
-    rows = FingerprintShape.objects.filter(library=library_row).values_list(
+    rows = FingerprintShape.objects.filter(library=library_row, group_id__in=list(kinds)).values_list(
         "pk",
         "group_id",
         "snapshot_id",
@@ -144,6 +146,12 @@ def load_stored_groups(library_row: FingerprintLibrary) -> StoredGroups:
         groups[kind_group_id] = group
         group_ids[id(group)] = kind_group_id
     return StoredGroups(groups=list(groups.values()), group_ids=group_ids, shapes=shapes, loaded=list(groups.values()))
+
+
+def pick_groups_for_keys(keys: set[str], shapes: set[str]) -> Q:
+    """The groups a page's reading needs: every mark's (a few dozen kinds), and the
+    bodies of its own keys and of their look-alikes' shapes — never the whole set."""
+    return Q(role="mark") | Q(key__in=sorted(keys)) | Q(shape__in=sorted(shapes))
 
 
 def sort_key(shape: KeptShape) -> tuple[float, tuple[str, int]]:
