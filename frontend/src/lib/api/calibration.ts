@@ -16,11 +16,14 @@ import type {
   CalibrationPageState,
   CalibrationReadiness,
   CalibrationSettings,
-  CalibrationTypes,
   LibraryCompare,
+  LibraryKeyDetail,
+  LibraryKeyFilters,
+  LibraryKeyList,
   LibraryShape,
 } from "../calibration/types";
 import { apiGet, apiJson } from "./http";
+import { readDocumentFromServer } from "../calibration/contents";
 import { isJobActive, type ProcessJob } from "./types";
 
 export const calibrationKeys = {
@@ -38,34 +41,28 @@ export const calibrationKeys = {
 const pagePath = (id: string, page: number) => `/api/mushafs/${id}/pages/${page}/calibration`;
 
 export function getCalibration(id: string, page: number, signal?: AbortSignal) {
-  return apiGet<CalibrationDocument>(pagePath(id, page), signal);
+  return apiGet<CalibrationDocument>(pagePath(id, page), signal).then(readDocumentFromServer);
 }
 
 /** Save the draft. Never a source of examples — only a confirmation is. */
 export function saveCalibration(id: string, page: number, draft: CalibrationDraft) {
-  return apiJson<CalibrationDocument>("PUT", pagePath(id, page), draft);
+  return apiJson<CalibrationDocument>("PUT", pagePath(id, page), draft).then(
+    readDocumentFromServer,
+  );
 }
 
 /** These edits re-aligned, for accept or discard. Stores nothing. */
 export function previewCalibration(id: string, page: number, draft: CalibrationDraft) {
-  return apiJson<CalibrationDocument>("POST", `${pagePath(id, page)}/preview`, draft);
+  return apiJson<CalibrationDocument>("POST", `${pagePath(id, page)}/preview`, draft).then(
+    readDocumentFromServer,
+  );
 }
 
 /** Approve the whole page: its words become the product, its blobs examples. */
 export function confirmCalibration(id: string, page: number, draft: CalibrationDraft) {
-  return apiJson<CalibrationDocument>("POST", `${pagePath(id, page)}/confirm`, draft);
-}
-
-/** A type for every mark nobody has typed, learned from the typed ones — the
- * confirmed pages' and this draft's. Stores nothing, so it can be asked again as
- * often as the reviewer types. */
-export function suggestTypes(
-  id: string,
-  page: number,
-  draft: CalibrationDraft,
-  signal?: AbortSignal,
-) {
-  return apiJson<CalibrationTypes>("POST", `${pagePath(id, page)}/types`, draft, signal);
+  return apiJson<CalibrationDocument>("POST", `${pagePath(id, page)}/confirm`, draft).then(
+    readDocumentFromServer,
+  );
 }
 
 /** One blob against the library that answers for the page: body or mark, a mark's
@@ -211,6 +208,42 @@ export function useCalibrationLibrary(
     staleTime: 5 * 60_000,
     // While a rebuild runs, ask again until the regrouped set lands.
     refetchInterval: (query) => (query.state.data?.rebuilding ? 2_000 : false),
+  });
+}
+
+/** One page of the set's keys that pass the Library view's filters — asked only once a
+ * filter is picked: the body keys run to thousands. */
+export function useLibraryKeys(id: string, filters: LibraryKeyFilters | null) {
+  return useQuery({
+    queryKey: ["mushaf", id, "library-keys", filters] as const,
+    queryFn: ({ signal }) => {
+      const query = new URLSearchParams({ tab: "bodies" });
+      if (filters) {
+        if (filters.letters !== null) query.set("letters", String(filters.letters));
+        if (filters.first) query.set("first", filters.first);
+        if (filters.contains) query.set("contains", filters.contains);
+        query.set("show", filters.show);
+        query.set("sort", filters.sort);
+        query.set("page", String(filters.page));
+      }
+      return apiGet<LibraryKeyList>(`/api/mushafs/${id}/calibration/library/keys?${query}`, signal);
+    },
+    enabled: filters !== null,
+    staleTime: 60_000,
+  });
+}
+
+/** One key's groups with their pictures, when it is opened. */
+export function useLibraryKey(id: string, key: string | null) {
+  return useQuery({
+    queryKey: ["mushaf", id, "library-key", key] as const,
+    queryFn: ({ signal }) =>
+      apiGet<LibraryKeyDetail>(
+        `/api/mushafs/${id}/calibration/library/key?${new URLSearchParams({ key: key ?? "" })}`,
+        signal,
+      ),
+    enabled: key !== null,
+    staleTime: 60_000,
   });
 }
 

@@ -40,7 +40,6 @@ import {
   processCalibration,
   queryKeys,
   saveCalibration,
-  suggestTypes,
   useCalibration,
   useCalibrationJob,
   useCalibrationPages,
@@ -96,7 +95,6 @@ import {
   typeCounts,
   typeFilter,
   typeTally,
-  typingSignature,
   wordCount,
   unassignMarks,
   wordAt,
@@ -121,6 +119,7 @@ import type {
   CalibrationLine,
   LibraryCompare,
 } from "@/lib/calibration/types";
+import { typesOfDocument } from "@/lib/calibration/contents";
 import { revealInScroller } from "@/lib/reveal";
 import { cn } from "@/lib/utils";
 
@@ -786,34 +785,21 @@ export function CalibrationEditor({
     },
   };
 
-  // Ask for a type for every untyped mark when the page opens, and again shortly
-  // after the typing changes — so the marks typed here teach the rest of the page
-  // at once. Guesses change nothing in the draft: accepting one is what types it.
-  const typing = useMemo(() => typingSignature(lines), [lines]);
+  // What the last reading said about every mark — its type, the doubts, each word's
+  // check, the noise. It changes only when the server reads the page again (process,
+  // realign): saving teaches nothing, so typing a mark teaches the rest of the page
+  // at the next realign.
   const canGuess = processed && !stale && !held;
-  const revision = doc?.revision;
   useEffect(() => {
-    const current = docRef.current;
-    if (!canGuess || !current) return;
-    const abort = new AbortController();
-    const timer = window.setTimeout(() => {
-      suggestTypes(mushafId, page, draftOf(current, linesRef.current, newRequestId()), abort.signal)
-        .then((answer) => {
-          setExpectations(expectationsOf(answer.suggestions));
-          setDoubts(doubtsOf(answer.doubts ?? []));
-          setChecks(markChecksOf(answer.words ?? []));
-          setTanween(tanweenOf(answer.tanween ?? []));
-          setNoise(noiseOf(answer.noise ?? []));
-          setLearnedFrom({ examples: answer.examples, here: answer.typed_here });
-        })
-        // Hints only: a failure leaves the last guesses up, and saving says why.
-        .catch(() => undefined);
-    }, 500);
-    return () => {
-      window.clearTimeout(timer);
-      abort.abort();
-    };
-  }, [canGuess, typing, revision, mushafId, page]);
+    if (!canGuess || !doc) return;
+    const answer = typesOfDocument(doc);
+    setExpectations(expectationsOf(answer.suggestions));
+    setDoubts(doubtsOf(answer.doubts));
+    setChecks(markChecksOf(answer.words ?? []));
+    setTanween(tanweenOf(answer.tanween ?? []));
+    setNoise(noiseOf(answer.noise ?? []));
+    setLearnedFrom({ examples: answer.examples, here: answer.typed_here });
+  }, [canGuess, doc]);
   const types = useMemo(() => typeCounts(lines, expectations), [lines, expectations]);
   const tally = useMemo(
     () => typeTally(shownLines, expectations, doubts),

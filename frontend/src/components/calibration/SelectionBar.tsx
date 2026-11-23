@@ -632,9 +632,9 @@ export function SelectionBar({
                   <span className="flex flex-wrap items-baseline gap-x-2 text-[13px] leading-snug">
                     <span className="font-semibold text-ink">
                       <span dir="rtl" className="font-quran text-mark-text">
-                        {glyph(library.data.type.subtype)}
+                        {glyph(library.data.type.kind)}
                       </span>{" "}
-                      {typeName(library.data.type.subtype)}
+                      {typeName(library.data.type.kind)}
                       {library.data.type.sure && " ★"}
                     </span>
                     {library.data.type.distance !== null && (

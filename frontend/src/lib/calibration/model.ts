@@ -16,6 +16,7 @@
 //   * nothing else sets a box: no edge is placed by hand, and a draft carries blob
 //     decisions only — the server takes every box from the ink again.
 import { cutFitsBlob, pieceOfWord, swapPieceOwner } from "./blobCuts.ts";
+import { decidedOfBlob } from "./contents.ts";
 import type {
   Allocation,
   BlobCut,
@@ -97,25 +98,14 @@ export function draftOf(
       .map((line) => ({
         snapshot_id: line.snapshot_id,
         blobs: line.blobs.map((blob) => {
-          const {
-            id,
-            role,
-            explicit,
-            ownership_explicit,
-            subtype,
-            subtype_explicit,
-            exception,
-            allocations,
-            erased,
-          } = blob;
+          const { id, ownership_explicit, exception, allocations, erased } = blob;
           return {
             id,
-            role,
-            explicit,
+            decided: decidedOfBlob(blob),
             ownership_explicit,
-            subtype,
-            subtype_explicit: subtype_explicit ?? !!subtype,
-            exception,
+            // Only what no key can say: marks inside a letter and pieces printed as one
+            // are in the decided key.
+            flag: exception === "broken" || exception === "uncertain" ? exception : "",
             allocations,
             erased: !!erased,
             // Only a cut that still fits travels; the server measures its pieces.

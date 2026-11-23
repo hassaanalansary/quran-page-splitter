@@ -35,6 +35,12 @@ export type BlobCut = { lines: CutLine[]; owners: number[]; pieces: PieceBox[] }
  * say, or `role: null` when they do not clear the gate — `reasons` says why. */
 export type Proposal = { role?: TextRole | null; confidence?: number; reasons?: string[] };
 
+/** The parts of a contents key (`core/text/contents.py`): `paws` the letters, piece by
+ * piece, `marks` the marks touching them. `null` in a list is an open element; `null`
+ * for a list, an undecided group. Built and read by the server only — see
+ * `contents.ts`. */
+export type ContentsParts = { paws: (string | null)[] | null; marks: (string | null)[] | null };
+
 export type CalibrationBlob = {
   id: number;
   x: number;
@@ -47,7 +53,19 @@ export type CalibrationBlob = {
   role: BlobRole;
   /** What the evidence alone suggested, before any alignment. */
   initial_role: BlobRole;
-  /** The reviewer set this role: a hard constraint from now on. */
+  /** What a person decided the blob holds; null when nothing. */
+  decided?: ContentsParts | null;
+  /** What the engine read it as: the line search's body or mark, the word reader's
+   * letters and marks. */
+  reading?: ContentsParts | null;
+  /** The two laid together by the server: what the blob holds. */
+  contents?: ContentsParts | null;
+  /** A person's flag no key can say: "broken" or "uncertain". */
+  flag?: string;
+  /** A type the other pages' examples are sure of, against the one a person typed. */
+  doubt?: string;
+  /** The editor's word, worked out from `decided` (`contents.ts`): a person set this
+   * role, a hard constraint from now on. */
   explicit: boolean;
   /** The reviewer set these allocations. */
   ownership_explicit: boolean;
@@ -93,6 +111,12 @@ export type CalibrationWord = {
   end_x: number;
   /** The word shares a blob with a neighbour, printed touching across the break. */
   shared: boolean;
+  /** How far the word reader's best reading stood from its runner-up. */
+  gap?: number;
+  /** The reader was not sure: two readings close, or marks that do not fit. */
+  unsure?: boolean;
+  /** The word's marks against its text, from the last reading. */
+  check?: { missing: string[]; extra: number[]; disagree: number[]; tanween: number[] };
 };
 
 export type CalibrationLine = {
@@ -173,6 +197,8 @@ export type CalibrationDocument = {
   context: CalibrationLine[];
   issues: string[];
   processed_revision?: number;
+  /** Marks that may be noise, from the last reading. */
+  noise?: NoiseSuspect[];
 };
 
 /** What a save, preview or confirmation sends: the page's editable lines, whole. */
@@ -185,18 +211,11 @@ export type CalibrationDraft = {
   realign?: boolean;
   lines: {
     snapshot_id: string;
-    blobs: (Pick<
-      CalibrationBlob,
-      | "id"
-      | "role"
-      | "explicit"
-      | "ownership_explicit"
-      | "subtype"
-      | "subtype_explicit"
-      | "exception"
-      | "allocations"
-      | "erased"
-    > & {
+    blobs: (Pick<CalibrationBlob, "id" | "ownership_explicit" | "allocations" | "erased"> & {
+      /** What a person decided the blob holds — the role follows from it. */
+      decided: ContentsParts | null;
+      /** "" | broken | uncertain. */
+      flag: string;
       /** What the knife drew and whose each piece is; the server measures the pieces. */
       cut: Pick<BlobCut, "lines" | "owners"> | null;
     })[];
@@ -313,15 +332,44 @@ export type LibraryGroup = {
   kept: LibraryShape[];
 };
 
-/** A kind of example: the letters, one mark type, or the untyped marks. */
+/** A kind of example: one mark type, or the untyped marks. Bodies are listed on demand
+ * (`LibraryKeyList`). */
 export type LibraryKind = {
   role: TextRole;
-  subtype: string;
+  /** Its contents key, as an identifier: never split by the browser. */
+  key: string;
+  /** A mark kind's type name ("fatha"); "" for the untyped marks. */
+  kind: string;
   groups: LibraryGroup[];
 };
 
-/** An example a person took out of the set, and the label it was removed as. */
-export type LibraryRemovedShape = LibraryShape & { role: TextRole; subtype: string };
+/** An example a person took out of the set, and the key it was removed as. */
+export type LibraryRemovedShape = LibraryShape & { role: TextRole; key: string; kind?: string };
+
+/** One page of the set's keys that pass the Library view's filters. */
+export type LibraryKeyList = {
+  total: number;
+  page: number;
+  per_page: number;
+  keys: { key: string; parts: ContentsParts; shapes: number; text_count: number }[];
+};
+
+/** One key's groups with their pictures. */
+export type LibraryKeyDetail = {
+  key: string;
+  parts: ContentsParts | null;
+  text_count: number;
+  groups: { id: string; fingerprint: LibraryShape; kept: LibraryShape[] }[];
+};
+
+export type LibraryKeyFilters = {
+  letters: number | null;
+  first: string;
+  contains: string;
+  show: "all" | "has" | "none" | "touching";
+  sort: "common" | "fewest";
+  page: number;
+};
 
 /** The mushaf's one stored fingerprint set, as every page sees it. */
 export type CalibrationLibrary = {
@@ -343,6 +391,8 @@ export type CalibrationLibrary = {
   /** A Rebuild is running; the set answers as it was until it lands. */
   rebuilding: boolean;
   fingerprints: number;
+  /** How many body keys the set keeps shapes of. */
+  body_keys?: number;
   removed: LibraryRemovedShape[];
   kinds: LibraryKind[];
 };
@@ -353,7 +403,8 @@ export type LibraryCompare = {
   snapshot_id: string;
   blob_id: number;
   role: string;
-  subtype: string;
+  decided?: ContentsParts | null;
+  reading?: ContentsParts | null;
   typed: boolean;
   answer: {
     role: TextRole;
@@ -364,7 +415,7 @@ export type LibraryCompare = {
     mark: string;
   } | null;
   type: {
-    subtype: string;
+    kind: string;
     distance: number | null;
     sure: boolean;
     runner_up: string;

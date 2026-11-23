@@ -28,6 +28,7 @@ import { revealInScroller } from "@/lib/reveal";
 import { BlobCrop } from "./BlobDetails";
 import { GALLERY_ZOOMS, InkCell } from "./InkCell";
 import { useTypeName } from "./labels";
+import { LibraryKeyBrowser } from "./LibraryKeyBrowser";
 import { subtypeGlyph } from "./subtypes";
 
 /** The fingerprint library's LIMIT is refused above this — the server's `LIMIT_CEILING`. */
@@ -266,8 +267,8 @@ export function LibraryView({
   const kindName = (kind: LibraryKind) =>
     kind.role === "body"
       ? t("calibration.library.letters")
-      : kind.subtype
-        ? typeName(kind.subtype)
+      : kind.kind
+        ? typeName(kind.kind)
         : t("calibration.library.untypedMarks");
 
   if (loading) {
@@ -288,17 +289,16 @@ export function LibraryView({
   }
 
   const type = compare?.data?.type ?? null;
-  const winner = (kind: LibraryKind) =>
-    kind.role === "mark" && !!type && kind.subtype === type.subtype;
+  const winner = (kind: LibraryKind) => kind.role === "mark" && !!type && kind.kind === type.kind;
   const runnerUp = (kind: LibraryKind) =>
-    kind.role === "mark" && !!type?.runner_up && kind.subtype === type.runner_up;
+    kind.role === "mark" && !!type?.runner_up && kind.kind === type.runner_up;
   const older = library.draft_version !== null && library.draft_version !== library.version;
   const changes =
     library.preview && saved.data
       ? library.kinds
           .map((kind) => {
             const before = saved.data.kinds.find(
-              (other) => other.role === kind.role && other.subtype === kind.subtype,
+              (other) => other.role === kind.role && other.key === kind.key,
             );
             return { kind, delta: kind.groups.length - (before?.groups.length ?? 0) };
           })
@@ -553,9 +553,9 @@ export function LibraryView({
                     <>
                       {" · "}
                       <span dir="rtl" className="font-quran text-mark-text">
-                        {subtypeGlyph(type.subtype)}
+                        {subtypeGlyph(type.kind)}
                       </span>{" "}
-                      <strong>{typeName(type.subtype)}</strong>
+                      <strong>{typeName(type.kind)}</strong>
                       {type.sure && " ★"}{" "}
                       <span className="font-mono text-[12px] text-ink-3">
                         {type.distance?.toFixed(2)}
@@ -582,12 +582,12 @@ export function LibraryView({
         const open = kind.role !== "body" || lettersOpen;
         const group = kind.groups.find((candidate) => candidate.id === chosen?.group) ?? null;
         return (
-          <section key={`${kind.role}:${kind.subtype}`} className="flex flex-col gap-2">
+          <section key={kind.key} className="flex flex-col gap-2">
             <div className="sticky top-0 z-10 flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-rule bg-well/95 py-1.5 backdrop-blur-sm">
               <span className="text-[13px] font-semibold text-ink">
-                {kind.role === "mark" && kind.subtype && (
+                {kind.role === "mark" && kind.kind && (
                   <span dir="rtl" className="me-1 font-quran text-[16px] text-mark-text">
-                    {subtypeGlyph(kind.subtype)}
+                    {subtypeGlyph(kind.kind)}
                   </span>
                 )}
                 {kindName(kind)}
@@ -649,8 +649,8 @@ export function LibraryView({
                   title={[
                     shape.role === "body"
                       ? t("calibration.library.letters")
-                      : shape.subtype
-                        ? typeName(shape.subtype)
+                      : shape.kind
+                        ? typeName(shape.kind)
                         : t("calibration.library.untypedMarks"),
                     t("calibration.library.from", {
                       page: shape.page_number,
@@ -673,6 +673,13 @@ export function LibraryView({
           </div>
         </section>
       )}
+
+      <LibraryKeyBrowser
+        mushafId={mushafId}
+        bodyKeys={library.body_keys ?? 0}
+        zoom={zoom}
+        onOpenShape={(shape) => onOpenSource(shape, place())}
+      />
     </div>
   );
 }
