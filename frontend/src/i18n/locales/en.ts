@@ -1041,9 +1041,13 @@ export const en = {
     bar: {
       chips: {
         letters: "Letters",
-        lettersHelp: "Click the piece beside the ticked ones to add it, an end one to take it off",
+        lettersHelp:
+          "Click a piece to take it. A piece beside the ticked ones joins them (printed touching); an end one leaves.",
         touching: "Touching",
         marks: "Type",
+        noneTouching: "none: its marks are printed apart",
+        noneNamed: "its text names none here",
+        otherTouching: "+ Other…",
       },
       empty: "Nothing selected — click a blob, or press ← to begin.",
       keyBlob: "blob by blob — left is onward, as Arabic reads",
@@ -1122,6 +1126,18 @@ export const en = {
       hintLine: "line",
       hintWord: "word",
       hintType: "type",
+      hintAccept: "accept",
+      moveTo: "Move to word…",
+      shareWith: "Share with",
+      leaveUnattached: "Leave unattached",
+      askLibrary: "Ask the library",
+      askLibraryHelp:
+        "Show what the fingerprint library says about the selected blob. It is asked only while this is open: each ask sends the whole draft.",
+      closeLibrary: "Close the library's answer",
+      flag: {
+        broken: "Broken",
+        uncertain: "Unsure",
+      },
       ownershipNote:
         "A word's box is the ink given to it. A box in the wrong place means ink given to the wrong word: fix it here.",
     },

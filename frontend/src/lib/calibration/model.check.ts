@@ -11,6 +11,9 @@ import { decidedOfBlob, readBlobFromServer } from "./contents.ts";
 import {
   NO_SELECTION,
   applyContentsChip,
+  layWordPieces,
+  nextPieceRun,
+  spreadPieces,
   acceptExpected,
   doubtsOf,
   expectationsOf,
@@ -844,11 +847,22 @@ assert.deepEqual(inkOf(line(), null), []);
   const body = (lines: CalibrationLine[]) => lines[0].blobs[0];
   const one = { snapshot: "s1", ids: [1] };
 
-  // Two pieces: the body holds both, a person's decision; the draft says two pieces, letters open.
-  const fused = applyContentsChip([base], one, { kind: "pieces", count: 2, wordId: 1 });
+  // Two pieces: the body holds both, a person's decision, letters and all.
+  const twoPieces: CalibrationLine = {
+    ...base,
+    words: base.words.map((entry) =>
+      entry.word_id === 1 ? { ...entry, text: "إلا", pieces: ["إ", "لا"] } : entry,
+    ),
+  };
+  const fused = applyContentsChip([twoPieces], one, {
+    kind: "pieces",
+    wordId: 1,
+    start: 0,
+    end: 2,
+  });
   assert.equal(body(fused).exception, "fused");
   assert.deepEqual(body(fused).allocations, [{ word_id: 1, paws: 2 }]);
-  assert.deepEqual(decidedOfBlob(body(fused)), { paws: [null, null], marks: null });
+  assert.deepEqual(decidedOfBlob(body(fused)), { paws: ["إ", "لا"], marks: null });
 
   // A mark touching its letter: mixed, named; untick it, and the body is decided to hold none.
   const ringed = applyContentsChip([base], one, { kind: "mark", name: "roundZero" });
@@ -890,4 +904,104 @@ assert.deepEqual(inkOf(line(), null), []);
     [read.explicit, read.subtype, read.subtype_explicit, read.exception],
     [false, "roundZero", false, "mixed"],
   );
+}
+
+// ── A word's pieces, body by body ──────────────────────────────────────────
+// Page 1's الرحمن as it was saved: the thin alef held two pieces, لر none.
+{
+  const alrahman = (): CalibrationLine => ({
+    ...line(),
+    blobs: [
+      {
+        ...blob(13, 560, "body", 1),
+        allocations: [{ word_id: 1, paws: 2 }],
+        explicit: true,
+        ownership_explicit: true,
+        decided: { paws: [null, null], marks: null },
+        exception: "fused",
+      },
+      { ...blob(12, 500, "body", 1), allocations: [{ word_id: 1, paws: 0 }] },
+      blob(19, 440, "body", 1),
+    ],
+    words: [{ ...word(1, 600, 440), pieces: ["ٱ", "لر", "حمن"], expected_paws: 3 }],
+  });
+  const runs = layWordPieces(alrahman(), 1, 3).runs;
+  assert.deepEqual(
+    runs.map((run) => [run.id, run.start, run.end]),
+    [
+      [13, 0, 2],
+      [12, 2, 2],
+      [19, 2, 3],
+    ],
+    "right to left, each its count",
+  );
+
+  // One click on لر gives it لر, and the alef only its own piece.
+  const next = nextPieceRun(2, 2, 1);
+  assert.deepEqual(next, [1, 2]);
+  const fixed = applyContentsChip([alrahman()], sel([12]), {
+    kind: "pieces",
+    wordId: 1,
+    start: 1,
+    end: 2,
+  });
+  assert.deepEqual(pick(fixed, 12).allocations, [{ word_id: 1, paws: 1 }]);
+  assert.deepEqual(decidedOfBlob(pick(fixed, 12)), { paws: ["لر"], marks: null });
+  assert.deepEqual(pick(fixed, 13).allocations, [{ word_id: 1, paws: 1 }]);
+  assert.equal(pick(fixed, 13).exception, "");
+  assert.deepEqual(decidedOfBlob(pick(fixed, 13)), { paws: ["ٱ"], marks: null });
+  assert.deepEqual(pick(fixed, 19).allocations, [{ word_id: 1, paws: 1 }]);
+  assert.deepEqual(wordCount(fixed[0], fixed[0].words[0]), { got: 3, want: 3, ok: true });
+
+  // A click next to the run joins it; a click at its end leaves it again.
+  assert.deepEqual(nextPieceRun(1, 2, 2), [1, 3]);
+  assert.deepEqual(nextPieceRun(1, 3, 2), [1, 2]);
+  assert.deepEqual(nextPieceRun(1, 3, 1), [2, 3]);
+  assert.equal(nextPieceRun(1, 2, 1), null, "a body keeps one piece");
+  assert.deepEqual(nextPieceRun(0, 1, 2), [2, 3], "a piece apart is held alone");
+  const joined = applyContentsChip(fixed, sel([12]), {
+    kind: "pieces",
+    wordId: 1,
+    start: 1,
+    end: 3,
+  });
+  assert.deepEqual(decidedOfBlob(pick(joined, 12)), { paws: ["لر", "حمن"], marks: null });
+  assert.deepEqual(pick(joined, 19).allocations, [{ word_id: 1, paws: 0 }]);
+  assert.equal(pick(joined, 19).explicit, false, "an undecided neighbour stays undecided");
+
+  // Spreading: one each before more, the nearest first.
+  assert.deepEqual(spreadPieces([2], 1), [1]);
+  assert.deepEqual(spreadPieces([0, 0], 2), [1, 1]);
+  assert.deepEqual(spreadPieces([1, 1], 3), [2, 1]);
+  assert.deepEqual(spreadPieces([2, 1], 1), [0, 1]);
+}
+
+// What the reading says is never sent back as a person's decision.
+{
+  const read = readBlobFromServer({
+    ...blob(1, 580, "body", 1),
+    allocations: [{ word_id: 1, paws: 2 }],
+    reading: { paws: ["إ", "لا"], marks: [] },
+    contents: { paws: ["إ", "لا"], marks: [] },
+  });
+  assert.equal(read.exception, "fused", "shown as read");
+  assert.equal(read.exception_read, true);
+  assert.equal(decidedOfBlob(read), null, "nothing decided, nothing sent");
+  const ringed = readBlobFromServer({
+    ...blob(1, 580, "body", 1),
+    reading: { paws: ["ا"], marks: ["roundZero"] },
+    contents: { paws: ["ا"], marks: ["roundZero"] },
+  });
+  assert.equal(ringed.exception, "mixed");
+  assert.equal(decidedOfBlob(ringed), null);
+  const decided = readBlobFromServer({
+    ...blob(1, 580, "body", 1),
+    decided: { paws: [null, null], marks: null },
+    contents: { paws: ["إ", "لا"], marks: [] },
+  });
+  assert.equal(decided.exception_read, false);
+  assert.deepEqual(decidedOfBlob(decided), { paws: [null, null], marks: null });
+  // Undo takes a body's pieces back to the reading.
+  const undone = releaseDecisions([{ ...line(), blobs: [decided] }], sel([1]))[0].blobs[0];
+  assert.equal(decidedOfBlob(undone), null);
 }

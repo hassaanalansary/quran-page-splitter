@@ -80,7 +80,6 @@ import {
   requestIds,
   setErased,
   setException,
-  toggleFusedMark,
   applyContentsChip,
   setRole,
   setSubtype,
@@ -285,6 +284,9 @@ export function CalibrationEditor({
     data: LibraryCompare | null;
     loading: boolean;
   } | null>(null);
+  /** The bar's library panel is open: only then is the library asked about the
+   * selected blob — each ask sends the whole draft. */
+  const [libraryOpen, setLibraryOpen] = useState(false);
   /** A LIMIT the Library is previewing: the library rebuilt at it, nothing saved. */
   const [previewLimit, setPreviewLimit] = useState<number | null>(null);
   const [learnedFrom, setLearnedFrom] = useState({ examples: 0, here: 0 });
@@ -810,10 +812,12 @@ export function CalibrationEditor({
   const passes = (line: CalibrationLine, blob: CalibrationLine["blobs"][number]) =>
     passesFilter(blob, line.snapshot_id, selectionFilter, expectations, doubts);
 
-  // What the library answers for the one selected blob: asked for shortly after it is
-  // selected, and again when the draft it is judged against changes — the last answer
-  // for the same blob stays up meanwhile, so editing it does not blank the bar.
+  // What the library answers for the one selected blob, while the bar's library panel
+  // is open: asked for shortly after it is selected, and again when the draft it is
+  // judged against changes — the last answer for the same blob stays up meanwhile, so
+  // editing it does not blank the panel.
   const compared =
+    libraryOpen &&
     canGuess &&
     selectedBlobs.length === 1 &&
     (selectedBlobs[0].role === "body" || selectedBlobs[0].role === "mark")
@@ -1790,6 +1794,8 @@ export function CalibrationEditor({
             checks={checks}
             noise={noise}
             library={answer}
+            libraryOpen={libraryOpen}
+            onLibraryOpen={setLibraryOpen}
             onShowInLibrary={() => setMode("library")}
             disabled={!editable}
             onRole={(role) => commit(setRole(lines, selection, role))}
@@ -1797,7 +1803,6 @@ export function CalibrationEditor({
             onAddPart={(part) => commit(addSubtypePart(lines, selection, part, expectations))}
             onAccept={() => commit(acceptExpected(lines, expectations, selection))}
             onException={(value) => commit(setException(lines, selection, value))}
-            onFusedMark={(part) => commit(toggleFusedMark(lines, selection, part))}
             onContentsChip={(chip) => commit(applyContentsChip(lines, selection, chip))}
             onErase={(erased) => commit(setErased(lines, selection, erased))}
             onAssign={(wordId, paws) => commit(assignToWord(lines, selection, wordId, paws))}

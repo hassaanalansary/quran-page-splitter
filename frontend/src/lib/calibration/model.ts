@@ -490,8 +490,8 @@ export function setException(
       if (!chosen.has(blob.id) || !isText(blob) || blob.erased) return blob;
       // A body no longer mixed holds no marks: the ones named in it go.
       return isFusedBody(blob) && exception !== "mixed"
-        ? { ...blob, exception, subtype: "", subtype_explicit: false }
-        : { ...blob, exception };
+        ? { ...blob, exception, exception_read: false, subtype: "", subtype_explicit: false }
+        : { ...blob, exception, exception_read: false };
     }),
   }));
 }
@@ -516,7 +516,7 @@ export function toggleFusedMark(
       const subtype = composeSubtype(
         parts.includes(part) ? parts.filter((other) => other !== part) : [...parts, part],
       );
-      return { ...blob, subtype, subtype_explicit: !!subtype };
+      return { ...blob, subtype, subtype_explicit: !!subtype, exception_read: false };
     }),
   }));
 }
@@ -546,40 +546,212 @@ export function setSubtype(
 
 // ── The labeling bar: what a blob holds, chip by chip ──────────────────────
 
-/** A chip of the labeling bar: a mark the blob holds, or how many of its word's pieces. */
+/** A chip of the labeling bar: a mark the blob holds, or the run of its word's pieces
+ * it holds — from `start` up to `end`, in reading order. */
 export type ContentsChip =
   | { kind: "mark"; name: string }
-  | { kind: "pieces"; count: number; wordId: number };
+  | { kind: "pieces"; wordId: number; start: number; end: number };
+
+/** The run of its word's pieces one body holds: from `start` up to `end`. */
+export type PieceRun = { id: number; start: number; end: number; shared: boolean };
+
+/** Which of a word's pieces each of its bodies holds, as the reader lays them out
+ * (`page_reader.read_words_of_row`): a body shared with the word before holds the
+ * word's first pieces, one shared with the word after its last, and the others follow
+ * one another right to left, each its allocated count. `first` and `last` bound what
+ * the unshared bodies hold. Clamped to the word's `total`, so counts that do not
+ * close still give runs. */
+export function layWordPieces(
+  line: CalibrationLine,
+  wordId: number,
+  total: number,
+): { runs: PieceRun[]; first: number; last: number } {
+  const bodies = line.blobs.filter(
+    (blob) =>
+      blob.role === "body" &&
+      !blob.erased &&
+      blob.allocations.some((allocation) => allocation.word_id === wordId),
+  );
+  const countOf = (blob: CalibrationBlob) =>
+    blob.allocations.find((allocation) => allocation.word_id === wordId)?.paws ?? 0;
+  const runs: PieceRun[] = [];
+  let first = 0;
+  let last = total;
+  for (const blob of bodies.filter((body) => body.allocations.length > 1)) {
+    const ids = blob.allocations.map((allocation) => allocation.word_id);
+    if (wordId === Math.min(...ids)) {
+      const start = Math.max(first, last - countOf(blob));
+      runs.push({ id: blob.id, start, end: last, shared: true });
+      last = start;
+    } else {
+      const end = Math.min(last, first + countOf(blob));
+      runs.push({ id: blob.id, start: first, end, shared: true });
+      first = end;
+    }
+  }
+  let at = first;
+  const alone = bodies
+    .filter((body) => body.allocations.length === 1)
+    .sort((a, b) => b.x + b.w - (a.x + a.w));
+  for (const blob of alone) {
+    const start = Math.min(at, last);
+    at += countOf(blob);
+    runs.push({ id: blob.id, start, end: Math.min(at, last), shared: false });
+  }
+  return { runs, first, last };
+}
+
+/** The run a click on piece `index` leaves a body holding, or null when it changes
+ * nothing. A piece next to the run joins it (the body holds both, printed touching);
+ * one at either end of a longer run leaves it; any other piece is held alone — so a
+ * body the reading gave the wrong piece takes the right one in one click. */
+export function nextPieceRun(start: number, end: number, index: number): [number, number] | null {
+  if (end <= start) return [index, index + 1];
+  if (index >= start && index < end) {
+    if (end - start === 1) return null;
+    if (index === start) return [start + 1, end];
+    if (index === end - 1) return [start, end - 1];
+    return [index, index + 1];
+  }
+  if (index === start - 1) return [index, end];
+  if (index === end) return [start, end + 1];
+  return [index, index + 1];
+}
+
+/** New counts for bodies that must hold `total` pieces between them, nearest the edited
+ * body first, changing as little as it can: a body holding none is given one before
+ * any is given more, the nearest takes the rest, and when there is less to go round
+ * the nearest gives first, each keeping one while there are pieces enough. */
+export function spreadPieces(counts: number[], total: number): number[] {
+  const next = [...counts];
+  let left = total - next.reduce((sum, count) => sum + count, 0);
+  for (let index = 0; left > 0 && index < next.length; index += 1) {
+    if (next[index] === 0) {
+      next[index] = 1;
+      left -= 1;
+    }
+  }
+  if (left > 0 && next.length) next[0] += left;
+  for (const keep of [total >= next.length ? 1 : 0, 0]) {
+    for (let index = 0; left < 0 && index < next.length; index += 1) {
+      const give = Math.min(next[index] - keep, -left);
+      if (give > 0) {
+        next[index] -= give;
+        left += give;
+      }
+    }
+  }
+  return next;
+}
+
+/** A body given `letters` of its word: its allocation and its flag — and, when a person
+ * chose them or had already decided what it holds, the letters as decided. The marks
+ * the reading put in it go: they were read on other letters. */
+function holdPieces(
+  blob: CalibrationBlob,
+  wordId: number,
+  letters: string[],
+  chosen: boolean,
+): CalibrationBlob {
+  const count = letters.length;
+  const keep = chosen || blob.explicit || blob.ownership_explicit;
+  const readMarks = blob.exception === "mixed" && !!blob.exception_read;
+  const exception: BlobException =
+    blob.exception === "broken" || blob.exception === "uncertain"
+      ? blob.exception
+      : blob.exception === "mixed" && !readMarks
+        ? "mixed"
+        : count > 1
+          ? "fused"
+          : "";
+  return {
+    ...blob,
+    allocations: [{ word_id: wordId, paws: count }],
+    exception,
+    exception_read: !keep && exception === "fused",
+    subtype: readMarks ? "" : blob.subtype,
+    subtype_explicit: readMarks ? false : blob.subtype_explicit,
+    ...(keep
+      ? {
+          explicit: true,
+          ownership_explicit: true,
+          decided: { paws: count ? letters : [null], marks: blob.decided?.marks ?? null },
+        }
+      : {}),
+    ...(chosen ? { decision_source: "human" as const } : {}),
+  };
+}
+
+/** Give the one selected body the run of its word's pieces a chip chose, and lay the
+ * word's other bodies around it — those before it hold the pieces before the run,
+ * those after the pieces after — so the word's pieces are each held once. */
+function choosePieces(
+  lines: CalibrationLine[],
+  selection: BlobSelection,
+  chip: Extract<ContentsChip, { kind: "pieces" }>,
+): CalibrationLine[] {
+  return onLine(lines, selection, (line, chosen) => {
+    const pieces = line.words.find((word) => word.word_id === chip.wordId)?.pieces ?? [];
+    const target = line.blobs.find((blob) => chosen.has(blob.id));
+    if (
+      chosen.size !== 1 ||
+      !target ||
+      target.role !== "body" ||
+      target.erased ||
+      target.allocations.length !== 1 ||
+      target.allocations[0].word_id !== chip.wordId ||
+      !pieces.length
+    )
+      return line;
+    const { runs, first, last } = layWordPieces(line, chip.wordId, pieces.length);
+    const alone = runs.filter((run) => !run.shared);
+    const at = alone.findIndex((run) => run.id === target.id);
+    const start = Math.max(first, chip.start);
+    const end = Math.min(last, chip.end);
+    if (at < 0 || end <= start) return line;
+    const counts = alone.map((run) => run.end - run.start);
+    const before = spreadPieces(counts.slice(0, at).reverse(), start - first).reverse();
+    const after = spreadPieces(counts.slice(at + 1), last - end);
+    const letters = new Map<number, string[]>([[target.id, pieces.slice(start, end)]]);
+    let cursor = first;
+    alone.slice(0, at).forEach((run, index) => {
+      letters.set(run.id, pieces.slice(cursor, cursor + before[index]));
+      cursor += before[index];
+    });
+    cursor = end;
+    alone.slice(at + 1).forEach((run, index) => {
+      letters.set(run.id, pieces.slice(cursor, cursor + after[index]));
+      cursor += after[index];
+    });
+    const blobs = line.blobs.map((blob) => {
+      const held = letters.get(blob.id);
+      if (!held) return blob;
+      if (blob.id === target.id) return holdPieces(blob, chip.wordId, held, true);
+      return held.length === blob.allocations[0].paws
+        ? blob
+        : holdPieces(blob, chip.wordId, held, false);
+    });
+    return recalculate({ ...line, blobs }, new Set([chip.wordId]));
+  });
+}
 
 /** Tick or untick a chip on the selected text blob — one edit, a person's decision.
  *
  * A mark chip on a mark types it; on a body it names a mark printed touching its letter
  * (the body is then "mixed"), or takes the name off — and a body whose marks were all
  * taken off is decided to hold none, so the next reading does not claim one again. A
- * pieces chip gives the body that many of its word's pieces ("fused" above one). */
+ * pieces chip gives the body that run of its word's pieces ("fused" above one), and
+ * the word's other bodies the rest (`choosePieces`). */
 export function applyContentsChip(
   lines: CalibrationLine[],
   selection: BlobSelection,
   chip: ContentsChip,
 ): CalibrationLine[] {
+  if (chip.kind === "pieces") return choosePieces(lines, selection, chip);
   return onLine(lines, selection, (line, chosen) => ({
     ...line,
     blobs: line.blobs.map((blob) => {
       if (!chosen.has(blob.id) || !isText(blob) || blob.erased) return blob;
-      if (chip.kind === "pieces") {
-        if (blob.role !== "body") return blob;
-        const count = Math.max(1, chip.count);
-        const exception: BlobException =
-          blob.exception === "mixed" ? "mixed" : count > 1 ? "fused" : "";
-        return {
-          ...blob,
-          explicit: true,
-          decision_source: "human" as const,
-          ownership_explicit: true,
-          allocations: [{ word_id: chip.wordId, paws: count }],
-          exception,
-        };
-      }
       if (blob.role === "mark") {
         return {
           ...blob,
@@ -590,6 +762,7 @@ export function applyContentsChip(
           decision_source: "human" as const,
         };
       }
+      // The chips show what it holds, read or decided; a click turns the one clicked.
       const parts = blob.exception === "mixed" ? subtypeParts(blob.subtype) : [];
       const next = parts.includes(chip.name)
         ? parts.filter((part) => part !== chip.name)
@@ -604,6 +777,7 @@ export function applyContentsChip(
           : blob.exception === "mixed"
             ? ("" as const)
             : blob.exception,
+        exception_read: false,
         subtype,
         subtype_explicit: true,
         subtype_source: undefined,
@@ -729,10 +903,17 @@ export function releaseDecisions(
         ownersOf(blob).forEach((id) => affected.add(id));
         return makeStructureAgain(blob);
       }
+      // A body's contents go back to the reading too: its pieces, and the marks touching
+      // it, are shown as read and no longer sent. A mark keeps its type.
+      const body = blob.role === "body";
       return {
         ...blob,
         explicit: false,
         ownership_explicit: false,
+        decided: body ? null : blob.decided,
+        subtype_explicit: body ? false : blob.subtype_explicit,
+        exception_read:
+          blob.exception === "mixed" || blob.exception === "fused" ? true : blob.exception_read,
         decision_source: "search" as const,
       };
     });

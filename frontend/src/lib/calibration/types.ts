@@ -82,6 +82,10 @@ export type CalibrationBlob = {
   /** The word whose small letter the text says this is. */
   text_word?: number;
   exception: BlobException;
+  /** The editor's word: `exception` is what the reading says (a body it read as several
+   * pieces, or holding a mark), not what a person decided — shown, never sent back as
+   * a decision. Any edit of the exception by a person takes it off. */
+  exception_read?: boolean;
   allocations: Allocation[];
   /** Why the blob deserves a look — signals, never verdicts. */
   attention: string[];

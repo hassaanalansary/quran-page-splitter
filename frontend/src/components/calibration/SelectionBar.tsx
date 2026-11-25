@@ -1,3 +1,4 @@
+import { BookOpen, X } from "lucide-react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -7,17 +8,15 @@ import {
   canBeCalledText,
   doubtOf,
   expectationKey,
-  markCheckOf,
   noiseFor,
   shownType,
   typedByText,
-  wordCount,
+  type ContentsChip,
   type Doubts,
   type Expectations,
   type MarkChecks,
   type NoiseSuspects,
 } from "@/lib/calibration/model";
-import type { ContentsChip } from "@/lib/calibration/model";
 import type {
   Allocation,
   BlobException,
@@ -26,9 +25,11 @@ import type {
   LibraryCompare,
   TextRole,
 } from "@/lib/calibration/types";
+import { cn } from "@/lib/utils";
 
-import { BlobCrop, OwnershipControls, type KnifeControls } from "./BlobDetails";
-import { ContentsChips } from "./ContentsChips";
+import { BelongsTo } from "./BelongsTo";
+import { BlobCrop, type KnifeControls } from "./BlobDetails";
+import { ChipRow, ContentsChips } from "./ContentsChips";
 import { ROLE_RGB } from "./colors";
 import { attentionHelpKey, attentionKey, useTypeName } from "./labels";
 import { HOTKEY_TYPES, SUBTYPES, SUBTYPE_GLYPHS, hotkeyOf, subtypeGlyph } from "./subtypes";
@@ -39,21 +40,35 @@ const HEIGHT = 262;
 
 const glyph = subtypeGlyph;
 
+/** A compact select at the end of a chip row. */
+const ROW_SELECT =
+  "h-7 min-w-0 max-w-[170px] cursor-pointer rounded-control border border-rule-2 bg-card px-1.5 text-[12.5px] text-ink-2 outline-none hover:border-lapis focus:border-lapis disabled:cursor-default disabled:opacity-50";
+/** A two-state chip: a flag, the library's door. */
+const TOGGLE =
+  "inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-control border px-2.5 text-[12.5px] transition-colors disabled:cursor-default disabled:opacity-50";
+const TOGGLE_ON = "border-lapis bg-lapis-wash font-semibold text-lapis-text";
+const TOGGLE_OFF = "border-rule-2 bg-card text-ink-2 hover:border-lapis hover:text-ink";
+
+/** A note the bar has for the selection: a warning, or a quiet word on where a type
+ * comes from. */
+type Note = { text: string; warn: boolean };
+
 /**
- * Everything about the selection, in one place under the lines, at one height.
+ * Everything about the selection, in one place under the lines, at one height —
+ * every control in sight, nothing behind a scroll.
  *
- *     ┌ picture · role · type · status · where, who decided ─────────────────────┐
- *     ├ what it is ──────────────┬ belongs to ─────────┬ library says ─────────┤
- *     │ Body|Mark  Erase         │ word · aya · PAWs   │ mark · nearest mark,  │
- *     │ Accept ‹type›  (A)       │ marks fit the text  │  nearest letter       │
- *     │ another type · + Pair    │ give it · share     │ kasra 0.31 · runner-up│
- *     │ doubt · flags            │ unattach · flag     │ [Show in Library]     │
- *     ├ ← → blob · ↑ ↓ line · Ctrl ← → word · B M · 1–9 0 · N · Ctrl S ──────────┤
+ *     ┌ picture · role · type · status · flags · where, who decided · [Ask the library] ┐
+ *     ├ what it is, what it holds ─────────────┬ belongs to ──────────┬ library says ──┤
+ *     │ Body|Mark  Erase       Broken Unsure   │ word · aya · 3/3 · ✓ │ (only while    │
+ *     │ Letters   ٱ [لر] حمن                    │ Move to word ▾       │  open: asked   │
+ *     │ Touching  [shadda] fatha  + other ▾     │ Share with ‹word›    │  only then)    │
+ *     │ a note, when there is one               │ Take back decisions  │                │
+ *     ├ ← → blob · ↑ ↓ line · Ctrl ← → word · B M · 1–9 0 · A · N · Ctrl S ─────────────┤
  *
- * *Library says* is the fingerprint library's answer for the one selected blob —
- * body or mark from the nearest letter and mark, and a mark's type — with the way to
- * its full picture in the Library mode. The editor owns the draft, so it asks and
- * passes the answer in.
+ * For a mark the chips are its word's text's types — typed solid, expected dashed,
+ * accepted with a click or A — with any other type and a pair behind two selects.
+ * *Library says* is the fingerprint library's answer for the one selected blob; it is
+ * asked only while its panel is open, since each ask sends the whole draft.
  */
 export function SelectionBar({
   line,
@@ -63,6 +78,8 @@ export function SelectionBar({
   checks,
   noise,
   library,
+  libraryOpen,
+  onLibraryOpen,
   onShowInLibrary,
   disabled,
   onRole,
@@ -70,7 +87,6 @@ export function SelectionBar({
   onAddPart,
   onAccept,
   onException,
-  onFusedMark,
   onContentsChip,
   onErase,
   onAssign,
@@ -90,6 +106,9 @@ export function SelectionBar({
   noise: NoiseSuspects;
   /** What the library answers for the one selected blob; null when it is not asked. */
   library: { data: LibraryCompare | null; loading: boolean } | null;
+  /** The library panel is open: the editor asks the library only then. */
+  libraryOpen: boolean;
+  onLibraryOpen: (open: boolean) => void;
   /** Open the Library mode on this blob. */
   onShowInLibrary: () => void;
   disabled: boolean;
@@ -99,8 +118,6 @@ export function SelectionBar({
   onAddPart: (part: string) => void;
   onAccept: () => void;
   onException: (exception: BlobException) => void;
-  /** Name a mark printed in a mixed body, or take it off. */
-  onFusedMark: (part: string) => void;
   /** A labeling bar chip ticked or unticked on the one selected text blob. */
   onContentsChip: (chip: ContentsChip) => void;
   /** Erase the selected ink, or restore it. */
@@ -159,8 +176,6 @@ export function SelectionBar({
   const expected = shown.filter((type) => type && !type.typed).length;
   const typedAs = (subtype: string) =>
     marks.length > 0 && marks.every((_, i) => shown[i]?.typed && shown[i]?.subtype === subtype);
-  const expectedAs = (subtype: string) =>
-    shown.some((type) => type && !type.typed && type.subtype === subtype);
   const doubt = single ? doubtOf(single, line.snapshot_id, doubts) : null;
   /** Where the one selected mark's expected type comes from. */
   const guess =
@@ -168,13 +183,13 @@ export function SelectionBar({
       ? expectations.get(expectationKey(line.snapshot_id, single.id))
       : undefined;
   const flags = [...new Set(blobs.flatMap(activeAttention))];
-  const owners = [...new Set(blobs.flatMap((blob) => blob.allocations.map((a) => a.word_id)))];
   // Every type in one list, the hotkeyed ones first with their key.
   const choices = [...HOTKEY_TYPES, ...SUBTYPES.filter((value) => !hotkeyOf(value))];
   const typeValue =
     marks.length > 0 && choices.some((value) => typedAs(value)) ? marks[0].subtype : "";
   const oneText = single && (single.role === "body" || single.role === "mark") ? single : null;
   const texts = blobs.filter((blob) => blob.role === "body" || blob.role === "mark");
+  const live = texts.filter((blob) => !blob.erased);
   /** What measurement took every selected blob for, when that is one kind of structure
    * a person may call text: the role the last button gives them back. */
   const structure =
@@ -188,8 +203,9 @@ export function SelectionBar({
   /** Every text blob selected is erased: the button restores them. */
   const erased = texts.length > 0 && texts.every((blob) => blob.erased);
   const suspicion = single ? noiseFor(single, line.snapshot_id, noise) : null;
+  const libraryShown = libraryOpen && texts.length > 0;
 
-  // ── what it is ─────────────────────────────────────────────────────────────
+  // ── what is selected ──────────────────────────────────────────────────────
   let headline: { name: string; glyph?: string } | null = null;
   let status: { text: string; tone: "typed" | "expected" | "none" } | null = null;
   if (single) {
@@ -227,15 +243,148 @@ export function SelectionBar({
     breakdown.set(type.subtype, entry);
   }
 
-  const notice = "rounded-md bg-warn-wash px-2.5 py-1.5 text-[12px] leading-snug text-warn-text";
-  const quiet = "text-[12px] leading-snug text-ink-3";
-  const control =
-    "h-[34px] min-w-0 cursor-pointer rounded-control border border-rule-2 bg-card px-2 text-[13px] text-ink outline-none focus:border-lapis disabled:cursor-default disabled:opacity-50";
+  // ── what the bar has to say: warnings first ────────────────────────────────
+  const notes: Note[] = [];
+  if (suspicion)
+    notes.push({
+      text: `${t(`calibration.noise.${suspicion.kind}Help`)}${
+        suspicion.edge ? ` ${t("calibration.noise.edgeHelp")}` : ""
+      }`,
+      warn: true,
+    });
+  if (guess?.text)
+    notes.push({
+      text: t("calibration.bar.textConflict", {
+        type: `${glyph(guess.text)} ${typeName(guess.text)}`,
+      }),
+      warn: true,
+    });
+  if (doubt)
+    notes.push({
+      text: t(
+        doubt.source === "text"
+          ? "calibration.bar.doubtText"
+          : doubt.source === "sign"
+            ? "calibration.bar.doubtSign"
+            : doubt.sure
+              ? "calibration.bar.doubtSure"
+              : "calibration.bar.doubt",
+        {
+          typed: typeName(doubt.typed),
+          type: `${glyph(doubt.subtype)} ${typeName(doubt.subtype)}`,
+        },
+      ),
+      warn: true,
+    });
+  if (single?.erased) notes.push({ text: t("calibration.bar.erasedHelp"), warn: false });
+  if (stillSymbols) notes.push({ text: t("calibration.bar.symbolHelp"), warn: false });
+  if (stillPieces) notes.push({ text: t("calibration.bar.ornamentPieceHelp"), warn: false });
+  if (status?.tone === "expected" && guess?.source)
+    notes.push({
+      text: t(
+        guess.source === "text"
+          ? "calibration.bar.fromText"
+          : guess.source === "image"
+            ? "calibration.bar.fromImage"
+            : guess.source === "sign"
+              ? "calibration.bar.fromSign"
+              : "calibration.bar.fromExamples",
+      ),
+      warn: false,
+    });
+  if (single && answeredBy(single))
+    notes.push({
+      text: t(
+        answeredBy(single) === "text"
+          ? "calibration.bar.answeredText"
+          : "calibration.bar.answeredExamples",
+      ),
+      warn: false,
+    });
+
+  // ── the selects that end a chip row ─────────────────────────────────────────
+  const typeSelect = (
+    <select
+      key="type"
+      aria-label={t("calibration.bar.anotherType")}
+      title={t("calibration.bar.anotherType")}
+      className={ROW_SELECT}
+      disabled={disabled}
+      value={typeValue}
+      onChange={(event) => onSubtype(event.target.value === "__none" ? "" : event.target.value)}
+    >
+      <option value="" disabled>
+        {t("calibration.bar.anotherType")}
+      </option>
+      {choices.map((value) => {
+        const key = hotkeyOf(value);
+        return (
+          <option key={value} value={value}>
+            {SUBTYPE_GLYPHS[value]} · {typeName(value)}
+            {key ? ` · ${key}` : ""}
+          </option>
+        );
+      })}
+      <option value="__none">{t("calibration.subtypeNone")}</option>
+    </select>
+  );
+  const pairSelect = (
+    <select
+      key="pair"
+      aria-label={t("calibration.bar.addPart")}
+      title={t("calibration.bar.addPartHelp")}
+      className={cn(ROW_SELECT, "w-[92px] font-semibold")}
+      disabled={disabled}
+      value=""
+      onChange={(event) => {
+        if (event.target.value) onAddPart(event.target.value);
+      }}
+    >
+      <option value="" disabled>
+        {t("calibration.bar.addPart")}
+      </option>
+      {SUBTYPES.filter((value) => value !== "other").map((value) => (
+        <option key={value} value={value}>
+          {SUBTYPE_GLYPHS[value]} · {typeName(value)}
+        </option>
+      ))}
+    </select>
+  );
+  const touchingSelect = (
+    <select
+      aria-label={t("calibration.bar.chips.otherTouching")}
+      title={t("calibration.fusedMarks.help")}
+      className={ROW_SELECT}
+      disabled={disabled}
+      value=""
+      onChange={(event) => {
+        if (event.target.value) onContentsChip({ kind: "mark", name: event.target.value });
+      }}
+    >
+      <option value="" disabled>
+        {t("calibration.bar.chips.otherTouching")}
+      </option>
+      {SUBTYPES.filter((value) => value !== "other").map((value) => (
+        <option key={value} value={value}>
+          {SUBTYPE_GLYPHS[value]} · {typeName(value)}
+        </option>
+      ))}
+    </select>
+  );
+
+  const libraryTitle = t("calibration.library.says");
+  const segment = (on: boolean) =>
+    cn(
+      "h-7 cursor-pointer rounded-control px-3 text-[13px] transition-colors disabled:cursor-default disabled:opacity-50",
+      on
+        ? "bg-card font-semibold text-ink shadow-[0_1px_2px_rgba(0,0,0,0.08)]"
+        : "font-medium text-ink-2 hover:text-ink",
+    );
 
   return (
     <Frame>
       {/* ── what is selected ── */}
-      <div className="flex flex-none flex-wrap items-center gap-x-4 gap-y-1.5 border-b border-rule-soft px-4 py-2.5">
+      <div className="flex flex-none flex-wrap items-center gap-x-3.5 gap-y-1 border-b border-rule-soft px-4 py-2">
         {single && line.image_url && (
           <BlobCrop
             url={line.image_url}
@@ -243,7 +392,7 @@ export function SelectionBar({
             y={single.y - line.bbox.y}
             w={single.w}
             h={single.h}
-            box={36}
+            box={32}
           />
         )}
         {single && (
@@ -260,10 +409,10 @@ export function SelectionBar({
           </span>
         )}
         {headline && (
-          <span dir="auto" className="font-display text-[18px] font-semibold leading-tight">
+          <span dir="auto" className="font-display text-[17px] font-semibold leading-tight">
             {headline.name}
             {headline.glyph && (
-              <span dir="rtl" className="ms-1.5 font-quran text-[20px] text-mark-text">
+              <span dir="rtl" className="ms-1.5 font-quran text-[19px] text-mark-text">
                 {headline.glyph}
               </span>
             )}
@@ -271,18 +420,32 @@ export function SelectionBar({
         )}
         {status && (
           <span
-            className={`rounded px-2 py-0.5 text-[12px] font-semibold ${
+            className={cn(
+              "rounded px-2 py-0.5 text-[12px] font-semibold",
               status.tone === "typed"
                 ? "bg-lapis-wash text-lapis-text"
                 : status.tone === "expected"
                   ? "border border-dashed border-gold-text text-gold-text"
-                  : "bg-sunk text-ink-3"
-            }`}
+                  : "bg-sunk text-ink-3",
+            )}
           >
             {status.text}
           </span>
         )}
-        <span className="font-mono text-[12.5px] text-ink-3">
+        {flags.map((flag) => {
+          const label = attentionKey(flag);
+          const help = attentionHelpKey(flag);
+          return (
+            <span
+              key={flag}
+              className="rounded bg-warn-wash px-1.5 py-0.5 text-[11.5px] text-warn-text"
+              title={help ? t(help) : undefined}
+            >
+              {label ? t(label) : flag}
+            </span>
+          );
+        })}
+        <span className="font-mono text-[12px] text-ink-3">
           {single
             ? `${t("calibration.bar.where", {
                 line: line.line_number,
@@ -292,13 +455,114 @@ export function SelectionBar({
               })} · ${t(`calibration.source.${single.decision_source}`)}`
             : t("calibration.bar.counts", { marks: marks.length, bodies: bodies.length })}
         </span>
+        {texts.length > 0 && (
+          <button
+            type="button"
+            aria-pressed={libraryOpen}
+            title={t("calibration.bar.askLibraryHelp")}
+            onClick={() => onLibraryOpen(!libraryOpen)}
+            className={cn(TOGGLE, "ms-auto", libraryOpen ? TOGGLE_ON : TOGGLE_OFF)}
+          >
+            <BookOpen size={14} aria-hidden="true" />
+            {t("calibration.bar.askLibrary")}
+          </button>
+        )}
       </div>
 
       <div className="min-h-0 flex-1 overflow-x-auto">
-        <div className="grid h-full min-w-[760px] grid-cols-3">
-          {/* ── what it is ── */}
-          <section className="flex min-h-0 flex-col gap-2.5 overflow-y-auto border-e border-rule-soft px-4 py-3">
-            <PaneTitle>{t("calibration.bar.whatItIs")}</PaneTitle>
+        <div
+          className={cn(
+            "grid h-full",
+            libraryShown
+              ? "min-w-[900px] grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,0.85fr)]"
+              : "min-w-[640px] grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]",
+          )}
+        >
+          {/* ── what it is, and what it holds ── */}
+          <section
+            aria-label={t("calibration.bar.whatItIs")}
+            className="flex min-h-0 flex-col gap-2 overflow-y-auto px-4 py-2.5"
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              <div
+                role="group"
+                aria-label={t("calibration.bar.roleGroup")}
+                className="inline-flex rounded-lg bg-sunk p-[3px]"
+              >
+                {(["body", "mark"] as const).map((choice) => (
+                  <button
+                    key={choice}
+                    type="button"
+                    aria-pressed={blobs.every((blob) => blob.role === choice)}
+                    disabled={disabled}
+                    onClick={() => onRole(choice)}
+                    title={t(`calibration.key.${choice}`)}
+                    className={segment(blobs.every((blob) => blob.role === choice))}
+                  >
+                    {t(`calibration.role.${choice}`)}
+                    <Key>{choice === "body" ? "B" : "M"}</Key>
+                  </button>
+                ))}
+                {structure && (
+                  <button
+                    type="button"
+                    aria-pressed={blobs.every((blob) => blob.role === structure)}
+                    disabled={disabled}
+                    onClick={onGiveBack}
+                    title={t(
+                      structure === "symbol"
+                        ? "calibration.bar.symbolAgainHelp"
+                        : "calibration.bar.ornamentAgainHelp",
+                    )}
+                    className={segment(blobs.every((blob) => blob.role === structure))}
+                  >
+                    {t(`calibration.role.${structure}`)}
+                  </button>
+                )}
+              </div>
+              {texts.length > 0 && (
+                <button
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => onErase(!erased)}
+                  title={t(erased ? "calibration.bar.restoreHelp" : "calibration.bar.eraseHelp")}
+                  className={cn(
+                    "h-[34px] cursor-pointer rounded-control border px-2.5 text-[12.5px] font-semibold transition-colors disabled:cursor-default disabled:opacity-50",
+                    suspicion
+                      ? "border-stop bg-stop text-on-stop hover:bg-stop/90"
+                      : "border-rule-2 bg-card text-ink hover:bg-sheet",
+                  )}
+                >
+                  {t(erased ? "calibration.bar.restore" : "calibration.bar.erase")}
+                  <Key>Del</Key>
+                </button>
+              )}
+              {live.length > 0 && (
+                <div
+                  role="group"
+                  aria-label={t("calibration.exception")}
+                  className="ms-auto flex items-center gap-1.5"
+                >
+                  {(["broken", "uncertain"] as const).map((flag) => {
+                    const on = live.every((blob) => blob.exception === flag);
+                    return (
+                      <button
+                        key={flag}
+                        type="button"
+                        aria-pressed={on}
+                        disabled={disabled}
+                        title={t(`calibration.exceptionKind.${flag}`)}
+                        onClick={() => onException(on ? "" : flag)}
+                        className={cn(TOGGLE, on ? TOGGLE_ON : TOGGLE_OFF)}
+                      >
+                        {t(`calibration.bar.flag.${flag}`)}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
             {!single && (breakdown.size > 0 || untyped > 0) && (
               <span className="flex flex-wrap gap-x-2.5 text-[12px] text-ink-2">
                 {[...breakdown.entries()].map(([subtype, count]) => (
@@ -323,369 +587,117 @@ export function SelectionBar({
               </span>
             )}
 
-            <div className="flex flex-wrap items-center gap-2">
-              <div
-                role="group"
-                aria-label={t("calibration.bar.roleGroup")}
-                className="inline-flex rounded-lg bg-sunk p-[3px]"
-              >
-                {(["body", "mark"] as const).map((choice) => {
-                  const on = blobs.every((blob) => blob.role === choice);
-                  return (
-                    <button
-                      key={choice}
-                      type="button"
-                      aria-pressed={on}
-                      disabled={disabled}
-                      onClick={() => onRole(choice)}
-                      title={t(`calibration.key.${choice}`)}
-                      className={`h-7 cursor-pointer rounded-control px-3 text-[13px] transition-colors disabled:cursor-default disabled:opacity-50 ${
-                        on
-                          ? "bg-card font-semibold text-ink shadow-[0_1px_2px_rgba(0,0,0,0.08)]"
-                          : "font-medium text-ink-2 hover:text-ink"
-                      }`}
-                    >
-                      {t(`calibration.role.${choice}`)}
-                      <Key>{choice === "body" ? "B" : "M"}</Key>
-                    </button>
-                  );
-                })}
-                {structure && (
+            {oneText && !oneText.erased && (
+              <ContentsChips
+                line={line}
+                blob={oneText}
+                shown={oneText.role === "mark" ? (shown[0] ?? null) : null}
+                disabled={disabled}
+                onChip={onContentsChip}
+                onAccept={onAccept}
+                more={
+                  oneText.role === "mark" ? (
+                    <>
+                      {typeSelect}
+                      {pairSelect}
+                    </>
+                  ) : (
+                    touchingSelect
+                  )
+                }
+              />
+            )}
+
+            {!oneText && marks.length > 0 && (
+              <ChipRow label={t("calibration.bar.chips.marks")}>
+                {expected > 0 && (
                   <button
                     type="button"
-                    aria-pressed={blobs.every((blob) => blob.role === structure)}
                     disabled={disabled}
-                    onClick={onGiveBack}
-                    title={t(
-                      structure === "symbol"
-                        ? "calibration.bar.symbolAgainHelp"
-                        : "calibration.bar.ornamentAgainHelp",
-                    )}
-                    className={`h-7 cursor-pointer rounded-control px-3 text-[13px] transition-colors disabled:cursor-default disabled:opacity-50 ${
-                      blobs.every((blob) => blob.role === structure)
-                        ? "bg-card font-semibold text-ink shadow-[0_1px_2px_rgba(0,0,0,0.08)]"
-                        : "font-medium text-ink-2 hover:text-ink"
-                    }`}
+                    onClick={onAccept}
+                    title={t("calibration.key.accept")}
+                    className="h-7 cursor-pointer rounded-control bg-lapis px-2.5 text-[12.5px] font-semibold text-on-lapis transition-colors hover:bg-lapis/90 disabled:cursor-default disabled:opacity-50"
                   >
-                    {t(`calibration.role.${structure}`)}
+                    {t("calibration.bar.acceptMany", { count: expected })}
+                    <Key>A</Key>
                   </button>
                 )}
-              </div>
-              {texts.length > 0 && (
-                <button
-                  type="button"
-                  disabled={disabled}
-                  onClick={() => onErase(!erased)}
-                  title={t(erased ? "calibration.bar.restoreHelp" : "calibration.bar.eraseHelp")}
-                  className={`h-[34px] cursor-pointer rounded-control border px-2.5 text-[12.5px] font-semibold transition-colors disabled:cursor-default disabled:opacity-50 ${
-                    suspicion
-                      ? "border-stop bg-stop text-on-stop hover:bg-stop/90"
-                      : "border-rule-2 bg-card text-ink hover:bg-sheet"
-                  }`}
-                >
-                  {t(erased ? "calibration.bar.restore" : "calibration.bar.erase")}
-                  <Key>Del</Key>
-                </button>
-              )}
-            </div>
+                {typeSelect}
+                {pairSelect}
+              </ChipRow>
+            )}
 
-            {expected > 0 && (
-              <button
-                type="button"
-                disabled={disabled}
-                onClick={onAccept}
-                title={t("calibration.key.accept")}
-                className="h-10 flex-none cursor-pointer rounded-control bg-lapis px-3 text-[13.5px] font-semibold text-on-lapis transition-colors hover:bg-lapis/90 disabled:cursor-default disabled:opacity-50"
+            {notes.length > 0 && (
+              <div
+                className={cn(
+                  "flex items-start gap-2 rounded-md py-1.5 text-[12px] leading-snug",
+                  notes[0].warn ? "bg-warn-wash px-2.5 text-warn-text" : "text-ink-3",
+                )}
+                title={notes.map((note) => note.text).join("\n\n")}
               >
-                {single && shown[0]
-                  ? t("calibration.bar.acceptOne", { type: typeName(shown[0].subtype) })
-                  : t("calibration.bar.acceptMany", { count: expected })}
-                <Key>A</Key>
-              </button>
-            )}
-
-            {marks.length > 0 && (
-              <div className="flex gap-2">
-                <select
-                  aria-label={t("calibration.bar.anotherType")}
-                  title={t("calibration.bar.anotherType")}
-                  className={`${control} flex-1`}
-                  disabled={disabled}
-                  value={typeValue}
-                  onChange={(event) =>
-                    onSubtype(event.target.value === "__none" ? "" : event.target.value)
-                  }
-                >
-                  <option value="" disabled>
-                    {t("calibration.bar.anotherType")}
-                  </option>
-                  {choices.map((value) => {
-                    const key = hotkeyOf(value);
-                    return (
-                      <option key={value} value={value}>
-                        {SUBTYPE_GLYPHS[value]} · {typeName(value)}
-                        {key ? ` · ${key}` : ""}
-                      </option>
-                    );
-                  })}
-                  <option value="__none">{t("calibration.subtypeNone")}</option>
-                </select>
-                <select
-                  aria-label={t("calibration.bar.addPart")}
-                  title={t("calibration.bar.addPartHelp")}
-                  className={`${control} w-[96px] flex-none font-semibold`}
-                  disabled={disabled}
-                  value=""
-                  onChange={(event) => {
-                    if (event.target.value) onAddPart(event.target.value);
-                  }}
-                >
-                  <option value="" disabled>
-                    {t("calibration.bar.addPart")}
-                  </option>
-                  {SUBTYPES.filter((value) => value !== "other").map((value) => (
-                    <option key={value} value={value}>
-                      {SUBTYPE_GLYPHS[value]} · {typeName(value)}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            {single?.erased && <span className={quiet}>{t("calibration.bar.erasedHelp")}</span>}
-            {stillSymbols && <span className={quiet}>{t("calibration.bar.symbolHelp")}</span>}
-            {stillPieces && <span className={quiet}>{t("calibration.bar.ornamentPieceHelp")}</span>}
-            {suspicion && (
-              <div className={notice}>
-                {t(`calibration.noise.${suspicion.kind}Help`)}
-                {suspicion.edge ? ` ${t("calibration.noise.edgeHelp")}` : ""}
-              </div>
-            )}
-            {status?.tone === "expected" && guess?.source && (
-              <span className={quiet}>
-                {t(
-                  guess.source === "text"
-                    ? "calibration.bar.fromText"
-                    : guess.source === "image"
-                      ? "calibration.bar.fromImage"
-                      : guess.source === "sign"
-                        ? "calibration.bar.fromSign"
-                        : "calibration.bar.fromExamples",
+                <span className="line-clamp-2 min-w-0 flex-1">{notes[0].text}</span>
+                {notes.length > 1 && (
+                  <span className="flex-none rounded bg-sunk px-1.5 font-mono text-[11px] text-ink-2">
+                    +{notes.length - 1}
+                  </span>
                 )}
-              </span>
-            )}
-            {guess?.text && (
-              <div className={notice}>
-                {t("calibration.bar.textConflict", {
-                  type: `${glyph(guess.text)} ${typeName(guess.text)}`,
-                })}
-              </div>
-            )}
-            {doubt && (
-              <div className={notice}>
-                {t(
-                  doubt.source === "text"
-                    ? "calibration.bar.doubtText"
-                    : doubt.source === "sign"
-                      ? "calibration.bar.doubtSign"
-                      : doubt.sure
-                        ? "calibration.bar.doubtSure"
-                        : "calibration.bar.doubt",
-                  {
-                    typed: typeName(doubt.typed),
-                    type: `${glyph(doubt.subtype)} ${typeName(doubt.subtype)}`,
-                  },
-                )}
-              </div>
-            )}
-            {single && answeredBy(single) && (
-              <span className={quiet}>
-                {t(
-                  answeredBy(single) === "text"
-                    ? "calibration.bar.answeredText"
-                    : "calibration.bar.answeredExamples",
-                )}
-              </span>
-            )}
-            {flags.length > 0 && (
-              <div className="flex flex-wrap gap-1">
-                {flags.map((flag) => {
-                  const label = attentionKey(flag);
-                  const help = attentionHelpKey(flag);
-                  return (
-                    <span
-                      key={flag}
-                      className="rounded bg-warn-wash px-1.5 py-0.5 text-[11.5px] text-warn-text"
-                      title={help ? t(help) : undefined}
-                    >
-                      {label ? t(label) : flag}
-                    </span>
-                  );
-                })}
               </div>
             )}
           </section>
 
           {/* ── belongs to ── */}
-          <section className="flex min-h-0 flex-col gap-2.5 overflow-y-auto border-e border-rule-soft px-4 py-3">
-            <PaneTitle>{t("calibration.belongsTo")}</PaneTitle>
-            <div className="flex flex-col gap-1.5">
-              {owners.length === 0 ? (
-                <span className="text-[13px] text-ink-3">{t("calibration.bar.noWord")}</span>
-              ) : (
-                owners.map((id) => {
-                  const word = line.words.find((candidate) => candidate.word_id === id);
-                  const count = word ? wordCount(line, word) : null;
-                  const check = markCheckOf(line.snapshot_id, id, checks);
-                  const unfit = check
-                    ? [
-                        check.missing.length
-                          ? t("calibration.bar.marksMissing", {
-                              types: check.missing
-                                .map((kind) => `${glyph(kind)} ${typeName(kind)}`)
-                                .join(", "),
-                            })
-                          : "",
-                        check.extra.length
-                          ? t("calibration.bar.marksExtra", { count: check.extra.length })
-                          : "",
-                        check.disagree.length
-                          ? t("calibration.bar.marksDisagree", { count: check.disagree.length })
-                          : "",
-                      ].filter(Boolean)
-                    : [];
-                  return (
-                    <div key={id} className="flex flex-col gap-1">
-                      <span className="flex flex-wrap items-center gap-2.5">
-                        <span lang="ar" dir="rtl" className="font-quran text-[24px] leading-snug">
-                          {word?.text ?? `#${id}`}
-                        </span>
-                        {word && (
-                          <span dir="ltr" className="font-mono text-[12px] text-ink-3">
-                            {word.aya}
-                          </span>
-                        )}
-                        {count && (
-                          <span
-                            className={`rounded px-1.5 py-px font-mono text-[11.5px] font-semibold ${
-                              count.ok ? "bg-sunk text-ink-2" : "bg-warn text-on-warn"
-                            }`}
-                            title={t("calibration.countHelp")}
-                          >
-                            {count.got}/{count.want}
-                          </span>
-                        )}
-                      </span>
-                      {check && (
-                        <span
-                          className={`text-[13px] leading-snug ${
-                            check.ok ? "font-semibold text-done-text" : "text-warn-text"
-                          }`}
-                          title={t("calibration.bar.marksHelp")}
-                        >
-                          {check.ok ? t("calibration.bar.marksFit") : unfit.join(" · ")}
-                        </span>
-                      )}
-                    </div>
-                  );
-                })
-              )}
-            </div>
-            {oneText && !oneText.erased && (
-              <ContentsChips
-                line={line}
-                blob={oneText}
-                disabled={disabled}
-                onChip={onContentsChip}
-              />
-            )}
-            <OwnershipControls
+          <section
+            aria-label={t("calibration.belongsTo")}
+            className="flex min-h-0 flex-col overflow-y-auto border-s border-rule-soft px-4 py-2.5"
+          >
+            <BelongsTo
               key={`${line.snapshot_id}:${blobs.map((blob) => blob.id).join(",")}`}
               line={line}
               blobs={blobs}
+              checks={checks}
               disabled={disabled}
               knife={knife}
-              onException={onException}
-              onFusedMark={onFusedMark}
               onAssign={onAssign}
               onShare={onShare}
               onRelease={onRelease}
               onUnassign={onUnassign}
             />
-            <span className="text-[12px] leading-[1.45] text-ink-3">
-              {t("calibration.bar.ownershipNote")}
-            </span>
           </section>
 
-          {/* ── what the library says ── */}
-          <section className="flex min-h-0 flex-col gap-2 overflow-y-auto px-4 py-3">
-            <PaneTitle>{t("calibration.library.says")}</PaneTitle>
-            {!oneText ? (
-              <p className={`m-0 ${quiet}`}>{t("calibration.library.oneBlob")}</p>
-            ) : !library || (library.loading && !library.data) ? (
-              <span className={quiet}>{t("calibration.library.asking")}</span>
-            ) : !library.data?.answer ? (
-              <span className={quiet}>{t("calibration.library.nothingYet")}</span>
-            ) : (
-              <>
-                <span className="text-[13px] leading-snug text-ink">
-                  <strong>{t(`calibration.role.${library.data.answer.role}`)}</strong>
-                  <span className="font-mono text-[12px] text-ink-3">
-                    {" · "}
-                    {t("calibration.library.nearestMark", {
-                      distance: library.data.answer.nearest_mark.toFixed(2),
-                    })}
-                    {" · "}
-                    {t("calibration.library.nearestLetter", {
-                      distance: library.data.answer.nearest_letter.toFixed(2),
-                    })}
-                  </span>
-                </span>
-                {library.data.type && (
-                  <span className="flex flex-wrap items-baseline gap-x-2 text-[13px] leading-snug">
-                    <span className="font-semibold text-ink">
-                      <span dir="rtl" className="font-quran text-mark-text">
-                        {glyph(library.data.type.kind)}
-                      </span>{" "}
-                      {typeName(library.data.type.kind)}
-                      {library.data.type.sure && " ★"}
-                    </span>
-                    {library.data.type.distance !== null && (
-                      <span className="font-mono text-[12px] text-ink-3">
-                        {library.data.type.distance.toFixed(2)}
-                      </span>
-                    )}
-                    {library.data.type.runner_up && (
-                      <span className="text-[12px] text-ink-3">
-                        {t("calibration.library.runnerUp", {
-                          type: typeName(library.data.type.runner_up),
-                          distance: library.data.type.runner_distance?.toFixed(2) ?? "—",
-                        })}
-                      </span>
-                    )}
-                  </span>
-                )}
-                {library.data.own > 0 && (
-                  <span className={quiet}>
-                    {t("calibration.library.ownCount", { count: library.data.own })}
-                  </span>
-                )}
-              </>
-            )}
-            {oneText && (
-              <button
-                type="button"
-                onClick={onShowInLibrary}
-                className="mt-auto inline-flex h-[34px] flex-none cursor-pointer items-center justify-center self-start rounded-control border border-lapis bg-lapis-wash px-3 text-[12.5px] font-semibold text-lapis-text transition-colors hover:bg-lapis hover:text-on-lapis"
-              >
-                {t("calibration.library.show")}
-              </button>
-            )}
-          </section>
+          {/* ── what the library says, while asked ── */}
+          {libraryShown && (
+            <section
+              aria-label={libraryTitle}
+              className="flex min-h-0 flex-col gap-2 overflow-y-auto border-s border-rule-soft bg-sheet px-4 py-2.5"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <PaneTitle>{libraryTitle}</PaneTitle>
+                <button
+                  type="button"
+                  aria-label={t("calibration.bar.closeLibrary")}
+                  title={t("calibration.bar.closeLibrary")}
+                  onClick={() => onLibraryOpen(false)}
+                  className="inline-flex h-6 w-6 cursor-pointer items-center justify-center rounded-control text-ink-3 hover:bg-card hover:text-ink"
+                >
+                  <X size={14} aria-hidden="true" />
+                </button>
+              </div>
+              <LibraryAnswer one={!!oneText} library={library} />
+              {oneText && (
+                <button
+                  type="button"
+                  onClick={onShowInLibrary}
+                  className="mt-auto inline-flex h-[30px] flex-none cursor-pointer items-center justify-center self-start rounded-control border border-lapis bg-lapis-wash px-3 text-[12.5px] font-semibold text-lapis-text transition-colors hover:bg-lapis hover:text-on-lapis"
+                >
+                  {t("calibration.library.show")}
+                </button>
+              )}
+            </section>
+          )}
         </div>
       </div>
 
-      <div className="flex flex-none flex-wrap gap-x-3.5 gap-y-1 border-t border-rule-soft bg-sheet px-4 py-2 text-[12px] text-ink-3">
+      <div className="flex flex-none flex-wrap gap-x-3.5 gap-y-1 border-t border-rule-soft bg-sheet px-4 py-1.5 text-[12px] text-ink-3">
         {(
           [
             ["← →", t("calibration.bar.hintBlob")],
@@ -693,6 +705,7 @@ export function SelectionBar({
             ["Ctrl ← →", t("calibration.bar.hintWord")],
             ["B · M", t("calibration.bar.keyRole")],
             ["1–9 0", t("calibration.bar.hintType")],
+            ["A", t("calibration.bar.hintAccept")],
             ["N", t("calibration.bar.keyLook")],
             ["Ctrl S", t("calibration.bar.keySave")],
           ] as const
@@ -703,6 +716,69 @@ export function SelectionBar({
         ))}
       </div>
     </Frame>
+  );
+}
+
+/** The library's answer for the one selected blob: body or mark by the nearest letter
+ * and mark, and a mark's type with its runner-up. */
+function LibraryAnswer({
+  one,
+  library,
+}: {
+  one: boolean;
+  library: { data: LibraryCompare | null; loading: boolean } | null;
+}) {
+  const { t } = useTranslation();
+  const typeName = useTypeName();
+  const quiet = "text-[12px] leading-snug text-ink-3";
+  if (!one) return <p className={`m-0 ${quiet}`}>{t("calibration.library.oneBlob")}</p>;
+  if (!library || (library.loading && !library.data))
+    return <span className={quiet}>{t("calibration.library.asking")}</span>;
+  const data = library.data;
+  if (!data?.answer) return <span className={quiet}>{t("calibration.library.nothingYet")}</span>;
+  return (
+    <>
+      <span className="text-[13px] leading-snug text-ink">
+        <strong>{t(`calibration.role.${data.answer.role}`)}</strong>
+        <span className="font-mono text-[12px] text-ink-3">
+          {" · "}
+          {t("calibration.library.nearestMark", {
+            distance: data.answer.nearest_mark.toFixed(2),
+          })}
+          {" · "}
+          {t("calibration.library.nearestLetter", {
+            distance: data.answer.nearest_letter.toFixed(2),
+          })}
+        </span>
+      </span>
+      {data.type && (
+        <span className="flex flex-wrap items-baseline gap-x-2 text-[13px] leading-snug">
+          <span className="font-semibold text-ink">
+            <span dir="rtl" className="font-quran text-mark-text">
+              {glyph(data.type.kind)}
+            </span>{" "}
+            {typeName(data.type.kind)}
+            {data.type.sure && " ★"}
+          </span>
+          {data.type.distance !== null && (
+            <span className="font-mono text-[12px] text-ink-3">
+              {data.type.distance.toFixed(2)}
+            </span>
+          )}
+          {data.type.runner_up && (
+            <span className="text-[12px] text-ink-3">
+              {t("calibration.library.runnerUp", {
+                type: typeName(data.type.runner_up),
+                distance: data.type.runner_distance?.toFixed(2) ?? "—",
+              })}
+            </span>
+          )}
+        </span>
+      )}
+      {data.own > 0 && (
+        <span className={quiet}>{t("calibration.library.ownCount", { count: data.own })}</span>
+      )}
+    </>
   );
 }
 

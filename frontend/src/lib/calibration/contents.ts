@@ -63,6 +63,11 @@ export function readBlobFromServer(blob: CalibrationBlob): CalibrationBlob {
   let exception: BlobException = (blob.flag as BlobException | undefined) || "";
   if (!exception && isBody && type) exception = "mixed";
   else if (!exception && isBody && paws !== null && paws > 1) exception = "fused";
+  // Whether a person said so: marks touching (named or not), or more than one piece.
+  const marksDecided = !!decided?.marks?.length;
+  const piecesDecided = (decided?.paws?.length ?? 0) > 1;
+  const read =
+    (exception === "mixed" && !marksDecided) || (exception === "fused" && !piecesDecided);
   return {
     ...blob,
     explicit: decidedRole !== null,
@@ -70,6 +75,7 @@ export function readBlobFromServer(blob: CalibrationBlob): CalibrationBlob {
     subtype_explicit: decidedMarks !== null,
     ...(type && decidedMarks === null ? { subtype_source: "text" as const } : {}),
     exception,
+    exception_read: read,
   };
 }
 
@@ -100,7 +106,9 @@ export function decidedOfBlob(blob: CalibrationBlob): ContentsParts | null {
     // A type with no role decided: what the mark is, not whether it is one.
     return typed && typed.length ? { paws: null, marks: typed } : null;
   }
-  const exception = blob.exception;
+  // What the reading says about pieces and marks is not a decision: a save that sent it
+  // would freeze the reading, right or wrong, as the person's.
+  const exception = blob.exception_read ? "" : blob.exception;
   const shares = blob.allocations ?? [];
   const given = blob.ownership_explicit && shares.length === 1 ? shares[0].paws : null;
   const count = exception === "fused" ? Math.max(2, given ?? 2) : given && given > 1 ? given : null;
