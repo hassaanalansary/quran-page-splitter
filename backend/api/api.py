@@ -3,14 +3,14 @@
 from ninja import NinjaAPI
 from ninja.security import django_auth
 
-from api.views import bundles, calibration, finalize, gallery, mushafs, pages, processing, words
+from api.views import bundles, calibration, finalize, gallery, mushafs, pages, processing
 from quran.views import counting_systems, qiraat, suras
 
 # Session-cookie auth for everything by default; routers opt out with auth=None
 # below. ``django_auth`` is a SessionAuth, which is an APIKeyCookie, and those
 # enforce CSRF on unsafe methods on their own — there is no csrf= argument on
 # NinjaAPI in this version.
-api = NinjaAPI(title="Quran Page Splitter API", auth=django_auth)
+api = NinjaAPI(title="SATR API", auth=django_auth)
 
 # Reference data: the same Quranic constants for everyone, and the sign-up and
 # create-mushaf screens need them before there is a session. The routers live in
@@ -28,7 +28,6 @@ api.add_router("/mushafs", mushafs.router)
 api.add_router("/mushafs", processing.router)
 api.add_router("/mushafs", pages.router)
 api.add_router("/mushafs", finalize.router)
-api.add_router("/mushafs", words.router)
 api.add_router("/mushafs", calibration.router)
 
 # Reading a bundle to find out which mushaf it belongs to — the step before an

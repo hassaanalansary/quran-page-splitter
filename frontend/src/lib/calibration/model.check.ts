@@ -7,19 +7,38 @@
 // Silent on success, a stack trace on the first failure.
 import assert from "node:assert/strict";
 
+import { decidedOfBlob, readBlobFromServer } from "./contents.ts";
 import {
   NO_SELECTION,
+  applyContentsChip,
+  layWordPieces,
+  nextPieceRun,
+  spreadPieces,
   acceptExpected,
   doubtsOf,
   expectationsOf,
   expectedType,
   extendSelection,
-  fitWord,
   highlights,
   isTyped,
   passesFilter,
+  answeredBy,
+  typedByText,
+  addSubtypePart,
+  composeSubtype,
+  togglePart,
+  markChecksOf,
+  markCheckOf,
+  tanweenOf,
   stepBlob,
   stepLine,
+  stepWord,
+  wordAt,
+  changedWords,
+  galleryGroups,
+  stepGallery,
+  teaches,
+  wordRisks,
   typeCounts,
   typeFilter,
   typeTally,
@@ -35,20 +54,26 @@ import {
   inkOf,
   labelAt,
   labelsInRect,
-  mergePreview,
   newRequestId,
   pageExceptions,
   pushHistory,
   releaseDecisions,
+  giveBackToStructure,
   requestIds,
-  resetWordEdges,
   selectIds,
+  setErased,
   setException,
+  toggleFusedMark,
   setRole,
   setSubtype,
+  noiseFor,
+  noiseOf,
+  needsLook,
   unassignMarks,
-  setWordEdges,
   shareBetween,
+  clearCut,
+  cutBlob,
+  swapCutPiece,
   stepAttention,
   stepHistory,
   wordCount,
@@ -87,7 +112,6 @@ function word(id: number, right: number, left: number): CalibrationWord {
     expected_paws: 1,
     start_x: right,
     end_x: left,
-    override: false,
     shared: false,
   };
 }
@@ -164,16 +188,76 @@ const sel = (ids: number[], snapshot = "s1") => ({ snapshot, ids });
   assert.equal(pick(lines, 5).role, "ornament");
 }
 
-// Assigning a body moves the count and both words' edges, and clears their overrides.
+// A blob matched as a sajda or rub' sign may be called text, and taken back.
 {
-  let lines = setWordEdges([line()], "s1", 0, 620, 575);
-  assert.equal(lines[0].words[0].override, true);
-  lines = assignToWord(lines, sel([3]), 1);
+  const withSign = line();
+  withSign.blobs.push({
+    ...blob(5, 200, "mark", null),
+    role: "symbol",
+    initial_role: "symbol",
+  });
+  // Picked only when the filter shows everything; never with a kind of mark chosen.
+  const sign = pick([withSign], 5);
+  assert.equal(passesFilter(sign, "s1", "all", new Map(), new Map()), true);
+  assert.equal(passesFilter(sign, "s1", "mark", new Map(), new Map()), false);
+  // A sign is not erased, nor given to a word, until it is text.
+  assert.equal(pick(setErased([withSign], sel([5]), true), 5).erased, undefined);
+  assert.deepEqual(pick(assignToWord([withSign], sel([5]), 3), 5).allocations, []);
+
+  const text = setRole([withSign], sel([5]), "body");
+  assert.deepEqual(
+    [pick(text, 5).role, pick(text, 5).explicit, pick(text, 5).allocations],
+    ["body", true, []],
+  );
+  const owned = assignToWord(text, sel([5]), 3);
+  assert.deepEqual(pick(owned, 5).allocations, [{ word_id: 3, paws: 1 }]);
+  assert.equal(owned[0].words[2].end_x, 200, "its word takes the ink in");
+
+  // Made a symbol again, by hand or by releasing the decision: out of its word.
+  for (const again of [giveBackToStructure(owned, sel([5])), releaseDecisions(owned, sel([5]))]) {
+    assert.deepEqual(
+      [pick(again, 5).role, pick(again, 5).explicit, pick(again, 5).allocations],
+      ["symbol", false, []],
+    );
+    assert.equal(again[0].words[2].end_x, 340, "its word lets the ink go");
+  }
+  // Text that was always text is no structure to go back to.
+  assert.equal(pick(giveBackToStructure([line()], sel([3])), 3).role, "body");
+}
+
+// A piece grouped with an aya ornament may be called text too; its ring never.
+{
+  const withOrnament = line();
+  withOrnament.blobs.push(
+    { ...blob(6, 150, "body", null), role: "ornament", initial_role: "ornament", ring: true },
+    { ...blob(7, 160, "mark", null), role: "ornament", initial_role: "ornament", ring: false },
+    // A draft made before rings were marked: no piece may be told apart from its ring.
+    { ...blob(8, 100, "mark", null), role: "ornament", initial_role: "ornament" },
+  );
+  const lines = [withOrnament];
+  assert.deepEqual(
+    [6, 7, 8].map((id) => passesFilter(pick(lines, id), "s1", "all", new Map(), new Map())),
+    [false, true, false],
+  );
+  const text = setRole(lines, sel([6, 7, 8]), "mark");
+  assert.deepEqual(
+    [6, 7, 8].map((id) => pick(text, id).role),
+    ["ornament", "mark", "ornament"],
+  );
+  assert.equal(pick(text, 7).explicit, true);
+  const back = giveBackToStructure(text, sel([7]));
+  assert.deepEqual([pick(back, 7).role, pick(back, 7).explicit], ["ornament", false]);
+  assert.equal(pick(releaseDecisions(text, sel([7])), 7).role, "ornament");
+}
+
+// Assigning a body moves the count and both words' edges.
+{
+  const lines = assignToWord([line()], sel([3]), 1);
   assert.deepEqual(pick(lines, 3).allocations, [{ word_id: 1, paws: 1 }]);
   assert.equal(pick(lines, 3).ownership_explicit, true);
   assert.equal(pick(lines, 3).explicit, false, "ownership does not decide the role");
   const [first, second] = lines[0].words;
-  assert.deepEqual([first.start_x, first.end_x, first.override], [620, 460, false]);
+  assert.deepEqual([first.start_x, first.end_x], [620, 460]);
   assert.deepEqual(wordCount(lines[0], second), { got: 0, want: 1, ok: false });
 }
 
@@ -222,35 +306,47 @@ const sel = (ids: number[], snapshot = "s1") => ({ snapshot, ids });
     input,
     "at least two words",
   );
-}
 
-// Reset takes the edges from the bodies again.
-{
-  let lines = setWordEdges([line()], "s1", 2, 400, 300);
-  lines = resetWordEdges(lines, "s1", 2);
-  assert.deepEqual(
-    [lines[0].words[2].start_x, lines[0].words[2].end_x, lines[0].words[2].override],
-    [370, 340, false],
-  );
-}
-
-// Dragged edges stay inside the line and never cross.
-{
-  const lines = setWordEdges([line()], "s1", 0, 50, 900);
-  const edited = lines[0].words[0];
-  assert.ok(edited.end_x <= 699 && edited.start_x > edited.end_x && edited.start_x <= 700);
-}
-
-// A preview replaces the alignment but keeps every dragged edge.
-{
-  const current = setWordEdges([line()], "s1", 1, 495, 455);
-  const preview = [{ ...line(), words: [word(1, 610, 580), word(2, 480, 470), word(3, 370, 340)] }];
-  const merged = mergePreview(current, preview);
-  assert.deepEqual(
-    [merged[0].words[1].start_x, merged[0].words[1].end_x, merged[0].words[1].override],
-    [495, 455, true],
-  );
-  assert.equal(merged[0].words[0].override, false);
+  // The knife: cut at x 470, word 2 keeps its piece 470-489 and word 3 the rest.
+  const knife = {
+    lines: [[470, 2, 470, 38]] as [number, number, number, number][],
+    owners: [2, 3],
+    pieces: [
+      { x: 470, y: 10, w: 20, h: 20, area: 400 },
+      { x: 340, y: 10, w: 130, h: 20, area: 2600 },
+    ],
+  };
+  const cut = cutBlob(lines, "s1", 3, knife);
+  const [, cutSecond, cutThird] = cut[0].words;
+  assert.deepEqual([cutSecond.start_x, cutSecond.end_x], [490, 470]);
+  assert.deepEqual([cutThird.start_x, cutThird.end_x], [470, 340]);
+  // Sent without its pieces: the server measures them again.
+  assert.deepEqual(draftOf({ revision: 3 }, cut, "r").lines[0].blobs[2].cut, {
+    lines: knife.lines,
+    owners: [2, 3],
+  });
+  assert.equal(draftOf({ revision: 3 }, lines, "r").lines[0].blobs[2].cut, null);
+  // A click on a piece gives it the other word.
+  const swapped = swapCutPiece(cut, "s1", 3, 0);
+  assert.deepEqual(pick(swapped, 3).cut?.owners, [3, 2]);
+  assert.deepEqual([swapped[0].words[2].start_x, swapped[0].words[2].end_x], [490, 470]);
+  // Not a cut of this blob's words, or not one piece per word: refused, unchanged.
+  assert.deepEqual(cutBlob(lines, "s1", 3, { ...knife, owners: [2, 4] }), lines);
+  assert.deepEqual(cutBlob(lines, "s1", 3, { ...knife, pieces: knife.pieces.slice(1) }), lines);
+  // Cleared, the middle again.
+  const cleared = clearCut(cut, sel([3]));
+  assert.equal(pick(cleared, 3).cut, undefined);
+  assert.deepEqual([cleared[0].words[1].end_x, cleared[0].words[2].start_x], [415, 415]);
+  // Unshared, turned into a mark or erased, the blob loses its cut.
+  assert.equal(pick(assignToWord(cut, sel([3]), 2, 2), 3).cut, undefined);
+  assert.equal(pick(setRole(cut, sel([3]), "mark"), 3).cut, undefined);
+  assert.equal(pick(setErased(cut, sel([3]), true), 3).cut, undefined);
+  // The same words sharing it with other PAW counts keep it.
+  const recounted = shareBetween(cut, sel([3]), [
+    { word_id: 2, paws: 1 },
+    { word_id: 3, paws: 2 },
+  ]);
+  assert.deepEqual(pick(recounted, 3).cut?.owners, [2, 3]);
 }
 
 // Read-only context is never edited, nor sent.
@@ -262,6 +358,8 @@ const sel = (ids: number[], snapshot = "s1") => ({ snapshot, ids });
   assert.equal(draft.lines.length, 1);
   assert.equal(draft.revision, 3);
   assert.equal(draft.lines[0].blobs[0].ownership_explicit, false);
+  // Blob decisions only: every box is the server's to take from the ink.
+  assert.ok(!("words" in draft.lines[0]));
 }
 
 // Any edit changes the signature; releasing a decision takes it back off.
@@ -272,6 +370,62 @@ const sel = (ids: number[], snapshot = "s1") => ({ snapshot, ids });
   const decided = setRole(base, sel([1]), "body");
   assert.notEqual(editSignature(decided), editSignature(base));
   assert.equal(editSignature(releaseDecisions(decided, sel([1]))), editSignature(base));
+}
+
+// An erased blob is no ink of the text: it leaves its word, which shrinks to the ink
+// it has left, loses its type and flag, asks for nothing — and is sent as erased.
+// Restored, it is ink again, unowned until the next preview reads it.
+{
+  const initial = line();
+  initial.blobs[1] = {
+    ...initial.blobs[1],
+    subtype: "ijamDot",
+    subtype_explicit: true,
+    exception: "uncertain",
+    attention: ["ambiguous"],
+    x: 560,
+  };
+  initial.words[0] = { ...initial.words[0], end_x: 560 };
+  const erased = setErased([initial], sel([2]), true);
+  const dot = pick(erased, 2);
+  assert.deepEqual(
+    [dot.erased, dot.role, dot.allocations, dot.subtype, dot.exception, needsLook(dot)],
+    [true, "mark", [], "", "", false],
+  );
+  assert.equal(erased[0].words[0].end_x, 580, "the word takes its box from its own ink");
+  assert.equal(pageExceptions(erased).length, 0);
+  assert.equal(teaches(erased).marks, 0);
+  assert.equal(isTyped(dot), false);
+  assert.equal(draftOf({ revision: 1 }, erased, "r").lines[0].blobs[1].erased, true);
+  assert.equal(draftOf({ revision: 1 }, [initial], "r").lines[0].blobs[1].erased, false);
+  assert.notEqual(typingSignature(erased), typingSignature([initial]));
+  // Picked by role, to be restored — never as a kind of mark.
+  assert.equal(passesFilter(dot, "s1", "mark", new Map(), new Map()), true);
+  assert.equal(passesFilter(dot, "s1", "untyped", new Map(), new Map()), false);
+  // Nothing types, assigns or flags erased ink.
+  assert.equal(pick(setSubtype(erased, sel([2]), "fatha"), 2).subtype, "");
+  assert.deepEqual(pick(assignToWord(erased, sel([2]), 1), 2).allocations, []);
+  assert.equal(pick(setException(erased, sel([2]), "broken"), 2).exception, "");
+  const restored = setErased(erased, sel([2]), false);
+  assert.deepEqual([pick(restored, 2).erased, pick(restored, 2).allocations], [false, []]);
+  // Structure is never erased.
+  const withRing = line();
+  withRing.blobs.push({
+    ...blob(5, 200, "body", null),
+    role: "ornament",
+    initial_role: "ornament",
+  });
+  assert.equal(pick(setErased([withRing], sel([5]), true), 5).erased, undefined);
+}
+
+// A noise suspicion holds only while the blob is still ink.
+{
+  const noise = noiseOf([
+    { snapshot_id: "s1", blob_id: 2, kind: "speck", edge: true, distance: null },
+  ]);
+  assert.equal(noiseFor(pick([line()], 2), "s1", noise)?.kind, "speck");
+  assert.equal(noiseFor(pick(setErased([line()], sel([2]), true), 2), "s1", noise), null);
+  assert.equal(noiseFor(pick([line()], 1), "s1", noise), null);
 }
 
 // Attention runs right to left over editable lines and wraps.
@@ -363,15 +517,6 @@ assert.deepEqual(inkOf(line(), null), []);
   assert.deepEqual(pick(broken, 3).allocations, [{ word_id: 2, paws: 0 }]);
 }
 
-// Giving a word a mark keeps its drag, but the box widens to hold the mark.
-{
-  let lines = setWordEdges([line()], "s1", 2, 380, 330);
-  lines = assignToWord(lines, sel([2]), 3);
-  const third = lines[0].words[2];
-  assert.deepEqual([third.start_x, third.end_x, third.override], [620, 330, true]);
-  assert.deepEqual(pick(lines, 2).allocations, [{ word_id: 3, paws: 0 }]);
-}
-
 // A mixed selection gives PAWs only to bodies.
 {
   const lines = assignToWord([line()], sel([1, 2]), 3, 1);
@@ -379,25 +524,21 @@ assert.deepEqual(inkOf(line(), null), []);
   assert.deepEqual(pick(lines, 2).allocations, [{ word_id: 3, paws: 0 }]);
 }
 
-// Reassigning ordinary ink does not erase an internal cut in shared ink: the box
-// widens to its new ink, and the cut inside the shared body stays where it was.
+// Ordinary ink given to a word that shares a body: the box reaches the new ink, and
+// still ends at the shared body's middle.
 {
   let lines = shareBetween([line()], sel([3]), [
     { word_id: 2, paws: 1 },
     { word_id: 3, paws: 1 },
   ]);
-  lines = setWordEdges(lines, "s1", 1, 490, 477);
   lines = assignToWord(lines, sel([1]), 2);
-  assert.deepEqual(
-    [lines[0].words[1].start_x, lines[0].words[1].end_x, lines[0].words[1].override],
-    [610, 477, true],
-  );
+  assert.deepEqual([lines[0].words[1].start_x, lines[0].words[1].end_x], [610, 475]);
 }
 
 // Accepting a persisted preview adds a history step instead of resetting history.
 {
   const before = setRole([line()], sel([1]), "body");
-  const accepted = mergePreview(before, [line()]);
+  const accepted = [line()];
   const history = pushHistory(pushHistory(historyOf([line()]), before), accepted);
   assert.equal(currentOf(stepHistory(history, -1)), before);
   assert.equal(currentOf(stepHistory(stepHistory(history, -1), 1)), accepted);
@@ -443,22 +584,13 @@ assert.deepEqual(inkOf(line(), null), []);
   });
 }
 
-// A box always holds the ink its word owns alone: a drag can widen it, or move the
-// cut inside ink two words share, but never leave the word's own marks outside.
+// A box holds all of its word's ink, its marks too, once anything recalculates it.
 {
   // The fixture's first word is drawn as the engine once cut it: its mark sticks out.
   const page = line();
   assert.deepEqual([page.words[0].start_x, page.words[0].end_x], [610, 580]);
-  const fitted = fitWord(page, page.words[0]);
-  assert.deepEqual([fitted.start_x, fitted.end_x], [620, 580]);
-  assert.equal(fitWord(page, page.words[1]), page.words[1], "nothing sticks out: the same word");
-  const dragged = setWordEdges([page], "s1", 0, 600, 590)[0].words[0];
-  assert.deepEqual([dragged.start_x, dragged.end_x, dragged.override], [620, 580, true]);
-  const wide = setWordEdges([page], "s1", 0, 640, 560)[0].words[0];
-  assert.deepEqual([wide.start_x, wide.end_x], [640, 560]);
-  // A preview's reading is fitted too when a drag is kept over it.
-  const kept = mergePreview(setWordEdges([page], "s1", 0, 615, 585), [line()]);
-  assert.deepEqual([kept[0].words[0].start_x, kept[0].words[0].end_x], [620, 580]);
+  const held = assignToWord([page], sel([2]), 1)[0].words[0];
+  assert.deepEqual([held.start_x, held.end_x], [620, 580]);
 }
 
 // Filters: a type is the typed type, else the expected one; doubts only while the
@@ -514,4 +646,362 @@ assert.deepEqual(inkOf(line(), null), []);
   assert.deepEqual(extendSelection(lines, sel([1]), 1, any), sel([1, 3]));
   assert.deepEqual(extendSelection(lines, sel([4]), 1, any), sel([4]), "not past the line's end");
   assert.deepEqual(extendSelection(lines, sel([3]), -1, any), sel([3, 1]));
+}
+
+// Words: all of a word's ink at once, in reading order across lines, wrapping; the
+// word the selection is in is its first blob's owner.
+{
+  const second = { ...line("s2"), line_number: 2 };
+  const lines = [line(), second];
+  assert.deepEqual(stepWord(lines, NO_SELECTION, 1), sel([1, 2]));
+  assert.equal(wordAt(lines, sel([2])), 0);
+  assert.deepEqual(stepWord(lines, sel([2]), 1), sel([3]));
+  assert.deepEqual(stepWord(lines, sel([4]), 1), sel([1, 2], "s2"));
+  assert.deepEqual(stepWord(lines, sel([1], "s2"), -1), sel([4]));
+  assert.deepEqual(stepWord(lines, NO_SELECTION, -1), sel([4], "s2"));
+}
+
+// Accepting what a filter shows: every expected mark the test lets through, page-wide.
+{
+  const page = line();
+  page.blobs.push(blob(6, 350, "mark", 3));
+  const expectations = expectationsOf([
+    { snapshot_id: "s1", blob_id: 2, subtype: "fatha", confidence: 0.5, sure: false },
+    { snapshot_id: "s1", blob_id: 6, subtype: "kasra", confidence: 0.9, sure: true },
+  ]);
+  const fathas = acceptExpected([page], expectations, (l, b) =>
+    passesFilter(b, l.snapshot_id, typeFilter("fatha"), expectations, new Map()),
+  );
+  assert.deepEqual([pick(fathas, 2).subtype, pick(fathas, 2).subtype_explicit], ["fatha", true]);
+  assert.equal(pick(fathas, 6).subtype, "", "a kasra is not shown by the fatha filter");
+}
+
+// Words: stepping through a test finds the next word that passes it, from anywhere.
+{
+  const second = { ...line("s2"), line_number: 2 };
+  const lines = [line(), second];
+  const third = (_: unknown, w: { word_id: number | null }) => w.word_id === 3;
+  assert.deepEqual(stepWord(lines, sel([2]), 1, third), sel([4]));
+  assert.deepEqual(stepWord(lines, sel([4]), 1, third), sel([4], "s2"));
+  assert.equal(
+    stepWord(lines, NO_SELECTION, 1, () => false),
+    null,
+  );
+}
+
+// Risky words: a count that does not close, ink asking for a look.
+{
+  const page = line();
+  assert.deepEqual(wordRisks(page, page.words[0]), []);
+  const marked = setRole([page], sel([3]), "mark")[0];
+  assert.deepEqual(wordRisks(marked, marked.words[1]), ["count"]);
+  const looked = line();
+  looked.blobs[0].attention = ["uncertain"];
+  assert.deepEqual(wordRisks(looked, looked.words[0]), ["look"]);
+}
+
+// A preview's moved words: an edge beyond a pixel, a line change, a word dropped.
+{
+  const before = [line()];
+  const after = [{ ...line(), words: [word(1, 610, 580), word(2, 492, 460)] }];
+  assert.deepEqual([...changedWords(before, after)].sort(), [2, 3]);
+  assert.equal(changedWords(before, [line()]).size, 0);
+}
+
+// What a confirmation teaches: roles of every text blob but flagged ones and bodies of
+// other than one PAW; types of typed marks only.
+{
+  const page = line();
+  page.blobs.push({ ...blob(6, 350, "mark", 3), subtype: "kasra", subtype_explicit: true });
+  page.blobs.push({ ...blob(7, 300, "mark", 3), exception: "broken" });
+  assert.deepEqual(teaches([page, line("ctx", true)]), { bodies: 3, marks: 2, typed: 1 });
+  const two = assignToWord([page], sel([1]), 1, 2);
+  assert.equal(teaches(two).bodies, 2);
+}
+
+// The gallery: marks by their type, doubts and unsure guesses first, untyped last;
+// or all ink by role; stepping wraps, and ↑↓ jump between groups.
+{
+  const page = line();
+  page.blobs.push({ ...blob(6, 350, "mark", 3), subtype: "fatha", subtype_explicit: true });
+  page.blobs.push({ ...blob(7, 300, "mark", 3), subtype: "fatha", subtype_explicit: true });
+  page.blobs.push(blob(8, 250, "mark", null));
+  const expectations = expectationsOf([
+    { snapshot_id: "s1", blob_id: 2, subtype: "fatha", confidence: 0.3, sure: false },
+  ]);
+  const doubts = doubtsOf([
+    { snapshot_id: "s1", blob_id: 7, typed: "fatha", subtype: "madda", sure: true },
+  ]);
+  const types = galleryGroups([page], "types", "all", expectations, doubts);
+  assert.deepEqual(
+    types.map((g) => [g.key, g.items.map((i) => i.blob.id), g.typed, g.expected]),
+    [
+      ["fatha", [7, 2, 6], 2, 1],
+      ["", [8], 0, 0],
+    ],
+  );
+  const roles = galleryGroups([page], "roles", "all", expectations, doubts);
+  assert.deepEqual(
+    roles.map((g) => g.key),
+    ["mark", "body"],
+  );
+  assert.deepEqual(stepGallery(types, NO_SELECTION, 1), sel([7]));
+  assert.deepEqual(stepGallery(types, sel([6]), 1), sel([8]));
+  assert.deepEqual(stepGallery(types, sel([8]), 1), sel([7]), "wraps");
+  assert.deepEqual(stepGallery(types, sel([2]), 1, true), sel([8]), "next group");
+}
+
+// A type the text set counts as typed, until a person types it; and the engine's
+// doubts are answered by agreeing examples or by the text.
+{
+  const byText = {
+    ...blob(6, 350, "mark", 3),
+    subtype: "smallLetter",
+    subtype_explicit: false,
+    subtype_source: "text" as const,
+  };
+  assert.equal(isTyped(byText), true);
+  assert.equal(typedByText(byText), true);
+  assert.equal(isTyped({ ...byText, subtype_source: undefined }), false);
+  const page = line();
+  page.blobs.push(byText);
+  const retyped = setSubtype([page], sel([6]), "damma");
+  assert.equal(typedByText(retyped[0].blobs.find((b) => b.id === 6)!), false);
+
+  const alef = { ...blob(9, 200, "body", 1), body_score: 7, initial_role: "mark" as const };
+  assert.equal(answeredBy(alef), null, "nothing answered it");
+  assert.equal(answeredBy({ ...alef, proposed_role: "body" }), "examples");
+  assert.equal(
+    answeredBy({ ...alef, proposed_role: "body", explicit: true }),
+    null,
+    "a person decided",
+  );
+  assert.equal(answeredBy({ ...byText, initial_role: "body", decision_source: "text" }), "text");
+  assert.equal(answeredBy(blob(1, 580, "body", 1)), null, "no doubt to answer");
+}
+
+// Pairs: marks printed as one are typed by their parts, in one fixed order.
+{
+  assert.equal(composeSubtype(["kasra", "hamza"]), "hamza+kasra");
+  assert.equal(togglePart("hamza", "kasra"), "hamza+kasra");
+  assert.equal(togglePart("hamza+kasra", "kasra"), "hamza");
+  assert.equal(togglePart("hamza", "hamza"), "hamza", "a single type stays itself");
+  const page = line();
+  page.blobs.push({ ...blob(6, 350, "mark", 3), subtype: "hamza", subtype_explicit: true });
+  const paired = addSubtypePart([page], sel([6]), "kasra", new Map());
+  const mark = paired[0].blobs.find((b) => b.id === 6)!;
+  assert.deepEqual(
+    [mark.subtype, mark.subtype_explicit, mark.explicit],
+    ["hamza+kasra", true, true],
+  );
+  // From an expected type, too.
+  const guessed = expectationsOf([
+    { snapshot_id: "s1", blob_id: 2, subtype: "hamza", confidence: 1, sure: true },
+  ]);
+  assert.equal(
+    addSubtypePart([line()], sel([2]), "kasra", guessed)[0].blobs[1].subtype,
+    "hamza+kasra",
+  );
+}
+
+// The text's check: by word, and a word whose marks do not fit it is worth a look.
+{
+  const page = line();
+  const checks = markChecksOf([
+    { snapshot_id: "s1", word_id: 1, ok: true, missing: [], extra: [], disagree: [] },
+    { snapshot_id: "s1", word_id: 2, ok: false, missing: ["sukun"], extra: [], disagree: [] },
+  ]);
+  assert.equal(markCheckOf("s1", 2, checks)?.missing[0], "sukun");
+  assert.equal(markCheckOf("s1", null, checks), null);
+  assert.deepEqual(wordRisks(page, page.words[0], checks), []);
+  assert.deepEqual(wordRisks(page, page.words[1], checks), ["marks"]);
+  assert.deepEqual(wordRisks(page, page.words[1]), [], "no checks, no such risk");
+  assert.deepEqual([...tanweenOf([{ snapshot_id: "s1", blob_id: 4 }])], ["s1:4"]);
+}
+
+// A mixed body names the marks printed in it; they stay out of every mark count, and
+// go when the flag does.
+{
+  const mixed = setException([line()], sel([3]), "mixed");
+  const named = toggleFusedMark(toggleFusedMark(mixed, sel([3]), "fatha"), sel([3]), "shadda");
+  assert.equal(pick(named, 3).subtype, "shadda+fatha");
+  assert.equal(pick(named, 3).subtype_explicit, true);
+  assert.equal(isTyped(pick(named, 3)), false, "a body is never a typed mark");
+  assert.notEqual(
+    typingSignature(named),
+    typingSignature(mixed),
+    "naming one asks for a new check",
+  );
+  assert.equal(pick(toggleFusedMark(named, sel([3]), "shadda"), 3).subtype, "fatha");
+  assert.equal(
+    pick(toggleFusedMark([line()], sel([3]), "fatha"), 3).subtype,
+    "",
+    "only a mixed body",
+  );
+  assert.equal(pick(setException(named, sel([3]), "broken"), 3).subtype, "");
+}
+
+// ── The labeling bar, and what a draft sends ───────────────────────────────
+{
+  const [base] = [line()];
+  const body = (lines: CalibrationLine[]) => lines[0].blobs[0];
+  const one = { snapshot: "s1", ids: [1] };
+
+  // Two pieces: the body holds both, a person's decision, letters and all.
+  const twoPieces: CalibrationLine = {
+    ...base,
+    words: base.words.map((entry) =>
+      entry.word_id === 1 ? { ...entry, text: "إلا", pieces: ["إ", "لا"] } : entry,
+    ),
+  };
+  const fused = applyContentsChip([twoPieces], one, {
+    kind: "pieces",
+    wordId: 1,
+    start: 0,
+    end: 2,
+  });
+  assert.equal(body(fused).exception, "fused");
+  assert.deepEqual(body(fused).allocations, [{ word_id: 1, paws: 2 }]);
+  assert.deepEqual(decidedOfBlob(body(fused)), { paws: ["إ", "لا"], marks: null });
+
+  // A mark touching its letter: mixed, named; untick it, and the body is decided to hold none.
+  const ringed = applyContentsChip([base], one, { kind: "mark", name: "roundZero" });
+  assert.equal(body(ringed).exception, "mixed");
+  assert.deepEqual(decidedOfBlob(body(ringed)), { paws: [null], marks: ["roundZero"] });
+  const bare = applyContentsChip(ringed, one, { kind: "mark", name: "roundZero" });
+  assert.equal(body(bare).exception, "");
+  assert.deepEqual(decidedOfBlob(body(bare)), { paws: [null], marks: [] });
+
+  // A mark chip on a mark types it.
+  const typed = applyContentsChip(
+    [base],
+    { snapshot: "s1", ids: [2] },
+    {
+      kind: "mark",
+      name: "fatha",
+    },
+  );
+  assert.deepEqual(decidedOfBlob(typed[0].blobs[1]), { paws: [], marks: ["fatha"] });
+
+  // Nothing decided sends nothing; and the editor's words come back from the server's parts.
+  assert.equal(decidedOfBlob(base.blobs[0]), null);
+  const arrived = readBlobFromServer({
+    ...base.blobs[0],
+    decided: { paws: [null], marks: [] },
+    reading: { paws: ["ا"], marks: ["roundZero"] },
+    contents: { paws: ["ا"], marks: [] },
+  });
+  assert.deepEqual(
+    [arrived.explicit, arrived.subtype, arrived.subtype_explicit, arrived.exception],
+    [true, "", true, ""],
+  );
+  const read = readBlobFromServer({
+    ...base.blobs[0],
+    reading: { paws: ["ا"], marks: ["roundZero"] },
+    contents: { paws: ["ا"], marks: ["roundZero"] },
+  });
+  assert.deepEqual(
+    [read.explicit, read.subtype, read.subtype_explicit, read.exception],
+    [false, "roundZero", false, "mixed"],
+  );
+}
+
+// ── A word's pieces, body by body ──────────────────────────────────────────
+// Page 1's الرحمن as it was saved: the thin alef held two pieces, لر none.
+{
+  const alrahman = (): CalibrationLine => ({
+    ...line(),
+    blobs: [
+      {
+        ...blob(13, 560, "body", 1),
+        allocations: [{ word_id: 1, paws: 2 }],
+        explicit: true,
+        ownership_explicit: true,
+        decided: { paws: [null, null], marks: null },
+        exception: "fused",
+      },
+      { ...blob(12, 500, "body", 1), allocations: [{ word_id: 1, paws: 0 }] },
+      blob(19, 440, "body", 1),
+    ],
+    words: [{ ...word(1, 600, 440), pieces: ["ٱ", "لر", "حمن"], expected_paws: 3 }],
+  });
+  const runs = layWordPieces(alrahman(), 1, 3).runs;
+  assert.deepEqual(
+    runs.map((run) => [run.id, run.start, run.end]),
+    [
+      [13, 0, 2],
+      [12, 2, 2],
+      [19, 2, 3],
+    ],
+    "right to left, each its count",
+  );
+
+  // One click on لر gives it لر, and the alef only its own piece.
+  const next = nextPieceRun(2, 2, 1);
+  assert.deepEqual(next, [1, 2]);
+  const fixed = applyContentsChip([alrahman()], sel([12]), {
+    kind: "pieces",
+    wordId: 1,
+    start: 1,
+    end: 2,
+  });
+  assert.deepEqual(pick(fixed, 12).allocations, [{ word_id: 1, paws: 1 }]);
+  assert.deepEqual(decidedOfBlob(pick(fixed, 12)), { paws: ["لر"], marks: null });
+  assert.deepEqual(pick(fixed, 13).allocations, [{ word_id: 1, paws: 1 }]);
+  assert.equal(pick(fixed, 13).exception, "");
+  assert.deepEqual(decidedOfBlob(pick(fixed, 13)), { paws: ["ٱ"], marks: null });
+  assert.deepEqual(pick(fixed, 19).allocations, [{ word_id: 1, paws: 1 }]);
+  assert.deepEqual(wordCount(fixed[0], fixed[0].words[0]), { got: 3, want: 3, ok: true });
+
+  // A click next to the run joins it; a click at its end leaves it again.
+  assert.deepEqual(nextPieceRun(1, 2, 2), [1, 3]);
+  assert.deepEqual(nextPieceRun(1, 3, 2), [1, 2]);
+  assert.deepEqual(nextPieceRun(1, 3, 1), [2, 3]);
+  assert.equal(nextPieceRun(1, 2, 1), null, "a body keeps one piece");
+  assert.deepEqual(nextPieceRun(0, 1, 2), [2, 3], "a piece apart is held alone");
+  const joined = applyContentsChip(fixed, sel([12]), {
+    kind: "pieces",
+    wordId: 1,
+    start: 1,
+    end: 3,
+  });
+  assert.deepEqual(decidedOfBlob(pick(joined, 12)), { paws: ["لر", "حمن"], marks: null });
+  assert.deepEqual(pick(joined, 19).allocations, [{ word_id: 1, paws: 0 }]);
+  assert.equal(pick(joined, 19).explicit, false, "an undecided neighbour stays undecided");
+
+  // Spreading: one each before more, the nearest first.
+  assert.deepEqual(spreadPieces([2], 1), [1]);
+  assert.deepEqual(spreadPieces([0, 0], 2), [1, 1]);
+  assert.deepEqual(spreadPieces([1, 1], 3), [2, 1]);
+  assert.deepEqual(spreadPieces([2, 1], 1), [0, 1]);
+}
+
+// What the reading says is never sent back as a person's decision.
+{
+  const read = readBlobFromServer({
+    ...blob(1, 580, "body", 1),
+    allocations: [{ word_id: 1, paws: 2 }],
+    reading: { paws: ["إ", "لا"], marks: [] },
+    contents: { paws: ["إ", "لا"], marks: [] },
+  });
+  assert.equal(read.exception, "fused", "shown as read");
+  assert.equal(read.exception_read, true);
+  assert.equal(decidedOfBlob(read), null, "nothing decided, nothing sent");
+  const ringed = readBlobFromServer({
+    ...blob(1, 580, "body", 1),
+    reading: { paws: ["ا"], marks: ["roundZero"] },
+    contents: { paws: ["ا"], marks: ["roundZero"] },
+  });
+  assert.equal(ringed.exception, "mixed");
+  assert.equal(decidedOfBlob(ringed), null);
+  const decided = readBlobFromServer({
+    ...blob(1, 580, "body", 1),
+    decided: { paws: [null, null], marks: null },
+    contents: { paws: ["إ", "لا"], marks: [] },
+  });
+  assert.equal(decided.exception_read, false);
+  assert.deepEqual(decidedOfBlob(decided), { paws: [null, null], marks: null });
+  // Undo takes a body's pieces back to the reading.
+  const undone = releaseDecisions([{ ...line(), blobs: [decided] }], sel([1]))[0].blobs[0];
+  assert.equal(decidedOfBlob(undone), null);
 }

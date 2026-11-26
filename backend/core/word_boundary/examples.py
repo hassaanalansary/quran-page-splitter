@@ -608,6 +608,39 @@ def predict_types(
     return answers
 
 
+def type_scores(
+    features: Sequence[Sequence[float] | np.ndarray],
+    index: TypeIndex,
+    exclude_snapshot_ids: set[str] | None = None,
+    config: dict | None = None,
+) -> list[dict[str, float]]:
+    """Every type's score for each of several marks: the mean distance to its own
+    ``per_type`` nearest groups, as :func:`predict_types` ranks them — nearer is
+    likelier. Types without an eligible example are left out, so an empty dict means
+    the index knows nothing to compare with.
+
+    For a caller that weighs the matcher against other evidence — the word's text —
+    rather than taking its single best guess.
+    """
+    settings = {**TYPE_CONFIG, **(config or {})}
+    queries = np.stack([_features(entry) for entry in features]) if len(features) else np.zeros((0, FEATURE_COUNT))
+    excluded = exclude_snapshot_ids or set()
+    eligible = np.array([not group <= excluded for group in index.snapshots], dtype=bool)
+    if not eligible.any():
+        return [{} for _ in range(len(queries))]
+    names = sorted({kind for kind, keep in zip(index.types, eligible, strict=True) if keep})
+    answers: list[dict[str, float]] = []
+    for start in range(0, len(queries), _CHUNK):
+        distances = _type_distances(queries[start : start + _CHUNK], index, eligible)
+        means, _, _ = _by_type(distances, index, names, settings["per_type"], settings["max_distance"])
+        for row in range(distances.shape[0]):
+            finite = np.isfinite(means[row])
+            answers.append(
+                {name: round(float(means[row, column]), 4) for column, name in enumerate(names) if finite[column]}
+            )
+    return answers
+
+
 def predict_type(
     features: Sequence[float] | np.ndarray,
     index: TypeIndex,

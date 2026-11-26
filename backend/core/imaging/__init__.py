@@ -2,7 +2,7 @@
 
     from core.imaging import find_content_bbox, make_transparent
 
-Four modules, no domain knowledge between them. Nothing here has heard of a mushaf,
+Five modules, no domain knowledge between them. Nothing here has heard of a mushaf,
 a line or an aya — hand it an array and it answers about the array. That is the test
 for whether something belongs here: if it needs to know what the picture *is*, it
 belongs to an engine instead.
@@ -12,6 +12,7 @@ belongs to an engine instead.
     utils.py              binarise, find the ink, cut it out, make it transparent
     template_matching.py  find a small picture inside a bigger one
     strokes.py            paint a freehand path onto a mask
+    edge_ink.py           find the ink reaching into a crop over its top or bottom
 
 ``accel`` is the odd one and worth knowing about before you touch template
 matching: this project's OpenCL path fabricates perfect ``TM_CCOEFF_NORMED``
@@ -28,6 +29,7 @@ from core.imaging.accel import (
     resolve_effective_backend,
     upload_gray_for_matching,
 )
+from core.imaging.edge_ink import find_edge_ink, find_ink
 from core.imaging.strokes import apply_eraser_stroke
 from core.imaging.template_matching import (
     MAX_VERIFICATIONS,
@@ -60,6 +62,8 @@ __all__ = [
     "cpu_score_at",
     "cuda_device_count",
     "find_content_bbox",
+    "find_edge_ink",
+    "find_ink",
     "locate_x_matches",
     "make_mask",
     "make_template_spec",

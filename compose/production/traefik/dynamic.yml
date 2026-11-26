@@ -1,0 +1,16 @@
+# What Traefik routes, read through its file provider. `{{ env "APP_DOMAIN" }}` is
+# filled in by Traefik from the container's environment (docker-compose.production.yml).
+http:
+  routers:
+    app:
+      rule: 'Host(`{{ env "APP_DOMAIN" }}`)'
+      entryPoints:
+        - web-secure
+      service: nginx
+      tls:
+        certResolver: letsencrypt
+  services:
+    nginx:
+      loadBalancer:
+        servers:
+          - url: http://nginx:80

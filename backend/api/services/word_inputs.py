@@ -81,20 +81,20 @@ def prepare_engine_input(
     if end is None:
         end = (start[0], words_service.sura_last_aya(system, start[0]))
 
-    placements = line_images_service.line_images(mushaf, start=start, end=end)
+    placements = line_images_service.cut_lines_of_span(mushaf, start=start, end=end)
     stream = words_service.word_stream(system, start=start, end=end)
     return EngineRun(
         source=WordBoundaryInput(
             lines=[placed.image for placed in placements],
             words=stream,
-            separator_template=line_images_service.separator_template(mushaf),
+            separator_template=line_images_service.load_separator_template(mushaf),
             # Declared per mushaf, never inferred. The stored text describes one
             # dotting convention and a Maghribi printing does not follow it — see
             # `core.word_boundary.inputs.IjamMode`.
             ijam=cast(IjamMode, mushaf.ijam_mode),
             # Matched per line by the engine, because nothing upstream looked for
-            # them — see `line_images.symbol_templates`.
-            symbol_templates=line_images_service.symbol_templates(mushaf),
+            # them — see `line_images.load_symbol_templates`.
+            symbol_templates=line_images_service.load_symbol_templates(mushaf),
         ),
         counting_system=system,
         placements=placements,

@@ -31,6 +31,7 @@ from typing import Literal
 from PIL import Image
 
 from core.text import Aya, ijam_groups, paw_count
+from core.word_boundary.calibration import COUNT_WEIGHT
 
 
 @dataclass(frozen=True)
@@ -72,6 +73,10 @@ class WordInput:
     #: ``Word.id`` when the stream came from the database, so a caller can map the
     #: engine's output back to a row. ``None`` when it came from a text file.
     id: int | None = None
+    #: What each PAW the word closes short of its spelling costs: COUNT_WEIGHT, less
+    #: where this mushaf's touching letters make a missing PAW likely in this word
+    #: (``FUSION_DISCOUNT``).
+    short_weight: int = COUNT_WEIGHT
 
 
 #: Whether a word's expected dots are worth checking against this mushaf's page.

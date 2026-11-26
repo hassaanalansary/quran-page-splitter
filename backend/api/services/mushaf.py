@@ -10,7 +10,7 @@ import uuid
 from django.conf import settings
 from django.core.files.base import ContentFile
 from django.core.files.uploadedfile import UploadedFile
-from django.db.models import Count, Q, Sum
+from django.db.models import Count, Exists, OuterRef, Q, Sum
 from django.shortcuts import get_object_or_404
 from ninja.errors import HttpError
 
@@ -20,6 +20,7 @@ from api.models import (
     ActivityTypeChoices,
     IjamModeChoices,
     Line,
+    LinePngSizeChoices,
     LineTypeChoices,
     Mushaf,
     Page,
@@ -35,6 +36,9 @@ logger = logging.getLogger(__name__)
 
 # Low-DPI render of the cover page used for list thumbnails.
 THUMBNAIL_DPI = 50
+#: How many of the latest checked pages must share a padding before it becomes the
+#: mushaf's usual one, applied to each page that opens in Finalize with none yet.
+USUAL_PADDING_STREAK = 3
 
 
 def _media_url(name: str | None) -> str | None:
@@ -193,9 +197,54 @@ def get_mushaf_detail(mushaf_id: uuid.UUID, *, user: User) -> dict:
     data["visibility"] = mushaf.visibility
     data["published_at"] = mushaf.published_at
     data["description"] = mushaf.description
-    data["export_uniform_size"] = mushaf.export_uniform_size
+    data["line_png_size"] = mushaf.line_png_size
+    data["finalized_page_count"] = mushaf.pages.filter(lines_finalized=True).count()
+    data["usual_line_padding"] = find_usual_line_padding(mushaf)
+    data["usual_sura_header"] = find_usual_sura_header_edits(mushaf)
     data["ijam_mode"] = mushaf.ijam_mode
     return data
+
+
+def find_usual_line_padding(mushaf: Mushaf) -> int | None:
+    """The padding the latest checked pages agree on, for a page that has none yet.
+
+    The last ``USUAL_PADDING_STREAK`` pages marked checked in Finalize, by when they
+    were last saved: when all of them were given the same padding, that is this
+    mushaf's usual one. Otherwise there is none, and a new page opens as it was cut.
+    """
+    latest = list(
+        mushaf.pages.filter(lines_finalized=True, line_padding__isnull=False)
+        .order_by("-updated_at")
+        .values_list("line_padding", flat=True)[:USUAL_PADDING_STREAK]
+    )
+    if len(latest) == USUAL_PADDING_STREAK and len(set(latest)) == 1:
+        return latest[0]
+    return None
+
+
+def find_usual_sura_header_edits(mushaf: Mushaf) -> dict | None:
+    """How the latest checked pages finished their sura headers, for a new page's.
+
+    The last ``USUAL_PADDING_STREAK`` checked pages that recorded a header padding,
+    by when they were last saved. ``padding`` is the one they all gave their headers,
+    and ``erase_edge_ink`` whether every header on each of them had its edge ink
+    erased — each None when those pages differ on it. None until there are that many.
+    """
+    kept_edge_ink = Line.objects.filter(page=OuterRef("pk"), type=LineTypeChoices.SURA_HEADER, erase_edge_ink=False)
+    latest = list(
+        mushaf.pages.filter(lines_finalized=True, sura_header_padding__isnull=False)
+        .annotate(kept_header_edge_ink=Exists(kept_edge_ink))
+        .order_by("-updated_at")
+        .values_list("sura_header_padding", "kept_header_edge_ink")[:USUAL_PADDING_STREAK]
+    )
+    if len(latest) < USUAL_PADDING_STREAK:
+        return None
+    paddings = {padding for padding, _kept in latest}
+    erased = {not kept for _padding, kept in latest}
+    return {
+        "padding": paddings.pop() if len(paddings) == 1 else None,
+        "erase_edge_ink": erased.pop() if len(erased) == 1 else None,
+    }
 
 
 def regenerate_thumbnail(mushaf_id: uuid.UUID, *, user: User) -> dict:
@@ -365,10 +414,10 @@ def update_mushaf(mushaf_id: uuid.UUID, fields: dict, *, user: User) -> dict:
         # a page — and you want to set it *after* seeing how often a run reports a
         # word short, which is the whole way of telling whether it fits this script.
         mushaf.ijam_mode = fields["ijam_mode"]
-    if "export_uniform_size" in fields:
+    if "line_png_size" in fields and fields["line_png_size"] in LinePngSizeChoices.values:
         # Affects future exports only — pages already exported keep the size
         # they were written at until they are exported again.
-        mushaf.export_uniform_size = bool(fields["export_uniform_size"])
+        mushaf.line_png_size = fields["line_png_size"]
 
     bounds_changed = False
     if "first_quran_pdf_page" in fields or "last_quran_pdf_page" in fields:

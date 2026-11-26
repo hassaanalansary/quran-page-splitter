@@ -1,0 +1,115 @@
+# The production stack. DEPLOY.md is the guide. In short, on the server:
+#
+#   export COMPOSE_FILE=docker-compose.production.yml
+#   export COMPOSE_ENV_FILES=.envs/.production/server.env
+#   docker compose build
+#   docker compose run --rm django python manage.py migrate
+#   docker compose up -d
+#
+#   browser ─▶ traefik :80 / :443          HTTPS, the Let's Encrypt certificate
+#                │
+#                ▼
+#              nginx ── serves the React build and /media
+#                │ proxies /api /admin /static /_allauth /accounts
+#                ▼
+#             django :5000 (gunicorn) ──▶ postgres
+#                │
+#                └──▶ redis ──▶ celeryworker
+#
+# Only traefik publishes ports. Nothing else is reachable from outside.
+
+volumes:
+  production_postgres_data: {}
+  production_postgres_data_backups: {}
+  production_redis_data: {}
+  production_django_media: {}
+  production_django_logs: {}
+  production_traefik: {}
+
+services:
+  django: &django
+    build:
+      context: .
+      dockerfile: ./compose/production/django/Dockerfile
+    image: quran_page_splitter_production_django
+    restart: unless-stopped
+    depends_on:
+      - postgres
+      - redis
+    volumes:
+      # Both shared with the worker: it writes the run logs that the web process
+      # serves, and both read and write the uploaded PDFs.
+      - production_django_media:/app/media
+      - production_django_logs:/app/logs
+    env_file:
+      - ./.envs/.production/.django
+      - ./.envs/.production/.postgres
+    command: /start
+
+  celeryworker:
+    <<: *django
+    environment:
+      # Its own log file in the logs volume, beside the web process's quran.log.
+      LOG_FILE: worker.log
+    # On a stop the worker asks its running jobs to stop at their next page, and
+    # waits for them. A page can take a while: give it time before Docker kills it.
+    stop_grace_period: 10m
+    command: /start-celeryworker
+
+  postgres:
+    build:
+      context: .
+      dockerfile: ./compose/production/postgres/Dockerfile
+    image: quran_page_splitter_postgres
+    restart: unless-stopped
+    volumes:
+      # Since version 18 the image keeps its data under /var/lib/postgresql/<major>/docker,
+      # and the volume belongs on the folder above it.
+      - production_postgres_data:/var/lib/postgresql
+      - production_postgres_data_backups:/backups
+    env_file:
+      - ./.envs/.production/.postgres
+
+  redis:
+    image: docker.io/redis:8.10.3-alpine
+    restart: unless-stopped
+    # Keep the queue on disk: a job that waits for a worker survives a restart of Redis.
+    command: redis-server --appendonly yes
+    volumes:
+      - production_redis_data:/data
+
+  nginx:
+    build:
+      context: .
+      dockerfile: ./compose/production/nginx/Dockerfile
+    image: quran_page_splitter_production_nginx
+    restart: unless-stopped
+    depends_on:
+      - django
+    volumes:
+      - production_django_media:/usr/share/nginx/media:ro
+
+  traefik:
+    build:
+      context: .
+      dockerfile: ./compose/production/traefik/Dockerfile
+    image: quran_page_splitter_production_traefik
+    restart: unless-stopped
+    depends_on:
+      - nginx
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:?Set APP_DOMAIN in .envs/.production/server.env}
+    command:
+      - --providers.file.filename=/etc/traefik/dynamic.yml
+      - --entrypoints.web.address=:80
+      - --entrypoints.web.http.redirections.entrypoint.to=web-secure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      - --entrypoints.web-secure.address=:443
+      - --certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL:?Set ACME_EMAIL in .envs/.production/server.env}
+      - --certificatesresolvers.letsencrypt.acme.storage=/etc/traefik/acme/acme.json
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web
+    volumes:
+      - production_traefik:/etc/traefik/acme
+    ports:
+      - "0.0.0.0:80:80"
+      - "0.0.0.0:443:443"

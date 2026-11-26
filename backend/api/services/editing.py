@@ -48,6 +48,7 @@ def list_pages(mushaf_id: uuid.UUID, *, user: User) -> list[dict]:
         .values(
             "page_number",
             "reviewed",
+            "lines_finalized",
             "source_pdf_page",
             "lines_count",
             "segments_count",
@@ -61,6 +62,7 @@ def list_pages(mushaf_id: uuid.UUID, *, user: User) -> list[dict]:
         {
             "page_number": row["page_number"],
             "reviewed": row["reviewed"],
+            "lines_finalized": row["lines_finalized"],
             "source_pdf_page": row["source_pdf_page"] or mushaf.first_quran_pdf_page + row["page_number"] - 1,
             "lines": row["lines_count"],
             "ayat": row["ayat_count"],
@@ -106,6 +108,10 @@ def save_page(*, user: User, mushaf_id: uuid.UUID, page_number: int, bbox: dict,
             "bbox_w": bbox["w"],
             "bbox_h": bbox["h"],
             "reviewed": True,
+            # The lines are rebuilt below, so the cuts finished on them are gone.
+            "lines_finalized": False,
+            "line_padding": None,
+            "sura_header_padding": None,
         },
     )
     page.lines.all().delete()
@@ -149,23 +155,55 @@ def _write_edited_line(page: Page, line_data: dict) -> None:
         )
 
 
-def save_finalize(*, user: User, mushaf_id: uuid.UUID, page_number: int, line_edits: list[dict]) -> dict:
-    """Apply the cut layer: optional line bbox overrides + erase strokes.
+def save_finalize(
+    *,
+    user: User,
+    mushaf_id: uuid.UUID,
+    page_number: int,
+    line_edits: list[dict],
+    line_padding: int | None = None,
+    sura_header_padding: int | None = None,
+    lines_finalized: bool | None = None,
+) -> dict:
+    """Apply the cut layer: optional line bbox overrides, erase strokes, and the
+    edge-ink switch (left as it is when an edit does not say). With them, the
+    padding the lines and the sura headers now carry and the page's checked mark —
+    each left as it is when not given — so "mark checked and go on" is one request.
 
     These never affect numbering (segments are independent of line bbox), so no
     renumber is needed — only the export crop/alpha are affected.
     """
     mushaf = mushaf_service.get_mushaf(mushaf_id, user=user)
     page = mushaf_service.get_page(mushaf, page_number, message="page_no_finalize")
+    page_changed = []
+    if line_padding is not None:
+        page.line_padding = line_padding
+        page_changed.append("line_padding")
+    if sura_header_padding is not None:
+        page.sura_header_padding = sura_header_padding
+        page_changed.append("sura_header_padding")
+    if lines_finalized is not None:
+        page.lines_finalized = lines_finalized
+        page_changed.append("lines_finalized")
+    if page_changed:
+        # updated_at too: the latest checked pages are found by it
+        # (mushaf.find_usual_line_padding, find_usual_sura_header_edits).
+        page.save(update_fields=[*page_changed, "updated_at"])
     lines_by_number = {line.line_number: line for line in page.lines.all()}
     for edit in line_edits:
         line = lines_by_number.get(edit["line_number"])
         if line is None:
             continue
+        changed = []
         override = edit.get("bbox_override")
         if override:
             line.bbox_y, line.bbox_h = override["y"], override["h"]
-            line.save(update_fields=["bbox_y", "bbox_h"])
+            changed += ["bbox_y", "bbox_h"]
+        if edit.get("erase_edge_ink") is not None:
+            line.erase_edge_ink = bool(edit["erase_edge_ink"])
+            changed.append("erase_edge_ink")
+        if changed:
+            line.save(update_fields=changed)
         line.erase_strokes.all().delete()
         strokes = edit.get("erase_strokes") or []
         if strokes:
@@ -180,6 +218,21 @@ def save_finalize(*, user: User, mushaf_id: uuid.UUID, page_number: int, line_ed
                 ]
             )
     return coordinates.page_to_dict(page)
+
+
+def mark_lines_finalized(*, user: User, mushaf_id: uuid.UUID, page_number: int, finalized: bool) -> dict:
+    """Mark a page's line cuts finished in Finalize, or not finished again.
+
+    Only a person sets it, and only here: exporting never does, so exporting a
+    page to check a result does not count as finishing it. Rebuilding the page's
+    lines clears it (``coordinates.write_coords_to_page``, ``save_page``,
+    ``bulk_save``).
+    """
+    mushaf = mushaf_service.get_mushaf(mushaf_id, user=user)
+    page = mushaf_service.get_page(mushaf, page_number, message="page_no_finalize")
+    page.lines_finalized = finalized
+    page.save(update_fields=["lines_finalized", "updated_at"])
+    return {"page_number": page.page_number, "lines_finalized": page.lines_finalized}
 
 
 def review_data(mushaf_id: uuid.UUID, *, user: User) -> dict:
@@ -304,7 +357,16 @@ def bulk_save(*, user: User, mushaf_id: uuid.UUID, pages: list[dict], reviewed_p
             page, _ = Page.objects.update_or_create(
                 mushaf=mushaf,
                 page_number=entry["page_number"],
-                defaults={"bbox_x": bbox["x"], "bbox_y": bbox["y"], "bbox_w": bbox["w"], "bbox_h": bbox["h"]},
+                defaults={
+                    "bbox_x": bbox["x"],
+                    "bbox_y": bbox["y"],
+                    "bbox_w": bbox["w"],
+                    "bbox_h": bbox["h"],
+                    # The lines are rebuilt below, so the cuts finished on them are gone.
+                    "lines_finalized": False,
+                    "line_padding": None,
+                    "sura_header_padding": None,
+                },
             )
             page.lines.all().delete()
             for line_data in entry["lines"]:

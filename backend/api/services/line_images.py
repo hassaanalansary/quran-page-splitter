@@ -57,7 +57,7 @@ class PlacedLine:
     origin_x: int
 
 
-def separator_template(mushaf: Mushaf) -> Image.Image | None:
+def load_separator_template(mushaf: Mushaf) -> Image.Image | None:
     """The mushaf's aya ornament, or None when it has no template saved."""
     template = mushaf.templates.filter(type="aya_separator").first()
     if template is None or not template.image:
@@ -74,7 +74,7 @@ def separator_template(mushaf: Mushaf) -> Image.Image | None:
 SYMBOL_TEMPLATE_TYPES = ("sajda", "rub_hizb")
 
 
-def symbol_templates(mushaf: Mushaf) -> dict[str, Image.Image]:
+def load_symbol_templates(mushaf: Mushaf) -> dict[str, Image.Image]:
     """The mushaf's non-word symbols, by type, for the ones it has saved.
 
     Unlike the aya ornament these are *not* supplied as spans: the process phase
@@ -95,7 +95,7 @@ def symbol_templates(mushaf: Mushaf) -> dict[str, Image.Image]:
     return found
 
 
-def locate(mushaf: Mushaf, sura: int, aya: int, *, last: bool = False) -> Segment:
+def locate_aya_segment(mushaf: Mushaf, sura: int, aya: int, *, last: bool = False) -> Segment:
     """The segment where an aya starts on the page — or ends, with ``last``.
 
     Reads the numbering the process phase wrote and ``renumber_mushaf`` keeps
@@ -121,7 +121,7 @@ def locate(mushaf: Mushaf, sura: int, aya: int, *, last: bool = False) -> Segmen
     return segment
 
 
-def line_images(
+def cut_lines_of_span(
     mushaf: Mushaf,
     *,
     start: tuple[int, int],
@@ -132,14 +132,14 @@ def line_images(
     Sura headers and besmella lines are left out: they are not text, and the
     engine has never accepted them.
 
-    Every line is cut fresh from the PDF — see ``_image_for`` for why an exported
+    Every line is cut fresh from the PDF — see ``cut_line_image`` for why an exported
     PNG cannot stand in. There used to be a ``refresh`` flag to force that; it is
     now what always happens, so the flag went rather than lie about being optional.
     """
-    first_segment = locate(mushaf, *start)
-    last_segment = locate(mushaf, *end, last=True)
+    first_segment = locate_aya_segment(mushaf, *start)
+    last_segment = locate_aya_segment(mushaf, *end, last=True)
     first_line, last_line = first_segment.line, last_segment.line
-    if _line_key(last_line) < _line_key(first_line):
+    if find_reading_position(last_line) < find_reading_position(first_line):
         raise LookupError(f"{start[0]}:{start[1]}..{end[0]}:{end[1]} runs backwards through {mushaf.name}")
 
     pages = (
@@ -152,7 +152,7 @@ def line_images(
         .prefetch_related("lines__segments", "lines__erase_strokes")
     )
 
-    template = separator_template(mushaf)
+    template = load_separator_template(mushaf)
     template_width = template.width if template is not None else 0
     out: list[PlacedLine] = []
     for page in pages:
@@ -160,14 +160,16 @@ def line_images(
         for line in sorted(page.lines.all(), key=lambda line: line.line_number):
             if line.type != LineTypeChoices.TEXT:
                 continue
-            if not (_line_key(first_line) <= _line_key(line) <= _line_key(last_line)):
+            if not (
+                find_reading_position(first_line) <= find_reading_position(line) <= find_reading_position(last_line)
+            ):
                 continue
 
-            crop = _crop_for(line, first_line, last_line, first_segment, last_segment)
+            crop = find_span_crop(line, first_line, last_line, first_segment, last_segment)
             if rendered_page is None:
-                rendered_page = _render_page(mushaf, page)
-            image, origin_x = _image_for(line, rendered_page, crop)
-            spans, ayat = _separators(line, origin_x, image.width, template_width)
+                rendered_page = render_mushaf_page(mushaf, page)
+            image, origin_x = cut_line_image(line, rendered_page, crop)
+            spans, ayat = rebuild_separator_spans(line, origin_x, image.width, template_width)
             out.append(
                 PlacedLine(
                     image=LineImage(
@@ -187,11 +189,11 @@ def line_images(
 # ---------------------------------------------------------------------------
 # Geometry
 # ---------------------------------------------------------------------------
-def _line_key(line: Line) -> tuple[int, int]:
+def find_reading_position(line: Line) -> tuple[int, int]:
     return (line.page.page_number, line.line_number)
 
 
-def _origin_x(line: Line) -> int:
+def find_line_origin_x(line: Line) -> int:
     """Page x that image x 0 corresponds to, matching ``render_line_image``.
 
     The **line's own** left edge, not the page column's. A column is as wide as the
@@ -205,7 +207,7 @@ def _origin_x(line: Line) -> int:
     return max(0, line.bbox_x)
 
 
-def _crop_for(
+def find_span_crop(
     line: Line,
     first_line: Line,
     last_line: Line,
@@ -227,13 +229,17 @@ def _crop_for(
     its final line would keep every later aya on that line, and the engine would be
     handed ink for words it was never given.
     """
-    origin = _origin_x(line)
+    origin = find_line_origin_x(line)
     segments = sorted(line.segments.all(), key=lambda s: s.segment_order)
     left, right = 0, None
-    if _line_key(line) == _line_key(last_line) and segments and last_segment.segment_order < segments[-1].segment_order:
+    if (
+        find_reading_position(line) == find_reading_position(last_line)
+        and segments
+        and last_segment.segment_order < segments[-1].segment_order
+    ):
         left = max(0, last_segment.bbox_x - origin)
     if (
-        _line_key(line) == _line_key(first_line)
+        find_reading_position(line) == find_reading_position(first_line)
         and segments
         and first_segment.segment_order > segments[0].segment_order
     ):
@@ -243,14 +249,14 @@ def _crop_for(
     return (left, right)
 
 
-def _render_page(mushaf: Mushaf, page: Page) -> Image.Image:
+def render_mushaf_page(mushaf: Mushaf, page: Page) -> Image.Image:
     index = pdf.logical_to_pdf_index(mushaf.first_quran_pdf_page, page.page_number, page.source_pdf_page)
     image = Image.open(io.BytesIO(pdf.render_page(mushaf.pdf_file.path, index)))
     image.load()
     return image
 
 
-def _image_for(
+def cut_line_image(
     line: Line,
     rendered_page: Image.Image,
     crop: tuple[int, int | None] | None,
@@ -259,12 +265,13 @@ def _image_for(
 
     **Always cut fresh**, never read back from ``line.line_png``. An exported PNG is
     cut at the page column and may have been centred on a page-sized canvas
-    (``export._pad_to``, when ``export_uniform_size`` is on); either way its image x 0
+    (``export._pad_to``, when ``line_png_size`` is uniform) or cut to its ink; either
+    way its image x 0
     is not this line's left edge, so reusing one would quietly undo the crop that
-    ``_origin_x`` explains. Rendering costs one page per page, not one per line — the
+    ``find_line_origin_x`` explains. Rendering costs one page per page, not one per line — the
     caller renders once and passes it in.
     """
-    origin = _origin_x(line)
+    origin = find_line_origin_x(line)
     # column=None: cut at the line's own box. The export path passes a real column and
     # keeps its uniform width; only the engine wants the tight cut.
     image = render_line_image(rendered_page, line, None)
@@ -276,7 +283,7 @@ def _image_for(
     return image.crop((left, 0, right, image.height)), origin + left
 
 
-def _separators(
+def rebuild_separator_spans(
     line: Line, origin_x: int, width: int, template_width: int
 ) -> tuple[list[tuple[int, int]] | None, list[str] | None]:
     """Ornament spans on this line, in the image's own coordinates.

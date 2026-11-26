@@ -1,0 +1,14 @@
+# The database of docker-compose.production.yml.
+#
+# A template: see the head of .django beside this file.
+#
+# The postgres container creates this database and this user on its FIRST start
+# only. Changing the password here later does not change it in the database.
+
+POSTGRES_HOST=postgres
+POSTGRES_PORT=5432
+POSTGRES_DB=quran
+POSTGRES_USER=quran
+# Letters and digits only: the value goes into a database URL as it is. Generate with:
+#   python3 -c "import secrets; print(secrets.token_hex(24))"
+POSTGRES_PASSWORD=CHANGE-ME

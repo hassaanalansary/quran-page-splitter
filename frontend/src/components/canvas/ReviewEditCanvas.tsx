@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 
-import { ChevronNav } from "@/components/canvas/ChevronNav";
-import { PageJump } from "@/components/canvas/PageJump";
+import { PageGhost } from "@/components/canvas/PageGhost";
+import { PagePill } from "@/components/canvas/PagePill";
 import { PageRail } from "@/components/canvas/PageRail";
 import { ToolToggle } from "@/components/canvas/ToolToggle";
 import { ZoomControl, type Zoom } from "@/components/canvas/ZoomControl";
@@ -10,7 +11,7 @@ import { useZoomToPointer } from "@/hooks/use-zoom-to-pointer";
 import { useSpacePan, type CanvasTool } from "@/hooks/use-space-pan";
 import type { LineType, Rect } from "@/lib/api/types";
 import type { DerivedLine } from "@/lib/review/recompute";
-import { Trash2 } from "lucide-react";
+import { X } from "lucide-react";
 
 type Handle = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
 
@@ -41,23 +42,31 @@ type Props = {
   reviewed?: Set<number>;
   /** Reports the page image's natural size once loaded (for default line sizing). */
   onNatural?: (n: { w: number; h: number }) => void;
-  /** Toolbar-right content (unsaved / warning counters, undo-redo). */
-  statusSlot?: ReactNode;
+  /** Secondary label in the page pill, e.g. the physical PDF page. */
+  label?: string;
+  /** At the end of the page pill (the next-warning jump). */
+  pageExtra?: ReactNode;
+  /** After the zoom, in its pill (undo and redo). */
+  zoomExtra?: ReactNode;
 };
 
-const TYPE_COLOR: Record<LineType, string> = {
-  text: "var(--orange)",
-  sura_header: "var(--navy)",
-  besmella: "var(--success)",
+/** The tag inside a line that isn't text: a sura header is an ornament. */
+const TAG_COLOR: Record<Exclude<LineType, "text">, string> = {
+  sura_header: "var(--ov-ornament)",
+  besmella: "var(--ov-besmella)",
 };
 
-const TYPE_LABEL: Record<LineType, string> = {
-  text: "text",
+const TAG_LABEL: Record<Exclude<LineType, "text">, string> = {
   sura_header: "sura",
   besmella: "besmella",
 };
 
-/** Interactive page editor: drag/resize line boxes, drag/add aya separators. */
+/** Room beside the page for the line numbers, at fit. */
+const GUTTER = 56;
+
+/** Interactive page editor: drag/resize line boxes, drag/add aya separators. The
+ * overlays are the overlay language's: every line's box in lapis at 30%, the
+ * selected one solid on a gold wash, the aya cuts in their orange. */
 export function ReviewEditCanvas({
   imageUrl,
   lines,
@@ -76,8 +85,11 @@ export function ReviewEditCanvas({
   processed,
   reviewed,
   onNatural,
-  statusSlot,
+  label,
+  pageExtra,
+  zoomExtra,
 }: Props) {
+  const { t } = useTranslation();
   const [tool, setTool] = useState<CanvasTool>("select");
   const { scrollRef: wrapRef, effectiveTool, handCursor, containerProps } = useSpacePan({ tool });
 
@@ -130,7 +142,7 @@ export function ReviewEditCanvas({
   const scale = useMemo(() => {
     if (!natural) return 1;
     if (zoom === -1) {
-      const s = Math.min((box.w - 32) / natural.w, (box.h - 32) / natural.h, 1);
+      const s = Math.min((box.w - GUTTER * 2) / natural.w, (box.h - 32) / natural.h, 1);
       return s > 0 ? s : 1;
     }
     return zoom;
@@ -306,21 +318,28 @@ export function ReviewEditCanvas({
   }
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden bg-bg-page">
-      {/* Toolbar */}
-      <div className="flex h-9 flex-shrink-0 items-center gap-2 border-b border-border bg-white px-3">
+    <div className="flex flex-1 flex-col overflow-hidden">
+      {/* Toolbar, on the well */}
+      <div
+        data-tour="canvas-toolbar"
+        className="flex flex-shrink-0 flex-wrap items-center justify-between gap-2.5 bg-well px-4 py-3"
+      >
         <ToolToggle value={effectiveTool} onChange={setTool} />
-        <div className="ml-auto flex items-center gap-3">
-          {statusSlot}
-          <ZoomControl value={zoom} onChange={setZoom} />
-        </div>
+        <PagePill
+          page={page}
+          pageCount={pageCount}
+          onPageChange={onPageChange}
+          label={label}
+          extra={pageExtra}
+        />
+        <ZoomControl value={zoom} onChange={setZoom} after={zoomExtra} />
       </div>
 
       {/* Canvas */}
       <div ref={stageRef} className="relative flex flex-1 overflow-hidden">
         <div
           ref={wrapRef}
-          className="raqam-canvas-grid relative flex-1 overflow-auto outline-none"
+          className="canvas-well relative flex-1 overflow-auto outline-none"
           {...containerProps}
           onPointerDown={(e) => {
             containerProps.onPointerDown(e);
@@ -340,7 +359,7 @@ export function ReviewEditCanvas({
               <img
                 ref={imgRef}
                 src={imageUrl}
-                alt={`Page ${page}`}
+                alt={t("canvas.pageAlt", { page })}
                 draggable={false}
                 onLoad={(e) =>
                   setNatural({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })
@@ -350,7 +369,7 @@ export function ReviewEditCanvas({
                   height: dispH || "auto",
                   display: "block",
                   userSelect: "none",
-                  boxShadow: "var(--shadow-page)",
+                  boxShadow: "var(--shadow-card)",
                   background: "white",
                 }}
               />
@@ -375,15 +394,11 @@ export function ReviewEditCanvas({
             </div>
           ) : (
             <div className="flex h-full items-center justify-center">
-              <div className="rounded-md bg-white/80 px-6 py-4 text-[13px] text-text-secondary shadow-[var(--shadow-sm)]">
-                No image for page {page}.
+              <div className="rounded-card bg-card px-6 py-4 text-[13px] text-ink-2 shadow-[var(--shadow-card)]">
+                {t("canvas.noPageImage")}
               </div>
             </div>
           )}
-        </div>
-        <ChevronNav page={page} pageCount={pageCount} onPageChange={onPageChange} />
-        <div className="absolute bottom-3 left-1/2 z-10 -translate-x-1/2 rounded-pill border border-border bg-white/90 px-3 py-1.5 shadow-[var(--shadow-sm)] backdrop-blur">
-          <PageJump page={page} pageCount={pageCount} onPageChange={onPageChange} />
         </div>
         {lens && natural && imageUrl && (
           <MagnifierLens
@@ -453,7 +468,7 @@ function MagnifierLens({
         backgroundSize: `${dispW * LENS_MAG}px ${dispH * LENS_MAG}px`,
         backgroundPosition: `${LENS_R - imgX * scale * LENS_MAG}px ${LENS_R - imgY * scale * LENS_MAG}px`,
         boxShadow:
-          "0 0 0 3px rgba(0,0,0,0.4), inset 0 0 0 1.5px rgba(255,255,255,0.9), var(--shadow-md)",
+          "0 0 0 3px rgba(0,0,0,0.4), inset 0 0 0 1.5px rgba(255,255,255,0.9), var(--shadow-card)",
       }}
     >
       <div
@@ -462,7 +477,7 @@ function MagnifierLens({
           left: LENS_R - 7,
           top: LENS_R,
           width: 14,
-          borderTop: "1px solid rgba(255,141,106,0.95)",
+          borderTop: "1px solid var(--ov-aya-cut)",
         }}
       />
       <div
@@ -471,7 +486,7 @@ function MagnifierLens({
           left: LENS_R,
           top: LENS_R - 7,
           height: 14,
-          borderLeft: "1px solid rgba(255,141,106,0.95)",
+          borderLeft: "1px solid var(--ov-aya-cut)",
         }}
       />
     </div>
@@ -500,8 +515,6 @@ function LineOverlay({
   onStartSepDrag: (uid: string, cutIndex: number) => void;
   onRemoveSep: (uid: string, cutIndex: number) => void;
 }) {
-  const c = TYPE_COLOR[line.type];
-  const fill = `color-mix(in oklab, ${c} 12%, transparent)`;
   return (
     <div
       data-line-uid={line.uid}
@@ -514,21 +527,32 @@ function LineOverlay({
         top: `${(line.bbox.y / natural.h) * 100}%`,
         width: `${(line.bbox.w / natural.w) * 100}%`,
         height: `${(line.bbox.h / natural.h) * 100}%`,
-        border: `2px solid ${c}`,
-        background: fill,
+        border: selected ? "2px solid var(--ov-line-selected)" : "1px solid var(--ov-line)",
+        background: selected ? "var(--ov-selected-wash)" : undefined,
         cursor: "move",
         touchAction: "none",
-        boxShadow: selected ? `0 0 0 3px color-mix(in oklab, ${c} 35%, transparent)` : undefined,
+        boxShadow: selected ? "0 0 0 4px var(--ov-selected-ring)" : undefined,
         zIndex: selected ? 5 : 1,
       }}
     >
-      {/* type badge */}
+      {/* type tag, inside at the start (a header's carries its sura) */}
+      {line.type !== "text" && (
+        <div
+          className="pointer-events-none absolute left-1 top-1/2 -translate-y-1/2 whitespace-nowrap rounded-[3px] px-[5px] py-px text-[9.5px] font-semibold text-white"
+          style={{ background: TAG_COLOR[line.type] }}
+        >
+          {TAG_LABEL[line.type]}
+          {line.sura ? ` · ${line.sura}` : ""}
+        </div>
+      )}
+
+      {/* its number, in the gutter beside the page */}
       <div
-        className="pointer-events-none absolute -top-[20px] left-0 whitespace-nowrap rounded-pill px-[6px] py-[1px] text-[10px] font-semibold uppercase tracking-wider text-white"
-        style={{ background: c }}
+        className={`pointer-events-none absolute -right-11 top-1/2 -translate-y-1/2 rounded-[3px] px-[5px] py-px font-mono text-[11px] ${
+          selected ? "bg-gold font-semibold text-on-gold" : "font-medium text-ink-4"
+        }`}
       >
-        L{line.line_number} · {TYPE_LABEL[line.type]}
-        {line.type !== "text" && line.sura ? ` · sura ${line.sura}` : ""}
+        {line.line_number}
       </div>
 
       {/* aya badges (text lines) */}
@@ -544,16 +568,10 @@ function LineOverlay({
             }}
           >
             <span
-              className="rounded-pill px-[5px] text-[14px] font-bold leading-[1.4]"
-              style={
-                seg.overflow
-                  ? {
-                      background: "var(--error-bg)",
-                      color: "var(--error)",
-                      border: "1px solid var(--error)",
-                    }
-                  : { background: "var(--navy)", color: "white", border: "1px solid var(--border)" }
-              }
+              className="rounded-pill px-[5px] text-[12px] font-bold leading-[1.4] text-white"
+              style={{
+                background: seg.overflow ? "var(--ov-remove)" : "var(--ov-line-selected)",
+              }}
             >
               {seg.aya}
               {!seg.has_separator ? "…" : ""}
@@ -576,20 +594,20 @@ function LineOverlay({
                 e.stopPropagation();
                 onStartSepDrag(line.uid, ci);
               }}
-              className="absolute -bottom-1 -top-1"
+              className="absolute"
               style={{
                 left: `${leftPct}%`,
-                width: sepSelected ? "6px" : "4px",
-                transform: "translateX(-3px)",
+                top: sepSelected ? "3%" : "12%",
+                bottom: sepSelected ? "3%" : "12%",
+                width: sepSelected ? "4px" : "3px",
+                transform: sepSelected ? "translateX(-2px)" : "translateX(-1.5px)",
                 cursor: "ew-resize",
                 touchAction: "none",
-                background: sepSelected
-                  ? "var(--navy-light)"
-                  : "color-mix(in oklab, var(--navy) 80%, transparent)",
+                background: "var(--ov-aya-cut)",
                 borderRadius: "2px",
                 boxShadow: sepSelected
-                  ? "0 0 0 2px color-mix(in oklab, var(--navy-light) 35%, transparent)"
-                  : "0 0 0 1px color-mix(in oklab, var(--navy) 40%, transparent)",
+                  ? "0 0 0 2px var(--page), 0 0 0 3.5px var(--ov-aya-cut)"
+                  : undefined,
                 zIndex: sepSelected ? 8 : 6,
               }}
             >
@@ -603,15 +621,10 @@ function LineOverlay({
                     e.stopPropagation();
                     onRemoveSep(line.uid, ci);
                   }}
-                  className="sep-del-pop group absolute bottom-full left-1/2 mb-1.5 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border border-white bg-error text-[11px] font-bold leading-none text-white shadow-md hover:bg-white hover:text-error hover:brightness-110"
+                  className="sep-del-pop absolute bottom-full left-1/2 mb-2 flex h-[22px] w-[22px] cursor-pointer items-center justify-center rounded-full text-white shadow-[0_2px_6px_rgba(0,0,0,0.25)] hover:brightness-110"
+                  style={{ background: "var(--ov-remove)" }}
                 >
-                  <Trash2 size={14} />
-                  {/* notch: a diamond poking out the bottom, pointing down at the
-                      separator, tinted to match the button (incl. hover invert) */}
-                  <span
-                    aria-hidden
-                    className="absolute left-1/2 top-full h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rotate-45 rounded-[2px] border-b border-r border-white bg-error group-hover:bg-white"
-                  />
+                  <X size={12} strokeWidth={3} aria-hidden="true" />
                 </button>
               )}
             </div>
@@ -624,9 +637,9 @@ function LineOverlay({
           <div
             key={h}
             onPointerDown={(e) => onStartDrag(e, line, h)}
-            className="absolute h-[10px] w-[10px] rounded-[2px] border-2 bg-white"
+            className="absolute h-2 w-2 border-[1.5px] bg-white"
             style={{
-              borderColor: c,
+              borderColor: "var(--ov-line-selected)",
               cursor: handleCursor(h),
               touchAction: "none",
               ...handlePos(h),
@@ -641,13 +654,13 @@ function handlePos(h: Handle): React.CSSProperties {
   const o = -5;
   const map: Record<Handle, React.CSSProperties> = {
     nw: { left: o, top: o },
-    n: { left: "calc(50% - 5px)", top: o },
+    n: { left: "calc(50% - 4px)", top: o },
     ne: { right: o, top: o },
-    e: { right: o, top: "calc(50% - 5px)" },
+    e: { right: o, top: "calc(50% - 4px)" },
     se: { right: o, bottom: o },
-    s: { left: "calc(50% - 5px)", bottom: o },
+    s: { left: "calc(50% - 4px)", bottom: o },
     sw: { left: o, bottom: o },
-    w: { left: o, top: "calc(50% - 5px)" },
+    w: { left: o, top: "calc(50% - 4px)" },
   };
   return map[h];
 }

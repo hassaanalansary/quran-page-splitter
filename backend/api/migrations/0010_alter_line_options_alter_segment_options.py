@@ -4,18 +4,17 @@ from django.db import migrations
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('api', '0009_mushaf_pdf_original_name_activityevent'),
+        ("api", "0009_mushaf_pdf_original_name_activityevent"),
     ]
 
     operations = [
         migrations.AlterModelOptions(
-            name='line',
-            options={'ordering': ('line_number',), 'verbose_name': 'Line', 'verbose_name_plural': 'Lines'},
+            name="line",
+            options={"ordering": ("line_number",), "verbose_name": "Line", "verbose_name_plural": "Lines"},
         ),
         migrations.AlterModelOptions(
-            name='segment',
-            options={'ordering': ('segment_order',), 'verbose_name': 'Segment', 'verbose_name_plural': 'Segments'},
+            name="segment",
+            options={"ordering": ("segment_order",), "verbose_name": "Segment", "verbose_name_plural": "Segments"},
         ),
     ]

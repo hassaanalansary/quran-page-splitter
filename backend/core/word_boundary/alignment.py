@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
 
-from core.word_boundary.calibration import COUNT_SLACK, COUNT_WEIGHT
+from core.word_boundary.calibration import ANCHOR_PRICE, COUNT_SLACK, COUNT_WEIGHT
 from core.word_boundary.ink import Blob, LineInk, attach_marks
 from core.word_boundary.inputs import WordInput
 from core.word_boundary.results import WordBox
@@ -225,8 +225,11 @@ def _line_end(states: dict[StateKey, ParseRecord]) -> dict[StateKey, ParseRecord
 
 
 def _with_mark(record: ParseRecord, blob: Blob) -> ParseRecord:
+    # An anchored blob is a letter of its word, the library is sure: left out of every
+    # word, it costs what reading it in another would.
+    anchor = ANCHOR_PRICE if blob.library_word_id is not None else 0
     return ParseRecord(
-        cost=record.cost + blob.cost_as_mark,
+        cost=record.cost + blob.cost_as_mark + anchor,
         ends=record.ends,
         groups=record.groups,
         current_group=record.current_group,
@@ -241,6 +244,24 @@ def _with_mark(record: ParseRecord, blob: Blob) -> ParseRecord:
     )
 
 
+def _off_count(done: int, want: int, short_weight: int) -> int:
+    """What a word closing on ``done`` PAWs of the ``want`` its spelling demands pays:
+    COUNT_WEIGHT for each one too many, the word's own ``short_weight`` for each one
+    missing — cheaper where its letters are likely to be printed touching."""
+    if done >= want:
+        return COUNT_WEIGHT * (done - want)
+    return short_weight * (want - done)
+
+
+def list_body_counts(blob: Blob) -> list[tuple[int, int]]:
+    """The piece counts a body may be read as, each with its price: its own count; or,
+    where the library says it is pieces printed as one, that many for free and one at
+    the library's price. A person's count or word is never second-guessed."""
+    if blob.library_paws > 1 and blob.paw_count == 1 and blob.assigned_word_id is None:
+        return [(blob.library_paws, 0), (1, blob.library_paws_price)]
+    return [(blob.paw_count, 0)]
+
+
 def _with_body(
     record: ParseRecord,
     blob: Blob,
@@ -250,7 +271,35 @@ def _with_body(
     *,
     allow_full: bool = False,
 ) -> list[tuple[StateKey, ParseRecord]]:
-    """Every way this component can extend or finish the current word.
+    """Every way this component can extend or finish the current word — for each piece
+    count it may be read as (:func:`list_body_counts`)."""
+    word_index = state[0]
+    if blob.locked_role == "mark" or word_index >= len(words):
+        return []
+    if blob.assigned_word_id is not None and blob.assigned_word_id != words[word_index].id:
+        return []
+    anchor = ANCHOR_PRICE if blob.library_word_id not in (None, words[word_index].id) else 0
+    found: list[tuple[StateKey, ParseRecord]] = []
+    for paws, price in list_body_counts(blob):
+        found += extend_word_with_body(
+            record, blob, ident, words, state, paws=paws, price=price + anchor, allow_full=allow_full
+        )
+    return found
+
+
+def extend_word_with_body(
+    record: ParseRecord,
+    blob: Blob,
+    ident: int,
+    words: list[WordInput],
+    state: tuple,
+    *,
+    paws: int,
+    price: int,
+    allow_full: bool = False,
+) -> list[tuple[StateKey, ParseRecord]]:
+    """The body read as ``paws`` pieces at ``price``: closing the current word, or
+    carrying on in it.
 
     A word may close having taken up to COUNT_SLACK blobs more or fewer than its
     spelling demands, priced at COUNT_WEIGHT each. That is what keeps a fused
@@ -258,12 +307,8 @@ def _with_body(
     a boundary, and the next word starts where it should.
     """
     word_index, done = state[:2]
-    if blob.locked_role == "mark" or word_index >= len(words):
-        return []
-    if blob.assigned_word_id is not None and blob.assigned_word_id != words[word_index].id:
-        return []
     want = words[word_index].paws
-    done += blob.paw_count
+    done += paws
     if done > want + COUNT_SLACK:
         return []
 
@@ -271,7 +316,7 @@ def _with_body(
     # line, and a reading now runs across line breaks, so groups and the role mask
     # are keyed by the blob's position in the span's flat reading order.
     group = (*record.current_group, ident)
-    cost = record.cost + blob.cost_as_body
+    cost = record.cost + blob.cost_as_body + price
     body_mask = record.body_mask | (1 << ident)
     left = min(record.current_left, blob.x) if record.current_left is not None else blob.x
     backwards = int(record.previous_end is not None and left >= record.previous_end)
@@ -282,7 +327,7 @@ def _with_body(
             (
                 (word_index + 1, 0),
                 ParseRecord(
-                    cost=cost + COUNT_WEIGHT * abs(done - want),
+                    cost=cost + _off_count(done, want, words[word_index].short_weight),
                     ends=(*record.ends, left),
                     groups=(*record.groups, group),
                     current_group=(),
@@ -296,7 +341,7 @@ def _with_body(
                 ),
             )
         )
-    if done < want + COUNT_SLACK or allow_full or blob.constrained:
+    if done < want + COUNT_SLACK or allow_full or blob.constrained or paws > 1:
         options.append(
             (
                 (word_index, done),
@@ -388,6 +433,13 @@ def apply_parse_roles(ink: LineInk, parsed: LineParse) -> None:
         elif blob.label in parsed.committed_labels:
             blob.role = "body" if blob.label in parsed.body_labels else "mark"
             blob.role_ambiguous = blob.label in parsed.role_ambiguous_labels
+        elif blob.library_role == "mark":
+            # No word took it as a letter, and the library says mark: a mark — not
+            # the preferred role a sukun or a small waw on the writing line falls back
+            # to, which reported every such mark the reading rightly left out as an
+            # orphan letter for the reviewer to undo.
+            blob.role = "mark"
+            blob.role_ambiguous = False
         else:
             blob.role = "body" if blob.preferred == "body" else "mark"
             blob.role_ambiguous = blob.preferred != "mark-only" and not blob.small_for_body

@@ -40,7 +40,7 @@ from core.word_boundary.alignment import (
     _required_marks_present,
     parser_events,
 )
-from core.word_boundary.calibration import MAX_LIVE_STATES
+from core.word_boundary.calibration import MAX_LIVE_STATES, PRICED_BEAM
 from core.word_boundary.ink import Blob, LineInk
 from core.word_boundary.inputs import IjamMode, WordInput
 
@@ -130,6 +130,14 @@ def _required_end(aya: str | None, ends: dict[str, int], entry: int, starts: lis
     return _aya_end_after(entry, starts)
 
 
+def _within_beam(states: dict[StateKey, ParseRecord]) -> dict[StateKey, ParseRecord]:
+    """The states no dearer than the cheapest by more than PRICED_BEAM."""
+    if not states:
+        return states
+    ceiling = min(record.cost for record in states.values()) + PRICED_BEAM
+    return {key: record for key, record in states.items() if record.cost <= ceiling}
+
+
 def _fresh(word: int) -> dict[StateKey, ParseRecord]:
     return {(word, 0, None, None): ParseRecord(0, (), (), (), 0)}
 
@@ -208,6 +216,8 @@ def parse_span(
     #: the constrained components inside them — the diagnostic, not a withdrawal.
     boundary_misses: list[tuple[list[_Event], set[int]]] = []
     budget_failed = False
+    #: The library prices a component of this span: search it within PRICED_BEAM.
+    priced = any(blob.library_role is not None for _, blob in by_ident.values())
     #: A constrained component has been spent in the stretch being read. Only then
     #: does a failure wait for the ornament instead of committing early the frozen
     #: way: an early commit could drop a forced body, or split the stretch a
@@ -222,6 +232,8 @@ def parse_span(
             if event.kind == "blob":
                 assert event.blob is not None
                 retried = _advance(retried, event.blob, event.ident, words, allow_full=has_fragments)
+                if priced:
+                    retried = _within_beam(retried)
                 if len(retried) > MAX_LIVE_STATES:
                     budget_failed = True
                     return {}
@@ -366,6 +378,8 @@ def parse_span(
             assert event.blob is not None
             blob = event.blob
             states = _advance(states, blob, event.ident, words, allow_full=has_fragments)
+            if priced:
+                states = _within_beam(states)
             peak = max(peak, len(states))
             ink_since_anchor = True
             lines_since_anchor.add(event.line)

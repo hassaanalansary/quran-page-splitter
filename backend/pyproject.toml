@@ -15,6 +15,9 @@ dependencies = [
     "pymupdf>=1.27.2.3",
     "django-allauth[headless-spec,socialaccount]>=65.19.1",
     "psycopg[binary]>=3.3.4",
+    "celery[redis]>=5.7.0",
+    "gunicorn>=27.0.0",
+    "whitenoise>=6.12.0",
 ]
 
 [dependency-groups]
@@ -24,6 +27,8 @@ dev = [
     "django-stubs-ext>=5.2.8",
     "django-stubs[compatible-mypy]==6.0.6",
     "django-watchfiles>=1.4.0",
+    "flower>=2.2.0",
+    "tblib>=3.2.2",
 ]
 
 [tool.ruff]
@@ -57,6 +62,27 @@ known-first-party = ["api", "config", "core", "quran"]
 "quran/tests/test_arabic.py" = ["RUF001"]
 "quran/tests/test_quran_text.py" = ["RUF001"]
 "quran/management/commands/build_aya_boundaries.py" = ["RUF001"]
+# The contents keys and the body shapes are tables and examples of Arabic letters too,
+# in their docstrings and comments as much as in their code.
+"core/text/contents.py" = ["RUF001", "RUF002", "RUF003"]
+"core/text/rasm.py" = ["RUF001", "RUF002", "RUF003"]
+"core/text/paw_inventory.py" = ["RUF001", "RUF002", "RUF003"]
+"core/tests/test_contents_key.py" = ["RUF001", "RUF002", "RUF003"]
+"core/tests/test_rasm.py" = ["RUF001", "RUF002", "RUF003"]
+"core/tests/test_paw_inventory.py" = ["RUF001", "RUF002", "RUF003"]
+"core/word_boundary/habits.py" = ["RUF001", "RUF002", "RUF003"]
+"core/word_boundary/word_reader.py" = ["RUF001", "RUF002", "RUF003"]
+"core/tests/test_habits.py" = ["RUF001", "RUF002", "RUF003"]
+"core/tests/test_word_reader.py" = ["RUF001", "RUF002", "RUF003"]
+"core/tests/test_word_boundary_library.py" = ["RUF001", "RUF002", "RUF003"]
+"api/services/blob_contents.py" = ["RUF001", "RUF002", "RUF003"]
+"api/services/page_reader.py" = ["RUF001", "RUF002", "RUF003"]
+"api/services/habit_counts.py" = ["RUF001", "RUF002", "RUF003"]
+"api/services/library_keys.py" = ["RUF001", "RUF002", "RUF003"]
+"api/services/line_prices.py" = ["RUF001", "RUF002", "RUF003"]
+"core/word_boundary/library.py" = ["RUF001", "RUF002", "RUF003"]
+"core/word_boundary/library_updates.py" = ["RUF001", "RUF002", "RUF003"]
+"api/services/calibration_examples.py" = ["RUF001", "RUF002", "RUF003"]
 
 [tool.ruff.format]
 quote-style = "double"
@@ -80,6 +106,11 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "environ"
+ignore_missing_imports = true
+
+# Celery and kombu ship no type information.
+[[tool.mypy.overrides]]
+module = ["celery.*", "kombu.*"]
 ignore_missing_imports = true
 
 # django-allauth ships no py.typed marker; the django-stubs plugin still pulls

@@ -6,7 +6,6 @@ import { CropPreview } from "@/components/canvas/CropPreview";
 import type { Rect } from "@/lib/api/types";
 
 type Props =
-  | { mode: "bounds"; pageUrl: string; working: Rect | null; mirrored?: boolean }
   | { mode: "template"; pageUrl: string; working: Rect | null }
   | {
       mode: "ignore";
@@ -36,38 +35,23 @@ export function TemplatePreview(props: Props) {
     );
   }
 
-  if (props.mode === "bounds") {
-    return (
-      <div className="flex flex-1 flex-col gap-2 overflow-auto">
-        <Header title={t("canvas.tpl_boundsPreview")} />
-        <CropPreview
-          imageUrl={props.pageUrl}
-          rect={props.working}
-          height={340}
-          mirrored={props.mirrored}
-          caption={props.mirrored ? t("canvas.tpl_mirroredCaption") : undefined}
-        />
-      </div>
-    );
-  }
-
   const { pageUrl, working, parentLabel, parentImageUrl, ignoreRelative } = props;
   return (
     <div className="flex flex-1 flex-col gap-3 overflow-auto">
       <Header title={t("canvas.tpl_ignorePreview")} />
       {!parentImageUrl ? (
-        <div className="flex items-center gap-2 rounded-md border border-error-border bg-error-bg px-3 py-2.5 text-[12px] text-error">
+        <div className="flex items-center gap-2 rounded-md border border-stop/20 bg-stop-wash px-3 py-2.5 text-[12px] text-stop-text">
           <TriangleAlert size={15} className="flex-shrink-0" />
           {t("canvas.tpl_captureFirst", { label: parentLabel })}
         </div>
       ) : (
         <>
           <div>
-            <div className="mb-1 text-[11px] text-text-muted">{t("canvas.tpl_liveSelection")}</div>
+            <div className="mb-1 text-[11px] text-ink-3">{t("canvas.tpl_liveSelection")}</div>
             <CropPreview imageUrl={pageUrl} rect={working} height={90} />
           </div>
           <div className="flex flex-1 flex-col">
-            <div className="mb-1 text-[11px] text-text-muted">
+            <div className="mb-1 text-[11px] text-ink-3">
               {t("canvas.tpl_ignoredRed", { label: parentLabel })}
             </div>
             <ImageWithRedBox imageUrl={parentImageUrl} red={ignoreRelative} height={210} />
@@ -81,8 +65,8 @@ export function TemplatePreview(props: Props) {
 function Header({ title }: { title: string }) {
   return (
     <div className="flex items-center gap-2">
-      <span className="h-1.5 w-1.5 rounded-full bg-orange" />
-      <span className="text-[12px] font-semibold text-text-primary">{title}</span>
+      <span className="h-1.5 w-1.5 rounded-full bg-lapis" />
+      <span className="text-[12px] font-semibold text-ink">{title}</span>
     </div>
   );
 }
@@ -149,8 +133,9 @@ export function ImageWithRedBox({
     ctx.imageSmoothingQuality = "high";
     ctx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight, dx, dy, dw, dh);
     if (red) {
-      ctx.fillStyle = "rgba(226,75,74,0.20)";
-      ctx.strokeStyle = "#E24B4A";
+      // The overlay language's remove colour: the variable area is cut out.
+      ctx.fillStyle = "rgba(168,50,31,0.18)";
+      ctx.strokeStyle = "#a8321f";
       ctx.lineWidth = 2;
       const rx = dx + red.x * scale;
       const ry = dy + red.y * scale;
@@ -168,7 +153,7 @@ export function ImageWithRedBox({
   if (height === undefined) return canvas;
   return (
     <div
-      className="raqam-canvas-grid flex-1 overflow-hidden rounded-md border border-border"
+      className="canvas-well flex-1 overflow-hidden rounded-md border border-rule"
       style={{ height }}
     >
       {canvas}

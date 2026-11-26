@@ -4,8 +4,8 @@ settings, run it, and persist the resulting coordinates as Page/Line/Segment row
 This is the only place the ORM and the pure ``core`` engine meet.
 
 The run is *steerable*: callers pass ``should_cancel`` to stop it between pages
-and ``on_progress`` to watch it advance (see services/jobs.py, which binds both
-to a background job). Two consequences shape the code below:
+and ``on_progress`` to watch it advance (see ``api.services.jobs.kinds.detection``,
+which binds both to a background job). Two consequences shape the code below:
 
 * Pages are rendered **lazily**, one at a time, from a single open PDF handle —
   so a cancel never pays for work it is about to throw away, and a 600-page run
@@ -258,7 +258,7 @@ def preflight(mushaf: Mushaf, page_range_start: int, page_range_end: int) -> tup
     Once processing moves to a background job the HTTP response is already sent,
     so a bad range or a missing template would surface as a *failed run* instead
     of a rejected request. Callers therefore run these cheap DB-only checks
-    up front (see views/processing.process); ``process`` repeats them so a direct
+    up front (see ``start_detection_job``); ``process`` repeats them so a direct
     call is never left unguarded.
     """
     validators.validate_page_range(mushaf, page_range_start, page_range_end)
@@ -322,8 +322,9 @@ def _settle_stale_runs(mushaf: Mushaf) -> int:
 
     Nothing can finish them — the in-memory job that owned them is gone — so the
     next run on the same mushaf marks them ``interrupted``. Safe to call before
-    starting: services/jobs.py refuses to start a second run for a mushaf that
-    already has a live one, so this never touches a run still in flight.
+    starting: the job system (``api.services.jobs.admission``) refuses to start a
+    second run for a mushaf that already has a live one, so this never touches a run
+    still in flight.
     """
     return ProcessingRun.objects.filter(mushaf=mushaf, status=RunStatusChoices.RUNNING).update(
         status=RunStatusChoices.INTERRUPTED

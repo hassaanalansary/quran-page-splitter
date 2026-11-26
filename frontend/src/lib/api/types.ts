@@ -70,8 +70,16 @@ export type MushafDetail = Mushaf & {
   pdf_original_name: string;
   published_at: string | null;
   description: string;
-  /** Pad every exported line PNG on a page out to that page's tallest line. */
-  export_uniform_size: boolean;
+  /** How tall each exported line PNG is — see `LinePngSize`. */
+  line_png_size: LinePngSize;
+  /** Pages whose line cuts a person marked checked in Finalize. */
+  finalized_page_count: number;
+  /** The padding the latest checked pages agree on, put on each page that opens
+   * in Finalize with none yet; null while they differ. */
+  usual_line_padding: number | null;
+  /** How the latest checked pages finished their sura headers, for the headers of
+   * a page that opens with its lines unpadded; null until there are enough. */
+  usual_sura_header: UsualSuraHeader | null;
   /** Whether word detection checks a word against the dots its spelling expects.
    * A fact about the printing, not about the text — see `IjamMode`. */
   ijam_mode: IjamMode;
@@ -89,6 +97,13 @@ export type MushafDetail = Mushaf & {
  * candidate left. See `core/word_boundary/inputs.py`. */
 export type IjamMode = "report" | "ignore";
 
+/** How tall an exported line PNG is; every line keeps the page column's width.
+ * `box`: the line's own box. `uniform`: padded with transparent space to the
+ * page's largest line. `tight`: cut to the line's first and last inked row.
+ * `tight_uniform`: cut tight, then padded to the page's tallest tight line. */
+export const LINE_PNG_SIZES = ["box", "uniform", "tight", "tight_uniform"] as const;
+export type LinePngSize = (typeof LINE_PNG_SIZES)[number];
+
 export type MushafCreateResult = {
   mushaf: Mushaf;
   warnings: { duplicate_file: boolean };
@@ -99,7 +114,7 @@ export type MushafPatch = Partial<{
   qiraa: string | null;
   first_quran_pdf_page: number;
   last_quran_pdf_page: number;
-  export_uniform_size: boolean;
+  line_png_size: LinePngSize;
   ijam_mode: IjamMode;
 }>;
 
@@ -156,6 +171,9 @@ export type Line = {
   segments: Segment[];
   /** Cut-layer erase strokes (from GET pages/{n}); absent on the review-save path. */
   erase_strokes?: EraseStroke[];
+  /** Whether the export cuts the ink reaching over the line's top or bottom edge
+   * (from GET pages/{n}); absent on the review-save path. */
+  erase_edge_ink?: boolean;
   /** Media URL of the exported PNG, or null when this line was never exported. */
   line_png?: string | null;
 };
@@ -163,7 +181,22 @@ export type Line = {
 export type PageData = {
   page_number: number;
   bbox: Rect | null;
+  /** A person marked this page's line cuts checked in Finalize. */
+  lines_finalized?: boolean;
+  /** The padding the lines were given in Finalize as of the last save there;
+   * null until then, and again once the lines are rebuilt. */
+  line_padding?: number | null;
+  /** The same for the page's sura headers; null on a page without one. */
+  sura_header_padding?: number | null;
   lines: Line[];
+};
+
+/** Each null when the latest checked pages differ on it. */
+export type UsualSuraHeader = {
+  /** The padding they all gave their sura headers. */
+  padding: number | null;
+  /** Whether they all had their headers' edge ink erased. */
+  erase_edge_ink: boolean | null;
 };
 
 export type PageSura = { number: number; transliteration: string; name_arabic: string };
@@ -172,6 +205,8 @@ export type PageSura = { number: number; transliteration: string; name_arabic: s
 export type PageSummary = {
   page_number: number;
   reviewed: boolean;
+  /** A person marked this page's line cuts finished in Finalize. */
+  lines_finalized: boolean;
   /** Resolved physical PDF page (override or derived from the Quran range). */
   source_pdf_page: number;
   lines: number;
@@ -242,8 +277,11 @@ export type AbortInfo = {
   debug_images: string[];
 };
 
-/** Terminal states a run settles in; anything else means it is still working. */
+/** A job's state. `queued` and `running` are active: the job holds its mushaf.
+ * Every other state is one a job settles in. */
 export type ProcessJobState =
+  /** Requested, and waiting for a worker to start it. */
+  | "queued"
   | "running"
   | "completed"
   | "aborted_line_detection"
@@ -256,8 +294,43 @@ export type ProcessJobState =
 /** What the run is doing right now — drives the progress label. */
 export type ProcessJobPhase = "starting" | "rendering" | "detecting" | "saving" | "finished";
 
-/** Which engine a run drives: detection walks pages, words walks lines. */
-export type ProcessJobKind = "detection" | "words" | "calibration";
+/** Which engine a run drives: detection walks pages, calibration processes one page
+ * for review — or, as `calibration_batch`, a range of pages. `words` names the word
+ * runs of old, which history still lists. */
+export type ProcessJobKind =
+  | "detection"
+  | "words"
+  | "calibration"
+  | "calibration_batch"
+  | "library_rebuild";
+
+/** Why a calibration batch processes a page, or leaves it alone — see
+ * backend/api/services/calibration_batch.py. `drafted` is only a plan's word: such a
+ * draft is processed again if its lines changed (`stale`), else left (`current`). */
+export type BatchReason =
+  | "new"
+  | "refresh"
+  | "stale"
+  | "drafted"
+  | "current"
+  | "confirmed"
+  | "not_reviewed"
+  | "not_numbered"
+  | "missing";
+
+/** A calibration batch's account of its range, written as it goes. */
+export type CalibrationBatchReport = {
+  first: number;
+  last: number;
+  refresh: boolean;
+  /** Pages the plan expected to process when the batch started. */
+  planned: number;
+  processed: number[];
+  skipped: Partial<Record<BatchReason, number[]>>;
+  failed: { page: number; error: string }[];
+  /** Seconds spent processing, over the pages processed so far. */
+  busy_seconds: number;
+};
 
 /** Live state of a processing run (POST /process, GET /process/job).
  *
@@ -267,6 +340,9 @@ export type ProcessJob = {
   id: string;
   mushaf_id: string;
   state: ProcessJobState;
+  /** A queued job's place in the queue: how many queued jobs were requested
+   * before it. Null once the job is no longer queued. */
+  queue_position: number | null;
   phase: ProcessJobPhase;
   page_range_start: number;
   page_range_end: number;
@@ -277,7 +353,11 @@ export type ProcessJob = {
   current_page: number | null;
   /** A cancel has been asked for but the run hasn't settled yet. */
   cancel_requested: boolean;
-  started_at: string;
+  /** When the job was asked for. */
+  requested_at: string;
+  /** When a worker began it. Null while the job is queued, and for a job that was
+   * cancelled before it started. */
+  run_started_at: string | null;
   ended_at: string | null;
   run_id: string | null;
   log_url: string | null;
@@ -296,6 +376,8 @@ export type ProcessJob = {
   /** Word runs count lines, not pages: read this against `total`, and leave
    * `pages_saved` alone (it stays 0 for the whole run). */
   lines_done: number;
+  /** Calibration batches only: what has happened to each page of the range. */
+  report?: CalibrationBatchReport | null;
 };
 
 export const PROCESS_JOB_DONE: readonly ProcessJobState[] = [
@@ -312,8 +394,21 @@ export function isJobSettled(job: ProcessJob | null | undefined): boolean {
   return !!job && PROCESS_JOB_DONE.includes(job.state);
 }
 
-export function isJobRunning(job: ProcessJob | null | undefined): boolean {
+/** Is this job queued or running? An active job is the one to poll, and it
+ * holds its mushaf: nothing else can be started there until it settles. */
+export function isJobActive(job: ProcessJob | null | undefined): boolean {
   return !!job && !isJobSettled(job);
+}
+
+/** Is this job waiting for a worker? Nothing of it has run yet. */
+export function isJobQueued(job: ProcessJob | null | undefined): boolean {
+  return job?.state === "queued";
+}
+
+/** Did this job settle without ever starting? It was cancelled while it waited,
+ * or no worker picked it up. */
+export function didJobNeverStart(job: ProcessJob | null | undefined): boolean {
+  return !!job && isJobSettled(job) && job.run_started_at === null;
 }
 
 /** One stored processing run (GET /api/mushafs/{id}/runs, newest first). */
@@ -383,6 +478,7 @@ export type FinalizeLine = {
   line_number: number;
   bbox_override: Rect | null;
   erase_strokes: EraseStroke[];
+  erase_edge_ink: boolean;
 };
 
 export type ExportResult = {
@@ -435,144 +531,4 @@ export type ReviewData = {
 export type BulkSaveInput = {
   pages: { page_number: number; bbox: Rect; lines: Line[] }[];
   reviewed_pages: number[];
-};
-
-// ── Word boundaries ─────────────────────────────────────────────────────────
-// Where each word of a line ends. `end_x` is PAGE x — the same space as
-// Line.bbox_* and Segment.bbox_*, and the space pageImageUrl() serves — so
-// nothing here needs converting to draw. The engine's own image-x coordinates
-// are bridged server-side (see save_word_coordinates), and never reach us.
-
-/** One word's box on a line, `start_x`..`end_x` across the line's full height.
- *
- * Arabic runs right to left, so **`start_x` is the LARGER number** — a word starts at
- * its right edge and ends at its left. Neither says which word it is: the API returns
- * these in reading order and `position` records it, because the engine's placement is
- * a suggestion and a badly read line comes back with its boxes out of order along the
- * page. Never re-sort by geometry.
- *
- * Boxes do not tile the line — the gap between words is real — and about 7% of them
- * overlap a neighbour, where a tail sweeps under the next word. Both are measured. */
-export type WordCut = {
-  /** Null where this mushaf prints a word the stored Hafs text has no row for.
-   * The cut is the product; the label is optional. */
-  word_id: number | null;
-  /** Slot in the line's reading order, from 0. */
-  position: number;
-  /** The word's RIGHT edge — larger than `end_x`. */
-  start_x: number;
-  end_x: number;
-  /** Display only, derived server-side from `word_id`; empty when unlabelled. */
-  text: string;
-  /** "7:82", likewise display only. */
-  aya: string;
-};
-
-/** How much the engine trusted its reading of one line. `exact` needs no look;
- * everything else is what the reviewer is routed to. */
-export type WordLineStatus = "exact" | "scored" | "partial" | "unresolved";
-
-export type LineWords = {
-  line_id: string;
-  line_number: number;
-  /** Null when the engine has never run over this line. */
-  status: WordLineStatus | null;
-  reason: string;
-  /** Words that closed on more or fewer ink blobs than their spelling demands. */
-  deviations: number;
-  /** Equal-cost readings the parser could not separate. */
-  ties: number;
-  /** A human has corrected this line since the engine last spoke. */
-  edited: boolean;
-  words: WordCut[];
-};
-
-/** A way the stored words stopped reading as one text. Reported, never enforced:
- * fixing line 10 before line 11 passes through a broken state on purpose. */
-export type CoherenceIssue = {
-  kind: "gap" | "overlap" | "outside_aya" | "out_of_sequence" | "unknown_word" | string;
-  detail: string;
-  line_number: number | null;
-  words: number[];
-};
-
-export type PageWords = {
-  page: number;
-  lines: LineWords[];
-  issues: CoherenceIssue[];
-};
-
-/** PUT body: whole lines, never single rows. Add = include it, delete = omit it,
- * move across a line break = list it under the other line. */
-export type PageWordsSave = {
-  lines: {
-    line_id: string;
-    /** Both edges, and no position: the array's order is the reading order. */
-    words: { word_id: number | null; start_x: number; end_x: number }[];
-  }[];
-};
-
-export type PageWordCoverage = {
-  page: number;
-  text_lines: number;
-  lines_with_words: number;
-  words: number;
-  /** Lines the engine was not confident about — where the reviewer should look. */
-  needs_review: number;
-  complete: boolean;
-};
-
-/** Needs no staleness flag: re-processing a page deletes its lines and cascades
- * the words away, so a stale page honestly reports as having none. */
-export type WordCoverage = {
-  pages: PageWordCoverage[];
-  complete: boolean;
-};
-
-/** The span to read, as (sura, aya) at each end. The two ends are independent, so a
- * run may cover part of a sura, a sura, or every sura the mushaf holds.
- *
- * Each omission means something different, and all three are resolved server-side
- * because only it knows this mushaf's counting system: no `to_*` is "through the end
- * of the sura this starts in", `to_sura` alone is "through the end of THAT sura",
- * both is that exact aya. `from_aya` defaults to 1. For the whole mushaf, ask
- * `getWordsSpan` what it holds and send those two ends — a mushaf part way through
- * review rarely runs 1:1 .. 114:6, and an end that is on no page cannot be located. */
-export type DetectWordsRequest = {
-  from_sura: number;
-  from_aya?: number;
-  to_sura?: number;
-  to_aya?: number;
-};
-
-/** A stretch of the span with no pages behind it, which the run steps over.
- *
- * The engine walks one cursor through one word stream, so it cannot be handed a span
- * whose middle pages are missing — it would read every later line against the wrong
- * words. The plan cuts the run either side instead, and reports the hole here. */
-export type WordSpanGap = {
-  /** "2:281" — the last aya read before the break, and the first one after it. */
-  after: string;
-  before: string;
-  after_page: number;
-  before_page: number;
-  unnumbered_lines: number;
-};
-
-export type DetectWordsResult = {
-  job: ProcessJob;
-  /** Chunks the run was split into — progress counts lines, not these. */
-  chunks: number;
-  total_lines: number;
-  /** Not reasons it was refused; things worth knowing anyway. */
-  warnings: string[];
-  /** Empty for the ordinary span. On a long one, which parts were skipped. */
-  gaps: WordSpanGap[];
-};
-
-/** The widest span this mushaf can be asked for — what "whole mushaf" resolves to.
- * Both ends are null on a mushaf nothing has numbered yet. */
-export type MushafSpan = {
-  start: { sura: number; aya: number } | null;
-  end: { sura: number; aya: number } | null;
 };

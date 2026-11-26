@@ -1,11 +1,15 @@
 """Export final transparent line PNGs from a page's coordinates + erase strokes.
 
 Each line is cropped from the freshly rendered page, its white background is
-made transparent, eraser strokes are punched out of the alpha channel, and the
+made transparent, on a line with ``erase_edge_ink`` every piece of ink reaching over
+its top or bottom edge is cut, eraser strokes are punched out of the alpha channel —
+and so, pixel for pixel, is every blob a person erased in Calibrate — and the
 PNG is saved under ``media/mushafs/<id>/lines/`` with its path recorded on
-the line. With ``Mushaf.export_uniform_size`` on, every line of a page is then
-centred on a transparent canvas the size of that page's largest line, so the
-whole page exports at one size.
+the line. ``Mushaf.line_png_size`` then sets its height: the line's own box; or
+centred on a transparent canvas the size of that page's largest line, so the whole
+page exports at one size; or cut down to its first and last inked row, with the
+rows cut off recorded on the line so its place on the page can still be told; or
+cut so first and then centred on a canvas the size of the page's tallest cut line.
 
 ``lines_zip`` bundles those stored PNGs into a downloadable archive — the way
 the images leave the tool and land wherever the user wants them.
@@ -17,6 +21,7 @@ import uuid
 import zipfile
 from tempfile import SpooledTemporaryFile
 
+import numpy as np
 from django.core.files.base import ContentFile
 from django.db.models import Prefetch
 from ninja.errors import HttpError
@@ -24,10 +29,10 @@ from PIL import Image, ImageDraw
 
 from accounts.models import User
 from api import i18n
-from api.models import ActivityTypeChoices, Line, Page, Segment
+from api.models import INK_CROPPED_PNG_SIZES, PAGE_SIZED_PNG_SIZES, ActivityTypeChoices, Line, Page, Segment
 from api.services import activity, coordinates, pdf
 from api.services import mushaf as mushaf_service
-from core.imaging import apply_eraser_stroke, make_transparent
+from core.imaging import apply_eraser_stroke, find_edge_ink, find_ink, make_transparent
 
 #: Keep small archives in RAM; larger ones spill to a temp file on disk.
 _ZIP_SPOOL_BYTES = 16 * 1024 * 1024
@@ -44,24 +49,41 @@ def export_lines(*, user: User, mushaf_id: uuid.UUID, page_number: int) -> dict:
 
     column = coordinates.page_column(page)
     lines = list(page.lines.order_by("line_number").prefetch_related("erase_strokes"))
+    # Imported here: calibration reaches this module through line_images.
+    from api.services import calibration
 
-    # Rendered up front rather than streamed one at a time: a uniform canvas can
-    # only be sized once every line on the page has been cut and erased. Fifteen
-    # RGBA line crops is a manageable amount to hold.
-    rendered = [(line, render_line_image(image, line, column)) for line in lines]
+    # Blobs a person erased in Calibrate — noise the cutting left — go too.
+    erased = calibration.erased_ink(mushaf, page_number, lines)
+
+    # Rendered up front rather than streamed one at a time: a page-sized canvas can
+    # only be sized once every line on the page has been cut, erased and (when
+    # tight) cropped. Fifteen RGBA line crops is a manageable amount to hold.
+    rendered = []
+    for line in lines:
+        rgba = render_line_image(image, line, column)
+        if str(line.pk) in erased:
+            cut_erased(rgba, _origin(line, column), erased[str(line.pk)])
+        trim_top = trim_bottom = 0
+        if mushaf.line_png_size in INK_CROPPED_PNG_SIZES:
+            rgba, trim_top, trim_bottom = crop_to_ink_rows(rgba)
+        rendered.append((line, rgba, trim_top, trim_bottom))
     canvas: tuple[int, int] | None = None
-    if mushaf.export_uniform_size and rendered:
+    if mushaf.line_png_size in PAGE_SIZED_PNG_SIZES and rendered:
         canvas = (
-            max(img.width for _, img in rendered),
-            max(img.height for _, img in rendered),
+            max(img.width for _, img, _, _ in rendered),
+            max(img.height for _, img, _, _ in rendered),
         )
 
     exported: list[dict] = []
-    for line, rgba in rendered:
+    for line, rgba, trim_top, trim_bottom in rendered:
         # Priming the FK cache keeps models.line_png_path from re-querying the
         # page (and through it the mushaf) once per line.
         line.page = page
-        png_bytes = _to_png_bytes(_pad_to(rgba, canvas) if canvas else rgba)
+        if canvas:
+            rgba = _pad_to(rgba, canvas)
+        # Saved with the PNG below (line_png.save saves the row).
+        line.line_png_trim_top, line.line_png_trim_bottom = trim_top, trim_bottom
+        png_bytes = _to_png_bytes(rgba)
         filename = f"page-{page_number:04d}/line-{line.line_number:02d}.png"
         if line.line_png:
             line.line_png.delete(save=False)
@@ -194,6 +216,20 @@ def _pad_to(rgba: Image.Image, size: tuple[int, int]) -> Image.Image:
     return canvas
 
 
+def crop_to_ink_rows(rgba: Image.Image) -> tuple[Image.Image, int, int]:
+    """Cut a line image down to its first and last row with anything opaque left,
+    and say how many rows came off the top and the bottom. The width is kept, so
+    every line still spans the page column.
+
+    A line with no ink left at all is returned whole: a PNG has to have a row.
+    """
+    rows = np.flatnonzero(np.asarray(rgba.getchannel("A")).any(axis=1))
+    if rows.size == 0:
+        return rgba, 0, 0
+    top, last = int(rows[0]), int(rows[-1])
+    return rgba.crop((0, top, rgba.width, last + 1)), top, rgba.height - 1 - last
+
+
 def _to_png_bytes(rgba: Image.Image) -> bytes:
     buffer = io.BytesIO()
     rgba.save(buffer, format="PNG")
@@ -201,22 +237,19 @@ def _to_png_bytes(rgba: Image.Image) -> bytes:
 
 
 def render_line_image(image: Image.Image, line: Line, column: dict | None) -> Image.Image:
-    """Crop one line out of a rendered page, make it transparent, punch the erasers out.
+    """Crop one line out of a rendered page, make it transparent, cut its edge ink when
+    the line asks for that, and punch the erasers out.
 
     Public because ``services.line_images`` needs the same crop to feed the
     word-boundary engine — a line whose PNG was never exported, or one that must
-    line up with page coordinates, is cut here rather than read from disk.
+    line up with page coordinates, is cut here rather than read from disk. So the
+    edge ink is cut here too, not only in the export: the snapshots Ink measures and
+    labels come through here, and must not hold ink the line gave up in Finalize.
     """
-    # The line cut spans the page's text-column bounds (coordinates.page_column);
-    # the line's own x/w track content extent (from segments) and are left
-    # untouched. Only the vertical extent (Y/H) comes from the line.
-    col_x = column["x"] if column else line.bbox_x
-    col_w = column["w"] if column else line.bbox_w
-    left = max(0, col_x)
-    top = max(0, line.bbox_y)
-    right = min(image.width, col_x + col_w)
-    bottom = min(image.height, line.bbox_y + line.bbox_h)
+    left, top, right, bottom = line_crop_box(image, line, column)
     rgba = make_transparent(image.crop((left, top, right, bottom)))
+    if line.erase_edge_ink:
+        cut_edge_ink(rgba, image, line, column)
 
     strokes = list(line.erase_strokes.all())
     if strokes:
@@ -232,3 +265,59 @@ def render_line_image(image: Image.Image, line: Line, column: dict | None) -> Im
         rgba.putalpha(alpha)
 
     return rgba
+
+
+def line_crop_box(image: Image.Image, line: Line, column: dict | None) -> tuple[int, int, int, int]:
+    """The (left, top, right, bottom) of the page a line image is cut from.
+
+    The line cut spans the page's text-column bounds (coordinates.page_column);
+    the line's own x/w track content extent (from segments) and are left
+    untouched. Only the vertical extent (Y/H) comes from the line.
+    """
+    col_x = column["x"] if column else line.bbox_x
+    col_w = column["w"] if column else line.bbox_w
+    left, top = _origin(line, column)
+    right = min(image.width, col_x + col_w)
+    bottom = min(image.height, line.bbox_y + line.bbox_h)
+    return left, top, right, bottom
+
+
+def _origin(line: Line, column: dict | None) -> tuple[int, int]:
+    """The page x and y of a line image's top-left pixel, as ``render_line_image`` cuts it."""
+    return max(0, column["x"] if column else line.bbox_x), max(0, line.bbox_y)
+
+
+def cut_edge_ink(rgba: Image.Image, image: Image.Image, line: Line, column: dict | None) -> None:
+    """Punch out of a line image the ink of neighbouring lines reaching over its top
+    or bottom edge (``core.imaging.edge_ink``). In place.
+
+    Found on the line's raw cut of the page, before any brush stroke, so it does not
+    depend on how a stroke is rasterised — the Finalize canvas runs the same rule on
+    the same pixels to preview it, and must find exactly what this does.
+    """
+    edge = find_edge_ink(find_ink(image.crop(line_crop_box(image, line, column))))
+    if not edge.any():
+        return
+    alpha = np.array(rgba.getchannel("A"))
+    alpha[edge] = 0
+    rgba.putalpha(Image.fromarray(alpha))
+
+
+def cut_erased(rgba: Image.Image, origin: tuple[int, int], erased: tuple[np.ndarray, int, int]) -> None:
+    """Punch the ink a person erased in Calibrate out of a line image's alpha. In place.
+
+    ``erased`` is ``calibration.erased_ink``'s: a mask and the page x and y of its
+    top-left; ``origin`` is the image's own. Exact to the pixel, unlike a brush stroke —
+    and kept out of ``render_line_image``, which also feeds the snapshots the erase was
+    made on.
+    """
+    mask, x, y = erased
+    alpha = np.array(rgba.getchannel("A"))
+    dx, dy = x - origin[0], y - origin[1]
+    sx, sy, tx, ty = max(0, -dx), max(0, -dy), max(0, dx), max(0, dy)
+    width = min(mask.shape[1] - sx, alpha.shape[1] - tx)
+    height = min(mask.shape[0] - sy, alpha.shape[0] - ty)
+    if width <= 0 or height <= 0:
+        return
+    alpha[ty : ty + height, tx : tx + width][mask[sy : sy + height, sx : sx + width]] = 0
+    rgba.putalpha(Image.fromarray(alpha))

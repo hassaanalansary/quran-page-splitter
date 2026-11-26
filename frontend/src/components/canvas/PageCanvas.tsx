@@ -1,10 +1,11 @@
-import { Lock, LockOpen } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { Rect } from "@/lib/api/types";
 import { useSpacePan, type CanvasTool } from "@/hooks/use-space-pan";
 import { useCtrlWheelZoom } from "@/hooks/use-ctrl-wheel-zoom";
 import { useZoomToPointer } from "@/hooks/use-zoom-to-pointer";
+
+import { PageGhost } from "./PageGhost";
 
 export type { CanvasTool };
 
@@ -30,8 +31,9 @@ type Props = {
   mirrored?: boolean;
   /** Freezes the crop rect (no drag, no resize handles) while keeping it visible. */
   locked?: boolean;
-  /** When given, the rect's badge carries a lock toggle. */
-  onToggleLock?: () => void;
+  /** `bounds` draws the rect in the overlay language's text-area colour, dashed,
+   * with its position and size on the label (Process). */
+  tone?: "bounds";
 };
 
 type NaturalSize = { w: number; h: number };
@@ -59,7 +61,7 @@ export function PageCanvas({
   tool = "select",
   mirrored = false,
   locked = false,
-  onToggleLock,
+  tone,
 }: Props) {
   const { t } = useTranslation();
   const { scrollRef, effectiveTool, handCursor, containerProps } = useSpacePan({ tool });
@@ -217,7 +219,7 @@ export function PageCanvas({
   return (
     <div
       ref={scrollRef}
-      className="raqam-canvas-grid relative flex-1 overflow-auto outline-none"
+      className="canvas-well relative flex-1 overflow-auto outline-none"
       {...containerProps}
       style={effectiveTool === "hand" ? { cursor: handCursor } : undefined}
     >
@@ -231,9 +233,9 @@ export function PageCanvas({
           }}
         >
           <div
-            className="relative rounded-[4px] border border-border bg-white"
+            className="relative rounded-[4px] border border-rule bg-white"
             style={{
-              boxShadow: "var(--shadow-page)",
+              boxShadow: "var(--shadow-card)",
               width: displayW || "auto",
               height: displayH || "auto",
             }}
@@ -274,18 +276,19 @@ export function PageCanvas({
                 dimming={drawing}
                 mirrored={mirrored}
                 locked={locked}
-                onToggleLock={mirrored ? undefined : onToggleLock}
+                tone={tone}
               />
             )}
           </div>
         </div>
       ) : (
         <div className="flex h-full items-center justify-center">
-          <div className="rounded-md bg-white/80 px-6 py-4 text-[13px] text-text-secondary shadow-[var(--shadow-sm)]">
-            Add images using the + tile below to begin.
+          <div className="rounded-card bg-card px-6 py-4 text-[13px] text-ink-2 shadow-[var(--shadow-card)]">
+            {t("canvas.noPageImage")}
           </div>
         </div>
       )}
+      {imageUrl && !natural && <PageGhost />}
     </div>
   );
 }
@@ -296,10 +299,10 @@ function RectOverlay({
   label,
   onBodyPointerDown,
   onHandlePointerDown,
-  onToggleLock,
   dimming,
   mirrored = false,
   locked = false,
+  tone,
 }: {
   rect: Rect;
   natural: NaturalSize;
@@ -313,11 +316,14 @@ function RectOverlay({
   mirrored?: boolean;
   /** Frozen by the user — same colours as usual, but no drag and no handles. */
   locked?: boolean;
-  /** Adds a lock toggle to the badge; the badge stays click-through without it. */
-  onToggleLock?: () => void;
+  tone?: "bounds";
 }) {
   const { t } = useTranslation();
   const frozen = mirrored || locked;
+  const bounds = tone === "bounds";
+  // Mirrored stays gold; the bounds are the overlay language's dashed text-area
+  // colour; any other crop (a template) is lapis.
+  const colour = mirrored ? "var(--gold)" : bounds ? "var(--ov-bounds)" : "var(--lapis)";
   const left = (rect.x / natural.w) * 100;
   const top = (rect.y / natural.h) * 100;
   const width = (rect.w / natural.w) * 100;
@@ -368,7 +374,7 @@ function RectOverlay({
         <div
           className="pointer-events-none absolute inset-0"
           style={{
-            background: "color-mix(in oklab, var(--navy) 10%, transparent)",
+            background: "color-mix(in oklab, var(--lapis) 10%, transparent)",
             clipPath: `polygon(0% 0%, 0% 100%, ${left}% 100%, ${left}% ${top}%, ${left + width}% ${top}%, ${left + width}% ${top + height}%, ${left}% ${top + height}%, ${left}% 100%, 100% 100%, 100% 0%)`,
           }}
         />
@@ -383,11 +389,9 @@ function RectOverlay({
           top: `${top}%`,
           width: `${width}%`,
           height: `${height}%`,
-          borderColor: mirrored ? "var(--navy)" : "var(--orange)",
-          borderStyle: frozen ? "dashed" : "solid",
-          backgroundColor: mirrored
-            ? "color-mix(in oklab, var(--navy) 6%, transparent)"
-            : "color-mix(in oklab, var(--orange) 4%, transparent)",
+          borderColor: colour,
+          borderStyle: frozen || bounds ? "dashed" : "solid",
+          backgroundColor: `color-mix(in oklab, ${colour} ${mirrored || bounds ? 6 : 4}%, transparent)`,
           cursor: frozen ? "default" : "move",
           pointerEvents: frozen ? "none" : undefined,
           touchAction: "none",
@@ -408,56 +412,56 @@ function RectOverlay({
               <div
                 key={h.key}
                 onPointerDown={onHandlePointerDown(h.key)}
-                className="absolute h-[12px] w-[12px] rounded-[3px] border-2 border-orange bg-white"
-                style={{ ...h.pos, cursor: h.cursor, touchAction: "none" }}
+                className="absolute h-[12px] w-[12px] rounded-[3px] border-2 bg-white"
+                style={{ ...h.pos, borderColor: colour, cursor: h.cursor, touchAction: "none" }}
               />
             ))}
           </>
         )}
-        {/* label badge — carries the lock toggle, so freezing the box needs no
-            panel space and sits where the user is already looking */}
-        <div
-          className="pointer-events-none absolute inline-flex items-center gap-1 rounded-pill py-[2px] ps-2 pe-2 text-[10px] font-semibold text-white"
-          style={{
-            top: "-22px",
-            left: "0px",
-            letterSpacing: "0.04em",
-            whiteSpace: "nowrap",
-            background: mirrored ? "var(--navy)" : "var(--orange)",
-          }}
-        >
-          <span>
+        {bounds ? (
+          // The bounds carry their position and size on the one label.
+          <div
+            dir="ltr"
+            className="pointer-events-none absolute -top-[26px] left-0 whitespace-nowrap rounded px-2 py-[2px] font-mono text-[11.5px] font-semibold"
+            style={{ background: colour, color: mirrored ? "var(--on-gold)" : "#ffffff" }}
+          >
             {mirrored
               ? `⇄ ${label} · ${t("canvas.mirrored")}`
-              : locked
-                ? `${label} · ${t("canvas.locked")}`
-                : label}
-          </span>
-          {onToggleLock && (
-            <button
-              type="button"
-              aria-pressed={locked}
-              aria-label={locked ? t("process.unlockBounds") : t("process.lockBounds")}
-              title={`${locked ? t("process.unlockBounds") : t("process.lockBounds")} — ${t("process.lockHint")}`}
-              onPointerDown={(e) => e.stopPropagation()}
-              onClick={onToggleLock}
-              className="pointer-events-auto -me-1 flex h-[17px] w-[17px] cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-white/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
+              : `${label} · ${Math.round(rect.x)}, ${Math.round(rect.y)} · ${Math.round(rect.w)} × ${Math.round(rect.h)}`}
+          </div>
+        ) : (
+          <>
+            {/* label badge */}
+            <div
+              className="pointer-events-none absolute inline-flex items-center gap-1 rounded-pill py-[2px] ps-2 pe-2 text-[10px] font-semibold"
+              style={{
+                top: "-22px",
+                left: "0px",
+                letterSpacing: "0.04em",
+                whiteSpace: "nowrap",
+                background: colour,
+                color: mirrored ? "var(--on-gold)" : "var(--on-lapis)",
+              }}
             >
-              {locked ? <Lock size={10} strokeWidth={2.75} /> : <LockOpen size={10} />}
-            </button>
-          )}
-        </div>
-        {/* dimension tag */}
-        <div
-          className="pointer-events-none absolute -translate-x-1/2 rounded-[3px] bg-navy px-[7px] py-[2px] text-[10px] font-medium text-white"
-          style={{
-            bottom: "-22px",
-            left: "50%",
-            whiteSpace: "nowrap",
-          }}
-        >
-          {Math.round(rect.w)} × {Math.round(rect.h)} px
-        </div>
+              {mirrored
+                ? `⇄ ${label} · ${t("canvas.mirrored")}`
+                : locked
+                  ? `${label} · ${t("canvas.locked")}`
+                  : label}
+            </div>
+            {/* dimension tag */}
+            <div
+              className="pointer-events-none absolute -translate-x-1/2 rounded-[3px] bg-lapis px-[7px] py-[2px] text-[10px] font-medium text-on-lapis"
+              style={{
+                bottom: "-22px",
+                left: "50%",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {Math.round(rect.w)} × {Math.round(rect.h)} px
+            </div>
+          </>
+        )}
       </div>
     </>
   );

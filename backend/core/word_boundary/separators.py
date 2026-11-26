@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Mapping
+from dataclasses import dataclass
 
 import cv2
 import numpy as np
@@ -43,7 +44,22 @@ HOLE_FRACTION = 0.12
 #: ink** from the line and no review step would ever show it. An ornament is also
 #: routinely broken or overlapped, which is what forces its threshold down; a
 #: sajda marker printed inline is not.
+#:
+#: A score alone is not enough, though. A small, nearly solid template matches any
+#: round blob of its size: al-Shamarly's rub' star scores 0.50-0.53 on the head of a
+#: و, and 0.72-0.85 on a real star. So a hit must also be a sign of its own
+#: (:func:`find_pieces_of_sign`) before any ink leaves the text.
 SYMBOL_MATCH_THRESHOLD = 0.5
+
+#: How far past the template's box a sign's pieces may reach, as a share of the
+#: template's width and height: a printed sign is seldom the template's exact size,
+#: nor the match exactly on it.
+SYMBOL_BOX_MARGIN = 0.2
+
+#: The share of the ink inside a hit's box that must belong to the sign's own pieces.
+#: A letter's head fails, its ink belonging to a letter that runs on outside the box;
+#: the rest lets a neighbour's tail graze a real sign.
+SYMBOL_OWN_INK = 0.9
 
 
 def split_separators(
@@ -70,31 +86,34 @@ def split_separators(
         # The caller found these already — the process phase does exactly this work
         # and stores the result, so paying for it twice is waste. Its spans are in
         # image coordinates; everything below works in the tight crop.
-        spans = _merge_spans([(left - ink.offset_x, right - ink.offset_x) for left, right in ink.supplied_separators])
+        spans = merge_overlapping_spans(
+            [(left - ink.offset_x, right - ink.offset_x) for left, right in ink.supplied_separators]
+        )
         logger.info(
             "    ornaments: %d supplied by the caller, detectors skipped — %s",
             len(spans),
-            _spans_text(spans, ink.offset_x) or "none",
+            describe_spans(spans, ink.offset_x) or "none",
         )
     else:
-        by_template = _separator_spans_by_template(ink, template, match_threshold) if template is not None else []
-        by_shape = _separator_spans_by_shape(ink)
-        spans = _merge_spans([*by_template, *by_shape])
+        by_template = find_spans_by_template(ink, template, match_threshold) if template is not None else []
+        by_shape = find_spans_by_shape(ink)
+        spans = merge_overlapping_spans([*by_template, *by_shape])
         logger.info(
             "    ornaments: template found %d, shape found %d, %d after merging — %s",
             len(by_template),
             len(by_shape),
             len(spans),
-            _spans_text(spans, ink.offset_x) or "none",
+            describe_spans(spans, ink.offset_x) or "none",
         )
     if not spans:
         return
 
-    # The ring, its digits, and any attached marks share a span, so the parser
-    # sees one explicit ornament event rather than several text components.
+    # The ring and its digits share a span, so the parser sees one explicit
+    # ornament event rather than several text components. Ink that reaches past the
+    # ring — the last word's fatha over its shoulder — is the text's.
     ink.separator_spans = spans
-    ink.separator_ayat = _label_spans(ink, spans)
-    kept, groups, befores = _partition(ink.components, spans)
+    ink.separator_ayat = label_spans_with_ayat(ink, spans)
+    kept, groups, befores = partition_ornament_pieces(ink.components, spans)
     ink.separators = groups
     ink.separator_after = befores
     ink.components = kept
@@ -120,12 +139,12 @@ def split_separators(
     )
 
 
-def _spans_text(spans: list[tuple[int, int]], offset_x: int) -> str:
+def describe_spans(spans: list[tuple[int, int]], offset_x: int) -> str:
     """Spans as the caller would name them: image coordinates, not the tight crop."""
     return " ".join(f"{left + offset_x}..{right + offset_x}" for left, right in spans)
 
 
-def _merge_spans(spans: list[tuple[int, int]]) -> list[tuple[int, int]]:
+def merge_overlapping_spans(spans: list[tuple[int, int]]) -> list[tuple[int, int]]:
     """Collapse overlapping hits so one ornament cannot be counted twice."""
     if not spans:
         return []
@@ -139,20 +158,35 @@ def _merge_spans(spans: list[tuple[int, int]]) -> list[tuple[int, int]]:
     return sorted(merged, key=lambda s: -s[1])
 
 
-def _partition(
+def partition_ornament_pieces(
     components: list[Blob],
     spans: list[tuple[int, int]],
 ) -> tuple[list[Blob], list[list[Blob]], list[int]]:
-    """Split components into those outside every span and those grouped by span.
+    """Split components into the text and one group of pieces per ornament span.
 
     Membership is by **centre**, not overlap: a letter whose tail reaches under an
     ornament still belongs to the text, and a dot sitting inside one does not.
 
-    The third return is, for each group, how many text bodies precede it — which
-    only the ornament caller needs, since that is what turns a span into a cut
-    point once every line's bodies are concatenated. A symbol is not a cut point
-    and throws it away.
+    The span is the template's width, and can reach well past the ring it found —
+    128 px against a 95 px ring on the first mushaf's opening pages. So a piece
+    also has to start and end inside the ring's own x-range, the ring being the
+    span's largest piece; the digits do, and a mark of the last word that reaches
+    over the ring's shoulder or sits beside it does not, and stays text::
+
+        span     ├──────────────────────────────┤
+        ring       ╭──────────╮
+        digit         [7]                         inside: the ornament's
+        fatha                   ╲                 past the ring: the text's
+
+    The third return is, for each group, how many text bodies precede it: that is
+    what turns a span into a cut point once every line's bodies are concatenated.
     """
+    rings: dict[tuple[int, int], Blob] = {}
+    for blob in components:
+        centre = blob.x + blob.w / 2
+        span = next(((s[0], s[1]) for s in spans if s[0] <= centre <= s[1]), None)
+        if span is not None and (span not in rings or blob.area > rings[span].area):
+            rings[span] = blob
     kept: list[Blob] = []
     groups: list[list[Blob]] = []
     befores: list[int] = []
@@ -161,6 +195,14 @@ def _partition(
     for blob in components:
         centre = blob.x + blob.w / 2
         span = next((s for s in spans if s[0] <= centre <= s[1]), None)
+        ring = rings.get((span[0], span[1])) if span is not None else None
+        if ring is not None and blob is not ring and (blob.x < ring.x or blob.right > ring.right):
+            # In the span but past the ring: ink of the text beside the ornament.
+            # The group it interrupts goes on.
+            kept.append(blob)
+            if blob.preferred == "body":
+                bodies_before += 1
+            continue
         if span is None:
             kept.append(blob)
             if blob.preferred == "body":
@@ -184,8 +226,7 @@ def split_symbols(
     """Take non-word symbols out of the ink — a sajda marker, a rub' rosette.
 
     **Like an ornament in one way and unlike it in every other.** The engine must
-    not read either as letters, and the removal is the same partition. But an
-    ornament also *closes an aya*: ``span.parse_span`` collapses its live readings
+    not read either as letters. But an ornament also *closes an aya*: ``span.parse_span`` collapses its live readings
     at every entry in ``separator_spans`` and keeps only those finishing on an aya
     boundary. A sajda closes nothing. Push one through that path and it would not
     merely be skipped — it would end the aya there and skip every word the aya had
@@ -204,26 +245,33 @@ def split_symbols(
     these. That also means the aya path's supplied-spans short-circuit must not
     swallow this pass, which is why it is its own function and not a branch of
     ``split_separators``.
+
+    **A hit is a box, not a column.** A score says only that something there looks
+    like the template, and the round head of a letter can. So a hit counts only when
+    the ink in its box is a sign of its own, and only that sign's pieces leave the
+    text (:func:`find_pieces_of_sign`). The mark above a hit, and the letter whose
+    head was matched, stay text::
+
+                    ┌────┐
+        fatha       │    │  /       above the box: text
+        rub' star   │ ✸  │          wholly inside it: the symbol
+                    └────┘
+                    ┌────┐
+        و           │ ●  │__        runs on outside the box: no symbol at all
+                    └────┘
     """
     if not templates:
         return
-    spans: list[tuple[int, int]] = []
-    found: list[tuple[str, tuple[int, int]]] = []
-    for name, template in templates.items():
-        for span in _separator_spans_by_template(ink, template, match_threshold):
-            spans.append(span)
-            found.append((name, span))
-    if not spans:
-        return
-    spans = _merge_spans(spans)
-
-    kept, groups, _ = _partition(ink.components, spans)
-    ink.symbol_spans = spans
-    # Name each group by whichever template's hit it overlaps, for the trace only.
-    ink.symbols = [
-        (next((n for n, s in found if s[0] <= group[0].x + group[0].w / 2 <= s[1]), "symbol"), group)
-        for group in groups
+    hits = [
+        hit for name, template in templates.items() for hit in find_symbol_hits(ink, template, name, match_threshold)
     ]
+    groups = claim_symbol_pieces(hits)
+    if not groups:
+        return
+    taken = {blob.label for _, pieces in groups for blob in pieces}
+    kept = [blob for blob in ink.components if blob.label not in taken]
+    ink.symbols = groups
+    ink.symbol_spans = [(min(b.x for b in pieces), max(b.right for b in pieces)) for _, pieces in groups]
     ink.components = kept
     ink.bodies = [b for b in kept if b.preferred == "body"]
     ink.marks = [b for b in kept if b.preferred != "body"]
@@ -231,8 +279,8 @@ def split_symbols(
         "    symbols: %d removed from the text ink — %s",
         len(ink.symbols),
         ", ".join(
-            f"{name} x={group[0].x + ink.offset_x}..{max(b.right for b in group) + ink.offset_x} ({len(group)} blob(s))"
-            for name, group in ink.symbols
+            f"{name} x={left + ink.offset_x}..{right + ink.offset_x} ({len(group)} blob(s))"
+            for (name, group), (left, right) in zip(ink.symbols, ink.symbol_spans, strict=True)
         ),
     )
 
@@ -268,21 +316,20 @@ def prepare_template(im: Image.Image, name: str = "aya separator") -> np.ndarray
 
 
 #: Set once the oversize warning has been printed, so it is not repeated per line.
-_OVERSIZE_REPORTED = False
+OVERSIZE_WARNED = False
 
 
-def _separator_spans_by_template(
-    ink: LineInk,
-    template: np.ndarray,
-    threshold: float,
-) -> list[tuple[int, int]]:
-    global _OVERSIZE_REPORTED
+def score_template_columns(ink: LineInk, template: np.ndarray) -> tuple[np.ndarray, np.ndarray] | None:
+    """How well ``template`` matches with its left edge at each column of the line —
+    the best of every row — and the row it matched best at. None when the template
+    is larger than the line."""
+    global OVERSIZE_WARNED
     line = np.where(ink.mask, np.uint8(0), np.uint8(255))
     if template.shape[0] > line.shape[0] or template.shape[1] > line.shape[1]:
-        if not _OVERSIZE_REPORTED:
-            _OVERSIZE_REPORTED = True
+        if not OVERSIZE_WARNED:
+            OVERSIZE_WARNED = True
             logger.warning(
-                "The separator template is %dx%d even after trimming, larger than a %dx%d line. "
+                "A template is %dx%d even after trimming, larger than a %dx%d line. "
                 "Template matching is skipped on such lines — re-cut the template from this mushaf.",
                 template.shape[1],
                 template.shape[0],
@@ -290,7 +337,7 @@ def _separator_spans_by_template(
                 line.shape[0],
             )
         logger.info("      template %dx%d does not fit this line; shape detector alone", *template.shape[::-1])
-        return []
+        return None
 
     # Pinned to the CPU kernel. TM_CCOEFF_NORMED fabricates perfect scores under
     # this project's OpenCL path (see the sura-header investigation), and an
@@ -298,8 +345,22 @@ def _separator_spans_by_template(
     # other caller set — so ask for the kernel whose scores can be trusted rather
     # than turning OpenCL off for everyone.
     result = match_template_ccoeff_normed(line, template, force_cpu=True)
+    if result.ndim == 2:
+        return result.max(axis=0), result.argmax(axis=0)
+    return result, np.zeros(result.shape[0], dtype=np.intp)
+
+
+def find_spans_by_template(
+    ink: LineInk,
+    template: np.ndarray,
+    threshold: float,
+) -> list[tuple[int, int]]:
+    """The ornament template's hits, as x-spans of the template's width."""
+    scored = score_template_columns(ink, template)
+    if scored is None:
+        return []
+    scores, _ = scored
     width = template.shape[1]
-    scores = result.max(axis=0) if result.ndim == 2 else result
     spans: list[tuple[int, int]] = []
     taken = np.zeros(scores.shape[0], dtype=bool)
     best_rejected = None
@@ -330,7 +391,95 @@ def _separator_spans_by_template(
     return spans
 
 
-def _hole_fraction(ink: LineInk, blob: Blob) -> float:
+@dataclass(frozen=True)
+class SymbolHit:
+    """A symbol template's match that is a sign of its own: the pieces it is made of."""
+
+    name: str
+    score: float
+    pieces: list[Blob]
+
+
+def find_symbol_hits(ink: LineInk, template: np.ndarray, name: str, threshold: float) -> list[SymbolHit]:
+    """Every place ``template`` matches and the ink there is a sign of its own.
+
+    Columns are tried best score first. One within a template's width of a sign
+    already found is that sign again. One whose ink is not a sign hides nothing
+    around it, so a weaker real sign beside a strong false match is still found.
+    """
+    scored = score_template_columns(ink, template)
+    if scored is None:
+        return []
+    scores, rows = scored
+    height, width = template.shape
+    hits: list[SymbolHit] = []
+    found_at: list[int] = []
+    for column in np.argsort(-scores, kind="stable"):
+        score = float(scores[column])
+        if score < threshold:
+            break
+        if any(abs(int(column) - other) < width for other in found_at):
+            continue
+        pieces = find_pieces_of_sign(ink, (int(column), int(rows[column]), width, height))
+        logger.debug(
+            "      %s hit at x=%d y=%d score %.3f → %s",
+            name,
+            int(column) + ink.offset_x,
+            int(rows[column]) + ink.offset_y,
+            score,
+            f"{len(pieces)} piece(s) {[b.label for b in pieces]}" if pieces else "not a sign of its own",
+        )
+        if pieces:
+            hits.append(SymbolHit(name=name, score=score, pieces=pieces))
+            found_at.append(int(column))
+    return hits
+
+
+def find_pieces_of_sign(ink: LineInk, box: tuple[int, int, int, int]) -> list[Blob]:
+    """The pieces of the sign matched at ``box`` (x, y, w, h in the tight crop), or
+    none when the ink there is not a sign of its own.
+
+    A piece is the sign's when it lies wholly inside the box grown by
+    :data:`SYMBOL_BOX_MARGIN` and its centre lies inside the box itself. The sign is
+    believed when those pieces hold :data:`SYMBOL_OWN_INK` of the ink in the box.
+    """
+    x, y, w, h = box
+    margin_x, margin_y = round(SYMBOL_BOX_MARGIN * w), round(SYMBOL_BOX_MARGIN * h)
+    pieces = [
+        blob
+        for blob in ink.components
+        if x - margin_x <= blob.x
+        and blob.right <= x + w + margin_x
+        and y - margin_y <= blob.y
+        and blob.bottom <= y + h + margin_y
+        and x <= blob.x + blob.w / 2 <= x + w
+        and y <= blob.y + blob.h / 2 <= y + h
+    ]
+    if not pieces:
+        return []
+    labels = ink.label_map[y : y + h, x : x + w]
+    ink_in_box = int(np.count_nonzero(labels))
+    own_ink = int(np.isin(labels, [blob.label for blob in pieces]).sum())
+    if own_ink < SYMBOL_OWN_INK * ink_in_box:
+        return []
+    return pieces
+
+
+def claim_symbol_pieces(hits: list[SymbolHit]) -> list[tuple[str, list[Blob]]]:
+    """One group per sign, right to left. Where two templates found the same piece
+    the better match names it, and a hit left with no piece of its own goes."""
+    claimed: set[int] = set()
+    groups: list[tuple[str, list[Blob]]] = []
+    for hit in sorted(hits, key=lambda hit: -hit.score):
+        pieces = [blob for blob in hit.pieces if blob.label not in claimed]
+        if not pieces:
+            continue
+        claimed.update(blob.label for blob in pieces)
+        groups.append((hit.name, pieces))
+    return sorted(groups, key=lambda group: -max(blob.right for blob in group[1]))
+
+
+def measure_hole_fraction(ink: LineInk, blob: Blob) -> float:
     """Largest enclosed hole in a blob, as a share of its bounding box."""
     patch = ink.mask[blob.y : blob.bottom, blob.x : blob.right].astype(np.uint8)
     contours, hierarchy = cv2.findContours(patch, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
@@ -341,7 +490,7 @@ def _hole_fraction(ink: LineInk, blob: Blob) -> float:
     return max(inner) / max(1, blob.w * blob.h) if inner else 0.0
 
 
-def _separator_spans_by_shape(ink: LineInk) -> list[tuple[int, int]]:
+def find_spans_by_shape(ink: LineInk) -> list[tuple[int, int]]:
     """Find the hollow ring. Works wherever on the line the ornament sits.
 
     The ornament is a closed ring with a digit floating inside it. Letters have
@@ -360,7 +509,7 @@ def _separator_spans_by_shape(ink: LineInk) -> list[tuple[int, int]]:
         if not (tall and square):
             continue
         # Measured last: findContours on a patch is the expensive half of this test.
-        hole = _hole_fraction(ink, blob)
+        hole = measure_hole_fraction(ink, blob)
         logger.debug(
             "      shape candidate #%d x=%d..%d h=%d (median %.0f) aspect %.2f hole %.2f → %s",
             blob.label,
@@ -377,10 +526,10 @@ def _separator_spans_by_shape(ink: LineInk) -> list[tuple[int, int]]:
     return spans
 
 
-def _label_spans(ink: LineInk, spans: list[tuple[int, int]]) -> list[str | None]:
+def label_spans_with_ayat(ink: LineInk, spans: list[tuple[int, int]]) -> list[str | None]:
     """Which aya each settled span closes, from what the caller supplied.
 
-    Re-attached by position rather than by index: ``_merge_spans`` can fuse two
+    Re-attached by position rather than by index: ``merge_overlapping_spans`` can fuse two
     supplied spans into one, so a parallel list would silently desync. Where two
     are fused the later one wins — that ornament closes the later aya, and the
     fused span ends where it ends.

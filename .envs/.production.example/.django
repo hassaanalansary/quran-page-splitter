@@ -1,0 +1,62 @@
+# Django and the Celery worker of docker-compose.production.yml.
+#
+# A template. On the server: copy the folder .envs/.production.example to
+# .envs/.production and fill in every value marked CHANGE-ME. .envs/.production is
+# gitignored and never leaves the server. DEPLOY.md walks through it.
+
+# --- Core ----------------------------------------------------------------
+# Generate with:
+#   python3 -c "import secrets; print(secrets.token_urlsafe(50))"
+SECRET_KEY=CHANGE-ME
+DEBUG=False
+# The domain the site answers on, with no scheme. The same value as APP_DOMAIN in
+# server.env.
+ALLOWED_HOSTS=CHANGE-ME.example.com
+# The same domain with https:// in front. Django checks the Origin of every write
+# against it.
+CSRF_TRUSTED_ORIGINS=https://CHANGE-ME.example.com
+
+# --- Behind Traefik ------------------------------------------------------
+# Traefik terminates HTTPS and redirects http to https, so Django must not
+# redirect as well: it only ever sees plain HTTP and would redirect for ever.
+SECURE_SSL_REDIRECT=False
+# Traefik tells Django that the browser's request was HTTPS (X-Forwarded-Proto).
+TRUST_PROXY_SSL_HEADER=True
+
+# --- Jobs ----------------------------------------------------------------
+# Jobs run in the celeryworker container. JOB_WORKER_SLOTS is how many run at
+# once: the web process reads it for the queue, and the worker for --concurrency.
+# The engines are CPU-bound, so keep it at or under the server's CPU cores.
+JOB_RUNNER=celery
+JOB_WORKER_SLOTS=2
+CELERY_BROKER_URL=redis://redis:6379/0
+# MAX_ACTIVE_JOBS_PER_USER=1
+# MAX_QUEUED_JOBS=20
+
+# --- Cache ---------------------------------------------------------------
+# allauth counts its rate limits here. Redis is shared by every gunicorn worker.
+CACHE_URL=redis://redis:6379/1
+
+# --- Web server ----------------------------------------------------------
+# GUNICORN_WORKERS=3
+# GUNICORN_THREADS=4
+
+# --- OpenCV --------------------------------------------------------------
+# The containers have no GPU. This says so, and OpenCV does not go looking.
+OPENCV_ACCEL=cpu
+
+# --- Email ---------------------------------------------------------------
+# With EMAIL_HOST unset, verification and password-reset emails are only printed
+# to the django container's log (`docker compose logs django`).
+# EMAIL_HOST=smtp.example.com
+# EMAIL_PORT=587
+# EMAIL_USE_TLS=True
+# EMAIL_HOST_USER=
+# EMAIL_HOST_PASSWORD=
+# DEFAULT_FROM_EMAIL=no-reply@CHANGE-ME.example.com
+
+# --- Google sign-in ------------------------------------------------------
+# Authorized redirect URI in the Google Cloud Console:
+#   https://CHANGE-ME.example.com/_allauth/browser/v1/auth/provider/callback
+# GOOGLE_CLIENT_ID=
+# GOOGLE_CLIENT_SECRET=

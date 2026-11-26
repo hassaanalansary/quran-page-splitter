@@ -41,7 +41,7 @@ export function PageJump({ page, pageCount, onPageChange, label }: Props) {
             }
           }}
           onBlur={commit}
-          className="h-6 w-14 rounded border border-border-strong px-1.5 text-center tabular-nums outline-none focus:border-orange"
+          className="h-6 w-14 rounded border border-rule-2 px-1.5 text-center tabular-nums outline-none focus:border-lapis"
         />
       ) : (
         <button
@@ -50,14 +50,14 @@ export function PageJump({ page, pageCount, onPageChange, label }: Props) {
             setValue("");
             setEditing(true);
           }}
-          className="font-semibold tabular-nums text-text-primary hover:text-orange"
+          className="font-semibold tabular-nums text-ink hover:text-lapis-text"
           title={t("canvas.jumpTitle")}
         >
           {t("canvas.pageJump", { page })}
         </button>
       )}
-      <span className="text-text-muted">/ {pageCount}</span>
-      {label && <span className="border-s border-border ps-2 text-text-secondary">{label}</span>}
+      <span className="text-ink-3">/ {pageCount}</span>
+      {label && <span className="border-s border-rule ps-2 text-ink-2">{label}</span>}
     </div>
   );
 }

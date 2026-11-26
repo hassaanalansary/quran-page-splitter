@@ -36,7 +36,6 @@ from typing import Any
 
 from django.core.files.base import ContentFile
 from django.db import transaction
-from django.db.models import F
 from ninja.errors import HttpError
 from ninja.files import UploadedFile
 
@@ -44,7 +43,6 @@ from accounts.models import User
 from api import i18n
 from api.models import (
     ActivityTypeChoices,
-    CalibrationProfile,
     CalibrationReview,
     CalibrationRevision,
     CalibrationRevisionKind,
@@ -52,7 +50,6 @@ from api.models import (
     EraseStroke,
     Line,
     LineWord,
-    LineWordStatus,
     Mushaf,
     Page,
     Segment,
@@ -60,6 +57,9 @@ from api.models import (
     TemplateTypeChoices,
 )
 from api.services import activity
+from api.services.blob_contents import is_document_current
+from api.services.calibration_examples import LIBRARY_VERSION
+from api.services.fingerprint_transfer import restore_fingerprint_set, serialize_fingerprint_set
 
 logger = logging.getLogger(__name__)
 
@@ -111,11 +111,10 @@ def serialize_tree(mushaf: Mushaf) -> list[dict]:
 
     for line in (
         Line.objects.filter(page__mushaf=mushaf)
-        .select_related("page", "word_status")
+        .select_related("page")
         .prefetch_related("words")
         .order_by("line_number")
     ):
-        status = getattr(line, "word_status", None)
         lines_by_page.setdefault(line.page.page_number, []).append(
             {
                 "line_number": line.line_number,
@@ -127,19 +126,11 @@ def serialize_tree(mushaf: Mushaf) -> list[dict]:
                 "bbox_h": line.bbox_h,
                 "segments": segments_by_line.get(line.id, []),
                 "erase_strokes": strokes_by_line.get(line.id, []),
+                "erase_edge_ink": line.erase_edge_ink,
                 "words": [
                     {"word_id": word.word_id, "position": word.position, "start_x": word.start_x, "end_x": word.end_x}
                     for word in line.words.all()
                 ],
-                "word_status": {
-                    "status": status.status,
-                    "reason": status.reason,
-                    "deviations": status.deviations,
-                    "ties": status.ties,
-                    "edited": status.edited,
-                }
-                if status
-                else None,
             }
         )
 
@@ -152,6 +143,9 @@ def serialize_tree(mushaf: Mushaf) -> list[dict]:
             "bbox_w": page.bbox_w,
             "bbox_h": page.bbox_h,
             "reviewed": page.reviewed,
+            "lines_finalized": page.lines_finalized,
+            "line_padding": page.line_padding,
+            "sura_header_padding": page.sura_header_padding,
             "lines": lines_by_page.get(page.page_number, []),
         }
         for page in mushaf.pages.all().order_by("page_number")
@@ -180,6 +174,9 @@ def write_tree(target: Mushaf, pages: list[dict]) -> None:
                 bbox_w=page.get("bbox_w"),
                 bbox_h=page.get("bbox_h"),
                 reviewed=bool(page.get("reviewed")),
+                lines_finalized=bool(page.get("lines_finalized")),
+                line_padding=page.get("line_padding"),
+                sura_header_padding=page.get("sura_header_padding"),
             )
             for page in pages
         ],
@@ -202,6 +199,7 @@ def write_tree(target: Mushaf, pages: list[dict]) -> None:
                 bbox_y=line["bbox_y"],
                 bbox_w=line["bbox_w"],
                 bbox_h=line["bbox_h"],
+                erase_edge_ink=bool(line.get("erase_edge_ink")),
             )
             for page_number, line in line_rows
         ],
@@ -258,21 +256,8 @@ def write_tree(target: Mushaf, pages: list[dict]) -> None:
         ],
         batch_size=BATCH_SIZE,
     )
-    LineWordStatus.objects.bulk_create(
-        [
-            LineWordStatus(
-                line=new_line_by_key[(page_number, line["line_number"])],
-                **{
-                    key: value
-                    for key, value in line["word_status"].items()
-                    if key in ("status", "reason", "deviations", "ties", "edited")
-                },
-            )
-            for page_number, line in line_rows
-            if line.get("word_status")
-        ],
-        batch_size=BATCH_SIZE,
-    )
+    # A bundle written before word statuses were dropped still carries a
+    # ``word_status`` per line; nothing reads it.
 
 
 def serialize_calibration(mushaf: Mushaf) -> dict:
@@ -298,7 +283,7 @@ def serialize_calibration(mushaf: Mushaf) -> dict:
                 "payload": deepcopy(review.payload),
                 "revisions": [
                     {
-                        # Profiles name the approvals they were built from by id.
+                        # The fingerprint set's shapes name their confirmations by id.
                         "id": str(revision.pk),
                         "number": revision.number,
                         "kind": revision.kind,
@@ -310,10 +295,9 @@ def serialize_calibration(mushaf: Mushaf) -> dict:
             }
             for review in mushaf.calibration_reviews.order_by("page_number").prefetch_related("revisions")
         ],
-        "profiles": [
-            {"signature": profile.signature, "payload": _portable_profile(profile.payload), "mode": "shadow"}
-            for profile in mushaf.calibration_profiles.order_by("signature")
-        ],
+        # The stored fingerprint set itself, without its shapes' features: the bundled
+        # line images measure them again (api.services.fingerprint_transfer).
+        "fingerprint_set": serialize_fingerprint_set(mushaf),
     }
 
 
@@ -325,19 +309,11 @@ def _revision_kind(revision: dict) -> str:
     return str(kind)
 
 
-def _portable_profile(payload: dict) -> dict:
-    return {
-        key: deepcopy(value)
-        for key, value in payload.items()
-        if key not in ("index", "cached_index", "index_path", "active_approval", "approved", "approved_at", "mode")
-    }
-
-
-def _remap_snapshot_refs(value: Any, ids: dict[str, str]) -> Any:
+def remap_snapshot_ids(value: Any, ids: dict[str, str]) -> Any:
     if isinstance(value, dict):
-        return {ids.get(key, key): _remap_snapshot_refs(item, ids) for key, item in value.items()}
+        return {ids.get(key, key): remap_snapshot_ids(item, ids) for key, item in value.items()}
     if isinstance(value, list):
-        return [_remap_snapshot_refs(item, ids) for item in value]
+        return [remap_snapshot_ids(item, ids) for item in value]
     return ids.get(value, value) if isinstance(value, str) else value
 
 
@@ -369,7 +345,7 @@ def _offset_revisions(payload: dict, offset: int) -> dict:
     return payload
 
 
-def restore_calibration(target: Mushaf, data: dict, read_file: Callable[[str, str], bytes | None]) -> None:
+def restore_calibration(target: Mushaf, data: dict, read_file: Callable[[str, str], bytes | None]) -> dict[str, str]:
     """Restore files into target-owned paths and rebind every reference to the target.
 
     Snapshot ids, revision ids and line ids are all the target's own afterwards, so
@@ -378,10 +354,7 @@ def restore_calibration(target: Mushaf, data: dict, read_file: Callable[[str, st
     importing over a worked target: imported revisions are appended after it, and
     every reference to a revision number is shifted to match.
     """
-    from api.models import CalibrationSettings
-
-    # Activation is local consent, never portable data, even on an existing target.
-    CalibrationSettings.objects.filter(mushaf=target).update(experimental=False, revision=F("revision") + 1)
+    had_confirmed_pages = CalibrationReview.objects.filter(mushaf=target, confirmed_revision__isnull=False).exists()
     lines = {
         (page_number, line_number): str(pk)
         for page_number, line_number, pk in Line.objects.filter(page__mushaf=target).values_list(
@@ -415,6 +388,10 @@ def restore_calibration(target: Mushaf, data: dict, read_file: Callable[[str, st
             snapshot.save()
 
     for entry in data.get("reviews", []):
+        if entry.get("payload", {}).get("lines") and not is_document_current(entry["payload"]):
+            # Made before contents keys: its labels mean nothing to this code. The page
+            # is processed again here instead; the snapshots above are kept.
+            continue
         review, _ = CalibrationReview.objects.select_for_update().get_or_create(
             mushaf=target, page_number=entry["page_number"]
         )
@@ -423,7 +400,7 @@ def restore_calibration(target: Mushaf, data: dict, read_file: Callable[[str, st
         used_requests = set(review.revisions.values_list("request_id", flat=True))
         for revision in entry.get("revisions", []):
             request_id = uuid.UUID(revision["request_id"]) if revision.get("request_id") else None
-            payload = _remap_snapshot_refs(revision.get("payload", {}), ids)
+            payload = remap_snapshot_ids(revision.get("payload", {}), ids)
             created_revision = CalibrationRevision.objects.create(
                 review=review,
                 number=offset + revision["number"],
@@ -436,18 +413,20 @@ def restore_calibration(target: Mushaf, data: dict, read_file: Callable[[str, st
         review.revision = offset + entry["revision"]
         confirmed = entry.get("confirmed_revision")
         review.confirmed_revision = offset + confirmed if confirmed is not None else review.confirmed_revision
-        payload = _remap_snapshot_refs(entry.get("payload", {}), ids)
+        payload = remap_snapshot_ids(entry.get("payload", {}), ids)
         review.payload = _offset_revisions(_rebind_lines(payload, lines, page), offset)
         if "profile" in review.payload:
             review.payload["profile"] = {**review.payload["profile"], "mode": "shadow"}
         review.save()
 
-    for entry in data.get("profiles", []):
-        CalibrationProfile.objects.update_or_create(
-            mushaf=target,
-            signature=entry["signature"],
-            defaults={"mode": "shadow", "payload": _remap_snapshot_refs(_portable_profile(entry["payload"]), ids)},
-        )
+    # A bundle from before the stored set carries ``profiles`` instead: ignored, and
+    # the target's set is built from its confirmed pages at the next lookup.
+    carried = data.get("fingerprint_set")
+    if carried is not None and carried.get("library_version") != LIBRARY_VERSION:
+        # Grouped by other kinds: the target's set is built from its own pages instead.
+        carried = None
+    restore_fingerprint_set(target, carried, ids, had_confirmed_pages=had_confirmed_pages)
+    return ids
 
 
 # --------------------------------------------------------------------------
@@ -466,7 +445,7 @@ def _last_run_settings(mushaf: Mushaf) -> dict | None:
     return run.settings if run else None
 
 
-def build(mushaf_id: uuid.UUID, *, user: User | None) -> tuple[str, SpooledTemporaryFile]:
+def build_mushaf_bundle(mushaf_id: uuid.UUID, *, user: User | None) -> tuple[str, SpooledTemporaryFile]:
     """Package a mushaf's work as a zip, ready to stream as a download."""
     from api.services import mushaf as mushaf_service
 
@@ -515,7 +494,7 @@ def build(mushaf_id: uuid.UUID, *, user: User | None) -> tuple[str, SpooledTempo
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
         archive.writestr(MANIFEST_NAME, json.dumps(manifest, ensure_ascii=False, indent=2))
         archive.writestr(PAGES_NAME, json.dumps({"pages": pages}, ensure_ascii=False))
-        if any(calibration[key] for key in ("snapshots", "reviews", "profiles")):
+        if any(calibration[key] for key in ("snapshots", "reviews")):
             archive.writestr(CALIBRATION_NAME, json.dumps(calibration, ensure_ascii=False))
             for snapshot in mushaf.calibration_snapshots.all():
                 for field in ("image", "labels"):

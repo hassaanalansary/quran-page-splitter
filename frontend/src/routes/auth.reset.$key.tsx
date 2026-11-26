@@ -3,10 +3,16 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { AuthError as ErrorBanner, AuthShell } from "@/components/app/auth/AuthShell";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { BusyLabel } from "@/components/app/SatrLoader";
+import {
+  AUTH_LINK,
+  AUTH_PRIMARY,
+  AuthError as ErrorBanner,
+  AuthField,
+  AuthShell,
+  AuthStateActions,
+  AuthStateCard,
+} from "@/components/app/auth/AuthShell";
 import { AuthError, resetPassword } from "@/lib/api";
 
 /** Landing page for the link in allauth's password-reset email — the `{key}`
@@ -19,52 +25,84 @@ function ResetPasswordPage() {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState(false);
+  const [mismatch, setMismatch] = useState(false);
+  const [state, setState] = useState<"form" | "done" | "expired">("form");
 
   const mutation = useMutation({
     mutationFn: () => resetPassword(key, password),
-    onSuccess: () => setDone(true),
-    onError: (e) => setError(e instanceof AuthError ? e.message : t("auth.reset.invalidKey")),
+    onSuccess: () => setState("done"),
+    onError: (e) => {
+      // allauth refuses a used or expired key on the `key` parameter; anything
+      // else (a password it will not take) belongs to the form.
+      if (e instanceof AuthError && (e.param === "key" || e.code === "invalid_password_reset")) {
+        setState("expired");
+        return;
+      }
+      setError(e instanceof AuthError ? e.message : t("auth.errors.generic"));
+    },
   });
 
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    if (password !== confirm) return setError(t("auth.errors.passwordsDontMatch"));
+    setMismatch(password !== confirm);
+    if (password !== confirm) return;
     mutation.mutate();
   }
 
   const backToSignIn = (
-    <Link to="/auth/login" className="font-medium text-navy hover:underline">
+    <Link to="/auth/login" className={AUTH_LINK}>
       {t("auth.backToSignIn")}
     </Link>
   );
 
-  if (done) {
+  if (state === "done") {
     return (
-      <AuthShell
-        title={t("auth.reset.done")}
-        subtitle={t("auth.reset.doneBody")}
-        footer={backToSignIn}
-      >
-        <div className="rounded-md border border-success-border bg-success-bg px-3 py-2 text-sm text-success">
-          {t("auth.reset.done")}
-        </div>
+      <AuthShell>
+        <AuthStateCard
+          icon="check"
+          tone="done"
+          title={t("auth.reset.done")}
+          body={t("auth.reset.doneBody")}
+        >
+          <AuthStateActions>
+            <Link to="/auth/login" className={AUTH_PRIMARY}>
+              {t("auth.signIn")}
+            </Link>
+          </AuthStateActions>
+        </AuthStateCard>
+      </AuthShell>
+    );
+  }
+
+  if (state === "expired") {
+    return (
+      <AuthShell>
+        <AuthStateCard
+          icon="alert"
+          tone="stop"
+          title={t("auth.reset.expiredTitle")}
+          body={t("auth.reset.invalidKey")}
+        >
+          <AuthStateActions>
+            <Link to="/auth/forgot" className={AUTH_PRIMARY}>
+              {t("auth.reset.requestNew")}
+            </Link>
+            {backToSignIn}
+          </AuthStateActions>
+        </AuthStateCard>
       </AuthShell>
     );
   }
 
   return (
-    <AuthShell
-      title={t("auth.reset.newTitle")}
-      subtitle={t("auth.reset.newSubtitle")}
-      footer={backToSignIn}
-    >
-      <form onSubmit={onSubmit} className="flex flex-col gap-4">
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="reset-password">{t("auth.passwordLabel")}</Label>
-          <Input
+    <AuthShell>
+      <AuthStateCard icon="key" title={t("auth.reset.newTitle")} body={t("auth.reset.newSubtitle")}>
+        <form onSubmit={onSubmit} className="flex flex-col gap-3">
+          <AuthField
             id="reset-password"
+            label={t("auth.reset.newPasswordLabel")}
+            compact
             type="password"
             autoComplete="new-password"
             dir="ltr"
@@ -73,12 +111,11 @@ function ResetPasswordPage() {
             required
             autoFocus
           />
-        </div>
-
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="reset-confirm">{t("auth.confirmPasswordLabel")}</Label>
-          <Input
+          <AuthField
             id="reset-confirm"
+            label={t("auth.confirmPasswordLabel")}
+            error={mismatch ? t("auth.errors.passwordsDontMatch") : null}
+            compact
             type="password"
             autoComplete="new-password"
             dir="ltr"
@@ -86,14 +123,23 @@ function ResetPasswordPage() {
             onChange={(e) => setConfirm(e.target.value)}
             required
           />
-        </div>
-
-        {error && <ErrorBanner message={error} />}
-
-        <Button type="submit" disabled={mutation.isPending}>
-          {mutation.isPending ? t("common.saving") : t("auth.reset.setPassword")}
-        </Button>
-      </form>
+          {error && <ErrorBanner message={error} />}
+          <AuthStateActions>
+            <button
+              type="submit"
+              disabled={mutation.isPending}
+              className={`${AUTH_PRIMARY} cursor-pointer`}
+            >
+              {mutation.isPending ? (
+                <BusyLabel>{t("common.saving")}</BusyLabel>
+              ) : (
+                t("auth.reset.setPassword")
+              )}
+            </button>
+            {backToSignIn}
+          </AuthStateActions>
+        </form>
+      </AuthStateCard>
     </AuthShell>
   );
 }
